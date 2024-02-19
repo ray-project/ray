@@ -6,11 +6,7 @@ from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import (
-    ModuleID,
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -94,14 +90,15 @@ class MultiAgentEnvRunner(EnvRunner):
         # required in the learning step.
         self._cached_to_module = None
 
-        self._make_module()
+        # Construct the RLModule.
+        self.module = self._make_module()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
-        # This should be the default.
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
+        self._shared_data = None
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
@@ -196,7 +193,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episode = MultiAgentEpisode()
+            self._episode = self._new_episode()
             self._make_on_episode_callback("on_episode_created")
 
             # Reset the environment.
@@ -214,10 +211,9 @@ class MultiAgentEnvRunner(EnvRunner):
             # Set the initial observations in the episodes.
             self._episode.add_env_reset(observations=obs, infos=infos)
 
-        # TODO (sven): figure out how often we should reset the shared data dict.
-        shared_data = {
-            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
-        }
+            self._shared_data = {
+                "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
+            }
 
         # Loop through timesteps.
         ts = 0
@@ -246,7 +242,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=[self._episode],
                     explore=explore,
-                    shared_data=shared_data,
+                    shared_data=self._shared_data,
                 )
                 self._cached_to_module = None
                 # Explore or not.
@@ -260,11 +256,17 @@ class MultiAgentEnvRunner(EnvRunner):
                     data=to_env,
                     episodes=[self._episode],
                     explore=explore,
-                    shared_data=shared_data,
+                    shared_data=self._shared_data,
                 )
 
-            # Extract the (vectorized) actions from the module/connector output.
-            actions = to_env.pop(SampleBatch.ACTIONS)
+            # Extract the (vectorized) actions (to be sent to the env) from the
+            # module/connector output. Note that these actions are fully ready (e.g.
+            # already clipped) to be sent to the environment) and might not be
+            # identical to the actions produced by the RLModule/distribution, which are
+            # the ones stored permanently in the episode objects.
+            actions = to_env.pop(
+                SampleBatch.ACTIONS_FOR_ENV, to_env.get(SampleBatch.ACTIONS)
+            )
 
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
@@ -304,40 +306,55 @@ class MultiAgentEnvRunner(EnvRunner):
                 extra_model_outputs=extra_model_outputs,
             )
 
-            # Make the `on_episode_step` callback.
-            self._make_on_episode_callback("on_episode_step")
-
-            # TODO (sven, simon): We have to check, if we need this elaborate
-            # function here or if the `MultiAgentEnv` defines the cases that
-            # can happen.
-            # Right now we have:
-            #   1. Most times only agents that step get `terminated`, `truncated`
-            #       i.e. the rest we have to check in the episode.
-            #   2. There are edge cases like, some agents terminated, all others
-            #       truncated and vice versa.
-            # See also `MultiAgentEpisode` for handling the `__all__`.
+            # Episode is done for all agents. Wrap up the old one and create a new
+            # one (and reset it) to continue.
             if self._all_agents_done(terminateds, truncateds):
+                # We have to perform an extra env-to-module pass here, just in case
+                # the user's connector pipeline performs (permanent) transforms
+                # on each observation (including this final one here). Without such
+                # a call and in case the structure of the observations change
+                # sufficiently, the following `finalize()` call on the episode will
+                # fail.
+                self._env_to_module(
+                    episodes=[self._episode],
+                    explore=explore,
+                    rl_module=self.module,
+                    shared_data=self._shared_data,
+                )
+
+                # Make the `on_episode_step` callback.
+                self._make_on_episode_callback("on_episode_step")
                 # Finalize (numpy'ize) the episode.
                 self._episode.finalize()
                 done_episodes_to_return.append(self._episode)
+
+                # Make the `on_episode_env` callback (after having finalized the
+                # episode object).
+                self._make_on_episode_callback("on_episode_end")
+
                 # Create a new episode instance.
-                self._episode = MultiAgentEpisode()
+                self._episode = self._new_episode()
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
 
+                # Make the `on_episode_start` callback.
+                self._make_on_episode_callback("on_episode_start")
+
+            else:
+                # Make the `on_episode_step` callback.
+                self._make_on_episode_callback("on_episode_step")
+
         # Already perform env-to-module connector call for next call to
         # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
-        # TODO (sven): Figure out shared_data problem. We will have to store that as
-        #  well (in between `self._sample_timesteps()` calls).
-        # if self.module is not None:
-        #    self._cached_to_module = self._env_to_module(
-        #        rl_module=self.module,
-        #        episodes=[self._episode],
-        #        explore=explore,
-        #        shared_data=shared_data,
-        #    )
+        if self.module is not None:
+            self._cached_to_module = self._env_to_module(
+                rl_module=self.module,
+                episodes=[self._episode],
+                explore=explore,
+                shared_data=self._shared_data,
+            )
 
         # Store done episodes for metrics.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -385,8 +402,11 @@ class MultiAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
-        _episode = MultiAgentEpisode()
+        _episode = self._new_episode()
         self._make_on_episode_callback("on_episode_created", _episode)
+        shared_data = {
+            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
+        }
 
         # Initialize image rendering if needed.
         render_image = None
@@ -396,11 +416,6 @@ class MultiAgentEnvRunner(EnvRunner):
         # Set initial obs and infos in the episodes.
         _episode.add_env_reset(observations=obs, infos=infos, render_image=render_image)
         self._make_on_episode_callback("on_episode_start", _episode)
-
-        # TODO (sven): figure out how often we should reset the shared data dict.
-        shared_data = {
-            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
-        }
 
         # Loop over episodes.
         eps = 0
@@ -505,7 +520,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     break
 
                 # Create a new episode instance.
-                _episode = MultiAgentEpisode()
+                _episode = self._new_episode()
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
@@ -619,17 +634,29 @@ class MultiAgentEnvRunner(EnvRunner):
         # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
         # `RLModule`s and not `Policy`s. Like here `policies`->`modules`
         try:
-            policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+            policy_dict, _ = self.config.get_multi_agent_setup(
+                spaces={
+                    mid: (o, self._env_to_module.action_space[mid])
+                    for mid, o in self._env_to_module.observation_space.spaces.items()
+                },
+            )
             ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
                 policy_dict=policy_dict
             )
 
             # Build the module from its spec.
-            self.module: MultiAgentRLModule = ma_rlm_spec.build()
+            return ma_rlm_spec.build()
 
         # This error could be thrown, when only random actions are used.
         except NotImplementedError:
-            self.module = None
+            return None
+
+    def _new_episode(self):
+        return MultiAgentEpisode(
+            observation_space=self.env.observation_space,
+            action_space=self.env.action_space,
+            agent_to_module_mapping_fn=self.config.policy_mapping_fn,
+        )
 
     def _make_on_episode_callback(self, which: str, episode=None):
         episode = episode if episode is not None else self._episode

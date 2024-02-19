@@ -46,6 +46,7 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     collect_metrics,
+    RolloutMetrics,
     summarize_episodes,
 )
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -93,6 +94,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
     SAMPLE_TIMER,
@@ -111,6 +113,7 @@ from ray.rllib.utils.typing import (
     EnvInfoDict,
     EnvType,
     EpisodeID,
+    EpisodeType,
     PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
@@ -714,27 +717,34 @@ class Algorithm(Trainable, AlgorithmBase):
 
         self.learner_group = None
         if self.config._enable_new_api_stack:
-            # TODO (Kourosh): This is an interim solution where policies and modules
-            #  co-exist. In this world we have both policy_map and MARLModule that need
-            #  to be consistent with one another. To make a consistent parity between
-            #  the two we need to loop through the policy modules and create a simple
-            #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
-            #  we get this from the RolloutWorker's `marl_module_spec` property
-            #  (which other EnvRunners do not have).
-            #  However, this is hacky (information leak) and should not remain this
-            #  way. For other EnvRunner classes (that don't have this property),
-            #  Algorithm should infer this itself.
-            if hasattr(local_worker, "marl_module_spec"):
-                module_spec: MultiAgentRLModuleSpec = local_worker.marl_module_spec
-            else:
-                policy_dict, _ = self.config.get_multi_agent_setup(env=local_worker.env)
+            env = spaces = None
+            # EnvRunners have a `module` property, which stores the RLModule
+            # (or MARLModule, which is a subclass of RLModule, in the multi-agent case).
+            if hasattr(local_worker, "module") and local_worker.module is not None:
+                marl_module_dict = dict(local_worker.module.as_multi_agent())
+                env = local_worker.env
+                spaces = {
+                    mid: (mod.config.observation_space, mod.config.action_space)
+                    for mid, mod in marl_module_dict.items()
+                }
+                policy_dict, _ = self.config.get_multi_agent_setup(
+                    env=env, spaces=spaces
+                )
                 module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
                     policy_dict=policy_dict
                 )
+            # TODO (Sven): Deprecate this path: Old stack API RolloutWorkers and
+            #  DreamerV3's EnvRunners have a `marl_module_spec` property.
+            elif hasattr(local_worker, "marl_module_spec"):
+                module_spec: MultiAgentRLModuleSpec = local_worker.marl_module_spec
+            else:
+                raise AttributeError(
+                    "Your local EnvRunner/RolloutWorker does NOT have any property "
+                    "referring to its RLModule!"
+                )
             self.learner_group = self.config.build_learner_group(
-                rl_module_spec=module_spec,
+                rl_module_spec=module_spec, env=env, spaces=spaces
             )
 
             # Check if there are modules to load from the `module_spec`.
@@ -846,23 +856,31 @@ class Algorithm(Trainable, AlgorithmBase):
             ), "Algorithm.evaluate() needs to return a dict."
             results.update(self.evaluation_metrics)
 
-        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
-            # Sync filters on workers.
+        # Sync filters on workers.
+        if self.config.uses_new_env_runners:
+            # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+            # states back to all workers.
+            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+                # Merge connector states from all EnvRunners and broadcast updated
+                # states back to all EnvRunners.
+                self.workers.sync_connectors()
+        else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
                 workers=self.workers,
                 config=self.config,
             )
-            episodes_this_iter = collect_episodes(
-                self.workers,
-                self._remote_worker_ids_for_metrics(),
-                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-            )
-            results = self._compile_iteration_results(
-                episodes_this_iter=episodes_this_iter,
-                step_ctx=train_iter_ctx,
-                iteration_results=results,
-            )
+
+        episodes_this_iter = collect_episodes(
+            self.workers,
+            self._remote_worker_ids_for_metrics(),
+            timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+        )
+        results = self._compile_iteration_results(
+            episodes_this_iter=episodes_this_iter,
+            step_ctx=train_iter_ctx,
+            iteration_results=results,
+        )
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config.env_task_fn is not None:
@@ -1221,16 +1239,11 @@ class Algorithm(Trainable, AlgorithmBase):
         self._evaluation_weights_seq_number += 1
         weights_ref = ray.put(self.workers.local_worker().get_weights())
         weights_seq_no = self._evaluation_weights_seq_number
-
-        def remote_fn(worker):
-            # Pass in seq-no so that eval workers may ignore this call if no update has
-            # happened since the last call to `remote_fn` (sample).
-            worker.set_weights(
-                weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
-            )
-            batch = worker.sample()
-            metrics = worker.get_metrics()
-            return batch, metrics, weights_seq_no
+        remote_fn_partial = functools.partial(
+            self._evaluate_async_remote_fn,
+            _weights_ref=weights_ref,
+            _weights_seq_no=weights_seq_no,
+        )
 
         rollout_metrics = []
 
@@ -1246,7 +1259,7 @@ class Algorithm(Trainable, AlgorithmBase):
             _round += 1
             # Get ready evaluation results and metrics asynchronously.
             self.evaluation_workers.foreach_worker_async(
-                func=remote_fn,
+                func=remote_fn_partial,
                 healthy_only=True,
             )
             eval_results = self.evaluation_workers.fetch_ready_async_reqs()
@@ -1297,6 +1310,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 f"({num_units_done}/{duration if not auto else '?'} "
                 f"{unit} done)"
             )
+
+        del weights_ref
+        del remote_fn_partial
 
         sampler_results = summarize_episodes(
             rollout_metrics,
@@ -1372,12 +1388,14 @@ class Algorithm(Trainable, AlgorithmBase):
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
-        # TODO (sven): Implement solution via connectors.
-        self._sync_filters_if_needed(
-            central_worker=self.workers.local_worker(),
-            workers=self.evaluation_workers,
-            config=eval_cfg,
-        )
+        # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
+        # states back to all workers.
+        with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+            # Merge connector states from all EnvRunners and broadcast updated
+            # states back to all EnvRunners.
+            self.evaluation_workers.sync_connectors(
+                from_worker=self.workers.local_worker()
+            )
 
         if self.evaluation_workers is None and (
             self.workers.local_worker().input_reader is None
@@ -1410,21 +1428,13 @@ class Algorithm(Trainable, AlgorithmBase):
         self._evaluation_weights_seq_number += 1
         weights_ref = ray.put(self.workers.local_worker().get_weights())
         weights_seq_no = self._evaluation_weights_seq_number
-
-        def remote_fn(worker):
-            # Pass in seq-no so that eval workers may ignore this call if no update has
-            # happened since the last call to `remote_fn` (sample).
-            worker.set_weights(
-                weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
-            )
-            # By episode: Run always only one episode per remote call.
-            # By timesteps: By default EnvRunner runs for the configured number of
-            # timesteps (based on `rollout_fragment_length` and `num_envs_per_worker`).
-            episodes = worker.sample(
-                explore=False, num_episodes=1 if unit == "episodes" else None
-            )
-            metrics = worker.get_metrics()
-            return episodes, metrics, weights_seq_no
+        remote_fn_partial = functools.partial(
+            self._evaluate_async_remote_fn,
+            _weights_ref=weights_ref,
+            _weights_seq_no=weights_seq_no,
+            _env_runner=True,
+            _env_runner_num_episodes=(1 if unit == "episodes" else None),
+        )
 
         rollout_metrics = []
 
@@ -1440,7 +1450,7 @@ class Algorithm(Trainable, AlgorithmBase):
             _round += 1
             # Get ready evaluation results and metrics asynchronously.
             self.evaluation_workers.foreach_worker_async(
-                func=remote_fn,
+                func=remote_fn_partial,
                 healthy_only=True,
             )
             eval_results = self.evaluation_workers.fetch_ready_async_reqs()
@@ -1492,6 +1502,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 f"({num_units_done}/{duration if not auto else '?'} "
                 f"{unit} done)"
             )
+
+        del weights_ref
+        del remote_fn_partial
 
         sampler_results = summarize_episodes(
             rollout_metrics,
@@ -3185,6 +3198,69 @@ class Algorithm(Trainable, AlgorithmBase):
                 * eval_cfg["rollout_fragment_length"]
                 * eval_cfg["num_envs_per_worker"]
             )
+
+    @staticmethod
+    def _evaluate_async_remote_fn(
+        _worker: EnvRunner,
+        _weights_ref: ray.ObjectRef,
+        _weights_seq_no: int,
+        _env_runner: bool = False,
+        _env_runner_num_episodes: Optional[int] = None,
+    ) -> Tuple[
+        Union[SampleBatchType, List["EpisodeType"]],
+        List["RolloutMetrics"],
+        int,
+    ]:
+        """Ray remote function to use for asynchronous evaluation requests.
+
+        Sends this function to the evaluation worker ActorManager
+        (using the foreach_worker_async method).
+
+        We are using this approach with a @staticmethod here to avoid the pitfall of
+        accidentally "baking in" a large object reference into a function, which would
+        lead to an object store memory leak.
+        See this discussion here for more details:
+        https://stackoverflow.com/questions/66893318/how-to-clear-objects-from-the-
+        object-store-in-ray
+
+        Args:
+            _worker: The evaluation EnvRunner worker on which this remote function
+                will run.
+            _weights_ref: The ray ObjectRef pointing to the weights dict in the object
+                store.
+            _weights_seq_no: An integer providing the version of the current weights.
+                We pass this to the `_worker`'s `set_weights` method, such that it can
+                ignore the weights update in case it already has this version of
+                the weights.
+            _env_runner: Whether a new EnvRunner worker is used (as opposed to an old
+                API stack RolloutWorker).
+            _env_runner_num_episodes: Set to 1 if the evaluation duration unit is
+                "episodes", else set to None (to leave it to the worker to decide how
+                many timesteps to run).
+
+        Returns:
+            A tuple consisting of the sampled batch (or list of episodes), the metrics
+            dict, and the `_weights_seq_no` passed in as an arg (we return this here
+            again, b/c we fetch results from this function asynchronously and thus
+            don't have to keep track of this sequence number separately outside of this
+            function).
+        """
+        # Pass in weights seq-no so that eval workers may ignore this call if no update
+        # has happened since the last call to `remote_fn` (sample).
+        _worker.set_weights(
+            weights=ray.get(_weights_ref), weights_seq_no=_weights_seq_no
+        )
+        if _env_runner:
+            # By episode: Run always only one episode per remote call.
+            # By timesteps: By default EnvRunner runs for the configured number of
+            # timesteps (based on `rollout_fragment_length` and `num_envs_per_worker`).
+            sample_results = _worker.sample(
+                explore=False, num_episodes=_env_runner_num_episodes
+            )
+        else:
+            sample_results = _worker.sample()
+        metrics = _worker.get_metrics()
+        return sample_results, metrics, _weights_seq_no
 
     def _compile_iteration_results(
         self, *, episodes_this_iter, step_ctx, iteration_results=None

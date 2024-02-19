@@ -83,16 +83,23 @@ class OpRuntimeMetrics:
 
     # === Object store memory metrics ===
 
+    # Size in bytes of input blocks in the operator's internal input queue.
+    obj_store_mem_internal_inqueue: int = field(
+        default=0, metadata={"export_metric": True}
+    )
+    # Size in bytes of output blocks in the operator's internal output queue.
+    obj_store_mem_internal_outqueue: int = field(
+        default=0, metadata={"export_metric": True}
+    )
+    # Size in bytes of input blocks used by pending tasks.
+    obj_store_mem_pending_task_inputs: int = field(
+        default=0, metadata={"map_only": True}
+    )
+
     # Freed memory size in the object store.
     obj_store_mem_freed: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
     )
-    # Current memory size in the object store.
-    obj_store_mem_cur: int = field(
-        default=0, metadata={"map_only": True, "export_metric": True}
-    )
-    # Peak memory size in the object store.
-    obj_store_mem_peak: int = field(default=0, metadata={"map_only": True})
     # Spilled memory size in the object store.
     obj_store_mem_spilled: int = field(
         default=0, metadata={"map_only": True, "export_metric": True}
@@ -131,8 +138,8 @@ class OpRuntimeMetrics:
                 result.append((f.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
-        # avoid calling self._op.current_resource_usage()
-        resource_usage = self._op.current_resource_usage()
+        # avoid calling self._op.current_processor_usage()
+        resource_usage = self._op.current_processor_usage()
         result.extend(
             [
                 ("cpu_usage", resource_usage.cpu or 0),
@@ -166,7 +173,7 @@ class OpRuntimeMetrics:
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
 
     @property
-    def obj_store_mem_pending_tasks(self) -> Optional[float]:
+    def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
 
         If an estimate isn't available, this property returns ``None``.
@@ -214,41 +221,41 @@ class OpRuntimeMetrics:
 
         return self.average_bytes_outputs_per_task - self.average_bytes_inputs_per_task
 
-    @property
-    def input_buffer_bytes(self) -> int:
-        """Size in bytes of input blocks that are not processed yet."""
-        return self.bytes_inputs_received - self.bytes_task_inputs_processed
-
-    @property
-    def output_buffer_bytes(self) -> int:
-        """Size in bytes of output blocks that are not taken by the downstream yet."""
-        return self.bytes_task_outputs_generated - self.bytes_outputs_taken
-
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
-        input_size = input.size_bytes()
-        self.bytes_inputs_received += input_size
-        # Update object store metrics.
-        self.obj_store_mem_cur += input_size
-        if self.obj_store_mem_cur > self.obj_store_mem_peak:
-            self.obj_store_mem_peak = self.obj_store_mem_cur
+        self.bytes_inputs_received += input.size_bytes()
+
+    def on_input_queued(self, input: RefBundle):
+        """Callback when the operator queues an input."""
+        self.obj_store_mem_internal_inqueue += input.size_bytes()
+
+    def on_input_dequeued(self, input: RefBundle):
+        """Callback when the operator dequeues an input."""
+        self.obj_store_mem_internal_inqueue -= input.size_bytes()
+
+    def on_output_queued(self, output: RefBundle):
+        """Callback when an output is queued by the operator."""
+        self.obj_store_mem_internal_outqueue += output.size_bytes()
+
+    def on_output_dequeued(self, output: RefBundle):
+        """Callback when an output is dequeued by the operator."""
+        self.obj_store_mem_internal_outqueue -= output.size_bytes()
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""
-        output_bytes = output.size_bytes()
         self.num_outputs_taken += 1
-        self.bytes_outputs_taken += output_bytes
-        self.obj_store_mem_cur -= output_bytes
+        self.bytes_outputs_taken += output.size_bytes()
 
     def on_task_submitted(self, task_index: int, inputs: RefBundle):
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
+        self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
 
-    def on_output_generated(self, task_index: int, output: RefBundle):
+    def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
         num_outputs = len(output)
         output_bytes = output.size_bytes()
@@ -261,11 +268,6 @@ class OpRuntimeMetrics:
             self.num_tasks_have_outputs += 1
         task_info.num_outputs += num_outputs
         task_info.bytes_outputs += output_bytes
-
-        # Update object store metrics.
-        self.obj_store_mem_cur += output_bytes
-        if self.obj_store_mem_cur > self.obj_store_mem_peak:
-            self.obj_store_mem_peak = self.obj_store_mem_cur
 
         for block_ref, meta in output.blocks:
             assert meta.exec_stats and meta.exec_stats.wall_time_s
@@ -289,6 +291,7 @@ class OpRuntimeMetrics:
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
+        self.obj_store_mem_pending_task_inputs -= inputs.size_bytes()
 
         blocks = [input[0] for input in inputs.blocks]
         metadata = [input[1] for input in inputs.blocks]
@@ -301,7 +304,6 @@ class OpRuntimeMetrics:
                     self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
-        self.obj_store_mem_cur -= total_input_size
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]
