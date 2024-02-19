@@ -11,6 +11,7 @@ from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -108,15 +109,17 @@ class Router:
                     deployment_id,
                 ): self.update_running_replicas,
                 (
-                    LongPollNamespace.AUTOSCALING_CONFIG,
+                    LongPollNamespace.DEPLOYMENT_CONFIG,
                     deployment_id,
-                ): self.update_autoscaling_config,
+                ): self.update_deployment_config,
             },
             call_in_event_loop=event_loop,
         )
 
-        # For autoscaling deployments.
-        self.autoscaling_config = None
+        # The config for the deployment this router sends requests to will be broadcast
+        # by the controller. That means it is not available until we get the first
+        # update. This includes an optional autoscaling config.
+        self.deployment_config: Optional[DeploymentConfig] = None
         # Track queries sent to replicas for the autoscaling algorithm.
         self.num_requests_sent_to_replicas = defaultdict(int)
         # We use Ray object ref callbacks to update state when tracking
@@ -148,11 +151,20 @@ class Router:
                 },
             )
 
-    def update_autoscaling_config(self, autoscaling_config: AutoscalingConfig):
-        self.autoscaling_config = autoscaling_config
+    @property
+    def curr_autoscaling_config(self) -> Optional[AutoscalingConfig]:
+        if self.deployment_config is None:
+            return None
+
+        return self.deployment_config.autoscaling_config
+
+    def update_deployment_config(self, deployment_config: DeploymentConfig):
+        """Update the config for the deployment this router sends requests to."""
+        self.deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
-        if self.autoscaling_config:
+        autoscaling_config: AutoscalingConfig = self.curr_autoscaling_config
+        if autoscaling_config:
             # Optimization for autoscaling cold start time. If there are
             # currently 0 replicas for the deployment, and there is at
             # least one queued request on this router, then immediately
@@ -171,13 +183,13 @@ class Router:
                 self.metrics_pusher.register_or_update_task(
                     RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
-                    min(0.5, self.autoscaling_config.metrics_interval_s),
+                    min(0.5, autoscaling_config.metrics_interval_s),
                 )
                 # Push metrics to the controller periodically.
                 self.metrics_pusher.register_or_update_task(
                     PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                     self._get_aggregated_requests,
-                    self.autoscaling_config.metrics_interval_s,
+                    autoscaling_config.metrics_interval_s,
                     self.push_metrics_to_controller,
                 )
             else:
@@ -205,8 +217,9 @@ class Router:
 
     def _get_aggregated_requests(self):
         running_requests = dict()
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            look_back_period = self.autoscaling_config.look_back_period_s
+        autoscaling_config = self.curr_autoscaling_config
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and autoscaling_config:
+            look_back_period = autoscaling_config.look_back_period_s
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, time.time() - look_back_period
@@ -329,7 +342,7 @@ class Router:
         # you need to yield the event loop above this conditional, you
         # will need to remove the check "self.num_queued_queries == 1"
         if (
-            self.autoscaling_config
+            self.curr_autoscaling_config
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):

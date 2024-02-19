@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from typing import Dict
 
-from google.protobuf.json_format import MessageToDict
+from ray._private.protobuf_compat import message_to_dict
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
@@ -346,7 +346,7 @@ class GlobalState:
             "bundles": {
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
-                bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                bundle.bundle_id.bundle_index: message_to_dict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
             "bundles_to_node_id": {

@@ -187,21 +187,16 @@ class DefaultEnvToModule(ConnectorV2):
         """
         # Current agent to module mapping function.
         agent_to_module_mapping_fn = shared_data.get("agent_to_module_mapping_fn")
-        # Per-agent deque of module IDs to map the final per-agent data to.
-        # Using a deque here as we will be popleft'ing items out of it again when we
-        # perform the mapping step.
-        agent_to_module_mappings = defaultdict(list)
         # Store in shared data, which module IDs map to which episode/agent, such
         # that the module-to-env pipeline can map the data back to agents.
         module_to_episode_agents_mapping = defaultdict(list)
 
         for episode_idx, ma_episode in enumerate(episodes):
-            for agent_id in ma_episode.get_agents_to_act():
+            for agent_id in ma_episode.get_agents_that_stepped():
                 module_id = ma_episode.agent_episodes[agent_id].module_id
                 if module_id is None:
                     module_id = agent_to_module_mapping_fn(agent_id, ma_episode)
                     ma_episode.agent_episodes[agent_id].module_id = module_id
-                agent_to_module_mappings[agent_id].append(module_id)
                 # Store (in the correct order) which episode+agentID belongs to which
                 # batch item in a module IDs forward batch.
                 module_to_episode_agents_mapping[module_id].append(
