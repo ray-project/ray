@@ -71,9 +71,7 @@ class SchedulingReply:
     # To terminate.
     to_terminate: List[TerminationRequest] = field(default_factory=list)
     # The infeasible resource bundles.
-    infeasible_resource_requests: List[ResourceRequest] = field(
-        default_factory=list
-    )
+    infeasible_resource_requests: List[ResourceRequest] = field(default_factory=list)
     # The infeasible gang resource bundles.
     infeasible_gang_resource_requests: List[GangResourceRequest] = field(
         default_factory=list
@@ -166,6 +164,9 @@ class SchedulingNode:
                 # Use ray node's available resources.
                 available_resources=dict(instance.ray_node.available_resources),
                 # Use ray node's dynamic labels.
+                available_resources_for_constraints=dict(
+                    instance.ray_node.total_resources
+                ),
                 labels=dict(instance.ray_node.dynamic_labels),
                 status=SchedulingNodeStatus.SCHEDULABLE,
                 im_instance_id=instance.im_instance.instance_id,
@@ -1480,7 +1481,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # The node is needed by the resource constraints.
                 # Skip it.
                 if node.idle_duration_ms > ctx.get_idle_timeout_s() * s_to_ms:
-                    logger.debug(
+                    logger.info(
                         "Node {}(idle for {} secs) is needed by the constraints, "
                         "skip idle termination.".format(
                             node.ray_node_id, node.idle_duration_ms / s_to_ms

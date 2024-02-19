@@ -455,8 +455,11 @@ class Reconciler:
 
         # Compute intermediate states.
         instances_with_launch_requests: List[IMInstance] = [
-            instance for instance in im_instances if instance.launch_request_id
+            instance
+            for instance in im_instances
+            if InstanceUtil.is_launch_requested(instance)
         ]
+
         assigned_cloud_instance_ids: Set[CloudInstanceId] = {
             instance.cloud_instance_id for instance in im_instances
         }
@@ -491,13 +494,7 @@ class Reconciler:
             if not update_event:
                 continue
 
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(update_event),
-                )
-            )
+            logger.info(InstanceUtil.log_str_for_update(instance, update_event))
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
@@ -583,12 +580,8 @@ class Reconciler:
                     new_instance_status=IMInstance.RAY_INSTALL_FAILED,
                     details=install_error.details,
                 )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance_id]),
-                    )
+                logger.info(
+                    InstanceUtil.log_str_for_update(instance, updates[instance_id])
                 )
 
         # Update the instance manager for the events.
@@ -634,11 +627,7 @@ class Reconciler:
             )
 
             logger.info(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                InstanceUtil.log_str_for_update(instance, updates[instance.instance_id])
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -686,12 +675,8 @@ class Reconciler:
                 new_instance_status=IMInstance.TERMINATION_FAILED,
                 details=str(failure),
             )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+            logger.info(
+                InstanceUtil.log_str_for_update(instance, updates[instance.instance_id])
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -796,11 +781,9 @@ class Reconciler:
                     f"for ray node {NodeStateUtil.node_id_hex(ray_node.node_id)}",
                     ray_node_id=NodeStateUtil.node_id_hex(ray_node.node_id),
                 )
-                logger.debug(
-                    "Updating {}({}) with {}.".format(
-                        im_instance.instance_id,
-                        IMInstance.InstanceStatus.Name(im_instance.status),
-                        message_to_dict(updates[im_instance.instance_id]),
+                logger.info(
+                    InstanceUtil.log_str_for_update(
+                        im_instance, updates[im_instance.instance_id]
                     )
                 )
 
@@ -891,11 +874,10 @@ class Reconciler:
                     launch_request_id=launch_request_id,
                     instance_type=instance_type,
                 )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance.instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance.instance_id]),
+                logger.info(
+                    InstanceUtil.log_str_for_update(
+                        instance,
+                        updates[instance.instance_id],
                     )
                 )
 
@@ -1072,10 +1054,9 @@ class Reconciler:
                     continue
                 im_updates[instance.instance_id] = update
                 logger.info(
-                    "Updating {}({}) with {}".format(
-                        instance.instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(im_updates[instance.instance_id]),
+                    InstanceUtil.log_str_for_update(
+                        instance,
+                        im_updates[instance.instance_id],
                     )
                 )
 
@@ -1170,9 +1151,11 @@ class Reconciler:
                 AutoscalerInstance(
                     ray_node=ray_node,
                     im_instance=im_instance,
-                    cloud_instance_id=im_instance.cloud_instance_id
-                    if im_instance.cloud_instance_id
-                    else None,
+                    cloud_instance_id=(
+                        im_instance.cloud_instance_id
+                        if im_instance.cloud_instance_id
+                        else None
+                    ),
                 )
             )
 
@@ -1325,11 +1308,7 @@ class Reconciler:
                 new_instance_status=IMInstance.RAY_INSTALLING,
             )
             logger.info(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                InstanceUtil.log_str_for_update(instance, updates[instance.instance_id])
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)

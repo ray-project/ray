@@ -49,7 +49,7 @@ DEFAULT_AUTOSCALING_CONFIG = {
     },
     "head_node_type": "ray.head.default",
     "upscaling_speed": 0,
-    "idle_timeout_minutes": 0.1,
+    "idle_timeout_minutes": 0.08,
 }
 
 
@@ -90,26 +90,6 @@ def make_cluster(head_node_kwargs: Dict = None):
         initialize_head=True, head_node_args=head_node_kwargs, connect=True
     )
     return cluster
-
-
-def test_run():
-    # cluster = make_cluster(
-    #     head_node_kwargs={
-    #         "env_vars": {
-    #             "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
-    #             "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
-    #         },
-    #         "num_cpus": 1,
-    #     }
-    # )
-
-    @ray.remote
-    def task():
-        pass
-
-    a = task.options(num_cpus=1).remote()
-
-    ray.get(a)
 
 
 def test_autoscaler_v2():
@@ -155,6 +135,7 @@ def test_autoscaler_v2():
     autoscaler.update_autoscaling_state(ray_state)
 
     # Resource requests
+    print("=================== Test scaling up constraint 1/2====================")
     request_cluster_resources(gcs_address, [{"CPU": 1}, {"GPU": 1}])
 
     def verify():
@@ -164,9 +145,18 @@ def test_autoscaler_v2():
         assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 3
         return True
 
-    wait_for_condition(verify, retry_interval_ms=5000)
+    wait_for_condition(verify, retry_interval_ms=2000)
+
+    # Test scaling down shouldn't happen
+    print("=================== Test scaling down constraint 2/2 ====================")
+    import time
+
+    time.sleep(6)
+
+    wait_for_condition(verify, retry_interval_ms=2000)
 
     # Test scaling down.
+    print("=================== Test scaling down idle ====================")
     request_cluster_resources(gcs_address, [])
 
     def verify():
@@ -177,18 +167,22 @@ def test_autoscaler_v2():
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)
+    print("=================== Test scaling up with tasks ====================")
 
     # Test scaling up again with tasks
     @ray.remote
     def task():
-        pass
+        while True:
+            time.sleep(2)
+            print("running...")
 
     a = task.options(num_cpus=1).remote()
-    b = task.options(num_cpus=1).remote()
+    b = task.options(num_cpus=0, num_gpus=1).remote()
 
     def verify():
         cluster_state = get_cluster_status(gcs_address)
         ray_state = autoscaler.get_cluster_resource_state()
+        print(ray_state)
         autoscaling_state = autoscaler.update_autoscaling_state(ray_state)
         assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 3
         return True

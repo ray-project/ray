@@ -1,3 +1,4 @@
+from queue import Queue
 from typing import List, Optional
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
@@ -87,7 +88,7 @@ class Autoscaler:
 
         subscribers: List[InstanceUpdatedSubscriber] = []
         subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
-        subscribers.append(RayStopper(gcs_client=gcs_client))
+        subscribers.append(RayStopper(gcs_client=gcs_client, error_queue=Queue()))
         if not config.skip_ray_install():
             raise NotImplementedError("RayInstaller is not implemented yet.")
 

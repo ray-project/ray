@@ -3,6 +3,7 @@ import uuid
 from typing import Dict, List, Optional, Set
 
 from google.protobuf.json_format import MessageToDict
+from google.protobuf.text_format import MessageToString
 
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
@@ -90,6 +91,30 @@ class InstanceUtil:
         Returns a random instance id.
         """
         return str(uuid.uuid4())
+
+    @staticmethod
+    def is_launch_requested(instance) -> bool:
+        """
+        Returns True if the instance is in a status where a launch request is
+        made to the cloud provider.
+        """
+        if instance.status == Instance.REQUESTED:
+            return True
+
+        if instance.status == Instance.QUEUED and instance.launch_request_id:
+            # The instance launch request was retried thus it had a launch request id.
+            return True
+
+        return False
+
+    @staticmethod
+    def log_str_for_update(instance: Instance, update: InstanceUpdateEvent) -> str:
+        return "[{cur_status} -> {new_status}][{instance_id}] {update_details}".format(
+            instance_id=instance.instance_id,
+            cur_status=Instance.InstanceStatus.Name(instance.status),
+            new_status=Instance.InstanceStatus.Name(update.new_instance_status),
+            update_details=MessageToString(update, as_one_line=True),
+        )
 
     @staticmethod
     def is_cloud_instance_allocated(instance_status: Instance.InstanceStatus) -> bool:
