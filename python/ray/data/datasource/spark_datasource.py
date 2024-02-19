@@ -7,7 +7,30 @@ from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
+
 logger = logging.getLogger(__name__)
+
+
+def check_requirements():
+    from ray.util.spark.utils import get_spark_session
+
+    spark = get_spark_session()
+    if spark.conf.get(
+        "spark.databricks.pyspark.dataFrameChunk.enabled", "false"
+    ).lower() != "true":
+        raise RuntimeError(
+            "In databricks runtime, if you want to use 'ray.data.from_spark' API, "
+            "you need to set spark cluster config "
+            "'spark.databricks.pyspark.dataFrameChunk.enabled' to 'true'."
+        )
+
+    if spark.conf.get(
+        "spark.databricks.acl.dfAclsEnabled", "false"
+    ).lower() != "false":
+        raise RuntimeError(
+            "In databricks runtime, if you want to use 'ray.data.from_spark' API, "
+            "you should use an assigned mode databricks cluster."
+        )
 
 
 def _persist_dataframe_as_chunks(spark_dataframe, bytes_per_chunk):
