@@ -17,13 +17,18 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
+from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
     DataBatch,
-    _apply_strict_mode_batch_format,
+    _apply_batch_format,
 )
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
@@ -34,10 +39,12 @@ if TYPE_CHECKING:
 
     from ray.data.dataset import (
         CollatedData,
+        MaterializedDataset,
         Schema,
         TensorFlowTensorBatchType,
         TorchBatchType,
     )
+
 
 T = TypeVar("T")
 
@@ -153,7 +160,7 @@ class DataIterator(abc.ABC):
                 "prefetching in terms of batches instead of blocks."
             )
 
-        batch_format = _apply_strict_mode_batch_format(batch_format)
+        batch_format = _apply_batch_format(batch_format)
 
         def _create_iterator() -> Iterator[DataBatch]:
             time_start = time.perf_counter()
@@ -180,6 +187,10 @@ class DataIterator(abc.ABC):
             )
 
             dataset_tag = self._get_dataset_tag()
+
+            if stats:
+                stats.iter_initialize_s.add(time.perf_counter() - time_start)
+
             for batch in iterator:
                 yield batch
                 StatsManager.update_iteration_metrics(stats, dataset_tag)
@@ -643,9 +654,11 @@ class DataIterator(abc.ABC):
                         key: convert_pandas_to_torch_tensor(
                             batch,
                             feature_columns[key],
-                            feature_column_dtypes[key]
-                            if isinstance(feature_column_dtypes, dict)
-                            else feature_column_dtypes,
+                            (
+                                feature_column_dtypes[key]
+                                if isinstance(feature_column_dtypes, dict)
+                                else feature_column_dtypes
+                            ),
                             unsqueeze=unsqueeze_feature_tensors,
                         )
                         for key in feature_columns
@@ -672,6 +685,8 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
@@ -757,6 +772,14 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
+                only one column, specify a `tf.TypeSpec`. If there are multiple columns,
+                specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
+            label_type_spec: The `tf.TypeSpec` of `label_columns`. If there is
+                only one column, specify a `tf.TypeSpec`. If there are multiple columns,
+                specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
 
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
@@ -772,9 +795,6 @@ class DataIterator(abc.ABC):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        schema = self.schema()
-        valid_columns = schema.names
-
         def validate_column(column: str) -> None:
             if column not in valid_columns:
                 raise ValueError(
@@ -789,9 +809,6 @@ class DataIterator(abc.ABC):
                     validate_column(column)
             else:
                 validate_column(columns)
-
-        validate_columns(feature_columns)
-        validate_columns(label_columns)
 
         def convert_batch_to_tensors(
             batch: Dict[str, np.ndarray],
@@ -826,12 +843,16 @@ class DataIterator(abc.ABC):
                 )
                 yield features, labels
 
-        feature_type_spec = get_type_spec(schema, columns=feature_columns)
-        label_type_spec = get_type_spec(schema, columns=label_columns)
-        output_signature = (feature_type_spec, label_type_spec)
+        if feature_type_spec is None or label_type_spec is None:
+            schema = self.schema()
+            valid_columns = schema.names
+            validate_columns(feature_columns)
+            validate_columns(label_columns)
+            feature_type_spec = get_type_spec(schema, columns=feature_columns)
+            label_type_spec = get_type_spec(schema, columns=label_columns)
 
         dataset = tf.data.Dataset.from_generator(
-            generator, output_signature=output_signature
+            generator, output_signature=(feature_type_spec, label_type_spec)
         )
 
         options = tf.data.Options()
@@ -840,13 +861,35 @@ class DataIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
-    def iter_epochs(self, max_epoch: int = -1) -> None:
-        raise DeprecationWarning(
-            "If you are using Ray Train, ray.train.get_dataset_shard() "
-            "returns a ray.data.DataIterator instead of a "
-            "DatasetPipeline as of Ray 2.3. "
-            "To iterate over one epoch of data, use iter_batches(), "
-            "iter_torch_batches(), or to_tf()."
+    def materialize(self) -> "MaterializedDataset":
+        """Execute and materialize this data iterator into object store memory.
+
+        .. note::
+            This method triggers the execution and materializes all blocks
+            of the iterator, returning its contents as a
+            :class:`~ray.data.dataset.MaterializedDataset` for further processing.
+        """
+
+        from ray.data.dataset import MaterializedDataset
+
+        block_iter, stats, owned_by_consumer = self._to_block_iterator()
+
+        block_refs_and_metadata = list(block_iter)
+        block_refs = [block_ref for block_ref, _ in block_refs_and_metadata]
+        metadata = [metadata for _, metadata in block_refs_and_metadata]
+
+        block_list = BlockList(
+            block_refs, metadata, owned_by_consumer=owned_by_consumer
+        )
+        ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        return MaterializedDataset(
+            ExecutionPlan(
+                block_list,
+                stats,
+                run_by_consumer=owned_by_consumer,
+            ),
+            logical_plan,
         )
 
     def __del__(self):

@@ -1,13 +1,10 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
 from ray.util import PublicAPI
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="stable")
@@ -188,8 +185,6 @@ class TorchTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         if not torch_config:
             torch_config = TorchConfig()
@@ -202,7 +197,6 @@ class TorchTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )

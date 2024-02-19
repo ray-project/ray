@@ -370,8 +370,8 @@ class Experiment:
     @property
     @Deprecated("Replaced by `local_path`")
     def local_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
 
     @property
     def remote_path(self) -> Optional[str]:
@@ -386,11 +386,10 @@ class Experiment:
         return self.spec.get("checkpoint_config")
 
     @property
-    @Deprecated("Replaced by `checkpoint_dir`")
+    @Deprecated("Replaced by `local_path`")
     def checkpoint_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        # Provided when initializing Experiment, if so, return directly.
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
 
     @property
     def run_identifier(self):

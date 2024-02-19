@@ -12,6 +12,7 @@ import yaml
 
 import ray
 from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.resources import resources_to_json, json_to_resources
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
@@ -253,12 +254,11 @@ def run(
     num_samples: int = cli.NumSamples,
     checkpoint_freq: int = cli.CheckpointFreq,
     checkpoint_at_end: bool = cli.CheckpointAtEnd,
-    local_dir: str = cli.LocalDir,
+    storage_path: str = cli.StoragePath,
     restore: str = cli.Restore,
     resources_per_trial: str = cli.ResourcesPerTrial,
     keep_checkpoints_num: int = cli.KeepCheckpointsNum,
     checkpoint_score_attr: str = cli.CheckpointScoreAttr,
-    upload_dir: str = cli.UploadDir,
     # Additional config arguments used for overriding.
     v: bool = cli.V,
     vv: bool = cli.VV,
@@ -276,6 +276,9 @@ def run(
     resume: bool = cli.Resume,
     scheduler: str = cli.Scheduler,
     scheduler_config: str = cli.SchedulerConfig,
+    # TODO(arturn): [Deprecated] Remove in 2.11.
+    local_dir: str = cli.LocalDir,
+    upload_dir: str = cli.UploadDir,
 ):
     """Train a reinforcement learning agent from command line options.
     The options --env and --algo are required to run this command.
@@ -287,7 +290,6 @@ def run(
     # If no subcommand is specified, simply run the following lines as the
     # "rllib train" main command.
     if ctx.invoked_subcommand is None:
-
         # we only check for backends when actually running the command. otherwise the
         # start-up time is too slow.
         import_backends()
@@ -296,6 +298,15 @@ def run(
 
         config = json.loads(config)
         resources_per_trial = json_to_resources(resources_per_trial)
+
+        if local_dir != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "`local_dir` is deprecated. Please use `storage_path` instead."
+            )
+        if upload_dir != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "`upload_dir` is deprecated. Please use `storage_path` instead."
+            )
 
         # Load a single experiment from configuration
         experiments = {
@@ -307,7 +318,7 @@ def run(
                     "num_to_keep": keep_checkpoints_num,
                     "checkpoint_score_attribute": checkpoint_score_attr,
                 },
-                "local_dir": local_dir,
+                "storage_path": storage_path,
                 "resources_per_trial": (
                     resources_per_trial and resources_to_json(resources_per_trial)
                 ),
@@ -315,9 +326,6 @@ def run(
                 "config": dict(config, env=env),
                 "restore": restore,
                 "num_samples": num_samples,
-                "sync_config": {
-                    "upload_dir": upload_dir,
-                },
             }
         }
 
