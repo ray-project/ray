@@ -1,3 +1,5 @@
+from collections import defaultdict
+from pprint import pprint
 import re
 
 import numpy as np
@@ -26,6 +28,9 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
         self.win_rate_threshold = win_rate_threshold
         # Store the win rates for league overview printouts.
         self.win_rates = {}
+
+        # Report the matchup counters (who played against whom?).
+        self._matching_stats = defaultdict(int)
 
     def on_train_result(self, *, algorithm, result, **kwargs):
         local_worker = algorithm.workers.local_worker()
@@ -125,12 +130,13 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                             opponent = np.random.choice(
                                 list(self.non_trainable_policies)
                             )
-                        print(f"{league_exploiter} vs {opponent}")
-                        return (
-                            league_exploiter
-                            if hash(episode.id_) % 2 == agent_id
-                            else opponent
-                        )
+
+                        # Only record match stats once per match.
+                        if hash(episode.id_) % 2 == agent_id:
+                            self._matching_stats[(league_exploiter, opponent)] += 1
+                            return league_exploiter
+                        else:
+                            return opponent
 
                     # 2) Main exploiter vs main.
                     else:
@@ -145,12 +151,13 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         # frozen main.
                         else:
                             main = np.random.choice(list(self.main_policies - {"main"}))
-                        print(f"{main_exploiter} vs {main}")
-                        return (
-                            main_exploiter
-                            if hash(episode.id_) % 2 == agent_id
-                            else main
-                        )
+
+                        # Only record match stats once per match.
+                        if hash(episode.id_) % 2 == agent_id:
+                            self._matching_stats[(main_exploiter, main)] += 1
+                            return main_exploiter
+                        else:
+                            return main
 
                 marl_module = local_worker.module
                 main_module = marl_module["main"]
@@ -205,6 +212,8 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
 
     def _print_league(self):
         print("--- League ---")
+        print("Matchups:")
+        pprint(self._matching_stats)
         print("Trainable policies (win-rates):")
         for p in sorted(self.trainable_policies):
             wr = self.win_rates[p] if p in self.win_rates else 0.0

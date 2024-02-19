@@ -556,24 +556,28 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> SpecType:
-        """Returns the output specs of the forward_inference method.
+        """Returns the output specs of the `forward_inference()` method.
 
         Override this method to customize the output specs of the inference call.
-        The default implementation requires the forward_inference to return a dict that
-        has `action_dist` key and its value is an instance of `Distribution`.
-        This assumption must always hold.
+        The default implementation requires the `forward_inference()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
         """
+        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
+        #  is what most algos will do.
         return {"action_dist": Distribution}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> SpecType:
-        """Returns the output specs of the forward_exploration method.
+        """Returns the output specs of the `forward_exploration()` method.
 
-        Override this method to customize the output specs of the inference call.
-        The default implementation requires the forward_exploration to reutn a dict
-        that has `action_dist` key and its value is an instance of
-        `Distribution`. This assumption must always hold.
+        Override this method to customize the output specs of the exploration call.
+        The default implementation requires the `forward_exploration()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
         """
+        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
+        #  is what most algos will do.
         return {"action_dist": Distribution}
 
     def output_specs_train(self) -> SpecType:

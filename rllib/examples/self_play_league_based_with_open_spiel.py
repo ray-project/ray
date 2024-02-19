@@ -51,7 +51,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray import tune
+from ray.tune.registry import get_trainable_cls, register_env
 
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
@@ -60,7 +60,7 @@ pyspiel = try_import_pyspiel(error=True)
 from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
-parser = add_rllib_example_script_args()
+parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.add_argument(
     "--env",
     type=str,
@@ -78,7 +78,7 @@ parser.add_argument(
 parser.add_argument(
     "--min-league-size",
     type=float,
-    default=3,
+    default=8,
     help="Minimum number of policies/RLModules to consider the test passed. "
     "The initial league size is 2: `main` and `random`. "
     "`--min-league-size=3` thus means that one new policy/RLModule has been "
@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    tune.register_env(
+    register_env(
         "open_spiel_env",
         lambda _: OpenSpielEnv(pyspiel.load_game(args.env)),
     )
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         return {"policies": policies, "spec": spec}
 
     config = (
-        tune.registry.get_trainable_cls(args.algo)
+        get_trainable_cls(args.algo)
         .get_default_config()
         # Use new API stack ...
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)

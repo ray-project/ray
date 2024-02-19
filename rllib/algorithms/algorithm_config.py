@@ -1863,6 +1863,8 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    # TODO (sven): Deprecate this method. Move `explore` setting into `rollouts()`.
+    #  `exploration_config` should no longer be used on the new API stack.
     def exploration(
         self,
         *,
