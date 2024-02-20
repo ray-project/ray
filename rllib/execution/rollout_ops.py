@@ -4,13 +4,14 @@ import tree
 
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import (
+    MultiAgentBatch,
     SampleBatch,
     DEFAULT_POLICY_ID,
     concat_samples,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import EpisodeType, SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ def synchronous_parallel_sample(
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
-) -> Union[List[SampleBatchType], SampleBatchType]:
+) -> Union[List[SampleBatchType], SampleBatchType, List[EpisodeType], EpisodeType]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
     Waits for all workers to return from the remote calls.
@@ -96,20 +97,20 @@ def synchronous_parallel_sample(
                 # TODO (sven): Can't we update here the main counters, too?
                 agent_or_env_steps += (
                     b_or_e.agent_steps()
-                    if isinstance(b_or_e, SampleBatch)
+                    if isinstance(b_or_e, (SampleBatch, MultiAgentBatch))
                     else sum(len(e) for e in b_or_e)
                 )
             else:
                 agent_or_env_steps += (
                     b_or_e.env_steps()
-                    if isinstance(b_or_e, SampleBatch)
+                    if isinstance(b_or_e, (SampleBatch, MultiAgentBatch))
                     else sum(len(e) for e in b_or_e)
                 )
         all_sample_batches_or_eps.extend(sample_batches_or_eps)
 
     if concat is True:
         # If we have a SampleBatch we concatenate.
-        if isinstance(all_sample_batches_or_eps[0], SampleBatch):
+        if isinstance(all_sample_batches_or_eps[0], (SampleBatch, MultiAgentBatch)):
             full_batch = concat_samples(all_sample_batches_or_eps)
             # Discard collected incomplete episodes in episode mode.
             # if max_episodes is not None and episodes >= max_episodes:
