@@ -14,6 +14,7 @@ text-classification
 object-detection
 aws-neuron-core-inference
 aws-neuron-core-inference-stable-diffusion
+intel-habana-gaudi-inference
 gradio-integration
 batch
 streaming

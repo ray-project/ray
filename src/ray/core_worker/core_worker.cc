@@ -360,6 +360,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             "CoreWorker.HandleException");
       }));
 
+  experimental_mutable_object_manager_.reset(new ExperimentalMutableObjectManager());
+
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
                                     const std::string &error_message,
@@ -1336,22 +1338,22 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
   }
 }
 
-Status CoreWorker::ExperimentalMutableObjectWriteAcquire(
+Status CoreWorker::ExperimentalChannelWriteAcquire(
     const ObjectID &object_id,
     const std::shared_ptr<Buffer> &metadata,
     uint64_t data_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
-  return plasma_store_provider_->ExperimentalMutableObjectWriteAcquire(
-      object_id, metadata, data_size, num_readers, data);
+  return experimental_mutable_object_manager_->WriteAcquire(
+      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, data);
 }
 
-Status CoreWorker::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
-  return plasma_store_provider_->ExperimentalMutableObjectWriteRelease(object_id);
+Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
+  return experimental_mutable_object_manager_->WriteRelease(object_id);
 }
 
-Status CoreWorker::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
-  return plasma_store_provider_->ExperimentalMutableObjectSetError(object_id);
+Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
+  return experimental_mutable_object_manager_->SetError(object_id);
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
@@ -1397,15 +1399,38 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExperimentalMutableObjectReadRelease(
+Status CoreWorker::ExperimentalChannelReadRelease(
     const std::vector<ObjectID> &object_ids) {
   RAY_CHECK(object_ids.size() == 1);
-  return plasma_store_provider_->ExperimentalMutableObjectReadRelease(object_ids[0]);
+  return experimental_mutable_object_manager_->ReadRelease(object_ids[0]);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/false);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/true);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
+                                                             bool is_writer) {
+  std::unique_ptr<plasma::MutableObject> object = nullptr;
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
+  RAY_CHECK(object) << "Mutable object must be local to be registered";
+  if (is_writer) {
+    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterWriterChannel(
+        object_id, std::move(object)));
+  } else {
+    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterReaderChannel(
+        object_id, std::move(object)));
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
-                       bool is_experimental_mutable_object,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
@@ -1415,6 +1440,45 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   }
   results->resize(ids.size(), nullptr);
 
+  // Check whether these are experimental.Channel objects.
+  bool is_experimental_channel = false;
+  for (const auto &id : ids) {
+    if (experimental_mutable_object_manager_->ReaderChannelRegistered(id)) {
+      is_experimental_channel = true;
+    } else {
+      if (is_experimental_channel) {
+        return Status::NotImplemented(
+            "ray.get can only be called on all normal objects, or all "
+            "experimental.Channel objects");
+      }
+    }
+  }
+
+  // ray.get path for experimental.Channel objects.
+  if (is_experimental_channel) {
+    if (timeout_ms >= 0) {
+      return Status::NotImplemented(
+          "non-infinity timeout_ms not supported for experimental channels");
+    }
+    return GetExperimentalMutableObjects(ids, results);
+  } else {
+    return GetObjects(ids, timeout_ms, results);
+  }
+}
+
+Status CoreWorker::GetExperimentalMutableObjects(
+    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
+  for (size_t i = 0; i < ids.size(); i++) {
+    RAY_RETURN_NOT_OK(
+        experimental_mutable_object_manager_->ReadAcquire(ids[i], &(*results)[i]));
+  }
+  return Status::OK();
+}
+
+Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
+                              const int64_t timeout_ms,
+                              std::vector<std::shared_ptr<RayObject>> *results) {
+  // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
@@ -1473,7 +1537,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids,
                                                   local_timeout_ms,
-                                                  is_experimental_mutable_object,
                                                   worker_context_,
                                                   &result_map,
                                                   &got_exception));
@@ -2934,12 +2997,8 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   reference_counter_->AddLocalReference(return_id, "<temporary (pin return object)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
 
-  auto status = plasma_store_provider_->Get({return_id},
-                                            0,
-                                            /*is_experimental_mutable_object=*/false,
-                                            worker_context_,
-                                            &result_map,
-                                            &got_exception);
+  auto status = plasma_store_provider_->Get(
+      {return_id}, 0, worker_context_, &result_map, &got_exception);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -3216,13 +3275,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
     RAY_RETURN_NOT_OK(
         memory_store_->Get(by_ref_ids, -1, worker_context_, &result_map, &got_exception));
   } else {
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Get(by_ref_ids,
-                                    -1,
-                                    /*is_experimental_mutable_object=*/false,
-                                    worker_context_,
-                                    &result_map,
-                                    &got_exception));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
+        by_ref_ids, -1, worker_context_, &result_map, &got_exception));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
@@ -4221,11 +4275,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id},
-            0,
-            /*is_experimental_mutable_object=*/false,
-            &vec)
-            .ok()) {
+    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);

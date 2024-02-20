@@ -428,7 +428,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             const c_string &reason_message,
             int64_t deadline_timestamp_ms,
             int64_t timeout_ms,
-            c_bool &is_accepted)
+            c_bool &is_accepted,
+            c_string &rejection_reason_message)
         CRayStatus DrainNodes(
             const c_vector[c_string]& node_ids,
             int64_t timeout_ms,

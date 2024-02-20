@@ -156,7 +156,7 @@ def test_replica_startup_status_transitions(ray_cluster):
         async def __init__(self):
             await signal.wait.remote()
 
-    serve.run(E.bind(), _blocking=False)
+    serve._run(E.bind(), _blocking=False)
 
     def get_replicas(replica_state):
         controller = client._controller
