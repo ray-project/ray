@@ -14,8 +14,6 @@
 
 #include "ray/object_manager/object_buffer_pool.h"
 
-#include <optional>
-
 #include "absl/time/time.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
@@ -121,57 +119,32 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
                                   const std::string &data) {
-  std::optional<ObjectBufferPool::ChunkInfo> chunk_info;
-  {
-    absl::MutexLock lock(&pool_mutex_);
-    auto it = create_buffer_state_.find(object_id);
-    if (it == create_buffer_state_.end() ||
-        chunk_index >= it->second.chunk_state.size() ||
-        it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
-      RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
-                     << " could be sealed";
-      return;
-    }
-    if (it->second.data_size != data_size || it->second.metadata_size != metadata_size) {
-      RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
-      return;
-    }
-    RAY_CHECK(it->second.chunk_info.size() > chunk_index);
-
-    chunk_info = it->second.chunk_info.at(chunk_index);
-    RAY_CHECK(data.size() == chunk_info->buffer_length)
-        << "size mismatch!  data size: " << data.size()
-        << " chunk size: " << chunk_info->buffer_length;
-
-    // Update the state from REFERENCED To SEALED before releasing the lock to ensure
-    // that no other thread sees a REFERENCED state.
-    it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
+  absl::MutexLock lock(&pool_mutex_);
+  auto it = create_buffer_state_.find(object_id);
+  if (it == create_buffer_state_.end() || chunk_index >= it->second.chunk_state.size() ||
+      it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
+                   << " could be sealed";
+    return;
   }
-
-  RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
-  // chunk_info contains a shared_ptr to the buffer and chunk_info.data points to
-  // an offset inside the buffer. Therefore, the chunk_info.data is valid during the
-  // unguarded memory copy.
-  std::memcpy(chunk_info->data, data.data(), chunk_info->buffer_length);
-
-  {
-    // Ensure the process of object_id Seal and Release is mutex guarded
-    absl::MutexLock lock(&pool_mutex_);
-    auto it = create_buffer_state_.find(object_id);
-    if (it == create_buffer_state_.end()) {
-      RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
-                     << " finished copying data";
-      return;
-    }
-
-    it->second.num_seals_remaining--;
-    if (it->second.num_seals_remaining == 0) {
-      RAY_CHECK_OK(store_client_->Seal(object_id));
-      RAY_CHECK_OK(store_client_->Release(object_id));
-      create_buffer_state_.erase(it);
-      RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
-                     << ", last chunk index: " << chunk_index;
-    }
+  if (it->second.data_size != data_size || it->second.metadata_size != metadata_size) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
+    return;
+  }
+  RAY_CHECK(it->second.chunk_info.size() > chunk_index);
+  auto &chunk_info = it->second.chunk_info.at(chunk_index);
+  RAY_CHECK(data.size() == chunk_info.buffer_length)
+      << "size mismatch!  data size: " << data.size()
+      << " chunk size: " << chunk_info.buffer_length;
+  std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
+  it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
+  it->second.num_seals_remaining--;
+  if (it->second.num_seals_remaining == 0) {
+    RAY_CHECK_OK(store_client_->Seal(object_id));
+    RAY_CHECK_OK(store_client_->Release(object_id));
+    create_buffer_state_.erase(it);
+    RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
+                   << ", last chunk index: " << chunk_index;
   }
 }
 
