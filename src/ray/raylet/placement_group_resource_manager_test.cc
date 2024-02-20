@@ -193,8 +193,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleDuringDraining)
       {"CPU_group_" + group1_id.Hex(), 1.0},
       {"CPU_group_1_" + group1_id.Hex(), 1.0},
       {"CPU", 2.0},
-      {"__ray_reserved_bundle_resource___group_1_" + group1_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_" + group1_id.Hex(), 1000}};
+      {"bundle_group_1_" + group1_id.Hex(), 1000},
+      {"bundle_group_" + group1_id.Hex(), 1000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -227,8 +227,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
       {"CPU_group_" + group_id.Hex(), 1.0},
       {"CPU_group_1_" + group_id.Hex(), 1.0},
       {"CPU", 1.0},
-      {"__ray_reserved_bundle_resource___group_1_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_" + group_id.Hex(), 1000}};
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 1000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -295,9 +295,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       {"CPU_group_1_" + group_id.Hex(), 1.0},
       {"CPU_group_2_" + group_id.Hex(), 1.0},
       {"CPU", 2.0},
-      {"__ray_reserved_bundle_resource___group_1_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_2_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_" + group_id.Hex(), 2000}};
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_2_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 2000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -317,12 +317,11 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   ASSERT_TRUE(
       new_placement_group_resource_manager_->ReturnBundle(second_bundle_spec).ok());
   /// 6. check remaining resources is correct after return second bundle.
-  remaining_resources = {
-      {"CPU_group_" + group_id.Hex(), 2.0},
-      {"CPU_group_1_" + group_id.Hex(), 1.0},
-      {"CPU", 2.0},
-      {"__ray_reserved_bundle_resource___group_1_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_" + group_id.Hex(), 2000}};
+  remaining_resources = {{"CPU_group_" + group_id.Hex(), 2.0},
+                         {"CPU_group_1_" + group_id.Hex(), 1.0},
+                         {"CPU", 2.0},
+                         {"bundle_group_1_" + group_id.Hex(), 1000},
+                         {"bundle_group_" + group_id.Hex(), 2000}};
   remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -332,7 +331,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
           {{"CPU_group_" + group_id.Hex(), 1.0},
            {"CPU", 1.0},
-           {"__ray_reserved_bundle_resource___group_" + group_id.Hex(), 1000}},
+           {"bundle_group_" + group_id.Hex(), 1000}},
           resource_instances));
   remaining_resource_instance =
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
@@ -408,8 +407,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
       {"CPU_group_" + group_id.Hex(), 1.0},
       {"CPU_group_1_" + group_id.Hex(), 1.0},
       {"CPU", 3.0},
-      {"__ray_reserved_bundle_resource___group_1_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_" + group_id.Hex(), 1000}};
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 1000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -487,18 +486,17 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
   new_placement_group_resource_manager_->CommitBundles(bundle_specs);
   // 7. re-check remaining resources is correct.
-  remaining_resources = {
-      {"CPU_group_" + group_id.Hex(), 4.0},
-      {"CPU_group_1_" + group_id.Hex(), 1.0},
-      {"CPU_group_2_" + group_id.Hex(), 1.0},
-      {"CPU_group_3_" + group_id.Hex(), 1.0},
-      {"CPU_group_4_" + group_id.Hex(), 1.0},
-      {"CPU", 4.0},
-      {"__ray_reserved_bundle_resource___group_1_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_2_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_3_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_4_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_" + group_id.Hex(), 4000}};
+  remaining_resources = {{"CPU_group_" + group_id.Hex(), 4.0},
+                         {"CPU_group_1_" + group_id.Hex(), 1.0},
+                         {"CPU_group_2_" + group_id.Hex(), 1.0},
+                         {"CPU_group_3_" + group_id.Hex(), 1.0},
+                         {"CPU_group_4_" + group_id.Hex(), 1.0},
+                         {"CPU", 4.0},
+                         {"bundle_group_1_" + group_id.Hex(), 1000},
+                         {"bundle_group_2_" + group_id.Hex(), 1000},
+                         {"bundle_group_3_" + group_id.Hex(), 1000},
+                         {"bundle_group_4_" + group_id.Hex(), 1000},
+                         {"bundle_group_" + group_id.Hex(), 4000}};
   remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
@@ -543,11 +541,11 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
       {"CPU_group_3_" + group_id.Hex(), 1.0},
       {"CPU_group_4_" + group_id.Hex(), 1.0},
       {"CPU", 4.0},
-      {"__ray_reserved_bundle_resource___group_1_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_2_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_3_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_4_" + group_id.Hex(), 1000},
-      {"__ray_reserved_bundle_resource___group_" + group_id.Hex(), 4000}};
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_2_" + group_id.Hex(), 1000},
+      {"bundle_group_3_" + group_id.Hex(), 1000},
+      {"bundle_group_4_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 4000}};
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>(io_context,
                                                  scheduling::NodeID("remaining"),
