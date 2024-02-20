@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 import pytest
 
 import ray
+from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.scheduler import (
     NodeTypeConfig,
     ResourceDemandScheduler,
@@ -18,7 +19,7 @@ from ray.autoscaler.v2.scheduler import (
     logger,
 )
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
-from ray.autoscaler.v2.tests.util import make_autoscaler_instance
+from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
@@ -35,7 +36,9 @@ from ray.core.generated.instance_manager_pb2 import (
 
 ResourceMap = Dict[str, float]
 
-logger.setLevel("DEBUG")
+logger.setLevel("INFO")
+
+event_logger = AutoscalerEventLogger(MockEventLogger(logger))
 
 
 def sched_request(
@@ -139,7 +142,7 @@ def schedule(
             instances=instances,
             max_num_nodes=max_nodes,
         )
-    return ResourceDemandScheduler().schedule(request)
+    return ResourceDemandScheduler(event_logger).schedule(request)
 
 
 class TestSchedulingNode:
@@ -253,7 +256,7 @@ class TestSchedulingNode:
 
 
 def test_min_worker_nodes():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -336,7 +339,7 @@ def test_min_worker_nodes():
 
 
 def test_max_workers_per_type():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -435,7 +438,7 @@ def test_max_workers_per_type():
 
 
 def test_max_num_nodes():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -601,7 +604,7 @@ def test_max_num_nodes():
 
 
 def test_single_resources():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -698,7 +701,7 @@ def test_single_resources():
 
 
 def test_implicit_resources():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -748,7 +751,7 @@ def test_implicit_resources():
 
 
 def test_max_worker_num_enforce_with_resource_requests():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -790,7 +793,7 @@ def test_multi_requests_fittable():
     """
     Test multiple requests can be fit into a single node.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -887,7 +890,7 @@ def test_multi_node_types_score():
     1. The number of resources utilized.
     2. The amount of utilization.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_large": NodeTypeConfig(
             name="type_large",
@@ -934,7 +937,7 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
     Test that when multiple node types are possible, choose the best scoring ones:
     - The GPU scoring.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_gpu": NodeTypeConfig(
             name="type_gpu",
@@ -966,7 +969,7 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
 
 
 def test_resource_constrains():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
@@ -1028,7 +1031,7 @@ def test_outdated_nodes():
     """
     Test that nodes with outdated node configs are terminated.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
@@ -1114,7 +1117,7 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
     """
     Test that idle nodes are terminated.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
@@ -1216,7 +1219,7 @@ def test_gang_scheduling():
     """
     Test that gang scheduling works.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
     ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
 
@@ -1285,7 +1288,7 @@ def test_gang_scheduling_with_others():
     - min/max worker counts
     - existing nodes.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -1848,7 +1851,7 @@ def test_gang_scheduling_complex():
     AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
 
     def get_nodes_for(gang_resource_requests) -> Tuple[Dict, List[List[Dict]]]:
-        scheduler = ResourceDemandScheduler()
+        scheduler = ResourceDemandScheduler(event_logger)
         gang_requests = []
         for resource_requests, placement_constraint in gang_resource_requests:
             key = f"PG_{str(time.time())}"

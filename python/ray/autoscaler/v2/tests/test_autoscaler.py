@@ -1,7 +1,9 @@
 import os
 import subprocess
 import sys
+import tempfile
 import time
+from pathlib import Path
 
 import pytest
 
@@ -86,10 +88,13 @@ def make_autoscaler():
         gcs_address = gcs_address
         gcs_client = GcsClient(gcs_address)
 
+        tmp_dir = tempfile.mkdtemp()
+
         autoscaler = Autoscaler(
             session_name="test",
             config_reader=mock_config_reader,
             gcs_client=gcs_client,
+            logs_dir=Path(tmp_dir),
         )
 
         return autoscaler
