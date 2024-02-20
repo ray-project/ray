@@ -430,7 +430,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Note, TD-errors come in as absolute values or results from
             # cross-entropy loss calculations.
             assert priority > 0
-            assert 0 <= idx < self.get_num_timesteps()
+            assert 0 <= idx < self._sum_segment.capacity
             # TODO (simon): Create metrics.
             # delta = priority**self._alpha - self._sum_segment[idx]
             # Update the priorities in the segment trees.
