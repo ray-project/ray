@@ -5,8 +5,8 @@ set -euo pipefail
 set -x
 
 export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
-export RAY_VERSION=$(buildkite-agent meta-data get ray-version)
-export RAY_HASH=$(buildkite-agent meta-data get ray-hash)
+export RAY_VERSION="${RAY_VERSION}"
+export RAY_HASH="${RAY_HASH}"
 
 export PATH="/root/miniconda3/bin:$PATH"
 
