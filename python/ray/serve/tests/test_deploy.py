@@ -149,7 +149,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
     V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
+    serve._run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
         client._wait_for_application_running("app", timeout_s=0.1)
 
@@ -264,7 +264,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
+    serve._run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
         client._wait_for_application_running("app", timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
@@ -351,7 +351,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    serve.run(V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False)
+    serve._run(
+        V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False
+    )
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
