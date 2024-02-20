@@ -17,11 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 def _xgboost_train_fn_per_worker(
-    config: dict, label_column: str, num_boost_round: int, xgboost_train_kwargs: dict
+    config: dict,
+    label_column: str,
+    num_boost_round: int,
+    dataset_keys: set,
+    xgboost_train_kwargs: dict,
 ):
     from xgboost.collective import CommunicatorContext
-
-    from ray.train._internal.session import get_session
 
     checkpoint = ray.train.get_checkpoint()
     starting_model = None
@@ -41,7 +43,9 @@ def _xgboost_train_fn_per_worker(
     train_df = train_ds_iter.materialize().to_pandas()
 
     eval_ds_iters = {
-        k: d for k, d in get_session().dataset_shard.items() if k != TRAIN_DATASET_KEY
+        k: ray.train.get_dataset_shard(k)
+        for k in dataset_keys
+        if k != TRAIN_DATASET_KEY
     }
     eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
 
@@ -145,7 +149,6 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         num_boost_round: int = 10,
         scaling_config: Optional[ray.train.ScalingConfig] = None,
         run_config: Optional[ray.train.RunConfig] = None,
-        preprocessor=None,  # Deprecated
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
@@ -181,6 +184,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             _xgboost_train_fn_per_worker,
             label_column=label_column,
             num_boost_round=num_boost_round,
+            dataset_keys=set(datasets),
             xgboost_train_kwargs=train_kwargs,
         )
 
