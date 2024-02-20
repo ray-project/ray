@@ -5,3 +5,4 @@ set -e
 rm -rf ray-template
 ray cpp --generate-bazel-project-template-to ray-template
 pushd ray-template && bash run.sh
+echo "Sanity check succeeded for C++."
