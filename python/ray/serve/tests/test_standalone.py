@@ -670,7 +670,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def f(*args):
         pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     def updating_message():
         deployment_status = (
@@ -699,7 +699,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         def __call__(self, request):
             pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     wait_for_condition(
         lambda: serve.status()
