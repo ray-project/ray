@@ -1,4 +1,6 @@
 import os
+import shutil
+import time
 import pytest
 import pyarrow as pa
 import pandas as pd
@@ -12,11 +14,11 @@ from unittest import mock
 import ray
 
 
-ChunkMeta = namedtuple('ChunkMeta', ['id', 'rowCount', 'byteCount'])
+ChunkMeta = namedtuple('ChunkMeta', ['id', 'row_count', 'byte_count'])
 
 
 @contextmanager
-def setup_mock(default_chunk_bytes):
+def setup_mock(default_chunk_bytes, tmp_dir=None):
     """
     `ray.data.from_spark` supports Databricks runtime, but it relies on databricks
     internal APIs.
@@ -27,12 +29,12 @@ def setup_mock(default_chunk_bytes):
     so in unit test we don't need to create real spark dataframe,
     this simplifies unit testing code.
     """
-    tmp_dir = tempfile.mkdtemp()
+    tmp_dir = tmp_dir or tempfile.mkdtemp()
 
     def persist_df_as_chunks(pandas_df, bytes_per_chunk):
         arrow_tb = pa.Table.from_pandas(pandas_df)
 
-        total_nbytes = arrow_tb.arrow_tb
+        total_nbytes = arrow_tb.nbytes
         num_rows = len(pandas_df)
 
         num_chunks = math.ceil(total_nbytes / bytes_per_chunk)
@@ -53,9 +55,10 @@ def setup_mock(default_chunk_bytes):
 
             return ChunkMeta(
                 id=chunk_id,
-                rowCount=len(chunk_pdf),
-                byteCount=chunk_table.nbytes,
+                row_count=len(chunk_pdf),
+                byte_count=chunk_table.nbytes,
             )
+
         return [
             gen_chunk(chunk_idx)
             for chunk_idx in range(num_chunks)
@@ -78,6 +81,9 @@ def setup_mock(default_chunk_bytes):
         return True
 
     with mock.patch(
+        "ray.data.datasource.spark_datasource.check_requirements",
+        return_value=None,
+    ), mock.patch(
         "ray.data.datasource.spark_datasource._persist_dataframe_as_chunks",
         persist_df_as_chunks,
     ), mock.patch(
@@ -89,7 +95,9 @@ def setup_mock(default_chunk_bytes):
     ), mock.patch(
         "ray.data.read_api._DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES",
         default_chunk_bytes
-    ), mock.patch.dict(os.environ, {MOCK_ENV: read_chunk_fn_path}):
+    ), mock.patch.dict(os.environ, {
+        MOCK_ENV: read_chunk_fn_path,
+    }):
         yield
 
 
@@ -98,24 +106,34 @@ def test_from_simple_databricks_spark_dataframe():
         "x": range(1000)
     })
 
-    with setup_mock(default_chunk_bytes=1000):
+    tmp_dir = tempfile.mkdtemp()
+    with setup_mock(default_chunk_bytes=1000, tmp_dir=tmp_dir):
         ray_ds = ray.data.from_spark(fake_spark_df)
-
-    result = ray_ds.to_pandas()
+        result = ray_ds.to_pandas()
+        del ray_ds
 
     pd.testing.assert_frame_equal(result, fake_spark_df)
 
+    time.sleep(1)  # waiting for ray_ds GC
 
-def test_from_simple_databricks_spark_dataframe():
+    # assert all chunk data files are removed from the tmp dir.
+    os.listdir(tmp_dir) == ['read_chunk_fn.pkl']
+
+    ray.shutdown()
+
+
+def test_from_mul_cols_databricks_spark_dataframe():
     fake_spark_df = pd.DataFrame({
         "x": range(1000)
     })
 
     with setup_mock(default_chunk_bytes=1000):
         ray_ds = ray.data.from_spark(fake_spark_df)
+        result = ray_ds.to_pandas()
+        del ray_ds
 
-    result = ray_ds.to_pandas()
     pd.testing.assert_frame_equal(result, fake_spark_df)
+    ray.shutdown()
 
 
 def test_large_size_row_databricks_spark_dataframe():
@@ -128,11 +146,13 @@ def test_large_size_row_databricks_spark_dataframe():
         } for _ in range(10)
     ])
 
-    with setup_mock(default_chunk_bytes=1000):
+    with setup_mock(default_chunk_bytes=3500):
         ray_ds = ray.data.from_spark(fake_spark_df)
+        result = ray_ds.to_pandas()
+        del ray_ds
 
-    result = ray_ds.to_pandas()
     pd.testing.assert_frame_equal(result, fake_spark_df)
+    ray.shutdown()
 
 
 if __name__ == "__main__":
