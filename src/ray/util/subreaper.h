@@ -81,8 +81,8 @@ class OwnedChildrenTracker {
   ~OwnedChildrenTracker() = default;
   RAY_DISALLOW_COPY_AND_ASSIGN(OwnedChildrenTracker);
 #ifdef __linux__
-  std::mutex m_;
-  absl::flat_hash_set<pid_t> children_;
+  absl::Mutex m_;
+  absl::flat_hash_set<pid_t> children_ ABSL_GUARDED_BY(m_);
 #endif
 };
 

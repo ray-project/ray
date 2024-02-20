@@ -16,25 +16,22 @@
 
 #include <signal.h>
 #include <stddef.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#ifdef __linux__
-#include <sys/prctl.h>
-
-#include "absl/synchronization/mutex.h"
-#include "ray/util/process.h"
-
-#endif
-
-#include <string.h>
-
 #include <vector>
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/process.h"
 
 namespace ray {
 // Platform-specific implementation of subreaper code.
@@ -50,7 +47,7 @@ using SignalHandlerFn = void (*)(const boost::system::error_code &, int);
 // The handler will be called with the signal_set and the error code.
 // After the handler is called, the signal will be re-registered.
 // The callback keeps a reference of the shared ptr to make sure it's not destroyed.
-void RegisterSignalHandlerLoop(std::make_shared<boost::asio::signal_set> signals,
+void RegisterSignalHandlerLoop(std::shared_ptr<boost::asio::signal_set> signals,
                                SignalHandlerFn handler) {
   signals->async_wait(
       [signals, handler](const boost::system::error_code &error, int signal_number) {
@@ -148,18 +145,18 @@ void SetupSigchldHandler(bool kill_orphan_subprocesses,
 }
 
 void OwnedChildrenTracker::addOwnedChild(pid_t pid) {
-  absl::MutexLock<std::mutex> lock(m_);
+  absl::MutexLock lock(&m_);
   children_.insert(pid);
 }
 
 void OwnedChildrenTracker::removeOwnedChild(pid_t pid) {
-  absl::MutexLock<std::mutex> lock(m_);
+  absl::MutexLock lock(&m_);
   children_.erase(pid);
 }
 
 std::vector<pid_t> OwnedChildrenTracker::listOwnedChildren(
     const std::vector<pid_t> &pids) {
-  absl::MutexLock<std::mutex> lock(m_);
+  absl::MutexLock lock(&m_);
   std::vector<pid_t> result;
   result.reserve(std::min(pids.size(), children_.size()));
   for (pid_t pid : pids) {
@@ -176,12 +173,12 @@ SigchldMasker::SigchldMasker() {
   sigaddset(&set, SIGCHLD);
 
   // Block SIGCHLD and save the previous signal mask
-  if (sigprocmask(SIG_BLOCK, &set, &prevMask) < 0) {
+  if (sigprocmask(SIG_BLOCK, &set, &prev_mask_) < 0) {
     RAY_LOG(WARNING) << "Failed to block SIGCHLD, " << strerror(errno);
   }
 }
 SigchldMasker::~SigchldMasker() {
-  if (sigprocmask(SIG_SETMASK, &prevMask, nullptr) < 0) {
+  if (sigprocmask(SIG_SETMASK, &prev_mask_, nullptr) < 0) {
     // It's generally bad practice to throw exceptions from destructors
     // so we just print an error message instead
     RAY_LOG(WARNING) << "Failed to restore signal mask, " << strerror(errno);
