@@ -30,6 +30,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/subreaper.h"
 
 using json = nlohmann::json;
 

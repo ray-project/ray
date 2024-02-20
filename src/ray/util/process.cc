@@ -32,6 +32,8 @@
 
 #ifdef __linux__
 #include <sys/prctl.h>
+
+#include "absl/synchronization/mutex.h"
 #endif
 
 #include <string.h>
@@ -46,6 +48,7 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
 #ifdef __APPLE__
@@ -67,196 +70,6 @@ int execvpe(const char *program, char *const argv[], char *const envp[]) {
 #endif
 
 namespace ray {
-
-namespace {
-// Global tracker of owned child processes.
-// Only tracked in linux.
-//
-// A pid is added when a spawn is called and removed when the ProcessFD is closed (i.e.
-// it's in dtor and we no longer want to track it).
-std::mutex m;
-absl::flat_hash_set<pid_t> owned_children;
-
-[[maybe_unused]] void addOwnedChild(pid_t pid) {
-#ifdef __linux__
-  std::lock_guard<std::mutex> guard(m);
-  owned_children.insert(pid);
-#endif
-}
-
-[[maybe_unused]] void removeOwnedChild(pid_t pid) {
-#ifdef __linux__
-  std::lock_guard<std::mutex> guard(m);
-  owned_children.erase(pid);
-#endif
-}
-
-#ifdef __linux__
-
-// Register a signal handler for the given signal.
-// The handler will be called with the signal_set and the error code.
-// After the handler is called, the signal will be re-registered.
-// The callback keeps a reference of it to make sure it's not destroyed.
-void RegisterSignalHandlerLoop(std::make_shared<boost::asio::signal_set> signals,
-                               void (*handler)(const boost::system::error_code &, int)) {
-  signals->async_wait(
-      [signals, handler](const boost::system::error_code &error, int signal_number) {
-        handler(error, signal_number);
-        RegisterSignalHandlerLoop(signals, handler);
-      });
-}
-
-// Kill all child processes that are not owned by this process.
-// It's done by checking the list of child processes and killing the ones that are not
-// created via Process::spawnvpe.
-//
-// TODO: Checking PIDs is not 100% reliable because of PID recycling. If we find issues
-// later due to this, we can use pidfd.
-void KillUnownedChildren() {
-  auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
-
-  // Enumerating child procs is not supported on this platform.
-  if (!maybe_child_procs) {
-    RAY_LOG(WARNING)
-        << "Killing leaked procs not supported on this platform. Only supports Linux";
-    return;
-  }
-
-  std::vector<pid_t> to_kill;
-  to_kill.reserve(maybe_child_procs->size());
-  {
-    std::lock_guard<std::mutex> guard(m);
-    for (auto pid : *maybe_child_procs) {
-      if (owned_children.count(pid) == 0) {
-        to_kill.push_back(pid);
-      }
-    }
-  }
-  for (auto pid : to_kill) {
-    if (owned_children.count(pid) == 0) {
-      RAY_LOG(INFO) << "Killing leaked child process " << pid;
-      auto error = KillProc(pid);
-      if (error) {
-        RAY_LOG(WARNING) << "Failed to kill leaked child process " << pid
-                         << " with error " << error->message();
-      }
-    }
-  }
-}
-
-// Set this process as a subreaper.
-// Only works on Linux >= 3.4.
-void SetThisProcessAsSubreaper() {
-  if (prctl(PR_SET_CHILD_SUBREAPER, 1) == -1) {
-    perror("prctl");
-    exit(EXIT_FAILURE);
-  }
-}
-
-// SIGCHLD handler that reaps dead children and kills unowned children.
-// Unowned children processes, or the process not created via Process::spawnvpe, can
-// happen when raylet becomes a subreaper, and a grandchild process is created then the
-// child process dies. The grandchild process becomes an orphan and is adopted by raylet
-// via Linux.
-//
-// T=0: raylet -> child -> grandchild
-// T=1: child receives SIGKILL. grandchild becomes an orphan and is reparented.
-// T=2: raylet -> child (zombie); raylet -> grandchild
-// T=3: raylet receives SIGCHLD for child
-// T=4: raylet reaps child, and finds grandchild is unowned child, killing it.
-//
-// CAVEAT: We may accidentally kill innocent subprocesses, if the direct child process
-// proposefully creates a grandchild process and exits. We need good test and audit to
-// make sure this doesn't happen.
-void SigchldHandlerKillOrphanSubprocesses(const boost::system::error_code &error,
-                                          int signal_number) {
-  if (!error) {
-    int status;
-    pid_t pid;
-    // reaps any children that have exited. WNOHANG makes waitpid non-blocking and returns
-    // 0.
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-      if (WIFEXITED(status)) {
-        RAY_LOG(INFO) << "Child process " << pid << " exited with status "
-                      << WEXITSTATUS(status);
-      } else if (WIFSIGNALED(status)) {
-        RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
-                      << WTERMSIG(status);
-      }
-      removeOwnedChild(pid);
-    }
-  }
-  KillUnownedChildren();
-}
-#endif
-
-// In Linux: RAII: Masks SIGCHLD in ctor, undo the mask (back to prev mask) in dtor. Exits
-// if masks failed.
-// In other platforms: do nothing.
-class SigchldMasker {
-#ifdef __linux__
- public:
-  SigchldMasker() {
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGCHLD);
-
-    // Block SIGCHLD and save the previous signal mask
-    if (sigprocmask(SIG_BLOCK, &set, &prevMask) < 0) {
-      perror("Failed to block SIGCHLD");
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  ~SigchldMasker() {
-    if (sigprocmask(SIG_SETMASK, &prevMask, nullptr) < 0) {
-      // It's generally bad practice to throw exceptions from destructors
-      // so we just print an error message instead
-      perror("Failed to restore signal mask");
-    }
-  }
-
-  SigchldMasker(const SigchldMasker &) = delete;
-  SigchldMasker &operator=(const SigchldMasker &) = delete;
-
- private:
-  sigset_t prevMask;
-#endif
-};
-
-}  // namespace
-
-// On Windows: do nothing.
-// On Linux: True -> subreaper, False -> simple ignore.
-// On MacOS: simple ignore.
-void SetupSigchldHandler(bool kill_orphan_subprocesses,
-                         boost::asio::io_context &io_service) {
-#ifdef _WIN32
-  // Windows, no reaping needed.
-  return;
-#elif defined(__linux__)
-  if (kill_orphan_subprocesses) {
-    SetThisProcessAsSubreaper();
-    auto sigchld_signals = std::make_shared<boost::asio::signal_set>(io_service, SIGCHLD);
-    RegisterSignalHandlerLoop(sigchld_signals, SigchldHandlerKillOrphanSubprocesses);
-    RAY_LOG(INFO) << "Raylet is set as a subreaper and will kill orphan subprocesses.";
-  } else {
-    // Linux, but don't kill orphan subprocesses.
-    // Simply reap the zombie children.
-    signal(SIGCHLD, SIG_IGN);
-    RAY_LOG(INFO) << "Raylet will not kill orphan subprocesses.";
-  }
-#else
-  // MacOS.
-  if (kill_orphan_subprocesses) {
-    RAY_LOG(WARNING)
-        << "`kill_orphan_subprocesses` set to true, but Raylet will not "
-           "kill subprocesses because Subreaper is only supported on Linux >= 3.4.";
-  }
-  signal(SIGCHLD, SIG_IGN);
-  RAY_LOG(INFO) << "Raylet will not kill orphan subprocesses.";
-#endif
-}
 
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
@@ -441,7 +254,7 @@ class ProcessFD {
       ec = std::error_code(errno, std::system_category());
     }
 #endif
-    addOwnedChild(pid);
+    OwnedChildrenTracker::instance().addOwnedChild(pid);
     return ProcessFD(pid, fd);
   }
 };
