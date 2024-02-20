@@ -2670,6 +2670,7 @@ class Dataset:
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -2727,6 +2728,10 @@ class Dataset:
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
             arrow_parquet_args: Options to pass to
                 `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
                     /generated/pyarrow.parquet.write_table.html\
@@ -2745,7 +2750,11 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     def write_json(
@@ -2760,6 +2769,7 @@ class Dataset:
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
         **pandas_json_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to JSON and JSONL files.
@@ -2826,6 +2836,10 @@ class Dataset:
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
             pandas_json_args: These args are passed to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
                     api/pandas.DataFrame.to_json.html>`_,
@@ -2845,7 +2859,11 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -2860,6 +2878,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to images.
 
@@ -2897,6 +2916,10 @@ class Dataset:
                 implementation. Use this parameter to customize what your filenames
                 look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """  # noqa: E501
         datasink = _ImageDatasink(
             path,
@@ -2908,7 +2931,11 @@ class Dataset:
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     def write_csv(
@@ -2923,6 +2950,7 @@ class Dataset:
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
         **arrow_csv_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to CSV files.
@@ -2988,6 +3016,10 @@ class Dataset:
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
             arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
                 arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
                     #pyarrow.csv.write_csv>`_
@@ -3005,7 +3037,11 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     def write_tfrecords(
@@ -3020,6 +3056,7 @@ class Dataset:
         block_path_provider: Optional[BlockWritePathProvider] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
 
@@ -3079,6 +3116,10 @@ class Dataset:
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
 
         """
         datasink = _TFRecordDatasink(
@@ -3092,7 +3133,11 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3108,6 +3153,7 @@ class Dataset:
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Writes the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
 
@@ -3154,6 +3200,10 @@ class Dataset:
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
 
         """
         datasink = _WebDatasetDatasink(
@@ -3167,7 +3217,11 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     def write_numpy(
@@ -3182,6 +3236,7 @@ class Dataset:
         block_path_provider: Optional[BlockWritePathProvider] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
 
@@ -3232,6 +3287,10 @@ class Dataset:
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """
 
         datasink = _NumpyDatasink(
@@ -3245,7 +3304,11 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     def write_sql(
@@ -3253,6 +3316,7 @@ class Dataset:
         sql: str,
         connection_factory: Callable[[], Connection],
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Write to a database that provides a
         `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
@@ -3302,9 +3366,17 @@ class Dataset:
                 `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
                 write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """  # noqa: E501
         datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3314,6 +3386,7 @@ class Dataset:
         database: str,
         collection: str,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to a MongoDB database.
 
@@ -3360,6 +3433,10 @@ class Dataset:
             collection: The name of the collection in the database. This collection
                 must exist otherwise a ValueError is raised.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
 
         Raises:
             ValueError: if ``database`` doesn't exist.
@@ -3370,7 +3447,11 @@ class Dataset:
             database=database,
             collection=collection,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     def write_bigquery(
@@ -3380,6 +3461,7 @@ class Dataset:
         max_retry_cnt: int = 10,
         overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
 
@@ -3415,6 +3497,10 @@ class Dataset:
                 exists. The default behavior is to overwrite the table.
                 ``overwrite_table=False`` will append to the table if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
@@ -3435,7 +3521,11 @@ class Dataset:
             max_retry_cnt=max_retry_cnt,
             overwrite_table=overwrite_table,
         )
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
@@ -3506,6 +3596,7 @@ class Dataset:
         datasink: Datasink,
         *,
         ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasink`.
 
@@ -3514,6 +3605,10 @@ class Dataset:
         Args:
             datasink: The :class:`~ray.data.Datasink` to write to.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
@@ -3534,6 +3629,7 @@ class Dataset:
             self._logical_plan.dag,
             datasink,
             ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
         )
         logical_plan = LogicalPlan(write_op)
 
