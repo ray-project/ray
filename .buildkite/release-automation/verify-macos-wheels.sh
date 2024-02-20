@@ -15,8 +15,6 @@ if [[ $# -ne 1 ]]; then
 fi
 
 mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
-export RAY_VERSION="${RAY_VERSION}"
-export RAY_HASH="${RAY_HASH}"
 export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-5.4.1}"
 
 install_bazel() {
