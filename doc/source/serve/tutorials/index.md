@@ -13,6 +13,7 @@ stable-diffusion
 text-classification
 object-detection
 aws-neuron-core-inference
+intel-habana-gaudi-inference
 gradio-integration
 batch
 streaming
