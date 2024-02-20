@@ -1,33 +1,21 @@
-from collections import defaultdict
+import logging
 import os
 import sys
-import time
-
-# coding: utf-8
-from typing import Dict, List, Optional, Tuple
-from mock import MagicMock
-import logging
 
 import pytest
 
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-from ray.autoscaler.v2.tests.util import MockEventLogger
-
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.tests.util import MockEventLogger
 from ray.autoscaler.v2.utils import ResourceRequestUtil
-from ray.core.generated.instance_manager_pb2 import (
-    Instance,
-    LaunchRequest,
-    NodeKind,
-    TerminationRequest,
-)
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
-    ResourceRequest,
-    ResourceRequestByCount,
 )
+from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
+
+# coding: utf-8
+
 
 OUTDATED = TerminationRequest.Cause.OUTDATED
 IDLE = TerminationRequest.Cause.IDLE

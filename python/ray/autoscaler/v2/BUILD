@@ -142,3 +142,11 @@ py_test(
     tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_event_logger",
+    size = "small",
+    srcs = ["tests/test_event_logger.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)

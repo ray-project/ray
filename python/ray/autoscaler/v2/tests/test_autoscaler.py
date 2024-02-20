@@ -1,9 +1,8 @@
+import logging
 import os
 import subprocess
 import sys
-import tempfile
 import time
-from pathlib import Path
 
 import pytest
 
@@ -14,9 +13,13 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler.v2.autoscaler import Autoscaler
+from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
+from ray.autoscaler.v2.tests.util import MockEventLogger
 from ray.cluster_utils import Cluster
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_AUTOSCALING_CONFIG = {
     "cluster_name": "fake_multinode",
@@ -88,13 +91,13 @@ def make_autoscaler():
         gcs_address = gcs_address
         gcs_client = GcsClient(gcs_address)
 
-        tmp_dir = tempfile.mkdtemp()
+        event_logger = AutoscalerEventLogger(MockEventLogger(logger))
 
         autoscaler = Autoscaler(
             session_name="test",
             config_reader=mock_config_reader,
             gcs_client=gcs_client,
-            logs_dir=Path(tmp_dir),
+            event_logger=event_logger,
         )
 
         return autoscaler

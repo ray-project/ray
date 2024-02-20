@@ -1,9 +1,7 @@
 import logging
-from pathlib import Path
 from queue import Queue
 from typing import List, Optional
 
-from ray._private.event.event_logger import Event, get_event_logger
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
@@ -39,7 +37,7 @@ class Autoscaler:
         session_name: str,
         config_reader: IConfigReader,
         gcs_client: GcsClient,
-        logs_dir: Path,
+        event_logger: AutoscalerEventLogger,
     ) -> None:
         super().__init__()
 
@@ -62,15 +60,10 @@ class Autoscaler:
             gcs_client=self._gcs_client,
             ray_stop_errors_queue=self._ray_stop_errors_queue,
         )
-        self._init_event_logger(logs_dir)
+        self._event_logger = event_logger
         self._scheduler = ResourceDemandScheduler(self._event_logger)
 
         self._init_head_node()
-
-    def _init_event_logger(self, logs_dir: Path):
-        self._event_logger = AutoscalerEventLogger(
-            get_event_logger(source=Event.SourceType.AUTOSCALER, logs_dir=str(logs_dir))
-        )
 
     def _init_head_node(self):
         """
