@@ -307,6 +307,8 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
   object_entry->second->count += 1;
+  RAY_LOG(DEBUG) << "IncrementObjectCount " << object_id
+                 << " count is now: " << object_entry->second->count;
 }
 
 Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
@@ -370,6 +372,17 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   // buffer returned by PlasmaClient::Create goes out of scope, the object does
   // not get released before the call to PlasmaClient::Seal happens.
   IncrementObjectCount(object_id);
+
+  if (is_experimental_mutable_object) {
+    // Pin experimental mutable objects when they are first created so that
+    // they are not evicted before the writer has a chance to register the
+    // object.
+    // TODO(swang): GC these once they are deleted by the
+    // ExperimentalMutableObjectManager. This can be done by pinning the object
+    // using the shared_ptr to the memory buffer that is held by the
+    // ExperimentalMutableObjectManager.
+    IncrementObjectCount(object_id);
+  }
 
   // Create IPC was successful.
   auto object_entry = objects_in_use_.find(object_id);
@@ -519,6 +532,9 @@ Status PlasmaClient::Impl::GetBuffers(
 
   // If we get here, then the objects aren't all currently in use by this
   // client, so we need to send a request to the plasma store.
+  for (int64_t i = 0; i < num_objects; i++) {
+    RAY_LOG(DEBUG) << "Sending get request " << object_ids[i];
+  }
   RAY_RETURN_NOT_OK(SendGetRequest(
       store_conn_, &object_ids[0], num_objects, timeout_ms, is_from_worker));
   std::vector<uint8_t> buffer;
@@ -613,6 +629,14 @@ Status PlasmaClient::Impl::GetExperimentalMutableObject(
     return Status::ObjectNotFound("Cannot get normal plasma objects as mutable objects");
   }
 
+  // Pin experimental mutable object so that it is not evicted before the
+  // caller has a chance to register the object.
+  // TODO(swang): GC once they are deleted by the
+  // ExperimentalMutableObjectManager. This can be done by pinning the object
+  // using the shared_ptr to the memory buffer that is held by the
+  // ExperimentalMutableObjectManager.
+  IncrementObjectCount(object_id);
+
   const auto &object = object_entry->second->object;
   *mutable_object = std::unique_ptr<MutableObject>(
       new MutableObject(LookupMmappedFile(object.store_fd), object));
@@ -655,7 +679,13 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   const auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
 
+  object_entry->second->count -= 1;
+  RAY_LOG(DEBUG) << "Decrement object count " << object_id << " count is now "
+                 << object_entry->second->count;
+  RAY_CHECK(object_entry->second->count >= 0);
+
   if (object_entry->second->count == 0) {
+    RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
     // Otherwise, skip the reply to boost performance.
@@ -721,6 +751,7 @@ Status PlasmaClient::Impl::Contains(const ObjectID &object_id, bool *has_object)
 
 Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+  RAY_LOG(DEBUG) << "Seal " << object_id;
 
   // Make sure this client has a reference to the object before sending the
   // request to Plasma.
@@ -929,9 +960,16 @@ Status PlasmaClient::GetExperimentalMutableObject(
   // First make sure the object is in scope. The ObjectBuffer will keep the
   // value pinned in the plasma store.
   std::vector<ObjectBuffer> object_buffers;
-  impl_->Get({object_id}, -1, &object_buffers, /*is_from_worker=*/true);
+  RAY_RETURN_NOT_OK(impl_->Get(
+      {object_id}, /*timeout_ms=*/0, &object_buffers, /*is_from_worker=*/true));
+  if (!object_buffers[0].data) {
+    return Status::Invalid(
+        "Experimental mutable object must be in the local object store to register as "
+        "reader or writer");
+  }
   // Now that the value is pinned, get the object as a MutableObject, which is
-  // used to implement channels.
+  // used to implement channels. The returned MutableObject will pin the
+  // object in the local object store.
   return impl_->GetExperimentalMutableObject(object_id, mutable_object);
 }
 

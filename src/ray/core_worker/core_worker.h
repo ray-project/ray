@@ -26,7 +26,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
-#include "ray/core_worker/experimental_channel_manager.h"
+#include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
@@ -1675,6 +1675,24 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                  bool recursive,
                                  OnCanceledCallback on_canceled);
 
+  /// Helper for Get.
+  ///
+  /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.
+  Status GetObjects(const std::vector<ObjectID> &ids,
+                    const int64_t timeout_ms,
+                    std::vector<std::shared_ptr<RayObject>> *results);
+
+  /// Helper for Get, used only to read experimental mutable objects.
+  ///
+  /// \param[in] ids IDs of the objects to get.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.
+  Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
+                                       std::vector<std::shared_ptr<RayObject>> *results);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1741,7 +1759,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
-  std::shared_ptr<ExperimentalChannelManager> experimental_channel_manager_;
+  /// Used to read and write experimental channels.
+  std::shared_ptr<ExperimentalMutableObjectManager> experimental_mutable_object_manager_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
 

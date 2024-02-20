@@ -5,9 +5,9 @@ import math
 import random
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import (
     AsyncGenerator,
+    Callable,
     DefaultDict,
     Deque,
     Dict,
@@ -15,10 +15,8 @@ from typing import (
     Optional,
     Set,
     Tuple,
-    Union,
 )
 
-import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.constants import (
@@ -28,19 +26,14 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_scheduler.common import (
-    Query,
+    PendingRequest,
+    ReplicaQueueLengthCache,
     ReplicaScheduler,
     ReplicaWrapper,
 )
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class PendingRequest:
-    future: asyncio.Future
-    metadata: RequestMetadata
 
 
 class LocalityScope(str, enum.Enum):
@@ -56,7 +49,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     When a request comes in, two candidate replicas are chosen randomly. Each replica
     is sent a control message to fetch its queue length.
 
-    The replica responds with two items: (queue_length, accepted). Only replicas that
+    The replica responds with two items: (queue_len, accepted). Only replicas that
     accept the request are considered; between those, the one with the lower queue
     length is chosen.
 
@@ -96,6 +89,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
+        use_replica_queue_len_cache: bool = False,
+        get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -103,11 +98,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
         self._self_availability_zone = self_availability_zone
+        self._use_replica_queue_len_cache = use_replica_queue_len_cache
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
+        self._replica_queue_len_cache = ReplicaQueueLengthCache(
+            get_curr_time_s=get_curr_time_s,
+        )
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
@@ -222,6 +221,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def app_name(self) -> str:
         return self._deployment_id.app
 
+    @property
+    def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
+        return self._replica_queue_len_cache
+
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
 
@@ -260,6 +263,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._colocated_replica_ids = new_colocated_replica_ids
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
+        )
+        self._replica_queue_len_cache.remove_inactive_replicas(
+            active_replica_ids=new_replica_id_set
         )
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
@@ -453,23 +459,28 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     self.num_scheduling_tasks_in_backoff
                 )
 
-    async def select_from_candidate_replicas(
+    async def _probe_queue_lens(
         self,
-        candidates: List[ReplicaWrapper],
+        replicas: List[ReplicaWrapper],
         backoff_index: int,
-    ) -> Optional[ReplicaWrapper]:
-        """Chooses the best replica from the list of candidates.
+    ) -> List[Tuple[ReplicaWrapper, Optional[int]]]:
+        """Actively probe the queue length from each of the replicas.
 
-        If none of the replicas can be scheduled, returns `None`.
+        Sends an RPC to each replica to fetch its queue length, with a response deadline
+        that increases exponentially in backoff.
 
-        The queue length at each replica is queried directly from it. The time waited
-        for these queries is capped by a response deadline; if a replica doesn't
-        doesn't respond within the deadline it is not considered. The deadline will be
-        increased exponentially in backoff.
+        Returns a list of queue lengths in the same order as the replicas passed in.
+        Replicas whose RPCs fail or don't respond within the deadline will have a queue
+        length of `None`. Replicas that return a `RayActorError` will be removed from
+        future consideration for requests.
 
-        Among replicas that respond within the deadline and accept the request (don't
-        have full queues), the one with the lowest queue length is chosen.
+        This method also updates the local cache of replica queue lengths according to
+        the responses.
         """
+        result: List[Tuple[ReplicaWrapper, int]] = []
+        if len(replicas) == 0:
+            return result
+
         # Ensure the max deadline is always >= the initial deadline.
         max_queue_len_response_deadline_s = max(
             self.queue_len_response_deadline_s,
@@ -480,56 +491,112 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             max_queue_len_response_deadline_s,
         )
 
-        get_queue_state_tasks = []
-        for c in candidates:
+        get_queue_len_tasks = []
+        for r in replicas:
             t = self._loop.create_task(
-                c.get_queue_state(deadline_s=queue_len_response_deadline_s)
+                r.get_queue_len(deadline_s=queue_len_response_deadline_s)
             )
-            t.replica_id = c.replica_id
-            get_queue_state_tasks.append(t)
+            t.replica = r
+            get_queue_len_tasks.append(t)
 
         done, pending = await asyncio.wait(
-            get_queue_state_tasks,
+            get_queue_len_tasks,
             timeout=queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
         for t in pending:
+            replica = t.replica
+            result.append((replica, None))
             t.cancel()
             logger.warning(
-                f"Failed to get queue length from replica {t.replica_id} "
+                f"Failed to get queue length from replica {replica.replica_id} "
                 f"within {queue_len_response_deadline_s}s. If this happens repeatedly "
                 "it's likely caused by high network latency in the cluster. You can "
                 "configure the deadline using the "
                 "`RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` environment variable."
             )
 
-        chosen_replica_id = None
-        lowest_queue_len = math.inf
         for t in done:
+            replica = t.replica
             if t.exception() is not None:
+                result.append((replica, None))
                 msg = (
                     "Failed to fetch queue length for "
-                    f"replica {t.replica_id}: '{t.exception()}'"
+                    f"replica {replica.replica_id}: '{t.exception()}'"
                 )
                 # If we get a RayActorError, it means the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
                 # place), so we should no longer consider it for requests.
                 if isinstance(t.exception(), RayActorError):
-                    self._replicas.pop(t.replica_id, None)
-                    self._replica_id_set.discard(t.replica_id)
+                    self._replicas.pop(replica.replica_id, None)
+                    self._replica_id_set.discard(replica.replica_id)
                     for id_set in self._colocated_replica_ids.values():
-                        id_set.discard(t.replica_id)
+                        id_set.discard(replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
 
                 logger.warning(msg)
             else:
-                queue_len, accepted = t.result()
-                if accepted and queue_len < lowest_queue_len:
-                    chosen_replica_id = t.replica_id
-                    lowest_queue_len = queue_len
+                queue_len = t.result()
+                result.append((replica, queue_len))
+                self._replica_queue_len_cache.update(replica.replica_id, queue_len)
 
+        assert len(result) == len(replicas)
+        return result
+
+    async def select_from_candidate_replicas(
+        self,
+        candidates: List[ReplicaWrapper],
+        backoff_index: int,
+    ) -> Optional[ReplicaWrapper]:
+        """Chooses the best replica from the list of candidates.
+
+        If none of the replicas can be scheduled, returns `None`.
+
+        The queue length for each replica is first looked up in the local cache. If not
+        present in the cache, the replica will be actively probed and the cache updated.
+
+        Among replicas that respond within the deadline and don't have full queues, the
+        one with the lowest queue length is chosen.
+        """
+        lowest_queue_len = math.inf
+        chosen_replica_id: Optional[str] = None
+        not_in_cache: List[ReplicaWrapper] = []
+        if self._use_replica_queue_len_cache:
+            # Populate available queue lens from the cache.
+            for r in candidates:
+                queue_len = self._replica_queue_len_cache.get(r.replica_id)
+                # Include replicas whose queues are full as not in the cache so we will
+                # actively probe them. Otherwise we may end up in "deadlock" until their
+                # cache entries expire.
+                if queue_len is None or queue_len >= r.max_concurrent_requests:
+                    not_in_cache.append(r)
+                elif queue_len < lowest_queue_len:
+                    lowest_queue_len = queue_len
+                    chosen_replica_id = r.replica_id
+        else:
+            not_in_cache = candidates
+
+        # If there is a valid replica to schedule based on the information in the
+        # cache, schedule it. Else fall back to actively probing.
         if chosen_replica_id is None:
-            return None
+            for r, queue_len in await self._probe_queue_lens(
+                not_in_cache,
+                backoff_index,
+            ):
+                if queue_len is None:
+                    # None is returned if we failed to get the queue len.
+                    continue
+
+                if (
+                    queue_len < r.max_concurrent_requests
+                    and queue_len < lowest_queue_len
+                ):
+                    lowest_queue_len = queue_len
+                    chosen_replica_id = r.replica_id
+        elif len(not_in_cache) > 0:
+            # If there are replicas without a valid cache entry, probe them in the
+            # background to populate the cache.
+            self._loop.create_task(self._probe_queue_lens(not_in_cache, backoff_index))
 
         # `self._replicas` may have been updated since the candidates were chosen.
         # In that case, return `None` so a new one is selected.
@@ -642,20 +709,44 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         if tasks_to_start > 0:
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
-    async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
+    async def choose_replica_for_request(
+        self, pending_request: PendingRequest, *, is_retry: bool = False
+    ) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
 
-        Requests are scheduled in FIFO order, so this puts a future on the internal
-        queue that will be resolved when a replica is available and it's the front of
-        the queue.
+        By default, requests are scheduled in FIFO order, so this places a future on the
+        back of an internal queue that will be popped when a replica is available.
+
+        If `emplace_front` is passed, the request will be placed at the front of the
+        queue.
 
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
         """
-        pending_request = PendingRequest(asyncio.Future(), query.metadata)
         try:
-            self._pending_requests_to_fulfill.append(pending_request)
-            self._pending_requests_to_schedule.append(pending_request)
+            if not is_retry:
+                self._pending_requests_to_fulfill.append(pending_request)
+                self._pending_requests_to_schedule.append(pending_request)
+            else:
+                pending_request.reset_future()
+                index = 0
+                for pr in self._pending_requests_to_fulfill:
+                    if pending_request.created_at < pr.created_at:
+                        break
+
+                    index += 1
+
+                self._pending_requests_to_fulfill.insert(index, pending_request)
+
+                index = 0
+                for pr in self._pending_requests_to_schedule:
+                    if pending_request.created_at < pr.created_at:
+                        break
+
+                    index += 1
+
+                self._pending_requests_to_schedule.insert(index, pending_request)
+
             self.maybe_start_scheduling_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
@@ -664,14 +755,3 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             raise e from None
 
         return replica
-
-    async def assign_replica(
-        self, query: Query
-    ) -> Tuple[Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"], str]:
-        """Choose a replica for the request and send it.
-
-        This will block indefinitely if no replicas are available to handle the
-        request, so it's up to the caller to time out or cancel the request.
-        """
-        replica = await self.choose_replica_for_query(query)
-        return replica.send_query(query), replica.replica_id

@@ -164,6 +164,16 @@ class CoreWorkerPlasmaStoreProvider {
   Status GetIfLocal(const std::vector<ObjectID> &ids,
                     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
+  /// Get an experimental mutable object. The object must be
+  /// local to this node.
+  ///
+  /// \param[in] object_id The object to get.
+  /// \param[out] mutable_object Metadata needed to read and write the mutable
+  /// object. Keeping the returned pointer in scope will pin the object in the
+  /// object store.
+  ///
+  /// \return Status OK if we got the mutable object. Can fail if the object
+  /// was not local or is not mutable.
   Status GetExperimentalMutableObject(
       const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object);
 

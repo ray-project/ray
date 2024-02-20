@@ -67,9 +67,7 @@ struct PlasmaObjectHeader {
   bool is_sealed = false;
   // Set to indicate an error was encountered computing the next version of
   // the mutable object. Lockless access allowed.
-  // Set to true initially because the creator must Init before writing or
-  // reading.
-  volatile bool has_error = true;
+  std::atomic_bool has_error = false;
   // The total number of reads allowed before the writer can write again. This
   // value should be set by the writer before releasing to readers.
   // For immutable objects, this is set to -1 and infinite reads are allowed.

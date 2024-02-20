@@ -1128,8 +1128,6 @@
   cluster:
     byod:
       type: gpu
-      runtime_env:
-        - NCCL_SOCKET_IFNAME=ens
       post_build_script: byod_xgboost_test.sh
     cluster_compute: tpl_gpu_small_aws.yaml
 
@@ -1649,35 +1647,6 @@
 
   alert: default
 
-- name: ml_user_xgboost_gpu_connect_latest
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_xgboost_test.sh
-    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python xgboost/train_gpu_connect.py
-    wait_for_nodes:
-      num_nodes: 5
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
-
-  alert: default
-
 - name: ml_user_xgboost_gpu_connect_master
   group: ML user tests
   working_dir: ml_user_tests
@@ -1688,7 +1657,7 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_xgboost_master_test.sh
+      post_build_script: byod_xgboost_test.sh
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:

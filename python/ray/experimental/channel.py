@@ -19,7 +19,7 @@ def _create_channel_ref(
     Create a channel that can be read and written by co-located Ray processes.
 
     The channel has no buffer, so the writer will block until reader(s) have
-    read the previous value. Only the channel creator may write to the channel.
+    read the previous value.
 
     Args:
         buffer_size_bytes: The number of bytes to allocate for the object data and
@@ -62,8 +62,9 @@ class Channel:
         """
         Create a channel that can be read and written by co-located Ray processes.
 
-        Only the caller may write to the channel. The channel has no buffer,
-        so the writer will block until reader(s) have read the previous value.
+        Anyone may write to or read from the channel. The channel has no
+        buffer, so the writer will block until reader(s) have read the previous
+        value.
 
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and

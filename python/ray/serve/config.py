@@ -113,6 +113,12 @@ class AutoscalingConfig(BaseModel):
 
         return policy_path
 
+    @classmethod
+    def default(cls):
+        return cls(
+            min_replicas=1, max_replicas=100, target_num_ongoing_requests_per_replica=2
+        )
+
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
         return cloudpickle.loads(self.serialized_policy_def)

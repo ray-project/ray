@@ -15,6 +15,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -95,9 +96,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
-            module_spec: SingleAgentRLModuleSpec = (
-                self.config.get_default_rl_module_spec()
-            )
+            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
             # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
             #  actually hold the spaces for a single env, but for boxes the
@@ -229,6 +228,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
             obs, infos = self.env.reset()
+            obs = unbatch(obs)
             self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
@@ -276,9 +276,17 @@ class SingleAgentEnvRunner(EnvRunner):
                     explore=explore,
                 )
 
-            actions = to_env.pop(SampleBatch.ACTIONS)
+            # Extract the (vectorized) actions (to be sent to the env) from the
+            # module/connector output. Note that these actions are fully ready (e.g.
+            # already clipped) to be sent to the environment) and might not be
+            # identical to the actions produced by the RLModule/distribution, which are
+            # the ones stored permanently in the episode objects.
+            actions = to_env.pop(
+                SampleBatch.ACTIONS_FOR_ENV, to_env.get(SampleBatch.ACTIONS)
+            )
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
 
@@ -304,13 +312,24 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
-
+                    # We have to perform an extra env-to-module pass here, just in case
+                    # the user's connector pipeline performs (permanent) transforms
+                    # on each observation (including this final one here). Without such
+                    # a call and in case the structure of the observations change
+                    # sufficiently, the following `finalize()` call on the episode will
+                    # fail.
+                    if self.module is not None:
+                        self._env_to_module(
+                            episodes=[self._episodes[env_index]],
+                            explore=explore,
+                            rl_module=self.module,
+                        )
                     # Make the `on_episode_step` callback (before finalizing the
                     # episode object).
                     self._make_on_episode_callback("on_episode_step", env_index)
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
 
-                    # Make the `on_episode_env` callback (after having finalized the
+                    # Make the `on_episode_end` callback (after having finalized the
                     # episode object).
                     self._make_on_episode_callback("on_episode_end", env_index)
 

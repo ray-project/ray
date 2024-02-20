@@ -713,3 +713,9 @@ class TargetCapacityDirection(str, Enum):
 
     UP = "UP"
     DOWN = "DOWN"
+
+
+@dataclass(frozen=True)
+class ReplicaQueueLengthInfo:
+    accepted: bool
+    num_ongoing_requests: int

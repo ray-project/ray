@@ -11,6 +11,7 @@ hpbandster==0.7.4
 git+https://github.com/huawei-noah/HEBO@9a2a674c22518eed35a8b98e5134576741a95410#subdirectory=HEBO
 # HEBO==0.3.4
 hyperopt==0.2.7
+nevergrad==0.4.3.post7
 optuna==3.2.0
 
 tune-sklearn==0.4.6

@@ -70,15 +70,11 @@ class PPOLearner(Learner):
             )
         batch = batch or {}
 
-        if is_multi_agent:
-            sa_episodes_list = [
-                sa_eps
-                for ma_eps in episodes
-                for sa_eps in ma_eps.agent_episodes.values()
-            ]
-        else:
-            sa_episodes_list = episodes
-
+        sa_episodes_list = list(
+            self._learner_connector.single_agent_episode_iterator(
+                episodes, agents_that_stepped_only=False
+            )
+        )
         # Make all episodes one ts longer in order to just have a single batch
         # (and distributed forward pass) for both vf predictions AND the bootstrap
         # vf computations.
@@ -103,8 +99,8 @@ class PPOLearner(Learner):
                 episode_lens_plus_1 = [
                     len(sa_eps)
                     for ma_eps in episodes
-                    for agent_id, sa_eps in ma_eps.agent_episodes.items()
-                    if ma_eps.agent_to_module_map[agent_id] == module_id
+                    for sa_eps in ma_eps.agent_episodes.values()
+                    if sa_eps.module_id == module_id
                 ]
             else:
                 episode_lens_plus_1 = [len(eps) for eps in episodes]
