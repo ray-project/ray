@@ -530,22 +530,34 @@ def _fetch_metadata_serialization_wrapper(
             max_backoff_s=retry_max_interval,
         )
     except OSError as e:
-        error_message = f"""Exceeded maximum number of attempts ({retry_max_attempts}) to retry metadata fetching task.
-Metadata fetching tasks can fail due to transient errors like rate limiting.
-
-To increase the maximum number of attempts, configure `RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK`.
-For example, `ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64`.
-
-To increase the maximum retry interval, configure `RETRY_MAX_INTERVAL_S_FOR_META_FETCH_TASK`.
-For example, `ray.data.datasource.parquet_datasource.RETRY_MAX_INTERVAL_S_FOR_META_FETCH_TASK = 128`.
-
-If the error continues to occur, you can also try decresasing the concurency of metadata fetching tasks by setting `NUM_CPUS_FOR_META_FETCH_TASK`.
-For example `ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4`.
-
-To change which exceptions to retry on, set `RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages.
-For example: ` ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]`
-"""
-        raise RuntimeError(error_message) from e
+        raise RuntimeError(
+            f"Exceeded maximum number of attempts ({retry_max_attempts}) to retry "
+            "metadata fetching task. Metadata fetching tasks can fail due to transient "
+            "errors like rate limiting.\n"
+            "\n"
+            "To increase the maximum number of attempts, configure "
+            "`RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK`. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
+            "```\n"
+            "To increase the maximum retry interval, configure "
+            "`RETRY_MAX_INTERVAL_S_FOR_META_FETCH_TASK`. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.RETRY_MAX_INTERVAL_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
+            "```\n"
+            "If the error continues to occur, you can also try decresasing the "
+            "concurency of metadata fetching tasks by setting "
+            "`NUM_CPUS_FOR_META_FETCH_TASK` to a larger value. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n" # noqa: E501
+            "```\n"
+            "To change which exceptions to retry on, set "
+            "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
+            "example:\n"
+            "```\n"
+            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'  # noqa: E501
+            "```"
+        ) from e
     return metadata
 
 
