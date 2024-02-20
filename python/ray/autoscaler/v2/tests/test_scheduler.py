@@ -36,7 +36,7 @@ from ray.core.generated.instance_manager_pb2 import (
 
 ResourceMap = Dict[str, float]
 
-logger.setLevel("INFO")
+logger.setLevel("DEBUG")
 
 event_logger = AutoscalerEventLogger(MockEventLogger(logger))
 
