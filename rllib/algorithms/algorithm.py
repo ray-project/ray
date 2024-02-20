@@ -67,10 +67,10 @@ from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
+    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
-    override,
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,

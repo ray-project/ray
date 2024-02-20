@@ -2885,14 +2885,33 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=150.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
-# py_test(
-#    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_multi_agent_ppo",
-#    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "large",
-#    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
-#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
-# )
+py_test(
+    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
+)
+
+# MeanStd filtering example.
+py_test(
+    name = "examples/connectors/connector_v2_mean_str_filtering_ppo",
+    main = "examples/connectors/connector_v2_mean_str_filtering.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mean_str_filtering.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_mean_str_filtering_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_mean_str_filtering.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mean_str_filtering.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
+)
 
 # ----------------------
 # old connector examples

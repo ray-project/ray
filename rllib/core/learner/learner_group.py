@@ -508,7 +508,7 @@ class LearnerGroup:
             results = self._get_results(results)
             if reduce_fn is None:
                 return results
-            # TODO(sven): Move reduce_fn to the training_step
+            # TODO (sven): Move reduce_fn to the training_step
             return reduce_fn(results)
 
     def add_module(

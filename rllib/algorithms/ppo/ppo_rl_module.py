@@ -27,12 +27,15 @@ class PPORLModule(RLModule, abc.ABC):
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
         # __sphinx_doc_end__
 
+    @override(RLModule)
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
+    @override(RLModule)
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
+    @override(RLModule)
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
