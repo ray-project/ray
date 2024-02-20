@@ -11,6 +11,7 @@ import ray.cluster_utils
 from ray.dag import InputNode, MultiOutputNode, compiled_dag_node
 from ray.util import collective as col
 from ray.tests.conftest import *  # noqa
+from ray.experimental.collective_channel import batch_read
 
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class Actor:
         raise ValueError("injected fault")
 
     def noop(self, _):
-        # time.sleep(0.001)
+        # time.sleep(0.015)
         return b"value"
 
     def set_i(self, i):
@@ -78,7 +79,6 @@ class Actor:
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux.")
 def test_put_local_get(ray_start_regular):
-
     @ray.remote
     class Actor:
         def __init__(self):
@@ -117,17 +117,48 @@ def test_basic(ray_start_regular):
         dag = a.noop.bind(i)
 
     s = time.time()
-    compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
+    compiled_dag = dag.experimental_compile()
+    print("Compiles took ", (time.time() - s) * 1000 * 1000, "us")
+    it = 1000
+    s = time.time()
+    elapsed = []
+    for i in range(it):
+        g = time.time()
+        output_channel = compiled_dag.execute(b"input")
+        result = output_channel.begin_read()
+        assert result == b"value"
+        output_channel.end_read()
+        elapsed.append((time.time() - g) * 1000 * 1000)
+    elapsed_s = time.time() - s
+
+    throughput = it / elapsed_s
+    print("throughput: ", throughput, "it/s")
+    print("p50: ", sorted(elapsed)[len(elapsed) // 2])
+    compiled_dag.teardown()
+
+
+def test_basic_multi_node(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=1)
+
+    # Run in a separate process since proper teardown isn't implemented yet.
+    a = Actor.options(num_cpus=1).remote(0)
+    with InputNode() as i:
+        dag = a.noop.bind(i)
+
+    s = time.time()
+    compiled_dag = dag.experimental_compile()
     print("Compiles took ", (time.time() - s) * 1000 * 1000, "us")
 
-    it = 10
+    it = 100
     s = time.time()
     for i in range(it):
         output_channel = compiled_dag.execute(b"input")
         result = output_channel.begin_read()
         assert result == b"value"
         output_channel.end_read()
-    elapsed_s = (time.time() - s)
+    elapsed_s = time.time() - s
 
     throughput = it / elapsed_s
     print("throughput: ", throughput, "it/s")
@@ -144,21 +175,22 @@ def test_broadcast(ray_start_regular):
         out = [a.noop.bind(i) for a in actors]
         dag = MultiOutputNode(out)
 
-    compiled_dag = dag.experimental_compile(buffer_size_bytes=1000)
+    compiled_dag = dag.experimental_compile()
 
-    it = 1000
+    it = 100
     s = time.time()
     for i in range(it):
         g = time.time()
         output_channels = compiled_dag.execute(b"input")
         # TODO(sang): We should batch wait to improve throughput.
         # results = batch_wait(output_channels)
-        results = [chan.begin_read() for chan in output_channels]
+        # results = [chan.begin_read() for chan in output_channels]
+        results = batch_read(output_channels)
         assert results == [b"value"] * NUM_ACTORS
         for chan in output_channels:
             chan.end_read()
         elapsed.append((time.time() - g) * 1000 * 1000)
-    elapsed_s = (time.time() - s)
+    elapsed_s = time.time() - s
     throughput = it / elapsed_s
     print("throughput: ", throughput, "it/s")
     print("p50: ", sorted(elapsed)[len(elapsed) // 2])
@@ -173,11 +205,12 @@ def test_dag_chain(shutdown_only):
     b = Actor.remote(0)
     with InputNode() as inp:
         dag = b.noop.bind(a.noop.bind(inp))
+        # dag = a.noop.bind(inp)
 
     compiled_dag = dag.experimental_compile()
-    IT = 100
+    IT = 10
     s = time.time()
-    for i in range(IT):
+    for _ in range(IT):
         output_channel = compiled_dag.execute(1)
         assert output_channel.begin_read() == b"value"
         output_channel.end_read()
@@ -218,10 +251,6 @@ def test_dag_exception(ray_start_regular):
         assert output_channel.begin_read() == i + 2
         output_channel.end_read()
         compiled_dag.teardown()
-
-
-def test_multi_node_send_recv_benchmark(ray_start_cluster):
-    pass
 
 
 if __name__ == "__main__":

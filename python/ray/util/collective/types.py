@@ -106,6 +106,7 @@ class SendOptions:
     n_elements = 0
     timeout_ms = unset_timeout_ms
     tag: int = 0
+    async_op: bool = False
 
 
 @dataclass
@@ -115,3 +116,4 @@ class RecvOptions:
     n_elements = 0
     timeout_ms = unset_timeout_ms
     tag: int = 0
+    async_op: bool = False

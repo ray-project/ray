@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import traceback
+import time
 
 import ray
 from ray.exceptions import RayTaskError
@@ -19,6 +20,7 @@ MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 # Experimental support for using gloo as the channel backend.
 USE_TORCH_CHANNEL = bool(int(os.environ.get("USE_TORCH_CHANNEL", "0")))
 USE_COLLECTIVE_CHANNEL = bool(int(os.environ.get("USE_COLLECTIVE_CHANNEL", "0")))
+USE_ISEND = bool(int(os.environ.get("USE_ISEND", "1")))
 USE_TORCH_BROADCAST = bool(int(os.environ.get("USE_TORCH_BROADCAST", "1")))
 
 logger = logging.getLogger(__name__)
@@ -46,14 +48,17 @@ def _make_channel(
     buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
 ):
     logger.info(
-    f"Created channel with buffer_size_bytes={buffer_size_bytes}, "
-    f"reader_ranks={reader_ranks}, writer_rank={writer_rank}, "
-    f"strategy={strategy}")
+        f"Created channel with buffer_size_bytes={buffer_size_bytes}, "
+        f"reader_ranks={reader_ranks}, writer_rank={writer_rank}, "
+        f"strategy={strategy}"
+    )
     if USE_TORCH_CHANNEL:
         return TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
     elif USE_COLLECTIVE_CHANNEL:
-        # SANG-TODO
-        return RayCollectiveChannel(buffer_size_bytes, reader_ranks, writer_rank)
+        strategy = "isend" if USE_ISEND else "send"
+        return RayCollectiveChannel(
+            buffer_size_bytes, reader_ranks, writer_rank, strategy
+        )
     else:
         return Channel(buffer_size_bytes, len(reader_ranks))
 
@@ -93,6 +98,7 @@ def do_exec_compiled_task(
 
     try:
         self._input_channels = [i for i in inputs if isinstance(i, Channel)]
+
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
@@ -106,11 +112,15 @@ def do_exec_compiled_task(
                 resolved_inputs.append(inp)
 
         while True:
+            # s = time.time()
             for idx, channel in input_channel_idxs:
                 resolved_inputs[idx] = channel.begin_read()
+            # logger.debug(f"read took {(time.time() - s) * 1000 * 1000} us")
 
             try:
+                # s = time.time()
                 output_val = method(*resolved_inputs)
+                # print("execution took ", (time.time() - s) * 1000 * 1000, "us")
             except Exception as exc:
                 backtrace = ray._private.utils.format_error_message(
                     "".join(
@@ -127,13 +137,21 @@ def do_exec_compiled_task(
             else:
                 if self._dag_cancelled:
                     raise RuntimeError("DAG execution cancelled")
+
+                # s = time.time()
                 self._output_channel.write(output_val)
+                # print("write took ", (time.time() - s) * 1000 * 1000, "us")
 
             for _, channel in input_channel_idxs:
                 channel.end_read()
 
-    except Exception:
-        logging.exception("Compiled DAG task exited with exception")
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            if not "Application timeout caused pair" in str(
+                e
+            ) or "DAG execution cancelled" in str(e):
+                # Unexpected exception should be logged.
+                logging.exception("Compiled DAG task exited with exception")
         raise
 
 
@@ -489,9 +507,8 @@ class CompiledDAG:
         for actor in actors:
             assert not isinstance(actor, int)
         col.create_and_init_collective_group(
-            actors,
-            backend="gloo", 
-            include_driver=True)
+            actors, backend="gloo", include_driver=True
+        )
 
     def _monitor_failures(self):
         outer = self
@@ -569,8 +586,7 @@ class CompiledDAG:
         """Teardown and cancel all worker tasks for this DAG."""
         self._monitor.teardown()
         if USE_COLLECTIVE_CHANNEL:
-            col.teardown_collective_group(
-                self.actor_refs, include_driver=True)
+            col.teardown_collective_group(self.actor_refs, include_driver=True)
 
 
 @DeveloperAPI

@@ -6,6 +6,7 @@ import time
 
 import numpy
 import pygloo
+from typing import Optional
 
 import ray
 from ray._private import ray_constants
@@ -22,10 +23,23 @@ from ray.util.collective.types import (
     ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    unset_timeout_ms
+    unset_timeout_ms,
 )
 
 logger = logging.getLogger(__name__)
+
+SEND_DEFAULT_TIMEOUT = datetime.timedelta(seconds=30)
+
+
+class PyGlooAsyncFutureWrapper:
+    def __init__(self, fut):
+        self.fut_ = fut
+
+    def wait(self, timeout: Optional[datetime.timedelta] = None):
+        if timeout is None:
+            timeout = SEND_DEFAULT_TIMEOUT
+
+        return self.fut_.Wait(timeout)
 
 
 class Rendezvous:
@@ -419,22 +433,33 @@ class GLOOGroup(BaseGroup):
             send_options: send options.
 
         Returns:
-            None
+            Pygloo future if recv_options.async_op is True.
+            None otherwise.
         """
 
-        # TODO(sang): tag is not supported?
         def p2p_fn(tensor, context, peer):
-            pygloo.send(
-                context,
-                gloo_util.get_tensor_ptr(tensor),
-                gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_gloo_tensor_dtype(tensor),
-                peer,
-                tag=0,
-                timeout_ms=datetime.timedelta(milliseconds=0)
+            # NOTE: isend & Wait and send has the same performance.
+            fut = PyGlooAsyncFutureWrapper(
+                pygloo.isend(
+                    context,
+                    gloo_util.get_tensor_ptr(tensor),
+                    gloo_util.get_tensor_n_elements(tensor),
+                    gloo_util.get_gloo_tensor_dtype(tensor),
+                    peer,
+                    tag=0,
+                )
             )
+            if send_options.async_op:
+                return fut
+            else:
+                timeout = send_options.timeout_ms
+                if send_options.timeout_ms == unset_timeout_ms:
+                    # Use default.
+                    timeout = None
+                fut.wait(timeout)
+                return None
 
-        self._point2point(tensors, p2p_fn, send_options.dst_rank)
+        return self._point2point(tensors, p2p_fn, send_options.dst_rank)
 
     def recv(self, tensors, recv_options=RecvOptions()):
         """Receive a tensor from a source rank in the group.
@@ -444,19 +469,32 @@ class GLOOGroup(BaseGroup):
             recv_options: Receive options.
 
         Returns:
-            None
+            Pygloo future if recv_options.async_op is True.
+            None otherwise.
         """
 
         def p2p_fn(tensor, context, peer):
-            pygloo.recv(
-                context,
-                gloo_util.get_tensor_ptr(tensor),
-                gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_gloo_tensor_dtype(tensor),
-                peer,
-                timeout_ms = recv_options.timeout_ms)
+            # NOTE: irecv & Wait and recv has the same performance.
+            fut = PyGlooAsyncFutureWrapper(
+                pygloo.irecv(
+                    context,
+                    gloo_util.get_tensor_ptr(tensor),
+                    gloo_util.get_tensor_n_elements(tensor),
+                    gloo_util.get_gloo_tensor_dtype(tensor),
+                    peer,
+                )
+            )
+            if recv_options.async_op:
+                return fut
+            else:
+                timeout = recv_options.timeout_ms
+                if recv_options.timeout_ms == unset_timeout_ms:
+                    # Use default.
+                    timeout = None
+                fut.wait(recv_options.timeout_ms)
+                return None
 
-        self._point2point(tensors, p2p_fn, recv_options.src_rank)
+        return self._point2point(tensors, p2p_fn, recv_options.src_rank)
 
     def _collective(
         self,
@@ -496,11 +534,11 @@ class GLOOGroup(BaseGroup):
             peer_rank: the rank of the peer process.
 
         Returns:
-            None
+            Pygloo Future or None (if it is not async).
         """
         _check_cpu_tensors(tensors)
 
-        p2p_fn(tensors[0], self._gloo_context, peer_rank)
+        return p2p_fn(tensors[0], self._gloo_context, peer_rank)
 
 
 def _check_cpu_tensors(tensors):

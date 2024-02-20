@@ -62,7 +62,9 @@ class GroupManager(object):
             self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
             try:
-                from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup # noqa
+                from ray.util.collective.collective_group.nccl_collective_group import (
+                    NCCLGroup,
+                )  # noqa
             except ImportError:
                 _NCCL_AVAILABLE = False
                 logger.warning(
@@ -157,12 +159,12 @@ def create_and_init_collective_group(
     actors,
     backend=types.Backend.GLOO,
     group_name: str = "default",
-    include_driver: bool = False
+    include_driver: bool = False,
 ):
     world_size = len(actors)
     if include_driver:
         world_size += 1
-    
+
     ranks = [i for i in range(world_size)]
     futures = []
     for rank, actor in enumerate(actors):
@@ -173,18 +175,13 @@ def create_and_init_collective_group(
         futures.append(
             fn.remote(
                 lambda self: init_collective_group(
-                    world_size,
-                    rank,
-                    backend=backend,
-                    group_name=group_name
-                )))
+                    world_size, rank, backend=backend, group_name=group_name
+                )
+            )
+        )
 
     if include_driver:
-        init_collective_group(
-            world_size,
-            0,
-            backend=backend,
-            group_name=group_name)
+        init_collective_group(world_size, 0, backend=backend, group_name=group_name)
 
     ray.get(futures)
 
@@ -194,7 +191,7 @@ def create_and_init_collective_group(
         ranks,
         backend=backend,
         group_name=group_name,
-        include_driver=include_driver
+        include_driver=include_driver,
     )
 
 
@@ -204,7 +201,7 @@ def create_collective_group(
     ranks: List[int],
     backend=types.Backend.NCCL,
     group_name: str = "default",
-    include_driver: bool = False
+    include_driver: bool = False,
 ):
     """Declare a list of actors as a collective group.
 
@@ -263,7 +260,13 @@ def create_collective_group(
     actors_id = [a._ray_actor_id for a in actors]
     # TODO(sang): use a single named actor to manage all info.
     info = Info.options(name=name, lifetime="detached").remote()
-    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend, include_driver=include_driver)])
+    ray.get(
+        [
+            info.set_info.remote(
+                actors_id, world_size, ranks, backend, include_driver=include_driver
+            )
+        ]
+    )
 
 
 # TODO(sang) (we need a declarative destroy() API here.)
@@ -278,9 +281,8 @@ def destroy_collective_group(group_name: str = "default") -> None:
 
 # PrivateAPI
 def teardown_collective_group(
-        actors,
-        include_driver: bool = False,
-        group_name: str = "default"):
+    actors, include_driver: bool = False, group_name: str = "default"
+):
     """It is same as calling destroy_collective_group on all workers.
 
     Private API just for accerlated DAG. But we should make it public someday.
@@ -602,16 +604,29 @@ def reducescatter_multigpu(
     g.reducescatter(output_tensor_list, input_tensor_lists, opts)
 
 
-def send(tensor, dst_rank: int, group_name: str = "default"):
+# TODO(sang): Support tag.
+def send(
+    tensor,
+    dst_rank: int,
+    group_name: str = "default",
+    timeout_ms: Optional[int] = None,
+    async_op: bool = False,
+):
     """Send a tensor to a remote process synchronously.
 
     Args:
         tensor: the tensor to send.
         dst_rank: the rank of the destination process.
         group_name: the name of the collective group.
+        timeout_ms: The maximum time the operation is blocked
+            before it completes. If async_op is True, it is
+            not used.
+        async_op: If True, it returns the future that can call
+            Wait() API.
 
     Returns:
-        None
+        Pygloo future if recv_options.async_op is True.
+        None otherwise.
     """
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
@@ -620,7 +635,10 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
-    g.send([tensor], opts)
+    opts.async_op = async_op
+    if timeout_ms is not None:
+        opts.timeout_ms = timedelta(milliseconds=timeout_ms)
+    return g.send([tensor], opts)
 
 
 def send_multigpu(
@@ -669,7 +687,8 @@ def recv(
     tensor,
     src_rank: int,
     group_name: str = "default",
-    timeout_ms: Optional[int] = None
+    timeout_ms: Optional[int] = None,
+    async_op: bool = False,
 ):
     """Receive a tensor from a remote process synchronously.
 
@@ -677,9 +696,15 @@ def recv(
         tensor: the received tensor.
         src_rank: the rank of the source process.
         group_name: the name of the collective group.
+        timeout_ms: The maximum time the operation is blocked
+            before it completes. If async_op is True, it is
+            not used.
+        async_op: If True, it returns the future that can call
+            Wait() API.
 
     Returns:
-        None
+        Pygloo future if recv_options.async_op is True.
+        None otherwise.
     """
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
@@ -690,7 +715,9 @@ def recv(
     opts.src_rank = src_rank
     if timeout_ms is not None:
         opts.timeout_ms = timedelta(milliseconds=timeout_ms)
-    g.recv([tensor], opts)
+    opts.async_op = async_op
+
+    return g.recv([tensor], opts)
 
 
 def recv_multigpu(

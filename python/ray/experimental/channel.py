@@ -141,7 +141,7 @@ class Channel:
         end_read() is called. Then, the client must begin_read() again to get
         the next value.
 
-        If the received value is RayTaskError type, 
+        If the received value is RayTaskError type,
 
         Returns:
             Any: The deserialized value.

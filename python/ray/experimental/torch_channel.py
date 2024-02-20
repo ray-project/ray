@@ -4,8 +4,8 @@ This currently leverages gloo through torch distributed."""
 
 import logging
 import sys
-from typing import Any, List
 import time
+from typing import Any, List
 
 import numpy as np
 
@@ -28,6 +28,7 @@ class TorchChannel(Channel):
     ):
         # Delayed import to avoid hard torch dependency.
         import torch
+
         self._torch = torch
 
         self._buffer_size_bytes = buffer_size_bytes
@@ -35,7 +36,9 @@ class TorchChannel(Channel):
         self._writer_rank = writer_rank
         # Reuse array instead of creating a new one
         # to reduce memory allocation overhead.
-        self._arr = self._torch.from_numpy(np.zeros(4 + buffer_size_bytes, dtype=np.uint8))
+        self._arr = self._torch.from_numpy(
+            np.zeros(4 + buffer_size_bytes, dtype=np.uint8)
+        )
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
         self._strategy = strategy
@@ -82,22 +85,32 @@ class TorchChannel(Channel):
             )
         else:
             for rank in self._reader_ranks:
-                work.append(self._torch.distributed.isend(self._arr, rank, group=self.group))
+                work.append(
+                    self._torch.distributed.isend(self._arr, rank, group=self.group)
+                )
         [w.wait() for w in work]
 
     def begin_read(self) -> Any:
         if self._strategy == "broadcast":
-            self._torch.distributed.broadcast(self._arr, src=self._writer_rank, group=self.group)
+            self._torch.distributed.broadcast(
+                self._arr, src=self._writer_rank, group=self.group
+            )
         else:
-            self._torch.distributed.irecv(self._arr, self._writer_rank, group=self.group).wait()
+            self._torch.distributed.irecv(
+                self._arr, self._writer_rank, group=self.group
+            ).wait()
         datalen = self._arr[:4].numpy().view(np.uint32)[0]
         return self._deserialize(self._arr[4 : 4 + datalen].numpy().tobytes())
 
     def begin_read_async(self) -> Any:
         if self._strategy == "broadcast":
-            future = self._torch.distributed.broadcast(self._arr, src=self._writer_rank, group=self.group, async_op=True)
+            future = self._torch.distributed.broadcast(
+                self._arr, src=self._writer_rank, group=self.group, async_op=True
+            )
         else:
-            future = self._torch.distributed.irecv(self._arr, self._writer_rank, group=self.group)
+            future = self._torch.distributed.irecv(
+                self._arr, self._writer_rank, group=self.group
+            )
         return future
 
     def end_read(self):

@@ -51,5 +51,5 @@ __all__ = [
     "send_multigpu",
     "recv",
     "recv_multigpu",
-    "teardown_collective_group"
+    "teardown_collective_group",
 ]
