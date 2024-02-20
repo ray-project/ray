@@ -1,5 +1,4 @@
-import os.path
-
+import os
 import pytest
 import pyarrow as pa
 import pandas as pd
@@ -79,13 +78,10 @@ def setup_mock(default_chunk_bytes):
         return True
 
     with mock.patch(
-        "pyspark.databricks.sql.chunk.persistDataFrameAsChunks",
+        "ray.data.datasource.spark_datasource._persist_dataframe_as_chunks",
         persist_df_as_chunks,
     ), mock.patch(
-        "pyspark.databricks.sql.chunk.readChunk",
-        read_chunk,
-    ), mock.patch(
-        "pyspark.databricks.sql.chunk.unpersistChunks",
+        "ray.data.datasource.spark_datasource._unpersist_chunks",
         unpersist_chunk,
     ), mock.patch(
         "ray.util.spark.utils.is_in_databricks_runtime",
