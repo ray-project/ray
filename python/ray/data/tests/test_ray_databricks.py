@@ -21,7 +21,7 @@ class ChunkMeta(NamedTuple):
 
 
 @contextmanager
-def setup_mock(default_chunk_bytes, tmp_dir=None):
+def setup_mock(default_chunk_bytes, tmp_dir):
     """
     `ray.data.from_spark` supports Databricks runtime, but it relies on databricks
     internal APIs.
@@ -32,7 +32,6 @@ def setup_mock(default_chunk_bytes, tmp_dir=None):
     so in unit test we don't need to create real spark dataframe,
     this simplifies unit testing code.
     """
-    tmp_dir = tmp_dir or tempfile.mkdtemp()
 
     def persist_df_as_chunks(pandas_df, bytes_per_chunk):
         arrow_tb = pa.Table.from_pandas(pandas_df)
@@ -101,13 +100,12 @@ def setup_mock(default_chunk_bytes, tmp_dir=None):
         yield
 
 
-def test_from_simple_databricks_spark_dataframe():
+def test_from_simple_databricks_spark_dataframe(tmp_path):
     fake_spark_df = pd.DataFrame({
         "x": range(1000)
     })
 
-    tmp_dir = tempfile.mkdtemp()
-    with setup_mock(default_chunk_bytes=1000, tmp_dir=tmp_dir):
+    with setup_mock(default_chunk_bytes=1000, tmp_dir=tmp_path.as_posix()):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
@@ -117,17 +115,17 @@ def test_from_simple_databricks_spark_dataframe():
     time.sleep(1)  # waiting for ray_ds GC
 
     # assert all chunk data files are removed from the tmp dir.
-    os.listdir(tmp_dir) == ['read_chunk_fn.pkl']
+    os.listdir(tmp_path.as_posix()) == ['read_chunk_fn.pkl']
 
     ray.shutdown()
 
 
-def test_from_mul_cols_databricks_spark_dataframe():
+def test_from_mul_cols_databricks_spark_dataframe(tmp_path):
     fake_spark_df = pd.DataFrame({
         "x": range(1000)
     })
 
-    with setup_mock(default_chunk_bytes=1000):
+    with setup_mock(default_chunk_bytes=1000, tmp_dir=tmp_path.as_posix()):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
@@ -136,13 +134,13 @@ def test_from_mul_cols_databricks_spark_dataframe():
     ray.shutdown()
 
 
-def test_large_size_row_databricks_spark_dataframe():
+def test_large_size_row_databricks_spark_dataframe(tmp_path):
     fake_spark_df = pd.DataFrame([
         {'a': uuid.uuid4().hex * 100}
         for _ in range(10)
     ])
 
-    with setup_mock(default_chunk_bytes=3500):
+    with setup_mock(default_chunk_bytes=3500, tmp_dir=tmp_path.as_posix()):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
