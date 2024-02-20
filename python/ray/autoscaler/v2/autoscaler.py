@@ -37,9 +37,15 @@ class Autoscaler:
         session_name: str,
         config_reader: IConfigReader,
         gcs_client: GcsClient,
-        event_logger: AutoscalerEventLogger,
+        event_logger: Optional[AutoscalerEventLogger] = None,
     ) -> None:
-        super().__init__()
+        """
+        Args:
+            session_name: The name of the ray session.
+            config_reader: The config reader.
+            gcs_client: The GCS client.
+            event_logger: The event logger for emitting cluster events.
+        """
 
         self._config_reader = config_reader
         config = config_reader.get_autoscaling_config()
