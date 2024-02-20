@@ -5,6 +5,15 @@ set -euo pipefail
 set -x
 
 export PYTHON_VERSION="${PYTHON_VERSION}"
+if [[ -z "$RAY_VERSION" ]]; then
+    echo "RAY_VERSION environment variable is not set"
+    exit 1
+fi
+if [[ -z "$RAY_HASH" ]]; then
+    echo "RAY_HASH environment variable is not set"
+    exit 1
+fi
+
 export RAY_VERSION="${RAY_VERSION}"
 export RAY_HASH="${RAY_HASH}"
 
