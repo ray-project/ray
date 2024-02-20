@@ -2230,7 +2230,7 @@ def global_gc(address):
     "--node-id",
     required=True,
     type=str,
-    help="Hex id of the worker node to be drained.",
+    help="Hex ID of the worker node to be drained.",
 )
 @click.option(
     "--reason",
@@ -2258,7 +2258,7 @@ def global_gc(address):
     help="Inform GCS that the node to be drained will be force killed "
     "after this many of seconds. "
     "Default is None which means there is no deadline. "
-    "Note: this command won't actually force kill the node after the deadline, "
+    "Note: This command doesn't actually force kill the node after the deadline, "
     "it's the caller's responsibility to do that.",
 )
 def drain_node(
@@ -2285,7 +2285,7 @@ def drain_node(
         )
 
     if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
-        raise click.BadParameter(f"Invalid hex id of a Ray node, got {node_id}")
+        raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
 
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._raylet.check_health(address):

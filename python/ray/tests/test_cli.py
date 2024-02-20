@@ -1043,7 +1043,7 @@ def test_ray_drain_node():
         ],
     )
     assert result.exit_code != 0
-    assert "Invalid hex id of a Ray node, got invalid-node-id" in result.output
+    assert "Invalid hex ID of a Ray node, got invalid-node-id" in result.output
 
     with patch("ray._raylet.check_health", return_value=True), patch(
         "ray._raylet.GcsClient"
