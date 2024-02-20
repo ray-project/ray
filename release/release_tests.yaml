@@ -2991,6 +2991,7 @@
   working_dir: serve_tests
 
   frequency: nightly
+  stable: False
   team: serve
 
   cluster:
