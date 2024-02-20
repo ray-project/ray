@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.event.event_logger import EventLoggerAdapter
 from ray._private.protobuf_compat import message_to_dict
 from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
@@ -202,7 +201,6 @@ class Reconciler:
         cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
         ray_install_errors: Optional[List[RayInstallError]] = None,
         ray_stop_errors: Optional[List[RayStopError]] = None,
-        event_logger: Optional[EventLoggerAdapter] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
@@ -228,7 +226,6 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
-            event_logger: The event logger to log events.
 
         """
         cloud_provider_errors = cloud_provider_errors or []
@@ -246,7 +243,6 @@ class Reconciler:
             cloud_provider_errors=cloud_provider_errors,
             ray_install_errors=ray_install_errors,
             ray_stop_errors=ray_stop_errors,
-            event_logger=event_logger,
         )
 
         Reconciler._step_next(
@@ -257,7 +253,6 @@ class Reconciler:
             ray_cluster_resource_state=ray_cluster_resource_state,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
-            event_logger=event_logger,
             _logger=_logger,
         )
         return autoscaling_state
@@ -321,7 +316,6 @@ class Reconciler:
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
         ray_stop_errors: List[RayStopError],
-        event_logger: Optional[EventLoggerAdapter] = None,
     ):
         """
         Reconcile the instance states of the instance manager from external states like
@@ -369,7 +363,6 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
-            event_logger: The event logger to log events.
 
         """
 
@@ -401,7 +394,6 @@ class Reconciler:
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
-        event_logger: Optional[EventLoggerAdapter] = None,
         _logger: Optional[logging.Logger] = None,
     ):
         """
@@ -434,7 +426,6 @@ class Reconciler:
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
             autoscaling_config: The autoscaling config.
-            event_logger: The event logger to log events.
             _logger: The logger (for testing).
 
         """
@@ -455,7 +446,6 @@ class Reconciler:
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
-            event_logger=event_logger,
         )
 
         Reconciler._handle_instances_launch(
@@ -1234,7 +1224,6 @@ class Reconciler:
         ray_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
-        event_logger: Optional[EventLoggerAdapter] = None,
     ) -> None:
         """
         Scale the cluster based on the resource state and the resource scheduler's
@@ -1250,7 +1239,6 @@ class Reconciler:
             ray_state: The ray cluster's resource state.
             scheduler: The resource scheduler to make scaling decisions.
             autoscaling_config: The autoscaling config.
-            event_logger: The event logger to log events.
 
         """
 
