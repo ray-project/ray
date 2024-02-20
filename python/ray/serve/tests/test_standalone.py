@@ -532,8 +532,7 @@ def test_http_head_only(ray_cluster):
 
     # They should all be placed on the head node
     cpu_per_nodes = {
-        r["CPU"]
-        for r in ray._private.state.available_resources_per_node().values()
+        r["CPU"] for r in ray._private.state.available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
 
