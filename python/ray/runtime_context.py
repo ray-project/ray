@@ -355,8 +355,7 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        x = pasre_pg_formatted_resources_to_original(resource_map)
-        return x
+        return pasre_pg_formatted_resources_to_original(resource_map)
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.

@@ -44,7 +44,7 @@ const std::string kCPU_ResourceLabel = "CPU";
 const std::string kGPU_ResourceLabel = "GPU";
 const std::string kObjectStoreMemory_ResourceLabel = "object_store_memory";
 const std::string kMemory_ResourceLabel = "memory";
-const std::string kBundle_ResourceLabel = "__ray_reserved_bundle_resource__";
+const std::string kBundle_ResourceLabel = "bundle";
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {

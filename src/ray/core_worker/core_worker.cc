@@ -2228,25 +2228,16 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return Status::OK();
 }
 
-namespace {
-bool MatchBundleResource(const std::string &str) {
-  std::stringstream pattern;
-  pattern << "^" << kBundle_ResourceLabel << "_group_([0-9a-f_]+)";
-  static const std::regex resource_pattern(pattern.str());
-  return std::regex_match(str, resource_pattern);
-}
-}  // namespace
-
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
-      if (MatchBundleResource(resource.first)) {
+      if (resource.first == kBundle_ResourceLabel) {
         std::ostringstream stream;
         stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
-               << "allowed to be used in placement group naming. ";
+               << "allowed to be used in placement group. ";
         return Status::Invalid(stream.str());
       }
     }
@@ -2778,15 +2769,6 @@ Status CoreWorker::ExecuteTask(
     absl::MutexLock lock(&mutex_);
     current_tasks_.emplace(task_spec.TaskId(), task_spec);
     if (resource_ids) {
-      // kBundle_ResourceLabel* is a phantom resource used only for scheduling.
-      // Since the task is already scheduled onto the worker, we don't need it.
-      for (auto iter = resource_ids->begin(); iter != resource_ids->end();) {
-        if (MatchBundleResource(iter->first)) {
-          iter = resource_ids->erase(iter);
-        } else {
-          iter++;
-        }
-      }
       resource_ids_ = resource_ids;
     }
   }
