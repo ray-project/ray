@@ -549,7 +549,7 @@ def _fetch_metadata_serialization_wrapper(
             "concurency of metadata fetching tasks by setting "
             "`NUM_CPUS_FOR_META_FETCH_TASK` to a larger value. For example:\n"
             "```\n"
-            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n" # noqa: E501
+            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n"  # noqa: E501
             "```\n"
             "To change which exceptions to retry on, set "
             "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
