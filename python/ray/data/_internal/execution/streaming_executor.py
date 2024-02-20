@@ -208,12 +208,8 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         try:
             # Run scheduling loop until complete.
-            while True:
-                # use process_time to avoid timing ray.wait in _scheduling_loop_step
-                with self._initial_stats.streaming_exec_schedule_s.timer():
-                    continue_sched = self._scheduling_loop_step(self._topology)
-                if not continue_sched or self._shutdown:
-                    break
+            while self._scheduling_loop_step(self._topology) and not self._shutdown:
+                pass
         except Exception as e:
             # Propagate it to the result iterator.
             self._output_node.mark_finished(e)
@@ -240,7 +236,6 @@ class StreamingExecutor(Executor, threading.Thread):
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict()
-        stats.streaming_exec_schedule_s = self._initial_stats.streaming_exec_schedule_s
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
