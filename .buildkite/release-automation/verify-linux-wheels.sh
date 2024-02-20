@@ -14,9 +14,6 @@ if [[ -z "$RAY_HASH" ]]; then
     exit 1
 fi
 
-export RAY_VERSION="${RAY_VERSION}"
-export RAY_HASH="${RAY_HASH}"
-
 export PATH="/root/miniconda3/bin:$PATH"
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
