@@ -308,7 +308,7 @@ class Reconciler:
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
-                details=launch_error.details,
+                details=str(launch_error),
             )
         # No update.
         return None
@@ -440,7 +440,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATION_FAILED,
-                details=failure.details,
+                details=str(failure),
             )
             logger.debug(
                 "Updating {}({}) with {}".format(
