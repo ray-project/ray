@@ -40,9 +40,7 @@ if __name__ == "__main__":
     print("abs_config_path={}".format(abs_config_path))
 
     py_files = Path(abs_config_path).rglob("*.py")
-    py_files = sorted(
-        map(lambda path: str(path.absolute()), py_files), reverse=True
-    )
+    py_files = sorted(map(lambda path: str(path.absolute()), py_files), reverse=True)
 
     # Run all tests in the found yaml files.
     results = run_learning_tests_from_yaml_or_py(
