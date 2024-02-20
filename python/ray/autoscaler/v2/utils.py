@@ -155,6 +155,35 @@ class ResourceRequestUtil(ProtobufUtil):
         return reqs
 
     @staticmethod
+    def to_resource_map(
+        request: ResourceRequest,
+    ) -> Dict[str, float]:
+        """
+        Convert the resource request by count to resource map.
+        Args:
+            request: the resource request
+        Returns:
+            resource_map: the resource map
+        """
+        resource_map = defaultdict(float)
+        for k, v in request.resources_bundle.items():
+            resource_map[k] += v
+        return dict(resource_map)
+
+    @staticmethod
+    def to_resource_maps(
+        requests: List[ResourceRequest],
+    ) -> List[Dict[str, float]]:
+        """
+        Convert the resource requests by count to resource map.
+        Args:
+            requests: the resource requests
+        Returns:
+            resource_maps: list of resource map
+        """
+        return [ResourceRequestUtil.to_resource_map(r) for r in requests]
+
+    @staticmethod
     def make(
         resources_map: Dict[str, float],
         constraints: Optional[List[Tuple[PlacementConstraintType, str, str]]] = None,

@@ -71,9 +71,7 @@ class SchedulingReply:
     # To terminate.
     to_terminate: List[TerminationRequest] = field(default_factory=list)
     # The infeasible resource bundles.
-    infeasible_resource_requests: List[ResourceRequestByCount] = field(
-        default_factory=list
-    )
+    infeasible_resource_requests: List[ResourceRequest] = field(default_factory=list)
     # The infeasible gang resource bundles.
     infeasible_gang_resource_requests: List[GangResourceRequest] = field(
         default_factory=list
@@ -342,17 +340,20 @@ class SchedulingNode:
             if not self._try_schedule_one(r, is_constraint):
                 unschedulable_requests.append(r)
 
-        score = self._compute_score()
+        score = self._compute_score(is_constraint)
 
         return unschedulable_requests, score
 
-    def _compute_score(self) -> UtilizationScore:
+    def _compute_score(self, is_constraint: bool) -> UtilizationScore:
         """
         Compute the utilization score for this node with respect to the current resource
         request being scheduled.
 
         A "higher" score means that this node is more suitable for scheduling the
         current scheduled resource requests.
+
+        Args:
+            is_constraint: Whether the requests are from cluster constraints.
 
         The score is a tuple of 4 values:
             1. Whether this node is a GPU node and the current resource request has
@@ -378,13 +379,26 @@ class SchedulingNode:
         Returns:
             A utilization score for this node.
         """
+        sched_resources = (
+            self.sched_constraints if is_constraint else self.sched_requests
+        )
+        node_available_resources = (
+            self.available_resources_for_constraints
+            if is_constraint
+            else self.available_resources
+        )
 
         # Compute the number of resource types being scheduled.
         num_matching_resource_types = 0
-        for req in self.sched_requests:
-            for resource_name in req.resources_bundle.keys():
-                if resource_name in self.total_resources:
-                    num_matching_resource_types += 1
+        sched_resource_types = set()
+        for req in sched_resources:
+            for resource_name, v in req.resources_bundle.items():
+                if v > 0:
+                    sched_resource_types.add(resource_name)
+
+        for sched_resource_type in sched_resource_types:
+            if sched_resource_type in self.total_resources:
+                num_matching_resource_types += 1
 
         # Compute the utilization rate for each resource type
         util_by_resources = []
@@ -392,10 +406,10 @@ class SchedulingNode:
             if v == 0:
                 # Skip any zero values.
                 continue
-            if k in self.available_resources:
-                util = (v - self.available_resources.get(k, 0)) / v
+            if k in node_available_resources:
+                util = (v - node_available_resources.get(k, 0)) / v
                 assert util >= 0 and util <= 1, f"Invalid utilization: {util}"
-                util_by_resources.append(util)
+                util_by_resources.append(v * (util**3))
 
         # Prefer not to launch a GPU node if there aren't any GPU requirements in the
         # resource bundle.
@@ -404,9 +418,7 @@ class SchedulingNode:
             # TODO: we should also generalize this optimization for accelerators.
             # https://github.com/ray-project/ray/issues/43079
             is_gpu_node = self.total_resources.get("GPU", 0) > 0
-            any_gpu_requests = any(
-                "GPU" in r.resources_bundle for r in self.sched_requests
-            )
+            any_gpu_requests = any("GPU" in r.resources_bundle for r in sched_resources)
             if is_gpu_node and not any_gpu_requests:
                 gpu_ok = False
 
