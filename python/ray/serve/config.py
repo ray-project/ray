@@ -63,10 +63,10 @@ class AutoscalingConfig(BaseModel):
     upscale_delay_s: NonNegativeFloat = 30.0
 
     # Cloudpickled policy definition.
-    serialized_policy_def: bytes = b""
+    _serialized_policy_def: bytes = b""
 
     # Custom autoscaling config. Defaults to the request-based autoscaler.
-    policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
+    _policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -92,7 +92,7 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    @validator("policy", always=True)
+    @validator("_policy", always=True, check_fields=False)
     def serialize_policy(cls, policy, values) -> str:
         """Serialize policy with cloudpickle.
 
@@ -108,8 +108,8 @@ class AutoscalingConfig(BaseModel):
         policy_path = policy
         policy = import_attr(policy)
 
-        if not values.get("serialized_policy_def"):
-            values["serialized_policy_def"] = cloudpickle.dumps(policy)
+        if not values.get("_serialized_policy_def"):
+            values["_serialized_policy_def"] = cloudpickle.dumps(policy)
 
         return policy_path
 
@@ -121,7 +121,7 @@ class AutoscalingConfig(BaseModel):
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self.serialized_policy_def)
+        return cloudpickle.loads(self._serialized_policy_def)
 
     def get_upscale_smoothing_factor(self) -> PositiveFloat:
         return self.upscale_smoothing_factor or self.smoothing_factor

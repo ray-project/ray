@@ -209,7 +209,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     application = details["applications"]["default"]
     deployment = application["deployments"]["autoscaling_app"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
-    assert "serialized_policy_def" not in autoscaling_config
+    assert "_serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":

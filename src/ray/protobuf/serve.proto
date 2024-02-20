@@ -62,11 +62,11 @@ message AutoscalingConfig {
   optional double downscale_smoothing_factor = 11;
 
   // The cloudpickled policy definition.
-  bytes serialized_policy_def = 12;
+  bytes _serialized_policy_def = 12;
 
   // The import path of the policy if user passed a string. Will be the concatenation
   // of the policy module and the policy name if user passed a callable.
-  string policy = 13;
+  string _policy = 13;
 }
 
 //[Begin] LOGGING CONFIG

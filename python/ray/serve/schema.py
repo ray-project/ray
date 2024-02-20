@@ -1099,7 +1099,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     and "autoscaling_config" in deployment["deployment_config"]
                 ):
                     deployment["deployment_config"]["autoscaling_config"].pop(
-                        "serialized_policy_def", None
+                        "_serialized_policy_def", None
                     )
 
         return values
