@@ -20,15 +20,6 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
 
-### Ray Data
-py_test(
-    name = "datasets_train",
-    size = "medium",
-    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
-    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
-)
-
 py_test(
     name = "plot_hyperparameter",
     size = "small",
@@ -59,15 +50,6 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/batch_prediction.ipynb"]
 )
 
-py_test(
-    name = "batch_training",
-    size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml"],
-    data = ["//doc/source/ray-core/examples:core_examples"],
-    args = ["--path", "doc/source/ray-core/examples/batch_training.ipynb"]
-)
 
 py_test(
     name = "plot_parameter_server",
@@ -118,7 +100,7 @@ py_test(
     size = "medium",
     main = "source/ray-core/doc_code/ray_oom_prevention.py",
     srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
-    tags = ["exclusive", "xcommit", "team:core"]
+    tags = ["exclusive", "mem_pressure", "team:core"]
 )
 
 py_test_run_all_subdirectory(
@@ -272,7 +254,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "large",
+    size = "enormous",
     include = ["external/*.py"],
     exclude = [],
     extra_srcs = [],
@@ -289,6 +271,7 @@ doctest(
         include=["source/**/*.rst", "source/**/*.md"],
         exclude=[
             "source/ray-contribute/getting-involved.rst",
+            "source/ray-contribute/testing-tips.rst",
             "source/ray-core/handling-dependencies.rst",
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
@@ -299,17 +282,44 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/**/*.rst",
+            "source/train/**/*.md",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
-            "source/templates/04_finetuning_llms_with_deepspeed/README.md"
+            "source/templates/04_finetuning_llms_with_deepspeed/README.md",
         ]
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[train]",
+    files = glob(
+        include=[
+            "source/train/**/*.rst",
+            "source/train/**/*.md"
+        ],
+        exclude=[
+            # GPU
+            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/using-gpus.rst"
+        ]
+    ),
+    tags = ["team:ml"]
+)
+
+doctest(
+    name="doctest[train]",
+    files = [
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst"
+    ],
+    tags = ["team:ml"],
+    gpu = True,
 )
 
 
@@ -349,10 +359,3 @@ doctest(
     gpu = True
 )
 
-doctest(
-    name="quarantine",
-    files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
-    ],
-    tags = ["team:data"],
-)

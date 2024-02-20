@@ -22,7 +22,7 @@ the end of each training epoch.
 
     .. tab-item:: PyTorch
 
-        .. code-block:: python
+        .. testcode::
 
             from ray import train
 
@@ -36,7 +36,8 @@ the end of each training epoch.
 
         In PyTorch Lightning, we use a callback to call ``train.report()``.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from ray import train
             import pytorch_lightning as pl

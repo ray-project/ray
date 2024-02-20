@@ -219,6 +219,14 @@ class ResourceSpec(
                         f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
                     ] = 1
 
+                    from ray._private.usage import usage_lib
+
+                    usage_lib.record_hardware_usage(accelerator_type)
+                additional_resources = (
+                    accelerator_manager.get_current_node_additional_resources()
+                )
+                if additional_resources:
+                    resources.update(additional_resources)
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()
         avail_memory = ray._private.utils.estimate_available_memory()

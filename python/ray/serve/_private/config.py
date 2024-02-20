@@ -2,7 +2,8 @@ import inspect
 import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.descriptor import FieldDescriptor
+from google.protobuf.message import Message
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
@@ -12,6 +13,7 @@ from ray._private.pydantic_compat import (
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
+    PositiveInt,
     validator,
 )
 from ray._private.serialization import pickle_dumps
@@ -23,12 +25,15 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
+    NEW_DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
+from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
 from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 
@@ -46,38 +51,68 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
+def _proto_to_dict(proto: Message) -> Dict:
+    """Recursively convert a protobuf into a Python dictionary.
+
+    This is an alternative to protobuf's `MessageToDict`. Unlike
+    `MessageToDict`, this function doesn't add an extra base64
+    encoding to bytes when constructing a json response.
+    """
+    data = {}
+    # Fill data with non-empty fields.
+    for field, value in proto.ListFields():
+        # Recursively call if the field is another protobuf.
+        if field.type == FieldDescriptor.TYPE_MESSAGE:
+            data[field.name] = _proto_to_dict(value)
+        else:
+            data[field.name] = value
+
+    # Fill data default values.
+    for field in proto.DESCRIPTOR.fields:
+        if (
+            field.name not in data  # skip the fields that are already set
+            and field.type != FieldDescriptor.TYPE_MESSAGE  # skip nested messages
+            and not field.containing_oneof  # skip optional fields
+        ):
+            data[field.name] = field.default_value
+
+    return data
+
+
 class DeploymentConfig(BaseModel):
     """Internal datastructure wrapping config options for a deployment.
 
     Args:
-        num_replicas (Optional[int]): The number of processes to start up that
+        num_replicas: The number of processes to start up that
             handles requests to this deployment. Defaults to 1.
-        max_concurrent_queries (Optional[int]): The maximum number of queries
+        max_concurrent_queries: The maximum number of queries
             that is sent to a replica of this deployment without receiving
             a response. Defaults to 100.
-        user_config (Optional[Any]): Arguments to pass to the reconfigure
+        user_config: Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
             user_config is not None. Must be JSON-serializable.
-        graceful_shutdown_wait_loop_s (Optional[float]): Duration
+        graceful_shutdown_wait_loop_s: Duration
             that deployment replicas wait until there is no more work to
             be done before shutting down.
-        graceful_shutdown_timeout_s (Optional[float]):
-            Controller waits for this duration to forcefully kill the replica
-            for shutdown.
-        health_check_period_s (Optional[float]):
-            Frequency at which the controller health checks replicas.
-        health_check_timeout_s (Optional[float]):
-            Timeout that the controller waits for a response from the
-            replica's health check before marking it unhealthy.
-        user_configured_option_names (Set[str]):
-            The names of options manually configured by the user.
+        graceful_shutdown_timeout_s: Controller waits for this duration
+            to forcefully kill the replica for shutdown.
+        health_check_period_s: Frequency at which the controller health
+            checks replicas.
+        health_check_timeout_s: Timeout that the controller waits for a
+            response from the replica's health check before marking it
+            unhealthy.
+        autoscaling_config: Autoscaling configuration.
+        logging_config: Configuration for deployment logs.
+        user_configured_option_names: The names of options manually
+            configured by the user.
     """
 
-    num_replicas: NonNegativeInt = Field(
+    num_replicas: Optional[NonNegativeInt] = Field(
         default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
-    max_concurrent_queries: Optional[int] = Field(
-        default=None, update_type=DeploymentOptionUpdateType.NeedsReconfigure
+    max_concurrent_queries: PositiveInt = Field(
+        default=DEFAULT_MAX_CONCURRENT_QUERIES,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
     user_config: Any = Field(
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
@@ -102,7 +137,7 @@ class DeploymentConfig(BaseModel):
     )
 
     autoscaling_config: Optional[AutoscalingConfig] = Field(
-        default=None, update_type=DeploymentOptionUpdateType.LightWeight
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
     # This flag is used to let replica know they are deployed from
@@ -118,22 +153,17 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
+    logging_config: Optional[dict] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
-
-    # Dynamic default for max_concurrent_queries
-    @validator("max_concurrent_queries", always=True)
-    def set_max_queries_by_mode(cls, v, values):  # noqa 805
-        if v is None:
-            v = DEFAULT_MAX_CONCURRENT_QUERIES
-        else:
-            if v <= 0:
-                raise ValueError("max_concurrent_queries must be >= 0")
-        return v
 
     @validator("user_config", always=True)
     def user_config_json_serializable(cls, v):
@@ -144,6 +174,22 @@ class DeploymentConfig(BaseModel):
                 json.dumps(v)
             except TypeError as e:
                 raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
+        return v
+
+    @validator("logging_config", always=True)
+    def logging_config_valid(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise TypeError(
+                f"Got invalid type '{type(v)}' for logging_config. "
+                "Expected a dictionary."
+            )
+        # Handle default value
+        from ray.serve.schema import LoggingConfig
+
+        v = LoggingConfig(**v).dict()
 
         return v
 
@@ -159,6 +205,13 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
+        if data.get("logging_config"):
+            if "encoding" in data["logging_config"]:
+                data["logging_config"]["encoding"] = EncodingTypeProto.Value(
+                    data["logging_config"]["encoding"]
+                )
+
+            data["logging_config"] = LoggingConfigProto(**data["logging_config"])
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
@@ -169,14 +222,9 @@ class DeploymentConfig(BaseModel):
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
-        data = MessageToDict(
-            proto,
-            including_default_value_fields=True,
-            preserving_proto_field_name=True,
-            use_integers_for_enums=True,
-        )
+        data = _proto_to_dict(proto)
         if "user_config" in data:
-            if data["user_config"] != "":
+            if data["user_config"] != b"":
                 deployment_language = (
                     data["deployment_language"]
                     if "deployment_language" in data
@@ -189,7 +237,6 @@ class DeploymentConfig(BaseModel):
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
-                    # after MessageToDict, bytes data has been deal with base64
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None
@@ -206,6 +253,12 @@ class DeploymentConfig(BaseModel):
             data["user_configured_option_names"] = set(
                 data["user_configured_option_names"]
             )
+        if "logging_config" in data:
+            if "encoding" in data["logging_config"]:
+                data["logging_config"]["encoding"] = EncodingTypeProto.Name(
+                    data["logging_config"]["encoding"]
+                )
+
         return cls(**data)
 
     @classmethod
@@ -243,6 +296,45 @@ class DeploymentConfig(BaseModel):
             config.__setattr__(key, val)
 
         return config
+
+
+def handle_num_replicas_auto(
+    max_concurrent_queries: Union[int, DEFAULT],
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig, DEFAULT]],
+):
+    """Return modified `max_concurrent_queries` and `autoscaling_config`
+    for when num_replicas="auto".
+
+    If `max_concurrent_queries` is unspecified (DEFAULT.VALUE), returns
+    the modified value NEW_DEFAULT_MAX_CONCURRENT_QUERIES. Otherwise,
+    doesn't change `max_concurrent_queries`.
+
+    If `autoscaling_config` is unspecified, returns the modified value
+    AutoscalingConfig.default().
+    If it is specified, the specified fields in `autoscaling_config`
+    override that of AutoscalingConfig.default().
+    """
+
+    if max_concurrent_queries is DEFAULT.VALUE:
+        max_concurrent_queries = NEW_DEFAULT_MAX_CONCURRENT_QUERIES
+
+    if autoscaling_config in [DEFAULT.VALUE, None]:
+        # If autoscaling config wasn't specified, use default
+        # configuration
+        autoscaling_config = AutoscalingConfig.default()
+    else:
+        # If autoscaling config was specified, values specified in
+        # autoscaling config overrides the default configuration
+        default_config = AutoscalingConfig.default().dict(exclude_unset=True)
+        autoscaling_config = (
+            autoscaling_config
+            if isinstance(autoscaling_config, dict)
+            else autoscaling_config.dict(exclude_unset=True)
+        )
+        default_config.update(autoscaling_config)
+        autoscaling_config = AutoscalingConfig(**default_config)
+
+    return max_concurrent_queries, autoscaling_config
 
 
 class ReplicaConfig:

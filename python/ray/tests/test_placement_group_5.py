@@ -1,14 +1,19 @@
+import asyncio
+import sys
+import time
 from functools import reduce
 from itertools import chain
-import sys
 
 import pytest
 
 import ray
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.tests.test_placement_group import are_pairwise_unique
+from ray.util.state import list_actors, list_placement_groups
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -356,6 +361,93 @@ def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strat
 
     # Test all tasks will not hang
     ray.get([manage_tasks.remote(i) for i in range(20)], timeout=50)
+
+
+MyPlugin = "MyPlugin"
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_placement_group_5.HangPlugin"
+PLUGIN_TIMEOUT = 10
+
+
+class HangPlugin(RuntimeEnvPlugin):
+    name = MyPlugin
+
+    async def create(
+        self,
+        uri,
+        runtime_env,
+        ctx,
+        logger,  # noqa: F821
+    ) -> float:
+        await asyncio.sleep(PLUGIN_TIMEOUT)
+
+
+@staticmethod
+def validate(runtime_env_dict: dict) -> str:
+    return 1
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + MY_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_placement_group_leaks(set_runtime_env_plugins, shutdown_only):
+    """Handles https://github.com/ray-project/ray/pull/42942
+
+    Handle an edge case where if a task is scheduled & worker is not
+    started before pg is removed, it leaks.
+    """
+    ray.init(num_cpus=1, _system_config={"prestart_worker_first_driver": False})
+
+    @ray.remote
+    class Actor:
+        pass
+
+    @ray.remote
+    def f():
+        pass
+
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    actor = Actor.options(  # noqa
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+        ),
+        runtime_env={MyPlugin: {"name": "f2"}},
+    ).remote()
+
+    # The race condition is triggered
+    # if scheduling succeeds, but a worker is not started.
+    # So we should make sure to wait until actor is scheduled.
+    # Since there's no API to get that timing, we just wait sufficient time.
+    time.sleep(PLUGIN_TIMEOUT // 2)
+
+    # Verify pg resources are created.
+    def verify_pg_resources_created():
+        r_keys = ray.available_resources().keys()
+        return any("group" in k for k in r_keys)
+
+    wait_for_condition(verify_pg_resources_created)
+
+    ray.util.remove_placement_group(pg)
+    wait_for_condition(lambda: list_placement_groups()[0].state == "REMOVED")
+
+    # Verify pg resources are cleaned up.
+    def verify_pg_resources_cleaned():
+        r_keys = ray.available_resources().keys()
+        return all("group" not in k for k in r_keys)
+
+    wait_for_condition(verify_pg_resources_cleaned, timeout=30)
+
+    # Verify an actor is killed properly.
+
+    def verify_actor_killed():
+        state = list_actors()[0].state
+        return state == "DEAD"
+
+    wait_for_condition(verify_actor_killed)
 
 
 if __name__ == "__main__":

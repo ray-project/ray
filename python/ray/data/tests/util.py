@@ -47,6 +47,14 @@ def column_udf(col, udf):
     return wraps
 
 
+def column_udf_class(col, udf):
+    class UDFClass:
+        def __call__(self, row):
+            return {col: udf(row[col])}
+
+    return UDFClass
+
+
 # Ex: named_values("id", [1, 2, 3])
 # Ex: named_values(["id", "id2"], [(1, 1), (2, 2), (3, 3)])
 def named_values(col_names, tuples):

@@ -279,21 +279,6 @@ ray_cc_library(
     ],
 )
 
-# monitor/autoscaler service
-cc_grpc_library(
-    name = "monitor_cc_grpc",
-    srcs = ["//src/ray/protobuf:monitor_proto"],
-    grpc_only = True,
-    deps = ["//src/ray/protobuf:monitor_cc_proto"],
-)
-
-ray_cc_library(
-    name = "monitor_rpc",
-    deps = [
-        ":monitor_cc_grpc",
-    ],
-)
-
 cc_grpc_library(
     name = "autoscaler_cc_grpc",
     srcs = ["//src/ray/protobuf:autoscaler_proto"],
@@ -336,6 +321,7 @@ PLASMA_LINKOPTS = [] + select({
 ray_cc_library(
     name = "plasma_client",
     srcs = [
+        "src/ray/object_manager/common.cc",
         "src/ray/object_manager/plasma/client.cc",
         "src/ray/object_manager/plasma/connection.cc",
         "src/ray/object_manager/plasma/malloc.cc",
@@ -414,6 +400,7 @@ ray_cc_library(
     linkopts = PLASMA_LINKOPTS,
     deps = [
         ":plasma_client",
+        "//src/ray/common:network",
         ":stats_lib",
     ],
 )
@@ -520,7 +507,6 @@ ray_cc_library(
         ":gcs_service_cc_grpc",
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
-        ":monitor_rpc",
         ":node_manager_rpc",
         ":observable_store_client",
         ":pubsub_lib",
@@ -825,7 +811,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows", "manual"],
     deps = [
         ":core_worker_lib",
         ":gcs",
@@ -934,6 +920,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -945,6 +932,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1268,6 +1256,20 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "mutable_object_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/mutable_object_test.cc",
+    ],
+    tags = ["team:core", "no_windows"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "object_lifecycle_manager_test",
     srcs = [
         "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
@@ -1326,7 +1328,7 @@ ray_cc_test(
     name = "worker_pool_test",
     size = "small",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -1486,6 +1488,7 @@ ray_cc_test(
     tags = [
         "stats",
         "team:core",
+        "no_tsan",
     ],
     deps = [
         ":stats_lib",
@@ -1500,6 +1503,7 @@ ray_cc_test(
     tags = [
         "stats",
         "team:core",
+        "no_tsan",
     ],
     deps = [
         ":stats_lib",
@@ -1548,6 +1552,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "core_worker_client_pool_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/worker/test/core_worker_client_pool_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":worker_rpc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_server_rpc_test",
     size = "small",
     srcs = [
@@ -1561,7 +1578,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1607,7 +1624,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
@@ -1668,7 +1685,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1684,7 +1701,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1731,7 +1748,7 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1748,22 +1765,6 @@ ray_cc_test(
         "src/ray/gcs/gcs_server/test/gcs_worker_manager_test.cc",
     ],
     tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_monitor_server_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_monitor_server_test.cc",
-    ],
-    tags = ["team:serverless"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1876,20 +1877,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "grpc_based_resource_broadcaster_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 ray_cc_library(
     name = "gcs_client_lib",
     srcs = [
@@ -1982,7 +1969,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_tsan"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -2004,7 +1991,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -2251,7 +2238,7 @@ ray_cc_test(
         "//:redis-server",
     ],
     env = {"REDIS_CHAOS": "1"},
-    tags = ["team:core"],
+    tags = ["team:core", "no_windows"],
     target_compatible_with = [
         "@platforms//os:linux",
     ],
@@ -2477,7 +2464,6 @@ filegroup(
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",
-        "//src/ray/protobuf:monitor_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",

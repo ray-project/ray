@@ -15,7 +15,7 @@ The main interface to control parallelism in your training code is to set the
 number of workers. This can be done by passing the ``num_workers`` attribute to
 the :class:`~ray.train.ScalingConfig`:
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
 
@@ -30,7 +30,7 @@ To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
 This will request one GPU per training worker. In the example below, training will
 run on 8 GPUs (8 workers, each using one GPU).
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
 
@@ -48,7 +48,7 @@ in your training function so that the GPUs can be detected and used
 
 You can get the associated devices with :meth:`ray.train.torch.get_device`.
 
-.. code-block:: python
+.. testcode::
 
     import torch
     from ray.train import ScalingConfig
@@ -61,7 +61,6 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
         device = get_device()
         assert device == torch.device("cuda:0")
 
-
     trainer = TorchTrainer(
         train_func,
         scaling_config=ScalingConfig(
@@ -71,6 +70,87 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
     )
     trainer.fit()
 
+Assigning multiple GPUs to a worker
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Sometimes you might want to allocate multiple GPUs for a worker. For example, 
+you can specify `resources_per_worker={"GPU": 2}` in the `ScalingConfig` if you want to 
+assign 2 GPUs for each worker.
+
+You can get a list of associated devices with :meth:`ray.train.torch.get_devices`.
+
+.. testcode::
+
+    import torch
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer, get_device, get_devices
+
+
+    def train_func(config):
+        assert torch.cuda.is_available()
+
+        device = get_device()
+        devices = get_devices()
+        assert device == torch.device("cuda:0")
+        assert devices == [torch.device("cuda:0"), torch.device("cuda:1")]
+
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            use_gpu=True,
+            resources_per_worker={"GPU": 2}
+        )
+    )
+    trainer.fit()
+
+
+(PyTorch) Setting the communication backend 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
+for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
+
+If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig` 
+and pass it into the :class:`~ray.train.torch.TorchTrainer`.
+
+.. testcode::
+    :hide:
+
+    num_training_workers = 1
+
+.. testcode::
+
+    from ray.train.torch import TorchConfig, TorchTrainer
+
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=num_training_workers,
+            use_gpu=True, # Defaults to NCCL
+        ),
+        torch_config=TorchConfig(backend="gloo"),
+    )
+
+(NCCL) Setting the communication network interface
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using NCCL for distributed training, you can configure the network interface cards
+that are used for communicating between GPUs by setting the 
+`NCCL_SOCKET_IFNAME <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname>`__ 
+environment variable.
+
+To ensure that the environment variable is set for all training workers, you can pass it
+in a :ref:`Ray runtime environment <runtime-environments>`:
+
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens5"}}
+    ray.init(runtime_env=runtime_env)
+
+    trainer = TorchTrainer(...)
 
 Setting the resources per worker
 --------------------------------
@@ -78,7 +158,7 @@ If you want to allocate more than one CPU or GPU per training worker, or if you
 defined :ref:`custom cluster resources <cluster-resources>`, set
 the ``resources_per_worker`` attribute:
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
 
@@ -87,7 +167,7 @@ the ``resources_per_worker`` attribute:
         resources_per_worker={
             "CPU": 4,
             "GPU": 2,
-        }
+        },
         use_gpu=True,
     )
 
@@ -99,7 +179,7 @@ the ``resources_per_worker`` attribute:
 You can also instruct Ray Train to use fractional GPUs. In that case, multiple workers
 will be assigned the same CUDA device.
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
 
@@ -108,36 +188,10 @@ will be assigned the same CUDA device.
         resources_per_worker={
             "CPU": 4,
             "GPU": 0.5,
-        }
+        },
         use_gpu=True,
     )
 
-
-Setting the communication backend (PyTorch)
--------------------------------------------
-
-.. note::
-
-    This is an advanced setting. In most cases, you don't have to change this setting.
-
-You can set the PyTorch distributed communication backend (e.g. GLOO or NCCL) by passing a
-:class:`~ray.train.torch.TorchConfig` to the :class:`~ray.train.torch.TorchTrainer`.
-
-See the `PyTorch API reference <https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group>`__
-for valid options.
-
-.. code-block:: python
-
-    from ray.train.torch import TorchConfig, TorchTrainer
-
-    trainer = TorchTrainer(
-        train_func,
-        scaling_config=ScalingConfig(
-            num_workers=num_training_workers,
-            use_gpu=True,
-        ),
-        torch_config=TorchConfig(backend="gloo"),
-    )
 
 
 .. _train_trainer_resources:
@@ -153,7 +207,7 @@ This object often only manages lightweight communication between the training wo
 You can still specify its resources, which can be useful if you implemented your own
 Trainer that does heavier processing.
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
 
@@ -170,7 +224,7 @@ to start 4 training workers a 2 CPUs, this will not work, as the total number
 of required CPUs will be 9 (4 * 2 + 1). In that case, you can specify the trainer
 resources to use 0 CPUs:
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
 
@@ -183,4 +237,3 @@ resources to use 0 CPUs:
             "CPU": 0,
         }
     )
-

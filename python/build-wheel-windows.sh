@@ -5,11 +5,7 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=("3.8"
-             "3.9"
-             "3.10"
-             "3.11"
-             )
+PY_VERSIONS=("3.8" "3.9" "3.10" "3.11")
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
@@ -94,7 +90,10 @@ build_wheel_windows() {
 
   local local_dir="python/dist"
   for pyversion in "${PY_VERSIONS[@]}"; do
-    if [ -z "${pyversion}" ]; then continue; fi
+    if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${pyversion}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then
+      continue
+    fi
+
     bazel_preclean
     git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
     git checkout -q -f -- .

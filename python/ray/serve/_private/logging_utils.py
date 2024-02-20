@@ -7,7 +7,6 @@ from typing import Optional, Tuple
 import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    DEBUG_LOG_ENV_VAR,
     RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
@@ -15,6 +14,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_DEPLOYMENT,
+    SERVE_LOG_EXTRA_FIELDS,
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_MESSAGE,
     SERVE_LOG_RECORD_FORMAT,
@@ -24,6 +24,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_TIME,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.schema import EncodingType, LoggingConfig
 
 try:
     import cProfile
@@ -51,7 +52,7 @@ class ServeJSONFormatter(logging.Formatter):
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
         }
-        if component_type and component_type == ServeComponentType.DEPLOYMENT:
+        if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
             self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
         else:
@@ -74,12 +75,27 @@ class ServeJSONFormatter(logging.Formatter):
             ]
         if SERVE_LOG_ROUTE in record.__dict__:
             record_format[SERVE_LOG_ROUTE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE]
+
         if SERVE_LOG_APPLICATION in record.__dict__:
             record_format[SERVE_LOG_APPLICATION] = SERVE_LOG_RECORD_FORMAT[
                 SERVE_LOG_APPLICATION
             ]
 
-        record_format[SERVE_LOG_MESSAGE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
+        message_formatter = logging.Formatter(
+            SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
+        )
+        record_format[SERVE_LOG_MESSAGE] = message_formatter.format(record)
+
+        if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
+            if not isinstance(record.__dict__[SERVE_LOG_EXTRA_FIELDS], dict):
+                raise ValueError(
+                    f"Expected a dictionary passing into {SERVE_LOG_EXTRA_FIELDS}, "
+                    f"but got {type(record.__dict__[SERVE_LOG_EXTRA_FIELDS])}"
+                )
+            for k, v in record.__dict__[SERVE_LOG_EXTRA_FIELDS].items():
+                if k in record_format:
+                    raise KeyError(f"Found duplicated key in the log record: {k}")
+                record_format[k] = v
 
         # create a formatter using the format string
         formatter = logging.Formatter(json.dumps(record_format))
@@ -120,8 +136,6 @@ class ServeFormatter(logging.Formatter):
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
         if SERVE_LOG_ROUTE in record.__dict__:
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE])
-        if SERVE_LOG_APPLICATION in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_APPLICATION])
         record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
         record_format += " ".join(record_formats_attrs)
 
@@ -145,6 +159,14 @@ def log_to_stderr_filter(record: logging.LogRecord) -> bool:
     return record.log_to_stderr
 
 
+def log_access_log_filter(record: logging.LogRecord) -> bool:
+    """Filters ray serve access log based on 'serve_access_log' key in `extra` dict."""
+    if not hasattr(record, "serve_access_log") or record.serve_access_log is None:
+        return True
+
+    return not record.serve_access_log
+
+
 def get_component_logger_file_path() -> Optional[str]:
     """Returns the relative file path for the Serve logger, if it exists.
 
@@ -165,12 +187,12 @@ def configure_component_logger(
     *,
     component_name: str,
     component_id: str,
+    logging_config: LoggingConfig,
     component_type: Optional[ServeComponentType] = None,
-    log_level: int = logging.INFO,
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
 ):
-    """Returns a logger to be used by a Serve component.
+    """Configure a logger to be used by a Serve component.
 
     The logger will log using a standard format to make components identifiable
     using the provided name and unique ID for this instance (e.g., replica ID).
@@ -179,9 +201,8 @@ def configure_component_logger(
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
-    logger.setLevel(log_level)
-    if os.environ.get(DEBUG_LOG_ENV_VAR, "0") != "0":
-        logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging_config.log_level)
+    logger.handlers.clear()
 
     factory = logging.getLogRecordFactory()
 
@@ -203,8 +224,12 @@ def configure_component_logger(
     stream_handler.addFilter(log_to_stderr_filter)
     logger.addHandler(stream_handler)
 
-    logs_dir = get_serve_logs_dir()
+    if logging_config.logs_dir:
+        logs_dir = logging_config.logs_dir
+    else:
+        logs_dir = get_serve_logs_dir()
     os.makedirs(logs_dir, exist_ok=True)
+
     if max_bytes is None:
         max_bytes = ray._private.worker._global_node.max_bytes
     if backup_count is None:
@@ -223,11 +248,20 @@ def configure_component_logger(
         backupCount=backup_count,
     )
     if RAY_SERVE_ENABLE_JSON_LOGGING:
+        logger.warning(
+            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
+            "'LoggingConfig' to enable json format."
+        )
+    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
         file_handler.setFormatter(
             ServeJSONFormatter(component_name, component_id, component_type)
         )
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
+
+    if logging_config.enable_access_log is False:
+        file_handler.addFilter(log_access_log_filter)
+
     logger.addHandler(file_handler)
 
 
@@ -363,7 +397,7 @@ def get_component_log_file_name(
     component_log_file_name = component_name
     if component_type is not None:
         component_log_file_name = f"{component_type}_{component_name}"
-        if component_type != ServeComponentType.DEPLOYMENT:
+        if component_type != ServeComponentType.REPLICA:
             component_name = f"{component_type}_{component_name}"
     log_file_name = LOG_FILE_FMT.format(
         component_name=component_log_file_name,

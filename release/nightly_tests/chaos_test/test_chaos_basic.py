@@ -206,14 +206,11 @@ def main():
     # Step 3
     print("Running with failures")
     start = time.time()
-    node_killer = ray.get_actor("node_killer", namespace="release_test_namespace")
+    node_killer = ray.get_actor("NodeKillerActor", namespace="release_test_namespace")
     node_killer.run.remote()
     workload(total_num_cpus, args.smoke)
     print(f"Runtime when there are many failures: {time.time() - start}")
-    print(
-        f"Total node failures: "
-        f"{ray.get(node_killer.get_total_killed_nodes.remote())}"
-    )
+    print(f"Total node failures: " f"{ray.get(node_killer.get_total_killed.remote())}")
     node_killer.stop_run.remote()
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print("Memory usage with failures.")
@@ -224,7 +221,7 @@ def main():
     ray.get(monitor_actor.stop_run.remote())
     print(
         "Total number of killed nodes: "
-        f"{ray.get(node_killer.get_total_killed_nodes.remote())}"
+        f"{ray.get(node_killer.get_total_killed.remote())}"
     )
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(

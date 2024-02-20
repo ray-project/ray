@@ -98,7 +98,7 @@ This service can be queried directly from inside the cluster, but to access it f
 
 ```console
 $ kubectl port-forward service/rayservice-sample-serve-svc 8000
-$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+$ curl -X POST -H "Content-Type: application/json" localhost:8000/summarize_translate -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
@@ -187,7 +187,7 @@ $ kubectl describe rayservice rayservice-sample
 Query the application to see a different translation in German:
 
 ```console
-$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+$ curl -X POST -H "Content-Type: application/json" localhost:8000/summarize_translate -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
 Es war die beste Zeit, es war die schlimmste Zeit .
 ```
 
@@ -231,7 +231,7 @@ In most use cases, it is recommended to enable Kubernetes autoscaling to fully u
 :::
 
 ## Load balancer
-Set up ingress to expose your Serve application with a load balancer. See [this configuration](https://github.com/ray-project/kuberay/blob/v1.0.0-rc.0/ray-operator/config/samples/ray-service-alb-ingress.yaml)
+Set up ingress to expose your Serve application with a load balancer. See [this configuration](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service-alb-ingress.yaml)
 
 :::{note}
 - Ray Serve runs HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.
@@ -246,7 +246,7 @@ Monitor your Serve application using the Ray Dashboard.
 - Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](kuberay-logging) on Kubernetes.
 
 :::{note}
-- To troubleshoot application deployment failures in Serve, you can check the Kuberay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The Kuberay operator logs contain information about the Serve application deployment event and Serve application health checks.
+- To troubleshoot application deployment failures in Serve, you can check the KubeRay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The KubeRay operator logs contain information about the Serve application deployment event and Serve application health checks.
 - You can also check the controller log and deployment log, which are located under `/tmp/ray/session_latest/logs/serve/` in both the head node pod and worker node pod. These logs contain information about specific deployment failure reasons and autoscaling events.
 :::
 

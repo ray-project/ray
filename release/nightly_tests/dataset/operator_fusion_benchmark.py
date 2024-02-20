@@ -127,7 +127,6 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument("--target-max-block-size", type=int, default=None)
-    parser.add_argument("--disable-optimizer", action="store_true", default=False)
     parser.add_argument("--num-trials", type=int, default=1)
     args = parser.parse_args()
 
@@ -154,10 +153,6 @@ if __name__ == "__main__":
 
     ctx = DataContext.get_current()
     ctx.target_max_block_size = target_max_block_size
-    if args.disable_optimizer:
-        ctx.optimizer_enabled = False
-    else:
-        ctx.optimizer_enabled = True
     results = []
     for trial in range(args.num_trials):
         print(f"\n\nRunning trial {trial}\n")

@@ -47,14 +47,15 @@ const useStyles = makeStyles((theme) =>
 );
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
-  { label: "" }, // For expand/collapse button
-  { label: "Name" },
-  { label: "Replicas" },
+  { label: "Deployment name" },
   { label: "Status" },
-  { label: "Actions" },
   { label: "Status message", width: "30%" },
+  { label: "Num replicas" },
+  { label: "Actions" },
+  { label: "Application" },
+  { label: "Route prefix" },
   { label: "Last deployed at" },
-  { label: "Duration" },
+  { label: "Duration (since last deploy)" },
 ];
 
 export const ServeApplicationDetailPage = () => {
@@ -79,14 +80,6 @@ export const ServeApplicationDetailPage = () => {
   }
 
   const appName = application.name ? application.name : "-";
-  // Expand all deployments if there is only 1 deployment or
-  // there are less than 10 replicas across all deployments.
-  const deploymentsStartExpanded =
-    Object.keys(application.deployments).length === 1 ||
-    Object.values(application.deployments).reduce(
-      (acc, deployment) => acc + deployment.replicas.length,
-      0,
-    ) < 10;
 
   return (
     <div className={classes.root}>
@@ -176,7 +169,7 @@ export const ServeApplicationDetailPage = () => {
           },
         ]}
       />
-      <CollapsibleSection title="Deployments / Replicas" startExpanded>
+      <CollapsibleSection title="Deployments" startExpanded>
         <TableContainer>
           <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
             <Autocomplete
@@ -257,7 +250,6 @@ export const ServeApplicationDetailPage = () => {
                     key={deployment.name}
                     deployment={deployment}
                     application={application}
-                    startExpanded={deploymentsStartExpanded}
                   />
                 ))}
             </TableBody>
@@ -292,7 +284,7 @@ export const ServeApplicationDetailLayout = () => {
           id: "serveApplicationDetail",
           title: appName,
           pageTitle: `${appName} | Serve Application`,
-          path: `/serve/applications/${appName}`,
+          path: `/serve/applications/${encodeURIComponent(appName)}`,
         }}
       />
       <Outlet />

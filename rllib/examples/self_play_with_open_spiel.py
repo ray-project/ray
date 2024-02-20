@@ -27,13 +27,13 @@ import numpy as np
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
-from ray.tune import CLIReporter, register_env
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune import CLIReporter, register_env
+from ray.tune.registry import get_trainable_cls
 
 # The new RLModule / Learner API
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -51,10 +51,21 @@ def get_cli_args():
     """Create CLI parser and return parsed arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--algo",
+        choices=["PPO", "APPO"],
+        default="PPO",
+        help="The algorithm to use (only 'PPO' and 'APPO' allowed thus far).",
+    )
+    parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
         default="torch",
         help="The DL framework specifier.",
+    )
+    parser.add_argument(
+        "--enable-new-api-stack",
+        action="store_true",
+        help="Whether to activate RLlib's new API stack (RLModule, Learner APIs).",
     )
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument("--num-workers", type=int, default=2)
@@ -104,10 +115,19 @@ def get_cli_args():
     )
 
     parser.add_argument(
-        "--min-win-rate",
+        "--min-league-size",
         type=float,
-        default=0.5,
-        help="Minimum win rate to consider the test passed.",
+        default=3,
+        help="Minimum number of policies/RLModules to consider the test passed. "
+        "The initial league size is 2: `main` and `random`. "
+        "`--min-league-size=3` thus means that one new policy/RLModule has been "
+        "added so far (b/c the `main` one has reached the `--win-rate-threshold "
+        "against the `random` Policy/RLModule).",
+    )
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Init Ray in local mode for easier debugging.",
     )
 
     args = parser.parse_args()
@@ -215,7 +235,15 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
 
     args = get_cli_args()
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
+    enable_new_api_stack = args.enable_new_api_stack or bool(
+        int(os.environ.get("RLLIB_ENABLE_NEW_API_STACK", 0))
+    )
+
+    ray.init(
+        num_cpus=args.num_cpus or None,
+        include_dashboard=False,
+        local_mode=args.local_mode,
+    )
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
@@ -226,14 +254,16 @@ if __name__ == "__main__":
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
     config = (
-        PPOConfig()
+        get_trainable_cls(args.algo)
+        .get_default_config()
+        .experimental(_enable_new_api_stack=enable_new_api_stack)
         .environment("open_spiel_env")
         .framework(args.framework)
         .callbacks(SelfPlayCallback)
         .rollouts(num_envs_per_worker=5, num_rollout_workers=args.num_workers)
-        .training(num_sgd_iter=20, model={"fcnet_hiddens": [512, 512]})
+        .training(model={"fcnet_hiddens": [512, 512]})
         .multi_agent(
-            # Initial policy map: Random and PPO. This will be expanded
+            # Initial policy map: Random and default algo one. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
             # will then play (instead of "random"). This is done in the
             # custom callback defined above (`SelfPlayCallback`).
@@ -263,20 +293,26 @@ if __name__ == "__main__":
         )
     )
 
+    # Only for PPO, change the `num_sgd_iter` setting.
+    if args.algo == "PPO":
+        config.training(num_sgd_iter=20)
+    elif args.algo == "APPO":
+        config.training(vtrace=True)
+
     stop = {
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
 
     if args.as_test:
-        stop["win_rate"] = args.min_win_rate
+        stop["league_size"] = args.min_league_size
 
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
-        create_checkpoints = not bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False))
+        create_checkpoints = not enable_new_api_stack
         results = tune.Tuner(
-            "PPO",
+            args.algo,
             param_space=config,
             run_config=air.RunConfig(
                 stop=stop,
@@ -355,6 +391,6 @@ if __name__ == "__main__":
         algo.stop()
 
     if args.as_test:
-        check_learning_achieved(results, args.min_win_rate, metric="win_rate")
+        check_learning_achieved(results, args.min_league_size, metric="league_size")
 
     ray.shutdown()

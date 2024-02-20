@@ -15,6 +15,12 @@ from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Reader, ReadTask
+from ray.data.tests.conftest import (
+    CoreExecutionMetrics,
+    assert_blocks_expected_in_plasma,
+    assert_core_execution_metrics_equals,
+    get_initial_core_execution_metrics_snapshot,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -100,8 +106,8 @@ class RandomBytesReader(Reader):
 
 
 class SlowCSVDatasource(CSVDatasource):
-    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+    def _read_stream(self, f: "pa.NativeFile", path: str):
+        for block in super()._read_stream(f, path):
             time.sleep(3)
             yield block
 
@@ -121,9 +127,7 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     if not block_split:
         # Setting infinite block size effectively disables block splitting.
         ctx.target_max_block_size = float("inf")
-    ds = ray.data.read_datasource(
-        SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
-    )
+    ds = ray.data.read_datasource(SlowCSVDatasource(str(tmp_path)), parallelism=8)
 
     start = time.time()
     ds.map(lambda x: x)
@@ -143,47 +147,111 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
 )
 def test_dataset(
     shutdown_only,
-    target_max_block_size,
+    restore_data_context,
     compute,
 ):
+    def identity_fn(x):
+        return x
+
+    def empty_fn(x):
+        return {}
+
+    class IdentityClass:
+        def __call__(self, x):
+            return x
+
+    class EmptyClass:
+        def __call__(self, x):
+            return {}
+
+    ctx = ray.data.DataContext.get_current()
+    # 1MiB.
+    ctx.target_max_block_size = 1024 * 1024
+
     if compute == "tasks":
         compute = ray.data._internal.compute.TaskPoolStrategy()
+        identity_func = identity_fn
+        empty_func = empty_fn
+        func_name = "identity_fn"
     else:
         compute = ray.data.ActorPoolStrategy()
+        identity_func = IdentityClass
+        empty_func = EmptyClass
+        func_name = "IdentityClass"
+
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=2, object_store_memory=1e9)
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
-    block_size = target_max_block_size
     num_tasks = 10
 
+    @ray.remote
+    def warmup():
+        return np.zeros(ctx.target_max_block_size, dtype=np.uint8)
+
+    last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=num_tasks,
         num_batches_per_task=num_blocks_per_task,
-        row_size=block_size,
+        row_size=ctx.target_max_block_size,
     )
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
     assert ds.count() == num_blocks_per_task * num_tasks
     assert ds.num_blocks() == num_tasks
-    assert ds.size_bytes() >= 0.7 * block_size * num_blocks_per_task * num_tasks
+    assert (
+        ds.size_bytes()
+        >= 0.7 * ctx.target_max_block_size * num_blocks_per_task * num_tasks
+    )
+    last_snapshot = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "_get_datasource_or_legacy_reader": 1,
+                "_execute_read_task_split": 1,
+            },
+            object_store_stats={
+                "cumulative_created_plasma_bytes": lambda count: True,
+                "cumulative_created_plasma_objects": lambda count: True,
+            },
+        ),
+        last_snapshot,
+    )
 
     # Too-large blocks will get split to respect target max block size.
-    map_ds = ds.map_batches(lambda x: x, compute=compute)
+    map_ds = ds.map_batches(identity_func, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds.num_blocks() == num_tasks * num_blocks_per_task
+    num_blocks_expected = num_tasks * num_blocks_per_task
+    assert map_ds.num_blocks() == num_blocks_expected
+    assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "MapWorker(ReadRandomBytes->MapBatches"
+                f"({func_name})).get_location": lambda count: True,
+                "_MapWorker.__init__": lambda count: True,
+                "_MapWorker.get_location": lambda count: True,
+                f"ReadRandomBytes->MapBatches({func_name})": num_tasks,
+            },
+        ),
+        last_snapshot,
+    )
+    assert_blocks_expected_in_plasma(
+        last_snapshot,
+        num_blocks_expected,
+        block_size_expected=ctx.target_max_block_size,
+    )
+
     # Blocks smaller than requested batch size will get coalesced.
     map_ds = ds.map_batches(
-        lambda x: {},
+        empty_func,
         batch_size=num_blocks_per_task * num_tasks,
         compute=compute,
     )
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == 1
-    map_ds = ds.map(lambda x: x, compute=compute)
+    map_ds = ds.map(identity_func, compute=compute)
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == num_blocks_per_task * num_tasks
 
@@ -542,6 +610,31 @@ def test_block_slicing(
         )
         # Blocks are not too small.
         assert size >= target_max_block_size / 2
+
+
+@pytest.mark.parametrize(
+    "target_max_block_size",
+    [128, 256, 512],
+)
+def test_dynamic_block_split_deterministic(
+    ray_start_regular_shared, target_max_block_size
+):
+    # Tests the determinism of block splitting.
+    TEST_ITERATIONS = 10
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_max_block_size = target_max_block_size
+
+    # ~800 bytes per block
+    ds = ray.data.range(1000, parallelism=10).map_batches(lambda x: x)
+    data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+    # Maps: first item of block -> block
+    block_map = {block["id"][0]: block for block in data}
+    # Iterate over multiple executions of the dataset,
+    # and check that blocks were split in the same way
+    for _ in range(TEST_ITERATIONS):
+        data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+        for block in data:
+            assert block_map[block["id"][0]] == block
 
 
 if __name__ == "__main__":

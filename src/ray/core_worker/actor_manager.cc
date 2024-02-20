@@ -41,7 +41,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   return actor_id;
 }
 
-std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) {
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end())
@@ -220,6 +220,10 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", num_restarts: " << actor_data.num_restarts()
                 << ", death context type="
                 << gcs::GetActorDeathCauseString(actor_data.death_cause());
+  if (actor_data.preempted()) {
+    direct_actor_submitter_->SetPreempted(actor_id);
+  }
+
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id,
                                              actor_data.num_restarts(),

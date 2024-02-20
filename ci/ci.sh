@@ -112,12 +112,13 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  pip-compile --resolver=backtracking -q \
+  pip-compile --verbose --resolver=backtracking \
      --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
@@ -128,8 +129,7 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
@@ -177,35 +177,6 @@ test_core() {
   bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
 }
 
-prepare_docker() {
-    rm "${WORKSPACE_DIR}"/python/dist/* ||:
-    pushd "${WORKSPACE_DIR}/python"
-    pip install -e . --verbose
-    python setup.py bdist_wheel
-    tmp_dir="/tmp/prepare_docker_$RANDOM"
-    mkdir -p $tmp_dir
-    cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
-    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
-    base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
-    echo "
-    FROM $base_image
-
-    ENV LC_ALL=C.UTF-8
-    ENV LANG=C.UTF-8
-    COPY ./*.whl /
-    EXPOSE 8000
-    EXPOSE 10001
-    RUN pip install /${wheel}[serve]
-    RUN (sudo apt update || true) && sudo apt install curl -y
-    " > $tmp_dir/Dockerfile
-
-    pushd $tmp_dir
-    docker build . -t ray_ci:v1
-    popd
-
-    popd
-}
-
 # For running Serve tests on Windows.
 test_serve() {
   if [ "${OSTYPE}" = msys ]; then
@@ -215,7 +186,6 @@ test_serve() {
       -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
       -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve/tests:test_gradio
-      -python/ray/serve/tests:test_gradio_visualization
       -python/ray/serve/tests:test_fastapi
     )
   fi
@@ -244,7 +214,6 @@ test_python() {
   if [ "${OSTYPE}" = msys ]; then
     args+=(
       python/ray/tests/...
-      python/ray/train:test_windows
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -257,7 +226,6 @@ test_python() {
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multiprocessing_client_mode # Flaky on Windows
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
@@ -265,11 +233,39 @@ test_python() {
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
       -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_sdk_provider # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${test_shard_selection};
+  fi
+}
+
+# For running Python tests on Windows (excluding Serve).
+test_train_windows() {
+  if [ "${OSTYPE}" = msys ]; then
+    args+=(
+      python/ray/train:test_windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -372,7 +368,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      make html
       pip install datasets==2.0.0
     fi
   )
@@ -384,7 +380,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make linkcheck
+      make linkcheck
     fi
   )
 }

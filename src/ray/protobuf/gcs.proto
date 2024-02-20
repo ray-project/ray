@@ -160,6 +160,8 @@ message ActorTableData {
   // might depend on actor fields to be initialized in __init__.
   // Default to empty string if no customized repr is defined.
   string repr_name = 31;
+  // Whether the actor was on a preempted node
+  bool preempted = 32;
 }
 
 message ErrorTableData {
@@ -244,6 +246,8 @@ message TaskStateUpdate {
   optional string actor_repr_name = 11;
   // Worker Pid.
   optional int32 worker_pid = 12;
+  // Is task paused by debugger.
+  optional bool is_debugger_paused = 13;
 }
 
 // Represents events and state changes from a single task run.
@@ -284,11 +288,6 @@ message TaskEventData {
   bytes job_id = 4;
 }
 
-message ResourceTableData {
-  // The total capacity of this resource type.
-  double resource_capacity = 1;
-}
-
 message AvailableResources {
   // Node id.
   bytes node_id = 1;
@@ -317,6 +316,18 @@ message NodeSnapshot {
   // Observability strings describing why the node is not idle.
   // Each string is a reason.
   repeated string node_activity = 3;
+}
+
+message NodeDeathInfo {
+  // TODO(sang): Update drain reason
+  enum Reason {
+    UNSPECIFIED = 0;
+    EXPECTED_TERMINATION = 1;
+    UNEXPECTED_TERMINATION = 2;
+    AUTOSCALER_DRAIN_PREEMPTED = 3;
+    AUTOSCALER_DRAIN_IDLE = 4;
+  }
+  Reason reason = 1;
 }
 
 message GcsNodeInfo {
@@ -384,6 +395,9 @@ message GcsNodeInfo {
 
   // A snapshot of node state.
   NodeSnapshot state_snapshot = 28;
+
+  // The death info of this node.
+  NodeDeathInfo death_info = 29;
 }
 
 // Please keep this in sync with the definition of JobInfo in
@@ -466,6 +480,10 @@ message WorkerTableData {
   // by a raylet. (I.e., driver worker won't have this value).
   // If the value doesn't present, it is -1.
   uint64 worker_launched_time_ms = 26;
+  // The debugger port on the worker process.
+  optional uint32 debugger_port = 27;
+  // The number of paused threads in this worker process
+  optional uint32 num_paused_threads = 28;
 }
 
 // Fields to publish when worker fails.
@@ -474,44 +492,13 @@ message WorkerDeltaData {
   bytes worker_id = 2;
 }
 
-message ResourceMap {
-  map<string, ResourceTableData> items = 1;
-}
-
 message StoredConfig {
   string config = 1;
-}
-
-// A notification message about one node's resources being changed.
-message NodeResourceChange {
-  // ID of the node whose resources have changed.
-  bytes node_id = 1;
-  // Labels of the updated resources and their latest capacities.
-  map<string, double> updated_resources = 2;
-  // Labels of the resources that were deleted.
-  repeated string deleted_resources = 3;
 }
 
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
-}
-
-// A notification that the resource table has changed.
-message ResourceUpdate {
-  oneof resource_change_or_data {
-    // The total resources on a node have changed.
-    NodeResourceChange change = 1;
-    // The available resources on a node have changed.
-    ResourcesData data = 2;
-  }
-}
-
-message ResourceUsageBroadcastData {
-  // An incrementing sequence number, used for correcting network errors.
-  int64 seq_no = 1;
-  // The changes to the state of the cluster.
-  repeated ResourceUpdate batch = 2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -546,7 +533,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3;
+  reserved 3, 8, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -557,8 +544,6 @@ message ResourcesData {
   map<string, double> resource_load = 5;
   // The resource load on this node, sorted by resource shape.
   ResourceLoad resource_load_by_shape = 7;
-  // Whether this node manager is requesting global GC.
-  bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
   // Whether this node has object pulls queued. This can happen if
@@ -579,8 +564,11 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
-  // Why the node is not idle.
-  repeated string node_activity = 17;
+  // This is only meaningful if is_draining
+  // is true.
+  // The value is the timestamp when
+  // the node will be force killed.
+  int64 draining_deadline_timestamp_ms = 18;
 }
 
 message ResourceUsageBatchData {

@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import platform
 import signal
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import warnings
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
+from ray.dashboard.modules.metrics import install_and_start_prometheus
 
 import click
 import psutil
@@ -386,7 +388,23 @@ def debug(address):
     required=False,
     default="{}",
     type=str,
-    help="a JSON serialized dictionary mapping resource name to resource quantity",
+    help="A JSON serialized dictionary mapping resource name to resource quantity."
+    + (
+        r"""
+
+Windows command prompt users must ensure to double quote command line arguments. Because
+JSON requires the use of double quotes you must escape these arguments as well, for
+example:
+
+    ray start --head --resources="{\"special_hardware\":1, \"custom_label\":1}"
+
+Windows powershell users need additional escaping:
+
+    ray start --head --resources="{\""special_hardware\"":1, \""custom_label\"":1}"
+"""
+        if platform.system() == "Windows"
+        else ""
+    ),
 )
 @click.option(
     "--head",
@@ -2426,6 +2444,16 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@click.group(name="metrics")
+def metrics_group():
+    pass
+
+
+@metrics_group.command(name="launch-prometheus")
+def launch_prometheus():
+    install_and_start_prometheus.main()
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -2461,6 +2489,7 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
+cli.add_command(metrics_group)
 
 try:
     from ray.util.state.state_cli import (

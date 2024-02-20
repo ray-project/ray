@@ -1,5 +1,3 @@
-import ray
-
 # __fake_start__
 from faker import Faker
 
@@ -14,4 +12,5 @@ def create_fake_email():
 app = create_fake_email.bind()
 # __fake_end__
 
-assert ray.get(serve.run(app).remote()) == "fake@fake.com"
+handle = serve.run(app)
+assert handle.remote().result() == "fake@fake.com"

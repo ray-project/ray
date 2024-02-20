@@ -33,14 +33,12 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED,
-    SAMPLE_TIMER,
-)
-from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
-from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
+    SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer

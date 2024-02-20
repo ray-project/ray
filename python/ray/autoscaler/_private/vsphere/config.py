@@ -2,10 +2,6 @@ import copy
 import logging
 import os
 
-from cryptography.hazmat.backends import default_backend as crypto_default_backend
-from cryptography.hazmat.primitives import serialization as crypto_serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -34,9 +30,6 @@ def bootstrap_vsphere(config):
     # Log warnings if user included deprecated `head_node` or `worker_nodes`
     # fields. Raise error if no `available_node_types`
     check_legacy_fields(config)
-
-    # Create new key pair if it doesn't exist already
-    create_key_pair()
 
     # Configure SSH access, using an existing key pair if possible.
     config = configure_key_pair(config)
@@ -101,6 +94,17 @@ def validate_frozen_vm_configs(conf: dict):
                 "both 'name' and 'resource_pool' are missing, at least one should be "
                 "given for the frozen VM(s)."
             )
+
+
+def update_gpu_config_in_provider_section(
+    config, head_node_config, worker_node_configs
+):
+    provider_config = config["provider"]
+    vsphere_config = provider_config["vsphere_config"]
+    if "gpu_config" in vsphere_config:
+        head_node_config["gpu_config"] = vsphere_config["gpu_config"]
+        for worker_node_config in worker_node_configs:
+            worker_node_config["gpu_config"] = vsphere_config["gpu_config"]
 
 
 def check_and_update_frozen_vm_configs_in_provider_section(
@@ -215,41 +219,11 @@ def update_vsphere_configs(config):
         config, head_node_config, worker_node_configs
     )
 
-
-def create_key_pair():
-    # If the files already exists, we don't want to create new keys.
-    # This if condition will currently pass even if there are invalid keys
-    # in those path. TODO: Only return if the keys are valid.
-
-    if os.path.exists(PRIVATE_KEY_PATH) and os.path.exists(PUBLIC_KEY_PATH):
-        logger.info("Key-pair already exist. Not creating new ones")
-        return
-
-    # Generate keys
-    key = rsa.generate_private_key(
-        backend=crypto_default_backend(), public_exponent=65537, key_size=2048
-    )
-
-    private_key = key.private_bytes(
-        crypto_serialization.Encoding.PEM,
-        crypto_serialization.PrivateFormat.PKCS8,
-        crypto_serialization.NoEncryption(),
-    )
-
-    public_key = key.public_key().public_bytes(
-        crypto_serialization.Encoding.OpenSSH, crypto_serialization.PublicFormat.OpenSSH
-    )
-
-    with open(PRIVATE_KEY_PATH, "wb") as content_file:
-        content_file.write(private_key)
-        os.chmod(PRIVATE_KEY_PATH, 0o600)
-
-    with open(PUBLIC_KEY_PATH, "wb") as content_file:
-        content_file.write(public_key)
+    update_gpu_config_in_provider_section(config, head_node_config, worker_node_configs)
 
 
 def configure_key_pair(config):
-    logger.info("Configure key pairs for copying into the head node.")
+    logger.info("Configuring keys for Ray Cluster Launcher to ssh into the head node.")
 
     assert os.path.exists(
         PRIVATE_KEY_PATH
@@ -270,3 +244,11 @@ def configure_key_pair(config):
     config["file_mounts"][public_key_remote_path] = PUBLIC_KEY_PATH
 
     return config
+
+
+def is_dynamic_passthrough(node_config):
+    if "gpu_config" in node_config:
+        gpu_config = node_config["gpu_config"]
+        if gpu_config and gpu_config["dynamic_pci_passthrough"]:
+            return True
+    return False

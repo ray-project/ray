@@ -112,7 +112,9 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error, verbose: bool = False, address: str = None) -> str:
+def debug_status(
+    status, error, verbose: bool = False, address: Optional[str] = None
+) -> str:
     """
     Return a debug string for the autoscaler.
 
@@ -869,22 +871,48 @@ def get_or_create_head_node(
         modifiers = ""
 
     cli_logger.newline()
-    with cli_logger.group("Useful commands"):
+    with cli_logger.group("Useful commands:"):
         printable_config_file = os.path.abspath(printable_config_file)
-        cli_logger.print("Monitor autoscaling with")
+
+        cli_logger.print("To terminate the cluster:")
+        cli_logger.print(cf.bold(f"  ray down {printable_config_file}{modifiers}"))
+        cli_logger.newline()
+
+        cli_logger.print("To retrieve the IP address of the cluster head:")
         cli_logger.print(
-            cf.bold("  ray exec {}{} {}"),
-            printable_config_file,
-            modifiers,
-            quote(monitor_str),
+            cf.bold(f"  ray get-head-ip {printable_config_file}{modifiers}")
         )
+        cli_logger.newline()
 
-        cli_logger.print("Connect to a terminal on the cluster head:")
-        cli_logger.print(cf.bold("  ray attach {}{}"), printable_config_file, modifiers)
+        cli_logger.print(
+            "To port-forward the cluster's Ray Dashboard to the local machine:"
+        )
+        cli_logger.print(cf.bold(f"  ray dashboard {printable_config_file}{modifiers}"))
+        cli_logger.newline()
 
-        remote_shell_str = updater.cmd_runner.remote_shell_command_str()
-        cli_logger.print("Get a remote shell to the cluster manually:")
-        cli_logger.print("  {}", remote_shell_str.strip())
+        cli_logger.print(
+            "To submit a job to the cluster, port-forward the "
+            "Ray Dashboard in another terminal and run:"
+        )
+        cli_logger.print(
+            cf.bold(
+                "  ray job submit --address http://localhost:<dashboard-port> "
+                "--working-dir . -- python my_script.py"
+            )
+        )
+        cli_logger.newline()
+
+        cli_logger.print("To connect to a terminal on the cluster head for debugging:")
+        cli_logger.print(cf.bold(f"  ray attach {printable_config_file}{modifiers}"))
+        cli_logger.newline()
+
+        cli_logger.print("To monitor autoscaling:")
+        cli_logger.print(
+            cf.bold(
+                f"  ray exec {printable_config_file}{modifiers} {quote(monitor_str)}"
+            )
+        )
+        cli_logger.newline()
 
 
 def _should_create_new_head(
@@ -1058,7 +1086,7 @@ def attach_cluster(
 def exec_cluster(
     config_file: str,
     *,
-    cmd: str = None,
+    cmd: Optional[str] = None,
     run_env: str = "auto",
     screen: bool = False,
     tmux: bool = False,

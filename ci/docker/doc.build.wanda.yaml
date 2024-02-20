@@ -2,10 +2,6 @@ name: "docbuild"
 froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
 dockerfile: ci/docker/doc.build.Dockerfile
 srcs:
-  - python/requirements.txt
-  - python/requirements_compiled.txt
-  - python/requirements/test-requirements.txt
-  - python/requirements/lint-requirements.txt
   - doc/requirements-doc.txt
 tags:
   - cr.ray.io/rayproject/docbuild

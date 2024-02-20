@@ -134,7 +134,8 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
                             owner_address=*,
-                            c_bool inline_small_object=*)
+                            c_bool inline_small_object=*,
+                            c_bool is_experimental_channel=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
             self, serialized_object,

@@ -1,6 +1,7 @@
 import { Box, createStyles, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
+import { IconBaseProps } from "react-icons";
 import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
@@ -39,11 +40,12 @@ const useJobRunningIconStyles = makeStyles((theme) =>
   }),
 );
 
-type JobRunningIconProps = { small?: boolean } & ClassNameProps;
+type JobRunningIconProps = { small?: boolean } & ClassNameProps & IconBaseProps;
 
 export const JobRunningIcon = ({
   className,
   small = false,
+  ...props
 }: JobRunningIconProps) => {
   const classes = useJobRunningIconStyles();
   return (
@@ -56,6 +58,7 @@ export const JobRunningIcon = ({
         },
         className,
       )}
+      {...props}
     />
   );
 };

@@ -11,7 +11,7 @@ import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
 
@@ -115,7 +115,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    signal_name = f"signal-{get_random_letters()}"
+    signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
     @serve.deployment(name=name, version="1")
@@ -206,7 +206,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    signal_name = f"signal-{get_random_letters()}"
+    signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
     @serve.deployment(name=name, version="1", num_replicas=2)
@@ -300,7 +300,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    signal_name = f"signal-{get_random_letters()}"
+    signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
     @serve.deployment(name=name, version="1", num_replicas=2)
@@ -525,7 +525,7 @@ def test_deploy_with_init_args(serve_instance):
         def get_args(self):
             return self._args
 
-    handle = serve.run(D.bind(1, 2, 3)).options(use_new_handle_api=True)
+    handle = serve.run(D.bind(1, 2, 3))
     assert handle.get_args.remote().result() == (1, 2, 3)
 
 
@@ -538,7 +538,7 @@ def test_deploy_with_init_kwargs(serve_instance):
         def get_kwargs(self, *args):
             return self._kwargs
 
-    handle = serve.run(D.bind(a=1, b=2)).options(use_new_handle_api=True)
+    handle = serve.run(D.bind(a=1, b=2))
     assert handle.get_kwargs.remote().result() == {"a": 1, "b": 2}
 
 

@@ -24,7 +24,7 @@ from typing import List
 from typing import Optional
 
 from ray import serve
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -75,7 +75,7 @@ class CombineNode:
 
 def construct_wide_fanout_graph_with_pure_handle(
     fanout_degree, init_delay_secs=0, compute_delay_secs=0
-) -> RayServeSyncHandle:
+) -> DeploymentHandle:
     nodes = []
     for id in range(fanout_degree):
         node = Node.options(name=str(id)).bind(id, init_delay_secs=init_delay_secs)
@@ -126,7 +126,7 @@ def main(
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
-            handle,
+            handle.predict.remote,
             expected,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
@@ -134,7 +134,7 @@ def main(
     )
     latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
-            handle,
+            handle.predict.remote,
             expected,
             num_requests=num_requests_per_client,
             num_clients=num_clients,

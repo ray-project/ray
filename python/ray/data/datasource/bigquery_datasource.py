@@ -1,23 +1,12 @@
 import logging
-import os
-import tempfile
-import time
-import uuid
 from typing import List, Optional
 
-import pyarrow.parquet as pq
-
-from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
-from ray.types import ObjectRef
+from ray.data.block import Block, BlockMetadata
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
-
-MAX_RETRY_CNT = 10
-RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
 @PublicAPI(stability="alpha")
@@ -129,59 +118,3 @@ class BigQueryDatasource(Datasource):
             raise ValueError(
                 "Table {} is not found. Please ensure that it exists.".format(dataset)
             )
-
-    def write(
-        self,
-        blocks: List[ObjectRef[Block]],
-        ctx: TaskContext,
-        project_id: str,
-        dataset: str,
-    ) -> WriteResult:
-        from google.api_core import exceptions
-        from google.cloud import bigquery
-
-        def _write_single_block(block: Block, project_id: str, dataset: str):
-            block = BlockAccessor.for_block(block).to_arrow()
-
-            client = bigquery.Client(project=project_id)
-            job_config = bigquery.LoadJobConfig(autodetect=True)
-            job_config.source_format = bigquery.SourceFormat.PARQUET
-            job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
-
-            with tempfile.TemporaryDirectory() as temp_dir:
-                fp = os.path.join(temp_dir, f"block_{uuid.uuid4()}.parquet")
-                pq.write_table(block, fp, compression="SNAPPY")
-
-                retry_cnt = 0
-                while retry_cnt < MAX_RETRY_CNT:
-                    with open(fp, "rb") as source_file:
-                        job = client.load_table_from_file(
-                            source_file, dataset, job_config=job_config
-                        )
-                    retry_cnt += 1
-                    try:
-                        logger.info(job.result())
-                        break
-                    except exceptions.Forbidden as e:
-                        logger.info("Rate limit exceeded... Sleeping to try again")
-                        logger.debug(e)
-                        time.sleep(RATE_LIMIT_EXCEEDED_SLEEP_TIME)
-
-        # Set up datasets to write
-        client = bigquery.Client(project=project_id)
-        dataset_id = dataset.split(".", 1)[0]
-        try:
-            client.create_dataset(f"{project_id}.{dataset_id}", timeout=30)
-            logger.info("Created dataset " + dataset_id)
-        except exceptions.Conflict:
-            logger.info(
-                f"Dataset {dataset_id} already exists. "
-                "The table will be overwritten if it already exists."
-            )
-
-        # Delete table if it already exists
-        client.delete_table(f"{project_id}.{dataset}", not_found_ok=True)
-
-        for block in blocks:
-            _write_single_block(block, project_id, dataset)
-        return "ok"

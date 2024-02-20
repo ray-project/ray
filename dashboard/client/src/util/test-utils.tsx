@@ -9,7 +9,6 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
   const context: GlobalContextType = {
     nodeMap: {},
     nodeMapByIp: {},
-    ipLogMap: {},
     namespaceMap: {},
     metricsContextLoaded: true,
     grafanaHost: "localhost:3000",

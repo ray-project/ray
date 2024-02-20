@@ -302,6 +302,20 @@ struct Mocker {
     return data;
   }
 
+  static rpc::TaskEventData GenTaskEventsDataLoss(
+      const std::vector<TaskAttempt> &drop_tasks, int job_id = 0) {
+    rpc::TaskEventData data;
+    for (const auto &task_attempt : drop_tasks) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(task_attempt.first.Binary());
+      rpc_task_attempt.set_attempt_number(task_attempt.second);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+    data.set_job_id(JobID::FromInt(job_id).Binary());
+
+    return data;
+  }
+
   static rpc::ResourceDemand GenResourceDemand(
       const absl::flat_hash_map<std::string, double> &resource_demands,
       int64_t num_ready_queued,
@@ -323,7 +337,8 @@ struct Mocker {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      bool is_draining = false) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -333,6 +348,7 @@ struct Mocker {
     }
     resources_data.set_idle_duration_ms(idle_ms);
     resources_data.set_is_draining(is_draining);
+    resources_data.set_draining_deadline_timestamp_ms(draining_deadline_timestamp_ms);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,

@@ -62,6 +62,12 @@ provider:
             # Will take effect only when "frozen_vm.library_item" is set. If "frozen_vm.resource_pool" is also set,
             # this datastore must be a shared datastore among the ESXi hosts.
             datastore:
+        # The GPU related configurations
+        gpu_config:
+            # If using dynamic PCI passthrough to bind the physical GPU on an ESXi host to a Ray node VM.
+            # Dynamic PCI passthrough can support vSphere DRS, otherwise using regular PCI passthrough will not support
+            # vSphere DRS.
+            dynamic_pci_passthrough: False
 
 # How Ray will authenticate with newly launched nodes.
 auth:

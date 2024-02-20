@@ -1,37 +1,70 @@
-import json
 import logging
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
+from zlib import crc32
 
 from ray._private.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
+    PositiveInt,
     root_validator,
     validator,
 )
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
-    ApplicationStatusInfo,
-    DeploymentInfo,
     DeploymentStatus,
-    DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     ProxyStatus,
     ReplicaState,
     ServeDeployMode,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
+from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
+
+# Allows selectively toggling validation of runtime_env URIs.
+# This is used by the `serve publish` CLI command to pass through local URIs to
+# publish providers.
+VALIDATE_RUNTIME_ENV_URIS = ContextVar("VALIDATE_RUNTIME_ENV_URIS", default=True)
+
+
+@contextmanager
+def _skip_validating_runtime_env_uris():
+    """Temporarily disable validation of runtime_env URIs across all schema models.
+
+    This uses a contextvar.ContextVar so has the same asyncio and threading properties.
+    """
+    try:
+        VALIDATE_RUNTIME_ENV_URIS.set(False)
+        yield
+    finally:
+        VALIDATE_RUNTIME_ENV_URIS.set(True)
+
+
+# Shared amongst multiple schemas.
+TARGET_CAPACITY_FIELD = Field(
+    default=None,
+    description=(
+        "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
+        "cluster. The `num_replicas`, `min_replicas`, `max_replicas`, and "
+        "`initial_replicas` for each deployment will be scaled by this percentage."
+    ),
+    ge=0,
+    le=100,
+)
 
 
 def _route_prefix_format(cls, v):
@@ -75,20 +108,39 @@ class EncodingType(str, Enum):
 
 @PublicAPI(stability="alpha")
 class LoggingConfig(BaseModel):
-    """Logging config schema for configuring serve components logs."""
+    """Logging config schema for configuring serve components logs.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import LoggingConfig
+            # Set log level for the deployment.
+            @serve.deployment(LoggingConfig(log_level="DEBUG")
+            class MyDeployment:
+                def __call__(self) -> str:
+                    return "Hello world!"
+            # Set log directory for the deployment.
+            @serve.deployment(LoggingConfig(logs_dir="/my_dir")
+            class MyDeployment:
+                def __call__(self) -> str:
+                    return "Hello world!"
+    """
 
     class Config:
         extra = Extra.forbid
 
     encoding: Union[str, EncodingType] = Field(
-        default="TEXT",
+        default_factory=lambda: RAY_SERVE_LOG_ENCODING,
         description=(
-            "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
-            "supported to format all serve logs into json structure."
+            "Encoding type for the serve logs. Defaults to 'TEXT'. The default can be "
+            "overwritten using the `RAY_SERVE_LOG_ENCODING` environment variable. "
+            "'JSON' is also supported for structured logging."
         ),
     )
     log_level: Union[int, str] = Field(
-        default=logging.INFO,
+        default="INFO",
         description=(
             "Log level for the serve logs. Defaults to INFO. You can set it to "
             "'DEBUG' to get more detailed debug logs."
@@ -111,7 +163,6 @@ class LoggingConfig(BaseModel):
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
-
         if v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
@@ -123,14 +174,34 @@ class LoggingConfig(BaseModel):
     @validator("log_level")
     def valid_log_level(cls, v):
         if isinstance(v, int):
-            return v
+            if v not in logging._levelToName:
+                raise ValueError(
+                    f'Got "{v}" for log_level. log_level must be one of '
+                    f"{list(logging._levelToName.keys())}."
+                )
+            return logging._levelToName[v]
 
         if v not in logging._nameToLevel:
             raise ValueError(
                 f'Got "{v}" for log_level. log_level must be one of '
                 f"{list(logging._nameToLevel.keys())}."
             )
-        return logging._nameToLevel[v]
+        return v
+
+    def _compute_hash(self) -> int:
+        return crc32(
+            (
+                str(self.encoding)
+                + str(self.log_level)
+                + str(self.logs_dir)
+                + str(self.enable_access_log)
+            ).encode("utf-8")
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, LoggingConfig):
+            return False
+        return self._compute_hash() == other._compute_hash()
 
 
 @PublicAPI(stability="stable")
@@ -196,8 +267,11 @@ class RayActorOptionsSchema(BaseModel):
         if v is None:
             return
 
+        if not VALIDATE_RUNTIME_ENV_URIS.get():
+            return v
+
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -225,13 +299,14 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
-    num_replicas: Optional[int] = Field(
+    num_replicas: Optional[Union[PositiveInt, str]] = Field(
         default=DEFAULT.VALUE,
         description=(
             "The number of processes that handle requests to this "
-            "deployment. Uses a default if null."
+            "deployment. Uses a default if null. Can also be set to "
+            "`auto` for a default autoscaling configuration "
+            "(experimental)."
         ),
-        gt=0,
     )
     # route_prefix of None means the deployment is not exposed over HTTP.
     route_prefix: Union[str, None] = Field(
@@ -341,13 +416,23 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     )
 
     @root_validator
-    def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
-        if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
-            "autoscaling_config", None
-        ) not in [DEFAULT.VALUE, None]:
+    def num_replicas_and_autoscaling_config(cls, values):
+        num_replicas = values.get("num_replicas", None)
+        autoscaling_config = values.get("autoscaling_config", None)
+
+        # Cannot have `num_replicas` be an int and a non-null
+        # autoscaling config
+        if isinstance(num_replicas, int):
+            if autoscaling_config not in [None, DEFAULT.VALUE]:
+                raise ValueError(
+                    "Manually setting num_replicas is not allowed "
+                    "when autoscaling_config is provided."
+                )
+        # A null `num_replicas` or `num_replicas="auto"` can be paired
+        # with a non-null autoscaling_config
+        elif num_replicas not in ["auto", None, DEFAULT.VALUE]:
             raise ValueError(
-                "Manually setting num_replicas is not allowed "
-                "when autoscaling_config is provided."
+                f'`num_replicas` must be an int or "auto", but got: {num_replicas}'
             )
 
         return values
@@ -389,7 +474,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     )
 
     if info.deployment_config.autoscaling_config is not None:
-        schema.autoscaling_config = info.deployment_config.autoscaling_config
+        schema.autoscaling_config = info.deployment_config.autoscaling_config.dict()
     else:
         schema.num_replicas = info.deployment_config.num_replicas
 
@@ -401,8 +486,6 @@ class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
-
-    This is the request JSON schema for the v1 REST API `PUT "/api/serve/deployments/"`.
     """
 
     name: str = Field(
@@ -475,13 +558,15 @@ class ServeApplicationSchema(BaseModel):
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
-
+        # Ensure that all uris in py_modules and working_dir are remote.
         if v is None:
             return
 
+        if not VALIDATE_RUNTIME_ENV_URIS.get():
+            return v
+
         uris = v.get("py_modules", [])
-        if "working_dir" in v:
+        if "working_dir" in v and v["working_dir"] not in uris:
             uris.append(v["working_dir"])
 
         for uri in uris:
@@ -542,51 +627,6 @@ class ServeApplicationSchema(BaseModel):
             "runtime_env": {},
             "deployments": [],
         }
-
-    def kubernetes_dict(self, **kwargs) -> Dict:
-        """Returns dictionary in Kubernetes format.
-
-        Dictionary can be yaml-dumped to a Serve config file directly and then
-        copy-pasted into a RayService Kubernetes config.
-
-        Args: all kwargs are passed directly into schema's dict() function.
-        """
-
-        config = self.dict(**kwargs)
-        for idx, deployment in enumerate(config["deployments"]):
-            if isinstance(deployment.get("ray_actor_options"), dict):
-                # JSON-serialize ray_actor_options' resources dictionary
-                if isinstance(deployment["ray_actor_options"].get("resources"), dict):
-                    deployment["ray_actor_options"]["resources"] = json.dumps(
-                        deployment["ray_actor_options"]["resources"]
-                    )
-
-                # JSON-serialize ray_actor_options' runtime_env dictionary
-                if isinstance(deployment["ray_actor_options"].get("runtime_env"), dict):
-                    deployment["ray_actor_options"]["runtime_env"] = json.dumps(
-                        deployment["ray_actor_options"]["runtime_env"]
-                    )
-
-                # Convert ray_actor_options' keys
-                deployment["ray_actor_options"] = dict_keys_snake_to_camel_case(
-                    deployment["ray_actor_options"]
-                )
-
-            # JSON-serialize user_config dictionary
-            if isinstance(deployment.get("user_config"), dict):
-                deployment["user_config"] = json.dumps(deployment["user_config"])
-
-            # Convert deployment's keys
-            config["deployments"][idx] = dict_keys_snake_to_camel_case(deployment)
-
-        # Convert top-level runtime_env
-        if isinstance(config.get("runtime_env"), dict):
-            config["runtime_env"] = json.dumps(config["runtime_env"])
-
-        # Convert top-level option's keys
-        config = dict_keys_snake_to_camel_case(config)
-
-        return config
 
 
 @PublicAPI(stability="alpha")
@@ -690,6 +730,7 @@ class ServeDeploySchema(BaseModel):
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @validator("applications")
     def application_names_unique(cls, v):
@@ -772,6 +813,7 @@ class DeploymentStatusOverview:
     """
 
     status: DeploymentStatus
+    status_trigger: DeploymentStatusTrigger
     replica_states: Dict[ReplicaState, int]
     message: str
 
@@ -805,10 +847,13 @@ class ServeStatus:
         proxies: The proxy actors running on each node in the cluster.
             A map from node ID to proxy status.
         applications: The live applications in the cluster.
+        target_capacity: the target capacity percentage for all replicas across the
+            cluster.
     """
 
     proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
 
 @PublicAPI(stability="stable")
@@ -861,6 +906,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
+    )
+    status_trigger: DeploymentStatusTrigger = Field(
+        description="[EXPERIMENTAL] The trigger for the current status.",
     )
     message: str = Field(
         description=(
@@ -984,14 +1032,16 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         )
     )
     deploy_mode: ServeDeployMode = Field(
+        default=ServeDeployMode.MULTI_APP,
         description=(
-            "Whether a single-app config of format ServeApplicationSchema or multi-app "
-            "config of format ServeDeploySchema was deployed to the cluster."
-        )
+            "[DEPRECATED]: single-app configs are removed, so this is always "
+            "MULTI_APP. This field will be removed in a future release."
+        ),
     )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -1001,14 +1051,16 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """
 
         return {
-            "deploy_mode": "UNSET",
+            "deploy_mode": "MULTI_APP",
             "controller_info": {},
             "proxies": {},
             "applications": {},
+            "target_capacity": None,
         }
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
+            target_capacity=self.target_capacity,
             proxies={node_id: proxy.status for node_id, proxy in self.proxies.items()},
             applications={
                 app_name: ApplicationStatusOverview(
@@ -1018,6 +1070,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     deployments={
                         deployment_name: DeploymentStatusOverview(
                             status=deployment.status,
+                            status_trigger=deployment.status_trigger,
                             replica_states=dict(
                                 Counter([r.state.value for r in deployment.replicas])
                             ),
@@ -1030,56 +1083,23 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             },
         )
 
+    def _get_user_facing_json_serializable_dict(
+        self, *args, **kwargs
+    ) -> Dict[str, Any]:
+        """Generates json serializable dictionary with user facing data."""
+        values = super().dict(*args, **kwargs)
 
-@PublicAPI(stability="beta")
-class ServeStatusSchema(BaseModel, extra=Extra.forbid):
-    """
-    Describes the status of an application and all its deployments.
+        # `serialized_policy_def` is only used internally and should not be exposed to
+        # the REST api. This method iteratively removes it from each autoscaling config
+        # if exists.
+        for app_name, application in values["applications"].items():
+            for deployment_name, deployment in application["deployments"].items():
+                if (
+                    "deployment_config" in deployment
+                    and "autoscaling_config" in deployment["deployment_config"]
+                ):
+                    deployment["deployment_config"]["autoscaling_config"].pop(
+                        "serialized_policy_def", None
+                    )
 
-    This is the response JSON schema for the v1 REST API
-    `GET /api/serve/deployments/status`.
-    """
-
-    name: str = Field(description="Application name", default="")
-    app_status: ApplicationStatusInfo = Field(
-        ...,
-        description=(
-            "Describes if the Serve application is DEPLOYING, if the "
-            "DEPLOY_FAILED, or if the app is RUNNING. Includes a timestamp of "
-            "when the application was deployed."
-        ),
-    )
-    deployment_statuses: List[DeploymentStatusInfo] = Field(
-        default=[],
-        description=(
-            "List of statuses for all the deployments running in this Serve "
-            "application. Each status contains the deployment name, the "
-            "deployment's status, and a message providing extra context on "
-            "the status."
-        ),
-    )
-
-    @staticmethod
-    def get_empty_schema_dict() -> Dict:
-        """Returns an empty status schema dictionary.
-
-        Schema represents Serve status for a Ray cluster where Serve hasn't
-        started yet.
-        """
-
-        return {
-            "app_status": {
-                "status": ApplicationStatus.NOT_STARTED.value,
-                "message": "",
-                "deployment_timestamp": 0,
-            },
-            "deployment_statuses": [],
-        }
-
-
-def _serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
-    return ServeStatusSchema(
-        name=serve_status.name,
-        app_status=serve_status.app_status,
-        deployment_statuses=serve_status.deployment_statuses,
-    )
+        return values

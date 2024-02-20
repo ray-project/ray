@@ -11,7 +11,10 @@ from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConf
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
+    TORCH_COMPILE_REQUIRED_VERSION,
+)
 from ray.rllib.utils.typing import NetworkType
 
 torch, nn = try_import_torch()
@@ -106,7 +109,7 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.load_state_dict(state_dict)
+        self.load_state_dict(convert_to_torch_tensor(state_dict))
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")

@@ -39,34 +39,44 @@ A VI Admin is used to describe a persona that manages the lifecycle of VMware in
 ## [vSphere Tags](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-16422FF7-235B-4A44-92E2-532F6AED0923.html#:~:text=You%20can%20create%2C%20edit%2C%20and,objects%20in%20the%20vSphere%20inventory)
 A tag is a label that can be assigned to objects on the vSphere inventory. A tag needs to be assigned to a tag category.
 A category allows to group tags together.
+
 # Code Flow
+
 ## Node Creation on `ray up`
 The following sections explain the code flow in a sequential manner. The execution is triggered from the moment user executed `ray up` command
-### Create Key pairs ([config.py](./config.py))
-Create a key pair (private and public keys) if not already present or use the existing key pair. The private key is injected into `config["auth"]["ssh_private_key"]` The bootstrap machine (where the `ray up` command is executed) and the head node subsequently use this key to SSH onto the ray nodes.
+
+### Inject private Key ([config.py](./config.py))
+When defining the frozen VM using the [VM Packer for Ray](https://github.com/vmware-ai-labs/vm-packer-for-ray/blob/main/create-frozen-vm.sh#L48) project, the script should have generated a pair of keys under your home folder. During running `ray up`, the private key is injected into `config["auth"]["ssh_private_key"]`. The bootstrap machine (where the `ray up` command is executed) and the head node subsequently use this key to SSH onto the ray worker nodes.
+
 ### Update vSphere Configs ([config.py](./config.py))
 Used to make sure that the user has created the YAML file with valid configs.
+
 ### Create Nodes ([node_provider.py](./node_provider.py))
+
 #### Call `create_node`
 Starts the creation of nodes with `create_node` function, which internally calls `_create_node`. The nodes are created in parallel. 
+
 #### Fetch frozen VM
-The frozen VM is setup by the [VI admin](#vi-admin) using an OVF that's provided by VMware. The name of the frozen VM is provided in the YAML file. The code will then fetch it with the provided name by `get_frozen_vm_obj` function.
-#### [Cloudinit](https://cloudinit.readthedocs.io/en/latest/index.html) the frozen VM
-Cloudinit is industry standard for cloud instance initialization. It can be used to initialize any newly provisioned VMs with networking, storage and SSH keys related configuration.
-We Cloudinit the frozen VM with userdata by executing `set_cloudinit_userdata`. This creates a new user on the VM and injects a public key for the user. Uses public key generated from [Create Key pairs](#create-key-pairs) section
+The frozen VM can be setup by the [VI admin](#vi-admin) using [VM Packer for Ray](https://github.com/vmware-ai-labs/vm-packer-for-ray). That tool can help to deploy a single frozen VM on the vSphere environment. Or optionally, fully clone the frozen VM to every ESXi hosts under a given resource pool. 
+
+The vSphere Node Provider can take a frozen VM name or a resource pool name of a set of frozen VMs. If a resource pool name is given, the vSphere Node Provider will pick the most feasible frozen VM to do instant cloning.
+
+Optionally, the vSphere Node Provider can also take a content library item name, then deploy the frozen VM before creating the Ray nodes. Details can be checked [here](https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html?highlight=Cluster%20YAML%20Configuration%20Options#vsphere-config-frozen-vm).
+
 #### Instant clone the nodes
-All the nodes are instant cloned from the frozen VM. 
+All the nodes are instantly cloned from the frozen VM. 
+
 #### Tag nodes with [vSphere Tags](#vsphere-tags)
-The nodes are tagged while their creation is in progress in an async way with `tag_vm` function.
+The nodes are tagged while their creation is in progress in an async way with `tag_new_vm_instantly` function.
 Post creation of the nodes, the tags on the nodes are updated. 
 
-#### Connect [NICs](https://www.oreilly.com/library/view/learning-vmware-vsphere/9781782174158/ch04s04.html) (Network Interface Cards)
-The frozen VM has all its NICs in disconnected state. This is done so that the nodes that are cloned from it don't copy the frozem VM's IP address.
-Once, the nodes are cloned from the frozen VM, we connect the NICs so that they can start to get new IP addresses.
 ## Autoscaling
+
 ### Get and create nodes ([node_provider.py](./node_provider.py))
 The autoscaler can find the currently running nodes with `non_terminated_nodes` function and can request for new nodes by calling `create_node` function.
+
 ### Fetch node IPs ([node_provider.py](./node_provider.py))
 The autoscaler can use `external_ip` or `internal_ip` function to fetch a node's IP.
-## Cluster tear down ([node_provider.py](q./node_provider.py))
+
+## Cluster tear down ([node_provider.py](./node_provider.py))
 `terminate_nodes` function gets called on ray down command's execution. It deletes all the nodes except the frozen VM.

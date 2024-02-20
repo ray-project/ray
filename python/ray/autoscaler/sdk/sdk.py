@@ -128,7 +128,7 @@ def rsync(
     source: Optional[str],
     target: Optional[str],
     down: bool,
-    ip_address: str = None,
+    ip_address: Optional[str] = None,
     use_internal_ip: bool = False,
     no_config_cache: bool = False,
     should_bootstrap: bool = True

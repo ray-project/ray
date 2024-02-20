@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
+#include <optional>
 #include <utility>
 
 #include "ray/common/ray_config.h"
@@ -21,6 +22,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -63,8 +65,34 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  if (request.node_info().is_head_node()) {
+    // mark all old head nodes as dead if exists:
+    // 1. should never happen when HA is not used
+    // 2. happens when a new head node is started
+
+    std::vector<NodeID> head_nodes;
+    for (auto &node : alive_nodes_) {
+      if (node.second->is_head_node()) {
+        head_nodes.push_back(node.first);
+      }
+    }
+
+    assert(head_nodes.size() <= 1);
+    if (head_nodes.size() == 1) {
+      OnNodeFailure(head_nodes[0],
+                    [this, request, on_done, node_id](const Status &status) {
+                      RAY_CHECK_OK(status);
+                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+                          node_id, request.node_info(), on_done));
+                    });
+    } else {
+      RAY_CHECK_OK(
+          gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+    }
+  } else {
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
@@ -73,7 +101,8 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
   for (const auto &addr : request.raylet_address()) {
-    reply->mutable_raylet_alive()->Add(node_map_.right.count(addr) != 0);
+    bool is_alive = node_map_.right.count(addr) != 0;
+    reply->mutable_raylet_alive()->Add(is_alive);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -96,7 +125,7 @@ void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
 }
 
 void GcsNodeManager::DrainNode(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Draining node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Shutting down raylet, node id = " << node_id;
   auto node = RemoveNode(node_id, /* is_intended = */ true);
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
@@ -111,6 +140,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   node_info_delta->set_node_id(node->node_id());
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
+
   // Set the address.
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
@@ -191,6 +221,13 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
+void GcsNodeManager::SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info) {
+  auto maybe_node = GetAliveNode(node_id);
+  RAY_CHECK(maybe_node.has_value());
+  auto node = std::move(maybe_node.value());
+  node->mutable_death_info()->CopyFrom(death_info);
+}
+
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
@@ -251,20 +288,31 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
-void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
+void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
+                                   const StatusCallback &node_table_updated_callback) {
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
+    if (node->death_info().reason() == rpc::NodeDeathInfo::UNSPECIFIED) {
+      // There was no drain in progress.
+      node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    }
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
     node_info_delta->set_node_id(node->node_id());
     node_info_delta->set_state(node->state());
     node_info_delta->set_end_time_ms(node->end_time_ms());
 
-    auto on_done = [this, node_id, node_info_delta](const Status &status) {
+    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta](
+                       const Status &status) {
+      if (node_table_updated_callback != nullptr) {
+        node_table_updated_callback(Status::OK());
+      }
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+  } else if (node_table_updated_callback != nullptr) {
+    node_table_updated_callback(Status::OK());
   }
 }
 

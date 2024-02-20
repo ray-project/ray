@@ -164,10 +164,6 @@ class DependencyWaiterInterface {
 /// Inteface for getting resource reports.
 class ResourceTrackingInterface {
  public:
-  virtual void UpdateResourceUsage(
-      std::string &serialized_resource_usage_batch,
-      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
-
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
 
@@ -198,6 +194,7 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void DrainRaylet(
       const rpc::autoscaler::DrainNodeReason &reason,
       const std::string &reason_message,
+      int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
@@ -308,20 +305,18 @@ class RayletClient : public RayletClientInterface {
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.
-  ray::Status TaskDone();
+  ray::Status ActorCreationTaskDone();
 
   /// Tell the raylet to reconstruct or fetch objects.
   ///
   /// \param object_ids The IDs of the objects to fetch.
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param fetch_only Only fetch objects, do not reconstruct them.
-  /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
                                  bool fetch_only,
-                                 bool mark_worker_blocked,
                                  const TaskID &current_task_id);
 
   /// Notify the raylet that this client (worker) is no longer blocked.
@@ -350,7 +345,6 @@ class RayletClient : public RayletClientInterface {
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
@@ -359,7 +353,6 @@ class RayletClient : public RayletClientInterface {
                    const std::vector<rpc::Address> &owner_addresses,
                    int num_returns,
                    int64_t timeout_milliseconds,
-                   bool mark_worker_blocked,
                    const TaskID &current_task_id,
                    WaitResultPair *result);
 
@@ -472,16 +465,13 @@ class RayletClient : public RayletClientInterface {
 
   void DrainRaylet(const rpc::autoscaler::DrainNodeReason &reason,
                    const std::string &reason_message,
+                   int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
-
-  void UpdateResourceUsage(
-      std::string &serialized_resource_usage_batch,
-      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;

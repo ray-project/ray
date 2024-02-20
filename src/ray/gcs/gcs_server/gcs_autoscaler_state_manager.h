@@ -22,15 +22,17 @@
 namespace ray {
 namespace gcs {
 
-class GcsResourceManager;
+class GcsActorManager;
 class GcsNodeManager;
 class GcsPlacementGroupManager;
+class GcsResourceManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
   GcsAutoscalerStateManager(
       const std::string &session_name,
       const GcsNodeManager &gcs_node_manager,
+      GcsActorManager &gcs_actor_manager,
       const GcsPlacementGroupManager &gcs_placement_group_manager,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
@@ -142,6 +144,9 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   /// Gcs node manager that provides node status information.
   const GcsNodeManager &gcs_node_manager_;
+
+  /// Gcs actor manager that provides actor information.
+  GcsActorManager &gcs_actor_manager_;
 
   /// GCS placement group manager reference.
   const GcsPlacementGroupManager &gcs_placement_group_manager_;

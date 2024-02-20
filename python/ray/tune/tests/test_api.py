@@ -16,11 +16,14 @@ import pytest
 import ray
 from ray import train, tune
 from ray.train import CheckpointConfig, ScalingConfig
-from ray.air._internal.remote_storage import _ensure_directory
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.train._internal.session import shutdown_session
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import (
+    StorageContext,
+    get_fs_and_path,
+    _create_directory,
+)
 from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import (
@@ -708,11 +711,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
-        new_trials = tune.run(test, resume="ERRORED_ONLY", **config).trials
+        new_trials = tune.run(test, resume="AUTO+ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(all(t.last_result.get("hello") == 123 for t in new_trials))
 
-    # Test rerunning rllib trials with ERRORED_ONLY.
     def testRerunRlLib(self):
         class TestEnv(gym.Env):
             counter = 0
@@ -752,7 +754,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "num_workers": 0,
             },
             name="my_experiment",
-            resume="ERRORED_ONLY",
+            resume="AUTO+ERRORED_ONLY",
             stop={"training_iteration": 1},
         ).trials
         assert len(trials) == 1 and trials[0].status == Trial.TERMINATED
@@ -934,8 +936,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
         remote_checkpoint_dir = "mock:///unit-test/bucket"
+        fs, fs_path = get_fs_and_path(remote_checkpoint_dir)
         tempdir = tempfile.mkdtemp()
-        _ensure_directory(remote_checkpoint_dir)
+        _create_directory(fs=fs, fs_path=fs_path)
 
         storage = StorageContext(
             storage_path=remote_checkpoint_dir,

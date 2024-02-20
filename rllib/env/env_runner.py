@@ -1,5 +1,4 @@
 import abc
-
 from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
@@ -80,6 +79,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         Returns:
             The current state of this EnvRunner.
         """
+        # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
+        # this an empty worker state and in `Algorithm.from_checkpoint()`
+        # the empty state (not `None`) must be ensured separately. Shall we
+        # return here as a default `None`?
         return {}
 
     def set_state(self, state: Dict[str, Any]) -> None:

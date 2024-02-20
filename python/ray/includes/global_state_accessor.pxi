@@ -24,7 +24,7 @@ from ray.includes.optional cimport (
     make_optional
 )
 
-
+from libc.stdint cimport uint32_t as c_uint32_t, int32_t as c_int32_t
 from libcpp.string cimport string as c_string
 from libcpp.memory cimport make_unique as c_make_unique
 
@@ -99,12 +99,20 @@ cdef class GlobalStateAccessor:
         return results
 
     def get_draining_nodes(self):
-        cdef c_vector[CNodeID] draining_nodes
+        cdef:
+            unordered_map[CNodeID, int64_t] draining_nodes
+            unordered_map[CNodeID, int64_t].iterator draining_nodes_it
+
         with nogil:
             draining_nodes = self.inner.get().GetDrainingNodes()
-        results = set()
-        for draining_node in draining_nodes:
-            results.add(ray._private.utils.binary_to_hex(draining_node.Binary()))
+        draining_nodes_it = draining_nodes.begin()
+        results = {}
+        while draining_nodes_it != draining_nodes.end():
+            draining_node_id = dereference(draining_nodes_it).first
+            results[ray._private.utils.binary_to_hex(
+                draining_node_id.Binary())] = dereference(draining_nodes_it).second
+            postincrement(draining_nodes_it)
+
         return results
 
     def get_all_available_resources(self):
@@ -173,6 +181,33 @@ cdef class GlobalStateAccessor:
         cdef c_string cserialized_string = serialized_string
         with nogil:
             result = self.inner.get().AddWorkerInfo(cserialized_string)
+        return result
+
+    def get_worker_debugger_port(self, worker_id):
+        cdef c_uint32_t result
+        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        with nogil:
+            result = self.inner.get().GetWorkerDebuggerPort(cworker_id)
+        return result
+
+    def update_worker_debugger_port(self, worker_id, debugger_port):
+        cdef c_bool result
+        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef c_uint32_t cdebugger_port = debugger_port
+        with nogil:
+            result = self.inner.get().UpdateWorkerDebuggerPort(
+                cworker_id,
+                cdebugger_port)
+        return result
+
+    def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
+        cdef c_bool result
+        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef c_int32_t cnum_paused_threads_delta = num_paused_threads_delta
+
+        with nogil:
+            result = self.inner.get().UpdateWorkerNumPausedThreads(
+                cworker_id, cnum_paused_threads_delta)
         return result
 
     def get_placement_group_table(self):

@@ -20,9 +20,12 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "mock/ray/gcs/store_client/store_client.h"
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 // clang-format on
@@ -48,8 +51,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::unique_ptr<GcsFunctionManager> function_manager_;
+  std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
@@ -57,6 +64,13 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
+    kv_manager_ = std::make_unique<GcsInternalKVManager>(
+        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()));
+    function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+    runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
+        [](const std::string &, std::function<void(bool)>) {});
+    gcs_actor_manager_ =
+        std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,
@@ -65,14 +79,17 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
-        "fake_cluster", *gcs_node_manager_, *gcs_placement_group_manager_, client_pool_));
+    gcs_autoscaler_state_manager_.reset(
+        new GcsAutoscalerStateManager("fake_cluster",
+                                      *gcs_node_manager_,
+                                      *gcs_actor_manager_,
+                                      *gcs_placement_group_manager_,
+                                      client_pool_));
   }
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
-    gcs_resource_manager_->OnNodeAdd(*node);
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
 
@@ -81,7 +98,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     gcs_node_manager_->alive_nodes_.erase(node_id);
     gcs_node_manager_->dead_nodes_[node_id] = node;
-    gcs_resource_manager_->OnNodeDead(node_id);
     gcs_autoscaler_state_manager_->OnNodeDead(node_id);
   }
 
@@ -134,11 +150,13 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   bool DrainNodeSync(const NodeID &node_id,
                      const rpc::autoscaler::DrainNodeReason &reason,
-                     const std::string &reason_message) {
+                     const std::string &reason_message,
+                     int64_t deadline_timestamp_ms) {
     rpc::autoscaler::DrainNodeRequest request;
     request.set_node_id(node_id.Binary());
     request.set_reason(reason);
     request.set_reason_message(reason_message);
+    request.set_deadline_timestamp_ms(deadline_timestamp_ms);
     rpc::autoscaler::DrainNodeReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
@@ -151,15 +169,16 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      bool is_draining = false) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     rpc::ResourcesData resources_data;
     Mocker::FillResourcesData(resources_data,
                               node_id,
                               available_resources,
                               total_resources,
                               idle_ms,
-                              is_draining);
-    gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
+                              is_draining,
+                              draining_deadline_timestamp_ms);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
 
@@ -236,16 +255,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       ASSERT_EQ(actual_requests_by_count[req.first], req.second)
           << "Request: " << req.first;
     }
-  }
-
-  void UpdatePlacementGroupLoad(const std::vector<rpc::PlacementGroupTableData> &data) {
-    std::shared_ptr<rpc::PlacementGroupLoad> load =
-        std::make_shared<rpc::PlacementGroupLoad>();
-    for (auto &d : data) {
-      load->add_placement_group_data()->CopyFrom(d);
-    }
-
-    gcs_resource_manager_->UpdatePlacementGroupLoad(load);
   }
 
   void GroupResourceRequestsByConstraintForPG(
@@ -697,13 +706,15 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNonAliveNode) {
   ASSERT_TRUE(
       DrainNodeSync(NodeID::FromBinary(node->node_id()),
                     rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION,
-                    "preemption"));
+                    "preemption",
+                    std::numeric_limits<int64_t>::max()));
 
   // Drain a non-exist node.
   ASSERT_TRUE(
       DrainNodeSync(NodeID::FromRandom(),
                     rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION,
-                    "preemption"));
+                    "preemption",
+                    std::numeric_limits<int64_t>::max()));
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
@@ -721,11 +732,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
   }
 
   // Report draining info.
-  UpdateFromResourceViewSync(NodeID::FromBinary(node->node_id()),
-                             {/* available */ {"CPU", 2}, {"GPU", 1}},
-                             /* total*/ {{"CPU", 2}, {"GPU", 1}},
-                             /* idle_duration_ms */ 10,
-                             /* is_draining */ true);
+  UpdateFromResourceViewSync(
+      NodeID::FromBinary(node->node_id()),
+      {/* available */ {"CPU", 2}, {"GPU", 1}},
+      /* total*/ {{"CPU", 2}, {"GPU", 1}},
+      /* idle_duration_ms */ 10,
+      /* is_draining */ true,
+      /* draining_deadline_timestamp_ms */ std::numeric_limits<int64_t>::max());
   {
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states(0).status(), rpc::autoscaler::NodeStatus::DRAINING);

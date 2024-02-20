@@ -594,25 +594,6 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(result["episode_reward_mean"], 10)
         ev.stop()
 
-    def test_async(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v1"),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(sample_async=True, num_rollout_workers=0),
-        )
-        batch = convert_ma_batch_to_sample_batch(ev.sample())
-        for key in [
-            "obs",
-            "actions",
-            "rewards",
-            "terminateds",
-            "truncateds",
-            "advantages",
-        ]:
-            self.assertIn(key, batch)
-        self.assertGreater(batch["advantages"][0], 1)
-        ev.stop()
-
     def test_auto_vectorization(self):
         ev = RolloutWorker(
             env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
@@ -832,7 +813,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
-                sample_async=True,
+                sample_async=False,
                 num_rollout_workers=0,
                 observation_filter="ConcurrentMeanStdFilter",
             ),
@@ -852,7 +833,7 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=True,
+                sample_async=False,
             ),
         )
         self.sample_and_flush(ev)
@@ -872,7 +853,7 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=True,
+                sample_async=False,
             ),
         )
         obs_f = self.sample_and_flush(ev)

@@ -24,6 +24,7 @@ from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -35,7 +36,7 @@ from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -97,12 +98,10 @@ def test_shutdown(ray_shutdown):
 
     serve.run(f.bind())
 
-    serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
-        serve_controller_name,
+        SERVE_CONTROLLER_NAME,
         format_actor_name(
             SERVE_PROXY_NAME,
-            serve.context._global_client._controller_name,
             cluster_node_info_cache.get_alive_nodes()[0][0],
         ),
     ]
@@ -228,7 +227,6 @@ def test_deployment(ray_cluster):
         return "from_f"
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
-    handle = handle.options(use_new_handle_api=True)
     assert handle.remote().result() == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
@@ -244,7 +242,6 @@ def test_deployment(ray_cluster):
         return "from_g"
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
-    handle = handle.options(use_new_handle_api=True)
     assert handle.remote().result() == "from_g"
     assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
@@ -324,7 +321,6 @@ def test_multiple_routers(ray_cluster):
             proxy_names.append(
                 format_actor_name(
                     SERVE_PROXY_NAME,
-                    serve.context._global_client._controller_name,
                     node_id,
                 )
             )
@@ -725,7 +721,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         )
 
 
-@serve.deployment(ray_actor_options={"num_cpus": 0.1})
+@serve.deployment(ray_actor_options={"num_cpus": 0})
 class Waiter:
     def __init__(self):
         time.sleep(5)
@@ -737,23 +733,26 @@ class Waiter:
 WaiterNode = Waiter.bind()
 
 
-def test_run_graph_task_uses_zero_cpus():
-    """Check that the run_graph() task uses zero CPUs."""
-
-    ray.init(num_cpus=2)
+def test_build_app_task_uses_zero_cpus(ray_shutdown):
+    """Check that the task to build an app uses zero CPUs."""
+    ray.init(num_cpus=0)
     serve.start()
-    client = _get_global_client()
 
-    config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
-    config = ServeApplicationSchema.parse_obj(config)
-    client.deploy_apps(config)
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="default",
+                    route_prefix="/",
+                    import_path="ray.serve.tests.test_standalone.WaiterNode",
+                )
+            ],
+        )
+    )
 
-    with pytest.raises(RuntimeError):
-        wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)
-
+    # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/Waiter").text
-        == "May I take your order?"
+        lambda: requests.get("http://localhost:8000/").text == "May I take your order?"
     )
 
     serve.shutdown()

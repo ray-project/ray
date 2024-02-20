@@ -60,7 +60,30 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit downscale.
   optional double downscale_smoothing_factor = 11;
+
+  // The cloudpickled policy definition.
+  bytes serialized_policy_def = 12;
+
+  // The import path of the policy if user passed a string. Will be the concatenation
+  // of the policy module and the policy name if user passed a callable.
+  string policy = 13;
 }
+
+//[Begin] LOGGING CONFIG
+// Encoding type
+enum EncodingType {
+  TEXT = 0;
+  JSON = 1;
+}
+
+message LoggingConfig {
+  EncodingType encoding = 1;
+  string log_level = 2;
+  string logs_dir = 3;
+  bool enable_access_log = 4;
+}
+
+//[End] Logging Config
 
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
@@ -101,6 +124,8 @@ message DeploymentConfig {
   string version = 11;
 
   repeated string user_configured_option_names = 12;
+
+  LoggingConfig logging_config = 13;
 }
 
 // Deployment language.
@@ -178,6 +203,12 @@ message ReplicaConfig {
   int32 max_replicas_per_node = 8;
 }
 
+enum TargetCapacityDirection {
+  UNSET = 0;
+  UP = 1;
+  DOWN = 2;
+}
+
 message DeploymentInfo {
   string name = 1;
   DeploymentConfig deployment_config = 2;
@@ -186,6 +217,8 @@ message DeploymentInfo {
   string actor_name = 5;
   string version = 6;
   int64 end_time_ms = 7;
+  double target_capacity = 8;
+  TargetCapacityDirection target_capacity_direction = 9;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -205,12 +238,28 @@ enum DeploymentStatus {
   DEPLOYMENT_STATUS_UPDATING = 0;
   DEPLOYMENT_STATUS_HEALTHY = 1;
   DEPLOYMENT_STATUS_UNHEALTHY = 2;
+  DEPLOYMENT_STATUS_UPSCALING = 3;
+  DEPLOYMENT_STATUS_DOWNSCALING = 4;
+}
+
+enum DeploymentStatusTrigger {
+  DEPLOYMENT_STATUS_TRIGGER_UNSPECIFIED = 0;
+  DEPLOYMENT_STATUS_TRIGGER_CONFIG_UPDATE_STARTED = 1;
+  DEPLOYMENT_STATUS_TRIGGER_CONFIG_UPDATE_COMPLETED = 2;
+  DEPLOYMENT_STATUS_TRIGGER_UPSCALE_COMPLETED = 3;
+  DEPLOYMENT_STATUS_TRIGGER_DOWNSCALE_COMPLETED = 4;
+  DEPLOYMENT_STATUS_TRIGGER_AUTOSCALING = 5;
+  DEPLOYMENT_STATUS_TRIGGER_REPLICA_STARTUP_FAILED = 6;
+  DEPLOYMENT_STATUS_TRIGGER_HEALTH_CHECK_FAILED = 7;
+  DEPLOYMENT_STATUS_TRIGGER_INTERNAL_ERROR = 8;
+  DEPLOYMENT_STATUS_TRIGGER_DELETING = 9;
 }
 
 message DeploymentStatusInfo {
   string name = 1;
   DeploymentStatus status = 2;
   string message = 3;
+  DeploymentStatusTrigger status_trigger = 4;
 }
 
 // Wrap a list for DeploymentStatusInfo.

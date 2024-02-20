@@ -645,6 +645,10 @@ class WorkerState(StateSchema):
     end_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
     )
+    # the debugger port of the worker
+    debugger_port: Optional[int] = state_column(filterable=True, detail=True)
+    # the number of threads paused in this worker
+    num_paused_threads: Optional[int] = state_column(filterable=True, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -741,6 +745,8 @@ class TaskState(StateSchema):
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
     #: Task error detail info.
     error_message: Optional[str] = state_column(detail=True, filterable=False)
+    # Is task paused by the debugger
+    is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1500,7 +1506,7 @@ def protobuf_message_to_dict(
     return dashboard_utils.message_to_dict(
         message,
         fields_to_decode,
-        including_default_value_fields=True,
+        always_print_fields_with_no_presence=True,
         preserving_proto_field_name=preserving_proto_field_name,
     )
 
@@ -1555,7 +1561,14 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
         (
             state_updates,
-            ["node_id", "worker_id", "task_log_info", "actor_repr_name", "worker_pid"],
+            [
+                "node_id",
+                "worker_id",
+                "task_log_info",
+                "actor_repr_name",
+                "worker_pid",
+                "is_debugger_paused",
+            ],
         ),
     ]
     for src, keys in mappings:

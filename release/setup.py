@@ -12,5 +12,22 @@ setup(
     author="Ray Team",
     description="The Ray OSS release testing package",
     url="https://github.com/ray-project/ray",
-    install_requires=["ray>=1.9", "click", "anyscale", "boto3", "freezegun", "retry"],
+    install_requires=[
+        # Keep this in sync with requirements_buildkite.in
+        "anyscale",
+        "bazel-runfiles",
+        "boto3",
+        "click",
+        "freezegun",
+        "google-cloud-storage",
+        "jinja2",
+        "protobuf",
+        "pydantic >= 2.5.0",
+        "pytest",
+        "pyyaml",
+        "pybuildkite",
+        "PyGithub",
+        "requests",
+        "retry",
+    ],
 )

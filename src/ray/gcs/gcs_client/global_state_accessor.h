@@ -66,14 +66,6 @@ class GlobalStateAccessor {
   /// \return All task events info.
   std::vector<std::string> GetAllTaskEvents() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get information of a node resource from GCS Service.
-  ///
-  /// \param node_id The ID of node to look up in the GCS Service.
-  /// \return node resource map info. To support multi-language, we serialize each
-  /// ResourceTableData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const NodeID &node_id) ABSL_LOCKS_EXCLUDED(mutex_);
-
   /// Get available resources of all nodes.
   ///
   /// \return available resources of all nodes. To support multi-language, we serialize
@@ -81,10 +73,10 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get ids of draining nodes.
+  /// Get draining nodes.
   ///
-  /// \return ids of draining nodes.
-  std::vector<NodeID> GetDrainingNodes() ABSL_LOCKS_EXCLUDED(mutex_);
+  /// \return Draining node id to draining deadline.
+  std::unordered_map<NodeID, int64_t> GetDrainingNodes() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
   /// rerouce usage report enabled.
@@ -132,6 +124,27 @@ class GlobalStateAccessor {
   /// WorkerTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllWorkerInfo() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Get the worker debugger port from the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to look up in the GCS Service.
+  /// \return The worker debugger port.
+  uint32_t GetWorkerDebuggerPort(const WorkerID &worker_id);
+
+  /// Update the worker debugger port in the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS Service.
+  /// \param debugger_port The debugger port of worker to update in the GCS Service.
+  /// \return Is operation success.
+  bool UpdateWorkerDebuggerPort(const WorkerID &worker_id, const uint32_t debugger_port);
+
+  /// Update the worker num of paused threads in the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS Service.
+  /// \param num_paused_threads_delta The delta of paused threads of worker to update in
+  /// the GCS Service. \return Is operation success.
+  bool UpdateWorkerNumPausedThreads(const WorkerID &worker_id,
+                                    const int num_paused_threads_delta);
 
   /// Add information of a worker to GCS Service.
   ///
@@ -240,6 +253,12 @@ class GlobalStateAccessor {
 
   // protects is_connected_ and gcs_client_
   mutable absl::Mutex mutex_;
+
+  // protects debugger port related operations
+  mutable absl::Mutex debugger_port_mutex_;
+
+  // protects debugger tasks related operations
+  mutable absl::Mutex debugger_threads_mutex_;
 
   /// Whether this client is connected to gcs server.
   bool is_connected_ ABSL_GUARDED_BY(mutex_) = false;

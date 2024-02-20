@@ -71,12 +71,13 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         `self._exclude` patterns."""
         path = Path(path)
         relative_path = path.relative_to(self._root_path).as_posix()
-        alt = os.path.join(relative_path, "") if path.is_dir() else None
+        match_candidates = [relative_path]
+        if path.is_dir():
+            # Everything is in posix path format ('/')
+            match_candidates.append(relative_path + "/")
 
         for excl in self._exclude:
-            if fnmatch.fnmatch(relative_path, excl):
-                return True
-            if alt and fnmatch.fnmatch(alt, excl):
+            if any(fnmatch.fnmatch(candidate, excl) for candidate in match_candidates):
                 return True
         return False
 
@@ -120,7 +121,6 @@ def _pyarrow_fs_copy_files(
 
 
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
-
     is_dir = _is_directory(fs, fs_path)
 
     try:
@@ -231,7 +231,11 @@ def _upload_to_uri_with_exclude_fsspec(
     )
 
 
-def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
+def _list_at_fs_path(
+    fs: pyarrow.fs.FileSystem,
+    fs_path: str,
+    file_filter: Callable[[pyarrow.fs.FileInfo], bool] = lambda x: True,
+) -> List[str]:
     """Returns the list of filenames at (fs, fs_path), similar to os.listdir.
 
     If the path doesn't exist, returns an empty list.
@@ -240,6 +244,7 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
         for file_info in fs.get_file_info(selector)
+        if file_filter(file_info)
     ]
 
 
@@ -353,7 +358,7 @@ class StorageContext:
     There are 2 types of paths:
     1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
         which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and
-        can be joined with `os.path.join`.
+        can be joined with `Path(...).as_posix()`.
     2. *_local_path: The path on the local filesystem where results are saved to
        before persisting to storage.
 
@@ -408,7 +413,7 @@ class StorageContext:
 
         pyarrow.fs.copy_files(
             local_dir,
-            os.path.join(storage.trial_fs_path, "subdir"),
+            Path(storage.trial_fs_path, "subdir").as_posix(),
             destination_filesystem=storage.filesystem
         )
     """
@@ -486,23 +491,27 @@ class StorageContext:
         storage path to verify that the storage path can be written to.
         This validation file is also used to check whether the storage path is
         accessible by all nodes in the cluster."""
-        valid_file = os.path.join(
+        valid_file = Path(
             self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
-        )
+        ).as_posix()
         self.storage_filesystem.create_dir(self.experiment_fs_path)
         with self.storage_filesystem.open_output_stream(valid_file):
             pass
 
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
-        valid_file = os.path.join(
+        valid_file = Path(
             self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
-        )
+        ).as_posix()
         if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
                 f"Unable to set up cluster storage with the following settings:\n{self}"
                 "\nCheck that all nodes in the cluster have read/write access "
-                "to the configured storage path."
+                "to the configured storage path. `RunConfig(storage_path)` should be "
+                "set to a cloud storage URI or a shared filesystem path accessible "
+                "by all nodes in your cluster ('s3://bucket' or '/mnt/nfs'). "
+                "A local path on the head node is not accessible by worker nodes. "
+                "See: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html"  # noqa: E501
             )
 
     def _update_checkpoint_index(self, metrics: Dict):

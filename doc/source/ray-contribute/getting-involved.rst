@@ -13,7 +13,7 @@ Getting Involved / Contributing
     docs
     writing-code-snippets
     fake-autoscaler
-    ../ray-core/examples/testing-tips
+    testing-tips
     debugging
     profiling
 
@@ -51,7 +51,7 @@ ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8
 Setting up your development environment
 ---------------------------------------
 
-To edit the Ray source code, you'll want to checkout the repository and also build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
+To edit the Ray source code, fork the repository, clone it, and build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
 
 Submitting and Merging a Contribution
 -------------------------------------

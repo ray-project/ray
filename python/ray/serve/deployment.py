@@ -7,13 +7,16 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ray.dag.class_node import ClassNode
 from ray.dag.dag_node import DAGNodeBase
 from ray.dag.function_node import FunctionNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    ReplicaConfig,
+    handle_num_replicas_auto,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
+from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -211,6 +214,13 @@ class Deployment:
 
         return _get_global_client().root_url + self.route_prefix
 
+    @property
+    def logging_config(self) -> Dict:
+        return self._deployment_config.logging_config
+
+    def set_logging_config(self, logging_config: Dict):
+        self._deployment_config.logging_config = logging_config
+
     def __call__(self):
         raise RuntimeError(
             "Deployments cannot be constructed directly. "
@@ -251,11 +261,6 @@ class Deployment:
 
         return Application._from_internal_dag_node(dag_node)
 
-    def deploy(self, *init_args, _blocking=True, **init_kwargs):
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.run() instead."
-        )
-
     def _deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
@@ -290,55 +295,17 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    def delete(self):
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.run() and "
-            "serve.delete() instead."
-        )
-
     def _delete(self):
         """Delete this deployment."""
 
         return _get_global_client().delete_deployments([self._name])
-
-    def get_handle(
-        self, sync: Optional[bool] = True
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        raise ValueError(
-            "This API has been fully deprecated. Please use serve.get_app_handle() or "
-            "serve.get_deployment_handle() instead."
-        )
-
-    def _get_handle(
-        self,
-        sync: Optional[bool] = True,
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Get a ServeHandle to this deployment to invoke it from Python.
-
-        Args:
-            sync: If true, then Serve will return a ServeHandle that
-                works everywhere. Otherwise, Serve will return an
-                asyncio-optimized ServeHandle that's only usable in an asyncio
-                loop.
-
-        Returns:
-            ServeHandle
-        """
-
-        return _get_global_client().get_handle(
-            self._name,
-            app_name="",
-            missing_ok=True,
-            sync=sync,
-            use_new_handle_api=False,
-        )
 
     def options(
         self,
         func_or_class: Optional[Callable] = None,
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
-        num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
+        num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -353,6 +320,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
@@ -364,6 +332,14 @@ class Deployment:
 
         Refer to the `@serve.deployment` decorator docs for available arguments.
         """
+
+        # Modify max_concurrent_queries and autoscaling_config if
+        # `num_replicas="auto"`
+        if num_replicas == "auto":
+            num_replicas = None
+            max_concurrent_queries, autoscaling_config = handle_num_replicas_auto(
+                max_concurrent_queries, autoscaling_config
+            )
 
         # NOTE: The user_configured_option_names should be the first thing that's
         # defined in this method. It depends on the locals() dictionary storing
@@ -382,7 +358,11 @@ class Deployment:
                 user_configured_option_names
             )
 
-        if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
+        if num_replicas not in [
+            DEFAULT.VALUE,
+            None,
+            "auto",
+        ] and autoscaling_config not in [
             DEFAULT.VALUE,
             None,
         ]:
@@ -408,8 +388,9 @@ class Deployment:
                 "into `serve.run` instead."
             )
 
-        if num_replicas not in [DEFAULT.VALUE, None]:
+        elif num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
+
         if user_config is not DEFAULT.VALUE:
             new_deployment_config.user_config = user_config
         if max_concurrent_queries is not DEFAULT.VALUE:
@@ -464,6 +445,11 @@ class Deployment:
 
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
+
+        if logging_config is not DEFAULT.VALUE:
+            if isinstance(logging_config, LoggingConfig):
+                logging_config = logging_config.dict()
+            new_deployment_config.logging_config = logging_config
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
@@ -606,6 +592,7 @@ def deployment_to_schema(
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
+        "logging_config": d._deployment_config.logging_config,
     }
 
     if include_route_prefix:
@@ -667,6 +654,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
+        logging_config=s.logging_config,
     )
     deployment_config.user_configured_option_names = (
         s.get_user_configured_option_names()

@@ -363,7 +363,7 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
         def f(self):
             return 1
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     # Without a proper fix, the actor won't be initialized correctly.
     # Because it will crash on each startup.
     assert handle.f.remote().result() == 1
@@ -604,6 +604,29 @@ def test_fastapi_shutdown_hook(serve_instance):
     @serve.ingress(app)
     class A:
         def __del__(self):
+            del_signal.send.remote()
+
+    serve.run(A.bind())
+    serve.delete(SERVE_DEFAULT_APP_NAME)
+    ray.get(shutdown_signal.wait.remote(), timeout=20)
+    ray.get(del_signal.wait.remote(), timeout=20)
+
+
+def test_fastapi_shutdown_hook_async(serve_instance):
+    # https://github.com/ray-project/ray/issues/41261
+    shutdown_signal = SignalActor.remote()
+    del_signal = SignalActor.remote()
+
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    def call_signal():
+        shutdown_signal.send.remote()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        async def __del__(self):
             del_signal.send.remote()
 
     serve.run(A.bind())

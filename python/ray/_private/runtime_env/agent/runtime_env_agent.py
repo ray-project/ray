@@ -28,6 +28,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
+from ray._private.runtime_env.mpi import MPIPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
     agent_manager_pb2,
@@ -203,6 +204,7 @@ class RuntimeEnvAgent:
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(temp_dir)
+        self._mpi_plugin = MPIPlugin()
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
@@ -214,6 +216,7 @@ class RuntimeEnvAgent:
             self._py_modules_plugin,
             self._java_jars_plugin,
             self._nsight_plugin,
+            self._mpi_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
@@ -317,16 +320,35 @@ class RuntimeEnvAgent:
                         "fields in the runtime_env will raise an exception."
                     )
 
-                """Run setup for each plugin unless it has already been cached."""
-            for (
-                plugin_setup_context
-            ) in self._plugin_manager.sorted_plugin_setup_contexts():
-                plugin = plugin_setup_context.class_instance
-                uri_cache = plugin_setup_context.uri_cache
-                await create_for_plugin_if_needed(
-                    runtime_env, plugin, uri_cache, context, per_job_logger
-                )
+            # Creates each runtime env URI by their priority. `working_dir` is special
+            # because it needs to be created before other plugins. All other plugins are
+            # created in the priority order (smaller priority value -> earlier to
+            # create), with a special environment variable being set to the working dir.
+            # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
 
+            # First create working dir...
+            working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
+            await create_for_plugin_if_needed(
+                runtime_env,
+                working_dir_ctx.class_instance,
+                working_dir_ctx.uri_cache,
+                context,
+                per_job_logger,
+            )
+
+            # Then within the working dir, create the other plugins.
+            working_dir_uri_or_none = runtime_env.working_dir_uri()
+            with self._working_dir_plugin.with_working_dir_env(working_dir_uri_or_none):
+                """Run setup for each plugin unless it has already been cached."""
+                for (
+                    plugin_setup_context
+                ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                    plugin = plugin_setup_context.class_instance
+                    if plugin.name != WorkingDirPlugin.name:
+                        uri_cache = plugin_setup_context.uri_cache
+                        await create_for_plugin_if_needed(
+                            runtime_env, plugin, uri_cache, context, per_job_logger
+                        )
             return context
 
         async def _create_runtime_env_with_retry(

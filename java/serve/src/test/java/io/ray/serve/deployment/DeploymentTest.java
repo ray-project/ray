@@ -36,7 +36,7 @@ public class DeploymentTest extends BaseServeTest2 {
     Assert.assertTrue((boolean) handle.method("checkHealth").remote().result());
   }
 
-  @Test(enabled = false)
+  @Test
   public void httpExposeDeploymentTest() throws IOException {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
@@ -91,8 +91,8 @@ public class DeploymentTest extends BaseServeTest2 {
   public void autoScaleTest() {
     String deploymentName = "exampleEcho";
     AutoscalingConfig autoscalingConfig = new AutoscalingConfig();
-    autoscalingConfig.setMinReplicas(2);
-    autoscalingConfig.setMaxReplicas(5);
+    autoscalingConfig.setMinReplicas(1);
+    autoscalingConfig.setMaxReplicas(3);
     autoscalingConfig.setTargetNumOngoingRequestsPerReplica(10);
     Application deployment =
         Serve.deployment()

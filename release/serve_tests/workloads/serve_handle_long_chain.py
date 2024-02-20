@@ -105,7 +105,7 @@ def main(
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
-            handle,
+            handle.predict.remote,
             chain_length,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
@@ -113,7 +113,7 @@ def main(
     )
     latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
-            handle,
+            handle.predict.remote,
             chain_length,
             num_requests=num_requests_per_client,
             num_clients=num_clients,

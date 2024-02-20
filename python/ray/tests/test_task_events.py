@@ -499,6 +499,130 @@ tune_function()
     wait_for_condition(verify)
 
 
+def test_is_debugger_paused(shutdown_only):
+    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+
+    @ray.remote(max_retries=0)
+    def f():
+        import time
+
+        # Pause 5 seconds inside debugger
+        with ray._private.worker.global_worker.task_paused_by_debugger():
+            time.sleep(5)
+
+    def verify(num_paused):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        return len(tasks) == num_paused
+
+    f_task = f.remote()  # noqa
+
+    wait_for_condition(
+        verify,
+        timeout=20,
+        retry_interval_ms=100,
+        num_paused=1,
+    )
+
+    wait_for_condition(
+        verify,
+        timeout=20,
+        retry_interval_ms=100,
+        num_paused=0,
+    )
+
+
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
+def test_is_debugger_paused_actor(shutdown_only, actor_concurrency):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class TestActor:
+        def main_task(self, i):
+            if i == 0:
+                import time
+
+                # Pause 5 seconds inside debugger
+                with ray._private.worker.global_worker.task_paused_by_debugger():
+                    time.sleep(5)
+
+    def verify(expected_task_name):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
+
+    test_actor = TestActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        test_actor.main_task.options(name=f"TestActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
+
+    wait_for_condition(verify, expected_task_name="TestActor.main_task")
+
+
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
+def test_is_debugger_paused_threaded_actor(shutdown_only, actor_concurrency):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class ThreadedActor:
+        def main_task(self, i):
+            def thd_task():
+                @ray.remote
+                def thd_task():
+                    if i == 0:
+                        import time
+
+                        # Pause 5 seconds inside debugger
+                        with ray._private.worker.global_worker.task_paused_by_debugger():  # noqa: E501
+                            time.sleep(5)
+
+                ray.get(thd_task.options(name=f"ThreadedActor.main_task_{i}").remote())
+
+            thd = threading.Thread(target=thd_task)
+            thd.start()
+            thd.join()
+
+    def verify(expected_task_name):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
+
+    threaded_actor = ThreadedActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        threaded_actor.main_task.options(name=f"ThreadedActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
+
+    wait_for_condition(verify, expected_task_name="ThreadedActor.main_task")
+
+
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
+def test_is_debugger_paused_async_actor(shutdown_only, actor_concurrency):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class AsyncActor:
+        async def main_task(self, i):
+            if i == 0:
+                import time
+
+                # Pause 5 seconds inside debugger
+                print()
+                with ray._private.worker.global_worker.task_paused_by_debugger():
+                    time.sleep(5)
+
+    def verify(expected_task_name):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        print(tasks)
+        return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
+
+    async_actor = AsyncActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        async_actor.main_task.options(name=f"AsyncActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
+
+    wait_for_condition(verify, expected_task_name="AsyncActor.main_task")
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

@@ -22,7 +22,7 @@ VALID_TEST = Test(
         "name": "validation_test",
         "group": "validation_group",
         "working_dir": "validation_dir",
-        "python": "3.7",
+        "python": "3.9",
         "frequency": "nightly",
         "team": "release",
         "cluster": {

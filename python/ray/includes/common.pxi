@@ -23,8 +23,13 @@ cdef class GcsClientOptions:
     @classmethod
     def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
-        self.inner.reset(
-            new CGcsClientOptions(gcs_address.encode("ascii")))
+        try:
+            ip, port = gcs_address.split(":", 2)
+            port = int(port)
+            self.inner.reset(
+                new CGcsClientOptions(ip, port))
+        except Exception:
+            raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self
 
     cdef CGcsClientOptions* native(self):

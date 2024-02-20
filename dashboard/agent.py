@@ -14,16 +14,11 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._raylet import GcsClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import (
     setup_component_logger,
     configure_log_file,
-)
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
 )
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 
@@ -80,12 +75,10 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
-        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
-        # gcs_aio_client and not gcs_client.
-        self.gcs_client = GcsClient(address=self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
-        assert _internal_kv_initialized()
-        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
+        self.gcs_aio_client = GcsAioClient(
+            address=self.gcs_address,
+            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
+        )
 
         if not self.minimal:
             self._init_non_minimal()
@@ -180,6 +173,9 @@ class DashboardAgent:
         ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
         return self.aio_publisher
 
+    def get_node_id(self) -> str:
+        return self.node_id
+
     async def run(self):
         # Start a grpc asyncio server.
         if self.server:
@@ -220,9 +216,9 @@ class DashboardAgent:
         tasks = [m.run(self.server) for m in modules]
         if sys.platform not in ["win32", "cygwin"]:
 
-            def callback():
+            def callback(msg):
                 logger.info(
-                    f"Terminated Raylet: ip={self.ip}, node_id={self.node_id}. "
+                    f"Terminated Raylet: ip={self.ip}, node_id={self.node_id}. {msg}"
                 )
 
             check_parent_task = create_check_raylet_task(

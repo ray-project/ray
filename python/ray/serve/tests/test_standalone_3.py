@@ -16,6 +16,7 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import ProxyStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeInstanceDetails
@@ -300,11 +301,20 @@ def test_autoscaler_shutdown_node_http_everynode(
         )
         == 2
     )
+
     client = _get_global_client()
+
+    def serve_details_proxy_count():
+        serve_details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        return len(serve_details.proxies)
+
+    wait_for_condition(lambda: serve_details_proxy_count() == 1)
+
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    assert len(serve_details.proxies) == 1
     assert serve_details.proxies[get_head_node_id()].status == ProxyStatus.HEALTHY
 
     # Only head node should exist now.
@@ -608,6 +618,43 @@ def test_client_shutdown_gracefully_when_timeout(
 
     # Clean up serve.
     serve.shutdown()
+
+
+def test_serve_shut_down_without_duplicated_logs(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test Serve shut down without duplicated logs.
+
+    When Serve shutdown is called and executing the shutdown process, the controller
+    log should not be spamming controller shutdown and deleting app messages.
+    """
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @serve.deployment
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+    serve.shutdown()
+
+    # Ensure the all resources are shutdown gracefully.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        ),
+    )
+
+    all_serve_logs = ""
+    for filename in os.listdir(get_serve_logs_dir()):
+        with open(os.path.join(get_serve_logs_dir(), filename), "r") as f:
+            all_serve_logs += f.read()
+    assert all_serve_logs.count("Controller shutdown started") == 1
+    assert all_serve_logs.count("Deleting application 'default'") == 1
 
 
 if __name__ == "__main__":

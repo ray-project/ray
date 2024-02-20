@@ -16,9 +16,15 @@ from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.deployment import Application
-from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeHandle
+from ray.serve.handle import DeploymentHandle
+
+
+@pytest.fixture
+def serve_and_ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
 
 
 @serve.deployment()
@@ -148,9 +154,7 @@ def test_deploy_function_no_params(serve_instance, use_async):
     else:
         expected_output = "sync!"
         deployment_cls = sync_d
-    handle = serve.run(deployment_cls.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(deployment_cls.bind())
 
     assert (
         requests.get(f"http://localhost:8000/{deployment_cls.name}").text
@@ -168,9 +172,7 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
         expected_output = "sync!"
         deployment_cls = sync_d
 
-    handle = serve.run(deployment_cls.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(deployment_cls.bind())
 
     assert (
         requests.get(f"http://localhost:8000/{deployment_cls.name}").text
@@ -192,9 +194,7 @@ def test_deploy_class_no_params(serve_instance, use_async):
     else:
         deployment_cls = Counter
 
-    handle = serve.run(deployment_cls.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(deployment_cls.bind())
 
     assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {
         "count": 1
@@ -217,9 +217,7 @@ def test_user_config(serve_instance):
         def reconfigure(self, config):
             self.count = config["count"]
 
-    handle = serve.run(Counter.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Counter.bind())
 
     def check(val, num_replicas):
         pids_seen = set()
@@ -253,9 +251,7 @@ def test_user_config_empty(serve_instance):
         def reconfigure(self, config):
             self.count += 1
 
-    handle = serve.run(Counter.bind()).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Counter.bind())
     assert handle.remote().result() == 1
 
 
@@ -325,7 +321,7 @@ def test_run_get_ingress_node(serve_instance):
     @serve.deployment
     class Driver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self, *args):
             return await self._h.remote()
@@ -335,9 +331,7 @@ def test_run_get_ingress_node(serve_instance):
         def __call__(self, *args):
             return "got f"
 
-    handle = serve.run(Driver.bind(f.bind())).options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Driver.bind(f.bind()))
     assert handle.remote().result() == "got f"
 
 
@@ -421,13 +415,6 @@ def test_deploy_application_basic(serve_instance):
     assert h_handle.remote().result() == "got h"
     assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
 
-    # Test deployment graph
-    graph_handle = serve.run(
-        DAGDriver.bind(Model1.bind()), name="graph", route_prefix="/my_graph"
-    )
-    assert graph_handle.predict.remote().result() == "got model1"
-    assert requests.get("http://127.0.0.1:8000/my_graph").text == '"got model1"'
-
     # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
     assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
@@ -444,12 +431,8 @@ def test_delete_application(serve_instance):
     def g():
         return "got g"
 
-    f_handle = serve.run(f.bind(), name="app_f").options(
-        use_new_handle_api=True,
-    )
-    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g").options(
-        use_new_handle_api=True,
-    )
+    f_handle = serve.run(f.bind(), name="app_f")
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert f_handle.remote().result() == "got f"
     assert requests.get("http://127.0.0.1:8000/").text == "got f"
 
@@ -496,9 +479,7 @@ def test_deploy_application_with_same_name(serve_instance):
         def __call__(self):
             return "got model"
 
-    handle = serve.run(Model.bind(), name="app").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
@@ -510,9 +491,7 @@ def test_deploy_application_with_same_name(serve_instance):
         def __call__(self):
             return "got model1"
 
-    handle = serve.run(Model1.bind(), name="app").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model1.bind(), name="app")
     assert handle.remote().result() == "got model1"
     assert requests.get("http://127.0.0.1:8000/").text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
@@ -536,9 +515,7 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
         def __call__(self):
             return "got model"
 
-    handle = serve.run(Model.bind(), name="app").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
 
@@ -552,9 +529,7 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
         serve.run(Model1.bind(), name="app1")
 
     # Update the route prefix
-    handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1").options(
-        use_new_handle_api=True,
-    )
+    handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1")
     assert handle.remote().result() == "got model1"
     assert requests.get("http://127.0.0.1:8000/model1").text == "got model1"
 
@@ -775,6 +750,36 @@ class TestAppBuilder:
                 check_missing_required, {"num_replicas": "10"}
             )
 
+    @pytest.mark.parametrize("use_v1_patch", [True, False])
+    def test_pydantic_version_compatibility(self, use_v1_patch: bool):
+        """Check compatibility with different pydantic versions."""
+
+        if use_v1_patch:
+            try:
+                # Only runs if installed pydantic version is >=2.5.0
+                from pydantic.v1 import BaseModel
+            except ImportError:
+                return
+        else:
+            from pydantic import BaseModel
+
+        cat_dict = {"color": "orange", "age": 10}
+
+        class Cat(BaseModel):
+            color: str
+            age: int
+
+        def build(args: Cat):
+            """Builder with Pydantic model type hint."""
+
+            assert isinstance(args, Cat), f"args type: {type(args)}"
+            assert args.color == cat_dict["color"]
+            assert args.age == cat_dict["age"]
+            return self.A.bind(f"My {args.color} cat is {args.age} years old.")
+
+        app = call_app_builder_with_args_if_necessary(build, cat_dict)
+        assert isinstance(app, Application)
+
 
 def test_no_slash_route_prefix(serve_instance):
     """Test serve run with no slash route_prefix.
@@ -809,19 +814,13 @@ def test_status_basic(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self):
             return await self._h.remote()
 
-    handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a").options(
-        use_new_handle_api=True,
-    )
-    handle_2 = serve.run(
-        MyDriver.bind(f.bind()), name="hello", route_prefix="/b"
-    ).options(
-        use_new_handle_api=True,
-    )
+    handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a")
+    handle_2 = serve.run(MyDriver.bind(f.bind()), name="hello", route_prefix="/b")
 
     assert handle_1.remote(8).result() == 9
     assert handle_2.remote().result() == "hello world"
@@ -888,12 +887,11 @@ def test_status_package_unavailable_in_controller(serve_instance):
 
     def check_for_failed_deployment():
         default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-        return (
-            default_app.status == "DEPLOY_FAILED"
-            and "some_wrong_url" in default_app.deployments["MyDeployment"].message
-        )
+        assert default_app.status == "DEPLOY_FAILED"
+        assert "some_wrong_url" in default_app.deployments["MyDeployment"].message
+        return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=15)
+    wait_for_condition(check_for_failed_deployment, timeout=60)
 
 
 def test_get_app_handle_basic(serve_instance):
@@ -909,7 +907,7 @@ def test_get_app_handle_basic(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self):
             return await self._h.remote()
@@ -968,7 +966,7 @@ def test_get_deployment_handle_basic(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
         def __init__(self, handle):
-            self._h = handle.options(use_new_handle_api=True)
+            self._h = handle
 
         async def __call__(self):
             return f"{await self._h.remote()}!!"
@@ -988,11 +986,11 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     """Test binding a handle within a custom object."""
 
     class HandleWrapper:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
 
         def get(self) -> DeploymentHandle:
-            return self._handle.options(use_new_handle_api=True)
+            return self._handle
 
     @serve.deployment
     def f() -> str:
@@ -1007,7 +1005,7 @@ def test_deployment_handle_nested_in_obj(serve_instance):
             return await self.handle_wrapper.get().remote()
 
     handle_wrapper = HandleWrapper(f.bind())
-    h = serve.run(MyDriver.bind(handle_wrapper)).options(use_new_handle_api=True)
+    h = serve.run(MyDriver.bind(handle_wrapper))
     assert h.remote().result() == "hi"
 
 

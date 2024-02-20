@@ -173,7 +173,6 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -195,6 +194,36 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_4x4_gce.yaml
+
+
+- name: chaos_torch_batch_inference_16_gpu_300gb_raw
+  group: AIR tests
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dataset/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1000
+    prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
+    script: python dataset/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+
+    wait_for_nodes:
+        num_nodes: 4
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: dataset/compute_gpu_4x4_gce.yaml
 
 
 # 300 GB image classification parquet data with 16 GPUs
@@ -746,8 +775,6 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: false
-
   frequency: nightly
 
   team: data
@@ -851,7 +878,6 @@
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
 
-  python: "3.9"
 
   frequency: weekly
   team: ml
@@ -898,7 +924,6 @@
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
 
-  python: "3.8"
 
   frequency: weekly
   team: ml
@@ -922,7 +947,6 @@
 - name: workspace_template_batch_inference
   group: Workspace templates
   working_dir: workspace_templates/01_batch_inference
-  python: "3.9"
   frequency: nightly-3x
   team: data
   cluster:
@@ -946,7 +970,6 @@
 - name: workspace_template_many_model_training
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
-  python: "3.9"
   frequency: nightly-3x
   team: ml
 
@@ -971,12 +994,12 @@
 - name: workspace_template_serving_stable_diffusion
   group: Workspace templates
   working_dir: workspace_templates/03_serving_stable_diffusion
-  python: "3.9"
   frequency: nightly-3x
   team: serve
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_stable_diffusion.sh
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
@@ -994,7 +1017,6 @@
 - name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b
   group: Workspace templates
   working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
-  python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
@@ -1019,7 +1041,6 @@
 - name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b_lora
   group: Workspace templates
   working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
-  python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
@@ -1107,8 +1128,6 @@
   cluster:
     byod:
       type: gpu
-      runtime_env:
-        - NCCL_SOCKET_IFNAME=ens
       post_build_script: byod_xgboost_test.sh
     cluster_compute: tpl_gpu_small_aws.yaml
 
@@ -1628,35 +1647,6 @@
 
   alert: default
 
-- name: ml_user_xgboost_gpu_connect_latest
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_xgboost_test.sh
-    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python xgboost/train_gpu_connect.py
-    wait_for_nodes:
-      num_nodes: 5
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
-
-  alert: default
-
 - name: ml_user_xgboost_gpu_connect_master
   group: ML user tests
   working_dir: ml_user_tests
@@ -1667,7 +1657,7 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_xgboost_master_test.sh
+      post_build_script: byod_xgboost_test.sh
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
@@ -2160,6 +2150,7 @@
 - name: long_running_apex
   group: Long running tests
   working_dir: long_running_tests
+  stable: false
 
   frequency: weekly
   team: rllib
@@ -2548,7 +2539,7 @@
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_1_large.yaml
 
   run:
     timeout: 86400
@@ -3137,7 +3128,6 @@
     script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
 
   alert: default
-  stable: False
 
   variations:
     - __suffix__: aws
@@ -3164,7 +3154,6 @@
     script: python workloads/serve_handle_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
 
   alert: default
-  stable: False
 
   variations:
     - __suffix__: aws
@@ -3307,6 +3296,7 @@
 - name: rllib_learner_e2e_module_loading
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3340,6 +3330,7 @@
 - name: rllib_learning_tests_a2c_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3370,10 +3361,10 @@
 - name: rllib_learning_tests_a2c_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3400,6 +3391,7 @@
 - name: rllib_learning_tests_a3c_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3436,7 +3428,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3463,10 +3454,10 @@
 - name: rllib_learning_tests_apex_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3493,10 +3484,10 @@
 - name: rllib_learning_tests_appo_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3529,7 +3520,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3560,7 +3550,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3594,7 +3583,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3621,6 +3609,7 @@
 - name: rllib_learning_tests_bc_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3782,7 +3771,6 @@
   frequency: nightly
   stable: false
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3812,7 +3800,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3845,7 +3832,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3872,6 +3858,7 @@
 - name: rllib_learning_tests_es_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3902,6 +3889,7 @@
 - name: rllib_learning_tests_es_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3935,7 +3923,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3965,7 +3952,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -3998,7 +3984,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4031,7 +4016,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4058,10 +4042,10 @@
 - name: rllib_learning_tests_ppo_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4094,7 +4078,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4125,7 +4108,6 @@
   frequency: nightly
   team: rllib
 
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4159,7 +4141,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4189,7 +4170,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4246,6 +4226,7 @@
 - name: rllib_learning_tests_slateq_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4282,7 +4263,6 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4309,6 +4289,7 @@
 - name: rllib_learning_tests_td3_tf
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -4339,10 +4320,10 @@
 - name: rllib_learning_tests_td3_torch
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4369,10 +4350,10 @@
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4399,10 +4380,10 @@
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -4631,6 +4612,21 @@
       frequency: weekly
       python: "3.11"
 
+- name: microbenchmark_unstable
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod: {}
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
 - name: benchmark_worker_startup
   group: core-daily-test
@@ -4639,7 +4635,6 @@
   working_dir: benchmark-worker-startup
   stable: false
 
-  python: "3.9"
 
   cluster:
     byod:
@@ -4721,7 +4716,6 @@
   smoke_test:
     frequency: nightly
     cluster:
-      app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
     run:
@@ -4951,7 +4945,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
 
@@ -5268,7 +5261,6 @@
 
   frequency: nightly-3x
   team: core
-  stable: false
   cluster:
     byod:
       type: gpu
@@ -5344,7 +5336,6 @@
 
   frequency: nightly
   team: core
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -5505,6 +5496,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_stable_diffusion.sh
     cluster_compute: stable_diffusion_benchmark_compute.yaml
 
   run:
@@ -5574,7 +5566,7 @@
 # This test case will early stop the data ingestion iteration on the GPU actors.
 # This is a common usage in PyTorch Lightning
 # (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
-# There was a bug in Ray Data that caused GPU memoy leak (see #34819).
+# There was a bug in Ray Data that caused GPU memoy leak (see #3.919).
 # We add this test case to cover this scenario.
 - name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
   group: data-tests
@@ -5636,6 +5628,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -5661,6 +5654,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -5706,10 +5700,10 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -5730,15 +5724,15 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 3600
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
+    timeout: 18000
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 3
 
   variations:
     - __suffix__: aws
@@ -5748,21 +5742,71 @@
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
+- name: read_images_train_4_gpu_worker_chaos
+  group: data-tests
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: dataset/multi_node_train_4_workers.yaml
+
+  run:
+    timeout: 18000
+    prepare: python setup_chaos.py --kill-workers --kill-interval 100 --max-to-kill 3 --task-names "ReadImage->Map(wnid_to_index)->Map(crop_and_flip_image)"
+    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 1
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_images_train_4_gpu_node_chaos
+  group: data-tests
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: dataset/multi_node_train_4_workers.yaml
+
+  run:
+    timeout: 18000
+    prepare: python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names "_RayTrainWorker__execute.get_next"
+    script: python dataset/multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 1
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
 - name: read_images_train_16_gpu
   group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 4800
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
+    timeout: 18000
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu
 
   variations:
     - __suffix__: aws
@@ -5778,15 +5822,15 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 7200
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
+    timeout: 18000
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order --use-gpu
 
   variations:
     - __suffix__: aws
@@ -5802,15 +5846,15 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
     timeout: 3600
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50 --use-gpu
 
   variations:
     - __suffix__: aws
@@ -5826,15 +5870,15 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 4800
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50
+    timeout: 3600
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50 --use-gpu
 
   variations:
     - __suffix__: aws
@@ -5854,6 +5898,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_mosaicml.sh
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6094,7 +6139,6 @@
 
   frequency: weekly
   team: data
-  python: "3.8"
   cluster:
     byod:
       runtime_env:
@@ -6194,7 +6238,7 @@
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6224,7 +6268,7 @@
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6255,7 +6299,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3'
+    prepare: ' python setup_chaos.py --kill-interval 1200 --max-to-kill 3'
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -6285,7 +6329,7 @@
 
   run:
     timeout: 7200
-    prepare: 'python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
+    prepare: 'python setup_chaos.py --kill-interval 900 --max-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -6318,7 +6362,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
+    prepare: ' python setup_chaos.py --kill-interval 600 --max-to-kill 2'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
@@ -6349,7 +6393,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
+    prepare: ' python setup_chaos.py --kill-interval 600 --max-to-kill 2'
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
@@ -6430,7 +6474,6 @@
 
   frequency: nightly
   team: clusters
-  python: "3.8"
   cluster:
     byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
@@ -6446,7 +6489,6 @@
 
   frequency: nightly
   team: clusters
-  python: "3.8"
   cluster:
     byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
@@ -6462,7 +6504,6 @@
 
   frequency: manual
   team: clusters
-  python: "3.8"
   cluster:
     byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
@@ -6542,7 +6583,6 @@
   stable: true
 
   env: gce
-  python: "3.8"
   frequency: nightly
   team: clusters
   cluster:
@@ -6560,7 +6600,6 @@
   stable: true
 
   env: gce
-  python: "3.8"
   frequency: nightly
   team: clusters
   cluster:
@@ -6579,7 +6618,6 @@
   stable: true
 
   env: gce
-  python: "3.8"
   frequency: manual
   team: clusters
   cluster:
@@ -6590,6 +6628,22 @@
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
+- name: gcp_cluster_launcher_gpu_docker
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: weekly
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 1200
+    script: python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
 - name: autoscaler_aws
   group: autoscaler-test

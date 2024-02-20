@@ -74,7 +74,7 @@ def ray_start_4_cpus():
     "storage_path_filesystem_expected",
     [
         ("/tmp/test", None, "local"),
-        ("s3://test", None, "s3"),
+        ("s3://", None, "s3"),
         ("gs://test", None, "gcs"),
         ("mock://test", None, "mock"),
         ("test", pyarrow.fs.LocalFileSystem(), "custom"),

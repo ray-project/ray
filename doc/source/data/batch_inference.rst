@@ -34,9 +34,10 @@ Using Ray Data for offline inference involves four basic steps:
 For more in-depth examples for your use case, see :ref:`the batch inference examples<batch_inference_examples>`.
 For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: HuggingFace
+    .. tab-item:: HuggingFace
+        :sync: HuggingFace
 
         .. testcode::
 
@@ -70,12 +71,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                     batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
                     return batch
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
-            # Step 4: Show one prediction output.
+            predictions = ds.map_batches(HuggingFacePredictor, concurrency=2)
+            # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -84,7 +84,8 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             {'data': 'Complete this', 'output': 'Complete this information or purchase any item from this site.\n\nAll purchases are final and non-'}
 
 
-    .. group-tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: PyTorch
 
         .. testcode::
 
@@ -120,12 +121,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                         # Get the predictions from the input batch.
                         return {"output": self.model(tensor).numpy()}
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(TorchPredictor, compute=scale)
-            # Step 4: Show one prediction output.
+            predictions = ds.map_batches(TorchPredictor, concurrency=2)
+            # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -133,7 +133,8 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             {'output': array([0.5590901], dtype=float32)}
 
-    .. group-tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: TensorFlow
 
         .. testcode::
 
@@ -165,12 +166,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                     # Get the predictions from the input batch.
                     return {"output": self.model(batch["data"]).numpy()}
 
+            # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the Predictor over the Dataset to get predictions.
-            predictions = ds.map_batches(TFPredictor, compute=scale)
-             # Step 4: Show one prediction output.
+            predictions = ds.map_batches(TFPredictor, concurrency=2)
+             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
         .. testoutput::
@@ -204,9 +204,10 @@ To use GPUs for inference, make the following changes to your code:
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: HuggingFace
+    .. tab-item:: HuggingFace
+        :sync: HuggingFace
 
         .. testcode::
 
@@ -235,8 +236,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Specify the batch size for inference.
                 # Increase this for larger datasets.
                 batch_size=1,
-                # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2),
+                # Set the concurrency to the number of GPUs in your cluster.
+                concurrency=2,
                 )
             predictions.show(limit=1)
 
@@ -246,7 +247,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             {'data': 'Complete this', 'output': 'Complete this poll. Which one do you think holds the most promise for you?\n\nThank you'}
 
 
-    .. group-tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: PyTorch
 
         .. testcode::
 
@@ -282,8 +284,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Specify the batch size for inference.
                 # Increase this for larger datasets.
                 batch_size=1,
-                # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2)
+                # Set the concurrency to the number of GPUs in your cluster.
+                concurrency=2,
                 )
             predictions.show(limit=1)
 
@@ -292,7 +294,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             {'output': array([0.5590901], dtype=float32)}
 
-    .. group-tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: TensorFlow
 
         .. testcode::
 
@@ -325,8 +328,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Specify the batch size for inference.
                 # Increase this for larger datasets.
                 batch_size=1,
-                # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2)
+                # Set the concurrency to the number of GPUs in your cluster.
+                concurrency=2,
                 )
             predictions.show(limit=1)
 
@@ -414,8 +417,8 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         HuggingFacePredictor,
         # Require 5 CPUs per actor (so at most 3 can fit per 16 CPU node).
         num_cpus=5,
-        # 3 actors per node, with 4 nodes in the cluster means ActorPool size of 12.
-        compute=ray.data.ActorPoolStrategy(size=12)
+        # 3 actors per node, with 4 nodes in the cluster means concurrency of 12.
+        concurrency=12,
         )
     predictions.show(limit=1)
 
@@ -471,7 +474,7 @@ In this case, use :meth:`XGBoostTrainer.get_model() <ray.train.xgboost.XGBoostTr
 The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
 
 .. testcode::
-    
+
     from typing import Dict
     import pandas as pd
     import numpy as np
@@ -485,19 +488,18 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     class XGBoostPredictor:
         def __init__(self, checkpoint: Checkpoint):
             self.model = XGBoostTrainer.get_model(checkpoint)
-        
+
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
             dmatrix = xgboost.DMatrix(data)
             return {"predictions": self.model.predict(dmatrix)}
-    
-    
+
+
+    # Map the Predictor over the Dataset to get predictions.
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
-    scale = ray.data.ActorPoolStrategy(size=2)
-    # Map the Predictor over the Dataset to get predictions.
     predictions = test_dataset.map_batches(
-        XGBoostPredictor, 
-        compute=scale,
+        XGBoostPredictor,
+        concurrency=2,
         batch_format="pandas",
         # Pass in the Checkpoint to the XGBoostPredictor constructor.
         fn_constructor_kwargs={"checkpoint": checkpoint}

@@ -44,6 +44,8 @@ enum WorkFootprint {
 // WorkFootprints are not, such as leased workers on a node.
 using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 
+using rpc::autoscaler::DrainNodeReason;
+
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
@@ -141,8 +143,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
-  /// Populate resource usage.
-  void PopulateResourceUsage(rpc::ResourcesData &resources_data) const;
+  void PopulateResourceViewSyncMessage(
+      syncer::ResourceViewSyncMessage &resource_view_sync_message) const;
 
   /// Record the metrics.
   void RecordMetrics() const;
@@ -151,7 +153,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining();
+  void SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms);
 
   bool IsLocalNodeDraining() const { return is_local_node_draining_; }
 
@@ -221,6 +223,10 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   // Whether the local node is being drained or not.
   bool is_local_node_draining_ = false;
+  // The value is the timestamp when
+  // the node will be force killed.
+  // 0 if there is no deadline.
+  int64_t local_node_draining_deadline_timestamp_ms_ = -1;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

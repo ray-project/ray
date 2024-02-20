@@ -20,7 +20,6 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-    FileExtensionFilter,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -203,7 +202,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.read_csv(
         path,
         filesystem=fs,
-        partition_filter=FileExtensionFilter("csv"),
+        file_extensions=["csv"],
         partitioning=None,
     )
     assert ds.num_blocks() == 2
@@ -872,7 +871,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     # Single non-CSV file with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3, partition_filter=FileExtensionFilter("csv")).schema()
+        ray.data.read_csv(path3, file_extensions=["csv"]).schema()
 
     # Single CSV file without extension.
     ds = ray.data.read_csv(path2)
@@ -881,7 +880,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     # Single CSV file without extension with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path2, partition_filter=FileExtensionFilter("csv")).schema()
+        ray.data.read_csv(path2, file_extensions=["csv"]).schema()
 
     # Directory of CSV and non-CSV files.
     error_message = "Failed to read CSV file"
@@ -889,7 +888,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
         ray.data.read_csv(tmp_path).schema()
 
     # Directory of CSV and non-CSV files with filter.
-    ds = ray.data.read_csv(tmp_path, partition_filter=FileExtensionFilter("csv"))
+    ds = ray.data.read_csv(tmp_path, file_extensions=["csv"])
     assert ds.to_pandas().equals(df)
 
 
@@ -911,6 +910,19 @@ def test_csv_invalid_file_handler(shutdown_only, tmp_path):
             delimiter=",", invalid_row_handler=lambda i: "skip"
         ),
     )
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    ray.data.range(100, parallelism=20).write_csv(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        with open(os.path.join(tmp_path, filename), "r") as file:
+            # Subtract 1 from the number of lines to account for the header.
+            num_rows_written = len(file.read().splitlines()) - 1
+            assert num_rows_written == num_rows_per_file
 
 
 if __name__ == "__main__":

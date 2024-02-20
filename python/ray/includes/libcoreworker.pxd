@@ -98,6 +98,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_string ExtensionData() const
         int MaxPendingCalls() const
+        int MaxTaskRetries() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
@@ -130,6 +131,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
+            int max_retries,
+            c_bool retry_exceptions,
+            c_string serialized_retry_exception_allowlist,
             c_vector[CObjectReference] &task_returns,
             const CTaskID current_task_id)
         CRayStatus KillActor(
@@ -162,7 +166,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        CObjectReference PeekObjectRefStream(
+        c_bool IsFinished(const CObjectID &generator_id) const
+        pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
@@ -171,6 +176,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        void UpdateTaskIsDebuggerPaused(
+            const CTaskID &task_id,
+            const c_bool is_debugger_paused)
         int64_t GetCurrentTaskAttemptNumber()
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
@@ -222,6 +230,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                        const c_vector[CObjectID] &contained_object_ids,
                        const CObjectID &object_id)
         CRayStatus CreateOwnedAndIncrementLocalRef(
+                    c_bool is_mutable,
                     const shared_ptr[CBuffer] &metadata,
                     const size_t data_size,
                     const c_vector[CObjectID] &contained_object_ids,
@@ -235,11 +244,25 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CAddress &owner_address,
                                   shared_ptr[CBuffer] *data,
                                   c_bool created_by_worker)
+        CRayStatus ExperimentalChannelWriteAcquire(
+                                  const CObjectID &object_id,
+                                  const shared_ptr[CBuffer] &metadata,
+                                  uint64_t data_size,
+                                  int64_t num_readers,
+                                  shared_ptr[CBuffer] *data)
+        CRayStatus ExperimentalChannelWriteRelease(
+                                  const CObjectID &object_id)
+        CRayStatus ExperimentalChannelSetError(
+                                  const CObjectID &object_id)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
+        CRayStatus ExperimentalChannelRegisterWriter(const CObjectID &object_id)
+        CRayStatus ExperimentalChannelRegisterReader(const CObjectID &object_id)
+        CRayStatus ExperimentalChannelReadRelease(
+                    const c_vector[CObjectID] &object_ids)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
@@ -289,16 +312,21 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
-        unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
+        int64_t GetLocalMemoryStoreBytesUsed() const
 
         void RecordTaskLogStart(
+            const CTaskID &task_id,
+            int attempt_number,
             const c_string& stdout_path,
             const c_string& stderr_path,
             int64_t stdout_start_offset,
             int64_t stderr_start_offset) const
 
-        void RecordTaskLogEnd(int64_t stdout_end_offset,
-                              int64_t stderr_end_offset) const
+        void RecordTaskLogEnd(
+            const CTaskID &task_id,
+            int attempt_number,
+            int64_t stdout_end_offset,
+            int64_t stderr_end_offset) const
 
         void Exit(const CWorkerExitType exit_type,
                   const c_string &detail,

@@ -132,7 +132,7 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_generator_errors(
     ray_start_regular, use_actors, store_in_plasma, num_returns_type
 ):
@@ -186,7 +186,7 @@ def test_generator_errors(
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_retry_exception(
     ray_start_regular, store_in_plasma, num_returns_type
 ):
@@ -239,7 +239,7 @@ def test_dynamic_generator_retry_exception(
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator(
     ray_start_regular, use_actors, store_in_plasma, num_returns_type
 ):
@@ -315,18 +315,19 @@ def test_dynamic_generator(
         )
     )
 
-    # Normal remote functions don't work with num_returns="dynamic".
-    @ray.remote(num_returns=num_returns_type)
-    def static(num_returns):
-        return list(range(num_returns))
+    if num_returns_type == "dynamic":
+        # Normal remote functions don't work with num_returns="dynamic".
+        @ray.remote(num_returns=num_returns_type)
+        def static(num_returns):
+            return list(range(num_returns))
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        gen = ray.get(static.remote(3))
-        for ref in gen:
-            ray.get(ref)
+        with pytest.raises(ray.exceptions.RayTaskError):
+            gen = ray.get(static.remote(3))
+            for ref in gen:
+                ray.get(ref)
 
 
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_distributed(ray_start_cluster, num_returns_type):
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -347,7 +348,7 @@ def test_dynamic_generator_distributed(ray_start_cluster, num_returns_type):
         assert ray.get(ref)[0] == i
 
 
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
@@ -407,7 +408,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
 
 
 @pytest.mark.parametrize("too_many_returns", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns, num_returns_type
 ):
@@ -491,14 +492,14 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     #         ray.get(ref)
     del gen
     del refs
-    if num_returns_type == "streaming":
+    if num_returns_type is None:
         # TODO(sang): For some reasons, it fails when "dynamic"
         # is used. We don't fix the issue because we will
         # remove this flag soon anyway.
         assert_no_leak()
 
 
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
@@ -566,7 +567,7 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_t
     assert_no_leak()
 
 
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_empty_generator_reconstruction_nondeterministic(
     ray_start_cluster, num_returns_type
 ):

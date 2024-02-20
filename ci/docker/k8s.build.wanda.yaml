@@ -1,0 +1,9 @@
+name: k8sbuild
+froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
+dockerfile: ci/docker/k8s.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - ci/k8s/install-k8s-tools.sh
+tags:
+  - cr.ray.io/rayproject/k8sbuild

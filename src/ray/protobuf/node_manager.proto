@@ -224,6 +224,10 @@ message ObjectStoreStats {
   bool object_pulls_queued = 13;
   // The number of primary copies of objects in the local node.
   int64 num_object_store_primary_copies = 14;
+  // The total number of objects that have been allocated to plasma.
+  int64 cumulative_created_objects = 15;
+  // The total number of bytes that have been allocated to plasma objects.
+  int64 cumulative_created_bytes = 16;
 }
 
 message GetNodeStatsReply {
@@ -285,16 +289,6 @@ message GetSystemConfigReply {
   string system_config = 1;
 }
 
-message UpdateResourceUsageRequest {
-  // This is a serialized version of ResourceUsageBatchData. This extra layer of
-  // serialization allows the sender to cache the expensive operation of serializing a
-  // `ResourceUsageBatchData` when sending this request to all nodes.
-  bytes serialized_resource_usage_batch = 1;
-}
-
-message UpdateResourceUsageReply {
-}
-
 message GetTasksInfoRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
@@ -354,6 +348,9 @@ message DrainRayletRequest {
   // The detailed drain reason message.
   // Used for observability.
   string reason_message = 2;
+  /// Timestamp when the node to be drained will be force killed.
+  /// This is a hint to Ray that it should drain everything before the deadline.
+  int64 deadline_timestamp_ms = 3;
 }
 
 message DrainRayletReply {
@@ -363,8 +360,6 @@ message DrainRayletReply {
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
-  // Update the node's view of the cluster resource usage.
-  rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
   // Handle the case when GCS restarted.
   rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.

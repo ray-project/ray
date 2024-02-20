@@ -165,7 +165,7 @@ or remote filesystems.
 
 .. testoutput::
     :options: +MOCK
-    
+
     ['..._000000.parquet', '..._000001.parquet']
 
 

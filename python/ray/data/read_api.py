@@ -35,9 +35,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
-    _is_local_scheme,
     _lazy_import_pyarrow_dataset,
-    _warn_on_high_parallelism,
     get_table_block_metadata,
     ndarray_to_block,
     pandas_df_to_arrow_block,
@@ -107,6 +105,7 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
 
@@ -125,19 +124,18 @@ def from_items(
 
     Args:
         items: List of local Python objects.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`.
-            Parallelism is upper bounded by ``len(items)``.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` holding the items.
     """
     import builtins
 
+    parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
@@ -181,7 +179,7 @@ def from_items(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromItems": metadata}, parent=None),
+            DatasetStats(metadata={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -189,7 +187,13 @@ def from_items(
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = -1) -> Dataset:
+def range(
+    n: int,
+    *,
+    parallelism: int = -1,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
     This function allows for easy creation of synthetic datasets for testing or
@@ -206,13 +210,15 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
 
     Args:
         n: The upper bound of the range of integers.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`.
-            Parallelism is upper bounded by n.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` producing the integers from the range 0 to n.
@@ -224,11 +230,23 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
 
     """
     datasource = RangeDatasource(n=n, block_format="arrow", column_name="id")
-    return read_datasource(datasource, parallelism=parallelism)
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
 
 
 @PublicAPI
-def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Dataset:
+def range_tensor(
+    n: int,
+    *,
+    shape: Tuple = (1,),
+    parallelism: int = -1,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` tensors of the provided shape from range
     [0...n].
 
@@ -253,13 +271,15 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     Args:
         n: The upper bound of the range of tensor records.
         shape: The shape of each tensor in the dataset.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`.
-            Parallelism is upper bounded by n.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` producing the tensor data from range 0 to n.
@@ -273,7 +293,12 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     datasource = RangeDatasource(
         n=n, block_format="tensor", column_name="data", tensor_shape=tuple(shape)
     )
-    return read_datasource(datasource, parallelism=parallelism)
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
 
 
 @PublicAPI
@@ -283,40 +308,42 @@ def read_datasource(
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **read_args,
 ) -> Dataset:
     """Read a stream from a custom :class:`~ray.data.Datasource`.
 
     Args:
         datasource: The :class:`~ray.data.Datasource` to read data from.
-        parallelism: The requested parallelism of the read. Parallelism might be
-            limited by the available partitioning of the datasource. If set to -1,
-            parallelism is automatically chosen based on the available cluster
-            resources and estimated in-memory data size.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
         read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
-        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
 
     Returns:
         :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
     """  # noqa: E501
+    parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
+
     ctx = DataContext.get_current()
 
     if ray_remote_args is None:
         ray_remote_args = {}
 
-    local_uri = False
-    paths = read_args.get("paths", None)
-    if paths and _is_local_scheme(paths):
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                f"The local scheme paths {paths} are not supported in Ray Client."
-            )
+    if not datasource.supports_distributed_reads:
         ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        local_uri = True
 
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
@@ -336,7 +363,6 @@ def read_datasource(
         datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
             datasource,
             ctx,
-            local_uri,
             read_args,
         )
     else:
@@ -355,7 +381,6 @@ def read_datasource(
             get_datasource_or_legacy_reader.remote(
                 datasource,
                 ctx,
-                local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
@@ -373,14 +398,11 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    if not ctx.use_streaming_executor:
-        _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
-
-    read_stage_name = f"Read{datasource.get_name()}"
+    read_op_name = f"Read{datasource.get_name()}"
 
     block_list = LazyBlockList(
         read_tasks,
-        read_stage_name=read_stage_name,
+        read_op_name=read_op_name,
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
@@ -391,7 +413,9 @@ def read_datasource(
         datasource_or_legacy_reader,
         parallelism,
         inmemory_size,
+        block_list._estimated_num_blocks,
         ray_remote_args,
+        concurrency,
     )
 
     logical_plan = LogicalPlan(read_op)
@@ -412,6 +436,8 @@ def read_mongo(
     schema: Optional["pymongoarrow.api.Schema"] = None,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **mongo_args,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a MongoDB database.
@@ -461,13 +487,16 @@ def read_mongo(
             be read.
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
-        parallelism: The requested parallelism of the read. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
         mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
             .readthedocs.io/en/latest/api/api.html#pymongoarrow.api\
             aggregate_arrow_all>`_ in pymongoarrow in producing
@@ -489,7 +518,11 @@ def read_mongo(
         **mongo_args,
     )
     return read_datasource(
-        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -501,18 +534,23 @@ def read_bigquery(
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a dataset from BigQuery.
 
     The data to read from is specified via the ``project_id``, ``dataset``
-    and/or ``query``parameters. The dataset is created from the results of
-    executing``query`` if a query is provided. Otherwise, the entire
+    and/or ``query`` parameters. The dataset is created from the results of
+    executing ``query`` if a query is provided. Otherwise, the entire
     ``dataset`` is read.
 
     For more information about BigQuery, see the following concepts:
-    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>` # noqa: E501
-    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>` # noqa: E501
-    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>` # noqa: E501
+
+    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_
+
+    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>`_
+
+    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>`_
 
     This method uses the BigQuery Storage Read API which reads in parallel,
     with a Ray read task to handle each stream. The number of streams is
@@ -520,7 +558,7 @@ def read_bigquery(
     or automatically chosen if unspecified (see the ``parallelism`` arg below).
 
     .. warning::
-        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>` # noqa: E501
+        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>`_.
 
     Examples:
         .. testcode::
@@ -535,23 +573,31 @@ def read_bigquery(
 
     Args:
         project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
-            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
-        parallelism: The requested parallelism of the read. If -1, it will be
-            automatically chosen based on the available cluster resources and estimated
-            in-memory data size.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
-    """
+    """  # noqa: E501
     datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
     return read_datasource(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -567,6 +613,10 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -653,13 +703,7 @@ def read_parquet(
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the parquet files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -676,9 +720,20 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
-            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -690,17 +745,30 @@ def read_parquet(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
+
+    dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
+    _block_udf = arrow_parquet_args.pop("_block_udf", None)
+    schema = arrow_parquet_args.pop("schema", None)
+    datasource = ParquetDatasource(
+        paths,
         columns=columns,
-        ray_remote_args=ray_remote_args,
+        dataset_kwargs=dataset_kwargs,
+        to_batch_kwargs=arrow_parquet_args,
+        _block_udf=_block_udf,
+        filesystem=filesystem,
+        schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
-        **arrow_parquet_args,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -713,15 +781,16 @@ def read_images(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = ImageDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -779,13 +848,7 @@ def read_images(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the CSV files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases, you do not need to set this. If ``None``, this
@@ -816,6 +879,15 @@ def read_images(
             that are not found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -828,21 +900,27 @@ def read_images(
     """
     if meta_provider is None:
         meta_provider = get_image_metadata_provider()
-    return read_datasource(
-        ImageDatasource(),
-        paths=paths,
-        filesystem=filesystem,
-        parallelism=parallelism,
-        meta_provider=meta_provider,
-        ray_remote_args=ray_remote_args,
-        open_stream_args=arrow_open_file_args,
-        partition_filter=partition_filter,
-        partitioning=partitioning,
+
+    datasource = ImageDatasource(
+        paths,
         size=size,
         mode=mode,
         include_paths=include_paths,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        open_stream_args=arrow_open_file_args,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -857,10 +935,12 @@ def read_parquet_bulk(
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[PathPartitionFilter] = (
-        ParquetBaseDatasource.file_extension_filter()
-    ),
+    partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
@@ -901,13 +981,7 @@ def read_parquet_bulk(
             the `S3FileSystem` is used.
         columns: A list of column names to read. Only the
             specified columns are read during the file scan.
-        parallelism: The amount of parallelism to use for
-            the dataset. Defaults to -1, which automatically determines the optimal
-            parallelism for your configuration. You should not need to manually set
-            this value in most cases. For details on how the parallelism is
-            automatically determined and guidance on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`. Parallelism is
-            upper bounded by the total number of records in all the parquet files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -935,28 +1009,47 @@ def read_parquet_bulk(
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
                 pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
     if meta_provider is None:
         meta_provider = get_parquet_bulk_metadata_provider()
-    arrow_parquet_args = _resolve_parquet_args(
+    read_table_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetBaseDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+    if columns is not None:
+        read_table_args["columns"] = columns
+
+    datasource = ParquetBaseDatasource(
+        paths,
+        read_table_args=read_table_args,
         filesystem=filesystem,
-        columns=columns,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_file_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
-        **arrow_parquet_args,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -969,12 +1062,14 @@ def read_json(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = JSONDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **arrow_json_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
@@ -1031,13 +1126,7 @@ def read_json(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the JSON files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1058,6 +1147,8 @@ def read_json(
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
                 hive-style-partitioning/>`_.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1065,25 +1156,41 @@ def read_json(
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
             json.read_json>`_.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSION)
-    return read_datasource(
-        JSONDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSIONS)
+
+    datasource = JSONDatasource(
+        paths,
+        arrow_json_args=arrow_json_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **arrow_json_args,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1098,8 +1205,12 @@ def read_csv(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **arrow_csv_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
@@ -1168,9 +1279,8 @@ def read_csv(
 
         Read only ``*.csv`` files from a directory.
 
-        >>> from ray.data.datasource import FileExtensionFilter
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
-        ...     partition_filter=FileExtensionFilter("csv"))
+        ...     file_extensions=["csv"])
         Dataset(num_blocks=..., num_rows=1, schema={a: int64, b: int64})
 
     Args:
@@ -1183,13 +1293,7 @@ def read_csv(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the CSV files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1204,13 +1308,12 @@ def read_csv(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
-            To filter out all file paths except those whose file extension
-            matches e.g., "*.csv*", you can provide a
-            :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
                 hive-style-partitioning/>`_.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
@@ -1219,26 +1322,41 @@ def read_csv(
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
             when opening CSV files.
-
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSION)
-    return read_datasource(
-        CSVDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSIONS)
+
+    datasource = CSVDatasource(
+        paths,
+        arrow_csv_args=arrow_csv_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **arrow_csv_args,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1255,8 +1373,12 @@ def read_text(
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1286,13 +1408,7 @@ def read_text(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            lines in all the text files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
@@ -1308,36 +1424,51 @@ def read_text(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
-            To filter out all file paths except those whose file extension
-            matches e.g., "*.txt*", you can provide a
-            :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSION)
-    return read_datasource(
-        TextDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSIONS)
+
+    datasource = TextDatasource(
+        paths,
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
-        drop_empty_lines=drop_empty_lines,
-        encoding=encoding,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1349,12 +1480,14 @@ def read_numpy(
     parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = NumpyDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1378,8 +1511,7 @@ def read_numpy(
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
         numpy_load_args: Other options to pass to np.load.
@@ -1392,20 +1524,31 @@ def read_numpy(
             match "*.npy*".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSION)
-    return read_datasource(
-        NumpyDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSIONS)
+
+    datasource = NumpyDatasource(
+        paths,
+        numpy_load_args=numpy_load_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
@@ -1413,7 +1556,14 @@ def read_numpy(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **numpy_load_args,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1426,9 +1576,13 @@ def read_tfrecords(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    include_paths: bool = False,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1472,13 +1626,7 @@ def read_tfrecords(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the CSV files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1494,14 +1642,23 @@ def read_tfrecords(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset.
-            By default, this filters out any file paths whose file extension does not
-            match ``"*.tfrecords*"``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
         ignore_missing_paths:  If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1511,19 +1668,26 @@ def read_tfrecords(
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
-            TFRecordDatasource._FILE_EXTENSION
+            TFRecordDatasource._FILE_EXTENSIONS
         )
-    return read_datasource(
-        TFRecordDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = TFRecordDatasource(
+        paths,
+        tf_schema=tf_schema,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
-        tf_schema=tf_schema,
         shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1542,6 +1706,10 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1550,8 +1718,7 @@ def read_webdataset(
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files in the dataset.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: Key-word arguments passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
             To read a compressed TFRecord file,
@@ -1569,6 +1736,17 @@ def read_webdataset(
         verbose_open: Whether to print the file names as they are opened.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1580,22 +1758,29 @@ def read_webdataset(
     """  # noqa: E501
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
-            WebDatasetDatasource._FILE_EXTENSION
+            WebDatasetDatasource._FILE_EXTENSIONS
         )
-    return read_datasource(
-        WebDatasetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
-        open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
-        partition_filter=partition_filter,
+
+    datasource = WebDatasetDatasource(
+        paths,
         decoder=decoder,
         fileselect=fileselect,
         filerename=filerename,
         suffixes=suffixes,
         verbose_open=verbose_open,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
         shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1613,6 +1798,9 @@ def read_binary_files(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
 
@@ -1653,13 +1841,7 @@ def read_binary_files(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`. Parallelism is upper bounded by the total number of
-            files.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1679,27 +1861,40 @@ def read_binary_files(
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
-    output_arrow_format = True
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSION)
-    return read_datasource(
-        BinaryDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+        meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSIONS)
+
+    datasource = BinaryDatasource(
+        paths,
         include_paths=include_paths,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        output_arrow_format=output_arrow_format,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1710,6 +1905,8 @@ def read_sql(
     *,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Read from a database that provides a
     `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
@@ -1776,13 +1973,16 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
-        parallelism: The requested parallelism of the read. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`Dataset` containing the queried data.
@@ -1792,6 +1992,8 @@ def read_sql(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -1805,17 +2007,19 @@ def read_databricks_tables(
     schema: Optional[str] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Read a Databricks unity catalog table or Databricks SQL execution result.
 
-    Before calling this API, set the ``DATABRICKS_HOST`` environment
+    Before calling this API, set the ``DATABRICKS_TOKEN`` environment
     variable to your Databricks warehouse access token.
 
     .. code-block:: console
 
         export DATABRICKS_TOKEN=...
 
-    If you're running your program on the Databricks runtime, also set the
+    If you're not running your program on the Databricks runtime, also set the
     ``DATABRICKS_HOST`` environment variable.
 
     .. code-block:: console
@@ -1835,7 +2039,7 @@ def read_databricks_tables(
             import ray
 
             ds = ray.data.read_databricks_tables(
-                warehouse_id='a885ad08b64951ad',
+                warehouse_id='...',
                 catalog='catalog_1',
                 schema='db_1',
                 query='select id from table_1 limit 750000',
@@ -1851,20 +2055,36 @@ def read_databricks_tables(
             you can't set ``table_name`` argument.
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
-        parallelism: The requested parallelism of the read. Defaults to -1,
-            which automatically determines the optimal parallelism for your
-            configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see :ref:`Tuning read parallelism
-            <read_parallelism>`.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
-    from ray.util.spark.databricks_hook import get_dbutils
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
+
+    def get_dbutils():
+        no_dbutils_error = RuntimeError("No dbutils module found.")
+        try:
+            import IPython
+
+            ip_shell = IPython.get_ipython()
+            if ip_shell is None:
+                raise no_dbutils_error
+            return ip_shell.ns_table["user_global"]["dbutils"]
+        except ImportError:
+            raise no_dbutils_error
+        except KeyError:
+            raise no_dbutils_error
 
     token = os.environ.get("DATABRICKS_TOKEN")
 
@@ -1888,12 +2108,11 @@ def read_databricks_tables(
                 '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
             )
 
-    spark = get_spark_session()
     if not catalog:
-        catalog = spark.sql("SELECT CURRENT_CATALOG()").collect()[0][0]
+        catalog = get_spark_session().sql("SELECT CURRENT_CATALOG()").collect()[0][0]
 
     if not schema:
-        schema = spark.sql("SELECT CURRENT_DATABASE()").collect()[0][0]
+        schema = get_spark_session().sql("SELECT CURRENT_DATABASE()").collect()[0][0]
 
     if query is not None and table is not None:
         raise ValueError("Only one of 'query' and 'table' arguments can be set.")
@@ -1902,7 +2121,7 @@ def read_databricks_tables(
         query = f"select * from {table}"
 
     if query is None:
-        raise ValueError("One of 'query' and 'table_name' arguments should be set.")
+        raise ValueError("One of 'query' and 'table' arguments should be set.")
 
     datasource = DatabricksUCDatasource(
         host=host,
@@ -1913,7 +2132,11 @@ def read_databricks_tables(
         query=query,
     )
     return read_datasource(
-        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+        datasource=datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -2075,7 +2298,7 @@ def from_pandas_refs(
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandas": metadata}, parent=None),
+                DatasetStats(metadata={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             logical_plan,
@@ -2090,7 +2313,7 @@ def from_pandas_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandas": metadata}, parent=None),
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -2177,7 +2400,7 @@ def from_numpy_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
+            DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -2257,7 +2480,7 @@ def from_arrow_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrow": metadata}, parent=None),
+            DatasetStats(metadata={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
         logical_plan,
@@ -2266,33 +2489,47 @@ def from_arrow_refs(
 
 @PublicAPI
 def from_spark(
-    df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
+    df: "pyspark.sql.DataFrame",
+    *,
+    parallelism: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
 
     Args:
         df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
-        parallelism: The amount of parallelism to use for the dataset. If
-            not provided, the parallelism is equal to the number of partitions of
-            the original Spark DataFrame.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import raydp
 
+    parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
+    parallelism: int = -1,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Union[MaterializedDataset, Dataset]:
     """Create a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
     or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
     For an `IterableDataset`, we use a streaming implementation to read data.
+
+    If the dataset is a public Hugging Face Dataset that is hosted on the Hugging Face Hub and
+    no transformations have been applied, then the `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
+    will be passed to :meth:`~ray.data.read_parquet` to perform a distributed read. All
+    other cases will be done with a single node read.
 
     Example:
 
@@ -2332,18 +2569,43 @@ def from_huggingface(
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
 
-    if isinstance(dataset, datasets.IterableDataset):
-        # HuggingFaceDatasource should not be imported at top level, because
-        # we only want the Hugging Face datasets package to be imported
-        # if Hugging Face Datasets are used.
-        from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+    from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
+    if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
+        # Attempt to read data via Hugging Face Hub parquet files. If the
+        # returned list of files is empty, attempt read via other methods.
+        file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+        if len(file_urls) > 0:
+            # If file urls are returned, the parquet files are available via API
+            # TODO: Add support for reading from http filesystem in FileBasedDatasource
+            # GH Issue: https://github.com/ray-project/ray/issues/42706
+            import fsspec.implementations.http
+
+            http = fsspec.implementations.http.HTTPFileSystem()
+            return read_parquet(
+                file_urls,
+                parallelism=parallelism,
+                filesystem=http,
+                concurrency=concurrency,
+                override_num_blocks=override_num_blocks,
+            )
+
+    if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
         return read_datasource(HuggingFaceDatasource(dataset=dataset))
     if isinstance(dataset, datasets.Dataset):
@@ -2468,16 +2730,15 @@ def from_torch(
     }
     return read_datasource(
         TorchDatasource(dataset=dataset),
-        # Only non-parallel, streaming read is currently supported
-        parallelism=1,
         ray_remote_args=ray_remote_args,
+        # Only non-parallel, streaming read is currently supported
+        override_num_blocks=1,
     )
 
 
 def _get_datasource_or_legacy_reader(
     ds: Datasource,
     ctx: DataContext,
-    local_uri: bool,
     kwargs: dict,
 ) -> Union[Datasource, Reader]:
     """Generates reader.
@@ -2485,7 +2746,6 @@ def _get_datasource_or_legacy_reader(
     Args:
         ds: Datasource to read from.
         ctx: Dataset config to use.
-        local_uri:
         kwargs: Additional kwargs to pass to the legacy reader if
             `Datasource.create_reader` is implemented.
 
@@ -2493,13 +2753,6 @@ def _get_datasource_or_legacy_reader(
         The datasource or a generated legacy reader.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-
-    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
-    # so it needs `local_uri` parameter for now.
-    # TODO(chengsu): stop passing `local_uri` parameter to
-    # `ParquetDatasource.create_reader()`.
-    if local_uri and isinstance(ds, ParquetDatasource):
-        kwargs["local_uri"] = local_uri
 
     DataContext._set_current(ctx)
 
@@ -2535,7 +2788,7 @@ def _resolve_parquet_args(
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),
                     tensor_col_name,
-                    ArrowTensorArray.from_numpy(np_col),
+                    ArrowTensorArray.from_numpy(np_col, tensor_col_name),
                 )
             if existing_block_udf is not None:
                 # Apply UDF after casting the tensor columns.
@@ -2544,3 +2797,17 @@ def _resolve_parquet_args(
 
         arrow_parquet_args["_block_udf"] = _block_udf
     return arrow_parquet_args
+
+
+def _get_num_output_blocks(
+    parallelism: int = -1,
+    override_num_blocks: Optional[int] = None,
+) -> int:
+    if parallelism != -1:
+        logger.warning(
+            "The argument ``parallelism`` is deprecated in Ray 2.10. Please specify "
+            "argument ``override_num_blocks`` instead."
+        )
+    elif override_num_blocks is not None:
+        parallelism = override_num_blocks
+    return parallelism

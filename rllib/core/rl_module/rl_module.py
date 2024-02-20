@@ -45,7 +45,6 @@ from ray.rllib.utils.serialization import (
 )
 
 
-ModuleID = str
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
 RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
 RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
@@ -162,6 +161,15 @@ class SingleAgentRLModuleSpec:
         self.model_config_dict = other.model_config_dict or self.model_config_dict
         self.catalog_class = other.catalog_class or self.catalog_class
         self.load_state_path = other.load_state_path or self.load_state_path
+
+    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
+        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+
+        return MultiAgentRLModuleSpec(
+            module_specs={DEFAULT_POLICY_ID: self},
+            load_state_path=self.load_state_path,
+        )
 
 
 @ExperimentalAPI
@@ -466,7 +474,7 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic
     def get_initial_state(self) -> Any:
-        """Returns the initial state of the module.
+        """Returns the initial state of the RLModule.
 
         This can be used for recurrent models.
         """
@@ -474,9 +482,9 @@ class RLModule(abc.ABC):
 
     @OverrideToImplementCustomLogic
     def is_stateful(self) -> bool:
-        """Returns True if the initial state is empty.
+        """Returns False if the initial state is an empty dict (or None).
 
-        By default, RLlib assumes that the module is not recurrent if the initial
+        By default, RLlib assumes that the module is non-recurrent if the initial
         state is an empty dict and recurrent otherwise.
         This behavior can be overridden by implementing this method.
         """
@@ -628,7 +636,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_exploration().
+            output_specs_exploration().
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -649,7 +657,7 @@ class RLModule(abc.ABC):
 
         Returns:
             The output of the forward pass. This output should comply with the
-            ouptut_specs_train().
+            output_specs_train().
         """
         return self._forward_train(batch, **kwargs)
 

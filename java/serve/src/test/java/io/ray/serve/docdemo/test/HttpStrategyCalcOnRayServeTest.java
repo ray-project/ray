@@ -39,9 +39,7 @@ public class HttpStrategyCalcOnRayServeTest extends BaseServeTest {
     }
   }
 
-  @Test(
-      enabled = false,
-      groups = {"cluster"})
+  @Test(groups = {"cluster"})
   public void test() {
     String prefix = "HttpStrategyCalcOnRayServeTest";
     String bank1 = prefix + "_bank_1";

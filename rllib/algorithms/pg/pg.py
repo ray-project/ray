@@ -30,12 +30,11 @@ class PGConfig(AlgorithmConfig):
         >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
         >>> config = config.environment(env="CartPole-v1")
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
+        >>> # Run with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "PG",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
+        ...     param_space=config,
         ... ).fit()
     """
 
