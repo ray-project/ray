@@ -3359,7 +3359,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=appo/hybrid_stack --framework=torch
 
   alert: default
 
@@ -3389,7 +3389,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=appo/hybrid_stack --framework=tf2
 
   alert: default
 
@@ -3811,11 +3811,11 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 4gpus_64cpus.yaml
+    cluster_compute: 8gpus_96cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=torch
+    script: python learning_tests/run_new_api_stack.py --config-dir=ppo/new_stack --framework=torch
 
   alert: default
 
@@ -3825,7 +3825,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: 4gpus_64cpus_gce.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
 
 
 # --------------------------
