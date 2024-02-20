@@ -711,7 +711,7 @@ class WorkerSet:
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
     ) -> List[T]:
-        """Calls the given function with each worker instance as the argument.
+        """Calls the given function with each EnvRunner as its argument.
 
         Args:
             func: The function to call for each worker (as only arg).
@@ -765,7 +765,7 @@ class WorkerSet:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
     ) -> List[T]:
-        """Similar to foreach_worker(), but calls the function with id of the worker too.
+        """Calls the given function with each EnvRunner and its ID as its arguments.
 
         Args:
             func: The function to call for each worker (as only arg).

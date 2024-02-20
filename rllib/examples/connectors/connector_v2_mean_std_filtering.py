@@ -27,9 +27,7 @@ if __name__ == "__main__":
     if args.num_agents > 0:
         register_env(
             "env",
-            lambda _: MultiAgentPendulum(
-                config={"num_agents": args.num_agents}
-            ),
+            lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
         )
 
     config = (
@@ -84,7 +82,7 @@ if __name__ == "__main__":
                         functools.partial(torch.nn.init.constant_, val=0.0)
                     ),
                 },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {})
+                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
             ),
         )
         .evaluation(

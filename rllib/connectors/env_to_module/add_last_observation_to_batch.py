@@ -95,7 +95,6 @@ class AddLastObservationToBatch(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-
         for sa_episode in self.single_agent_episode_iterator(episodes):
             if self._as_learner_connector:
                 prev_n_o = []

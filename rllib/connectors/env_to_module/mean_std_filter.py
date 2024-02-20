@@ -7,7 +7,6 @@ import tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
@@ -191,7 +190,10 @@ class MeanStdFilter(ConnectorV2):
                 # `agent_state`.
                 _filter.buffer = tree.unflatten_as(
                     agent_state["shape"],
-                    [RunningStat.from_state(stats) for stats in agent_state["running_stats"]]
+                    [
+                        RunningStat.from_state(stats)
+                        for stats in agent_state["running_stats"]
+                    ],
                 )
 
                 # Leave the buffers as-is, since they should always only reflect
@@ -203,13 +205,9 @@ class MeanStdFilter(ConnectorV2):
     def _init_new_filters(self):
         filter_shape = tree.map_structure(
             lambda s: (
-                None
-                if isinstance(s, (Discrete, MultiDiscrete))
-                else np.array(s.shape)
+                None if isinstance(s, (Discrete, MultiDiscrete)) else np.array(s.shape)
             ),
-            get_base_struct_from_space(
-                self.input_observation_space
-            ),
+            get_base_struct_from_space(self.input_observation_space),
         )
         if not self._multi_agent:
             filter_shape = {None: filter_shape}
@@ -220,7 +218,8 @@ class MeanStdFilter(ConnectorV2):
                 demean=self.de_mean_to_zero,
                 destd=self.de_std_to_one,
                 clip=self.clip_by_value,
-            ) for agent_id, agent_filter_shape in filter_shape.items()
+            )
+            for agent_id, agent_filter_shape in filter_shape.items()
         }
 
     @staticmethod

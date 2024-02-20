@@ -890,7 +890,6 @@ class AlgorithmConfig(_Config):
         return pipeline
 
     def build_module_to_env_connector(self, env):
-
         from ray.rllib.connectors.module_to_env import (
             DefaultModuleToEnv,
             ModuleToEnvPipeline,

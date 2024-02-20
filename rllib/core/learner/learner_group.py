@@ -338,7 +338,6 @@ class LearnerGroup:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
             if batch_shard is not None:
@@ -767,7 +766,6 @@ class LearnerGroup:
         modules_to_load: Optional[Set[str]] = None,
         rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
-
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
         `load_module_state` can be used 3 ways:
