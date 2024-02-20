@@ -4,7 +4,7 @@ set -euo pipefail
 
 set -x
 
-export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
+export PYTHON_VERSION="${PYTHON_VERSION}"
 export RAY_VERSION="${RAY_VERSION}"
 export RAY_HASH="${RAY_HASH}"
 
