@@ -216,8 +216,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 be the one executed n steps before such that we always have the
                 state-action pair that triggered the rewards.
                 If `n_step` is a tuple, it is considered as a range to sample
-                from. If `None`, we sample from the range (1, 5). note, sampling
-                is repeated for each item in 'num_items´.
+                from. If `None`, we use `n_step=1`.
             beta: The exponent of the importance sampling weight (see Schaul et
                 al. (2016)). A `beta=0.0` does not correct for the bias introduced
                 by prioritized replay and `beta=1.0` fully corrects for it.
@@ -248,13 +247,12 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_length_T = batch_length_T or self.batch_length_T
 
         # Sample the n-step if necessary.
-        _random_n_step = False
-        # If `n_step` is `None` we sample from the interval (1, 5).
-        n_step = n_step or (1, 5)
         if isinstance(n_step, tuple):
             # Use random n-step sampling.
-            _random_n_step = True
-            _n_steps = n_step
+            random_n_step = True
+        else:
+            actual_n_step = n_step
+            random_n_step = False
 
         # Rows to return.
         observations = [[] for _ in range(batch_size_B)]
@@ -306,29 +304,31 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             episode = self.episodes[episode_idx]
 
             # If we use random n-step sampling, draw the n-step for this item.
-            if _random_n_step:
-                n_step = int(self.rng.integers(_n_steps[0], _n_steps[1]))
+            if random_n_step:
+                actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
             # If we are at the end of an episode, continue.
             # Note, priority sampling got us `o_(t+n)` and we need for the loss
             # calculation in addition `o_t`.
             # TODO (simon): Maybe introduce a variable `num_retries` until the
             # while loop should break when not enough samples have been collected
             # to make n-step possible.
-            if episode_ts - n_step < 0:
+            if episode_ts - actual_n_step < 0:
                 continue
             else:
-                n_steps[B].append(n_step)
+                n_steps[B].append(actual_n_step)
 
             # Starting a new chunk.
             # Ensure that each row contains a tuple of the form:
             #   (o_t, a_t, sum(r_(t:t+n_step)), o_(t+n_step))
             # TODO (simon): Implement version for sequence sampling when using RNNs.
             eps_observations = episode.get_observations(
-                slice(episode_ts - n_step, episode_ts + 1)
+                slice(episode_ts - actual_n_step, episode_ts + 1)
             )
             # Note, the reward that is collected by transitioning from `o_t` to
             # `o_(t+1)` is stored in the next transition in `SingleAgentEpisode`.
-            eps_rewards = episode.get_rewards(slice(episode_ts - n_step, episode_ts))
+            eps_rewards = episode.get_rewards(
+                slice(episode_ts - actual_n_step, episode_ts)
+            )
             observations[B].append(eps_observations[0])
             next_observations[B].append(eps_observations[-1])
             # Note, this will be the reward after executing action
