@@ -80,7 +80,7 @@ def on_doctree_resolved(app, doctree, docname):
         )
         text = "\n".join(node.rawsource["refexplicit"])
 
-        # Parse all child rst as usual, then append any parsed nodes to the
+        # Parse all child RST as usual, then append any parsed nodes to the
         # reference node.
         parser.parse(text, tmp_node)
         ref_node = nodes.reference(
