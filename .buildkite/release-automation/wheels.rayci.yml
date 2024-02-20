@@ -3,12 +3,14 @@ steps:
   - name: forge
     wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
 
+
+docker run -it --rm -v bash -eo -c "$"
   - label: "Linux x86_64 Python {{matrix}}"
     depends_on: forge
     job_env: forge
     commands:
       - export PYTHON_VERSION={{matrix}}
-      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+      - ./.buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.8"
       - "3.9"
@@ -25,7 +27,7 @@ steps:
     job_env: forge-arm64
     commands:
       - export PYTHON_VERSION={{matrix}}
-      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+      - ./.buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.8"
       - "3.9"
