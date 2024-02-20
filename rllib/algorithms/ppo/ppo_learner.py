@@ -1,7 +1,4 @@
-import abc
 from typing import Any, Dict, List, Optional, Tuple
-
-import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
@@ -60,7 +57,6 @@ class PPOLearner(Learner):
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
-
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
 
         if not episodes:
@@ -187,17 +183,3 @@ class PPOLearner(Learner):
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
         return results
-
-    @abc.abstractmethod
-    def _compute_values(self, batch) -> np._typing.NDArray:
-        """Computes the values using the value function module given a batch of data.
-
-        Args:
-            batch: The input batch to pass through our RLModule (value function
-                encoder and vf-head).
-
-        Returns:
-            The batch (numpy) of value function outputs (already squeezed over the last
-            dimension (which should have shape (1,) b/c of the single value output
-            node).
-        """
