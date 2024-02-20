@@ -9,10 +9,7 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 
-logger = logging.getLogger(__name__)
-
-
-def check_requirements():
+def validate_requirements():
     from ray.util.spark.utils import get_spark_session
 
     spark = get_spark_session()
@@ -30,7 +27,7 @@ def check_requirements():
     ).lower() != "false":
         raise RuntimeError(
             "In databricks runtime, if you want to use 'ray.data.from_spark' API, "
-            "you should use an assigned mode databricks cluster."
+            "you must use an assigned mode databricks cluster."
         )
 
 
@@ -44,7 +41,7 @@ def _persist_dataframe_as_chunks(spark_dataframe, bytes_per_chunk):
     return persistDataFrameAsChunks(spark_dataframe, bytes_per_chunk)
 
 
-def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
+def _read_chunk_fn(chunk_ids) -> Iterator["pyarrow.Table"]:
     if read_chunk_fn_path := os.environ.get(
         "_RAY_DATABRICKS_FROM_SPARK_READ_CHUNK_FN_PATH"
     ):
@@ -57,8 +54,7 @@ def _read_chunk_fn(chunk_id_list) -> Iterator["pyarrow.Table"]:
     else:
         from pyspark.databricks.sql.chunk import readChunk
 
-    for chunk_id in chunk_id_list:
-        yield readChunk(chunk_id)
+    yield from map(readChunk, chunk_ids)
 
 
 def _unpersist_chunks(chunk_ids):
@@ -101,21 +97,20 @@ class SparkDatasource(Datasource):
             exec_stats=None,
         )
 
-        chunk_id_list = [
+        chunk_ids = [
             self.chunk_meta_list[chunk_index].id
             for chunk_index in chunk_index_list
         ]
 
         return ReadTask(
-            lambda l=chunk_id_list: _read_chunk_fn(l),
+            lambda: _read_chunk_fn(chunk_ids),
             metadata,
         )
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
 
-        if parallelism > self.num_chunks:
-            parallelism = self.num_chunks
+        parallelism = min(parallelism, self.num_chunks)
 
         return [
             self._get_read_task(index, parallelism)
@@ -129,8 +124,7 @@ class SparkDatasource(Datasource):
         return "Spark"
 
     def dispose_spark_cache(self):
-        chunk_ids = [
+        _unpersist_chunks([
             chunk_meta.id
             for chunk_meta in self.chunk_meta_list
-        ]
-        _unpersist_chunks(chunk_ids)
+        ])

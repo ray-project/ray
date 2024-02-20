@@ -8,13 +8,16 @@ from ray import cloudpickle as pickle
 import uuid
 import math
 import tempfile
-from collections import namedtuple
 from contextlib import contextmanager
 from unittest import mock
 import ray
+from typing import NamedTuple
 
 
-ChunkMeta = namedtuple('ChunkMeta', ['id', 'row_count', 'byte_count'])
+class ChunkMeta(NamedTuple):
+    id: str
+    row_count: int
+    byte_count: int
 
 
 @contextmanager
@@ -77,11 +80,8 @@ def setup_mock(default_chunk_bytes, tmp_dir=None):
     def unpersist_chunk(chunk_id):
         os.remove(os.path.join(tmp_dir, chunk_id))
 
-    def is_in_databricks_runtime():
-        return True
-
     with mock.patch(
-        "ray.data.datasource.spark_datasource.check_requirements",
+        "ray.data.datasource.spark_datasource.validate_requirements",
         return_value=None,
     ), mock.patch(
         "ray.data.datasource.spark_datasource._persist_dataframe_as_chunks",
@@ -91,9 +91,9 @@ def setup_mock(default_chunk_bytes, tmp_dir=None):
         unpersist_chunk,
     ), mock.patch(
         "ray.util.spark.utils.is_in_databricks_runtime",
-        is_in_databricks_runtime,
+        return_value=True,
     ), mock.patch(
-        "ray.data.read_api._DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES",
+        "ray.data.read_api._DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES",
         default_chunk_bytes
     ), mock.patch.dict(os.environ, {
         MOCK_ENV: read_chunk_fn_path,
@@ -138,12 +138,8 @@ def test_from_mul_cols_databricks_spark_dataframe():
 
 def test_large_size_row_databricks_spark_dataframe():
     fake_spark_df = pd.DataFrame([
-        {
-            'a': "".join([
-                uuid.uuid4().hex
-                for _ in range(100)
-            ])
-        } for _ in range(10)
+        {'a': uuid.uuid4().hex * 100}
+        for _ in range(10)
     ])
 
     with setup_mock(default_chunk_bytes=3500):

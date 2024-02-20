@@ -2487,14 +2487,14 @@ def from_arrow_refs(
     )
 
 
-_DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES = 32 * 1024 * 1024
+_DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES = 32 * 1024 * 1024
 
 
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame",
     *,
-    parallelism: Optional[int] = -1,
+    parallelism: int = -1,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
@@ -2520,13 +2520,13 @@ def from_spark(
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
     if is_in_databricks_runtime():
-        from ray.data.datasource.spark_datasource import check_requirements, SparkDatasource
+        from ray.data.datasource.spark_datasource import validate_requirements, SparkDatasource
         from ray.util.spark.databricks_hook import get_databricks_function
 
-        check_requirements()
+        validate_requirements()
 
         # Ray on spark
-        datasource = SparkDatasource(df, _DATABRICKS_SPARK_DATAFRAM_CHUNK_BYTES)
+        datasource = SparkDatasource(df, _DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES)
         if parallelism == -1:
             parallelism = datasource.num_chunks
         dataset = read_datasource(
