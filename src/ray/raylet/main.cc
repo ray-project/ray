@@ -206,7 +206,7 @@ int main(int argc, char *argv[]) {
         // leak. So in raylet we also kill child processes via Linux subreaper.
         // Only works on Linux >= 3.4.
         ray::SetupSigchldHandler(
-            RayConfig::instance().kill_child_processes_on_worker_exit, main_service);
+            RayConfig::instance().kill_child_processes_on_worker_exit(), main_service);
 
         // Parse the worker port list.
         std::istringstream worker_port_list_string(worker_port_list);

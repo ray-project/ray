@@ -77,14 +77,14 @@ namespace {
 std::mutex m;
 absl::flat_hash_set<pid_t> owned_children;
 
-void addOwnedChild(pid_t pid) {
+[[maybe_unused]] void addOwnedChild(pid_t pid) {
 #ifdef __linux__
   std::lock_guard<std::mutex> guard(m);
   owned_children.insert(pid);
 #endif
 }
 
-void removeOwnedChild(pid_t pid) {
+[[maybe_unused]] void removeOwnedChild(pid_t pid) {
 #ifdef __linux__
   std::lock_guard<std::mutex> guard(m);
   owned_children.erase(pid);
@@ -230,7 +230,7 @@ class SigchldMasker {
 // On Linux: True -> subreaper, False -> simple ignore.
 // On MacOS: simple ignore.
 void SetupSigchldHandler(bool kill_orphan_subprocesses,
-                         instrumented_io_context &io_service) {
+                         boost::asio::io_context &io_service) {
 #ifdef _WIN32
   // Windows, no reaping needed.
   return;
@@ -299,7 +299,7 @@ class ProcessFD {
                             const ProcessEnvironment &env,
                             bool pipe_to_stdin) {
     // Masks sigchld until the process is spawned and registered to the owned children.
-    SigchldMasker masker;
+    [[maybe_unused]] SigchldMasker masker;
 
     ec = std::error_code();
     intptr_t fd;

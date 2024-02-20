@@ -30,8 +30,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
-
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
 // There's no guarantee for other OSes, but it's useful for testing purposes.
@@ -82,6 +80,10 @@ class Process {
   //
   // The subprocess is child of this process, so it's caller process's duty to handle
   // SIGCHLD signal and reap the zombie children.
+  //
+  // NOTE: if `kill_child_processes_on_worker_exit` is true (default), raylet will kill
+  // any orphan subprocesses as grandchildren of the raylet process. This is to prevent
+  // leaked processes from dead core workers. If you intend to keep the subprocesses
   explicit Process(const char *argv[],
                    void *io_service,
                    std::error_code &ec,
@@ -154,7 +156,7 @@ std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
 // kill all of them. They are recognized by the fact that those processes are not created
 // via `Process` class.
 void SetupSigchldHandler(bool kill_orphan_subprocesses,
-                         instrumented_io_context &io_service);
+                         boost::asio::io_context &io_service);
 
 }  // namespace ray
 
