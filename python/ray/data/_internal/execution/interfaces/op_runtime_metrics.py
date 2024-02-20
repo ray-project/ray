@@ -3,6 +3,9 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.memory_tracing import trace_allocation
 
 if TYPE_CHECKING:
@@ -181,7 +184,17 @@ class OpRuntimeMetrics:
         per_task_output = self.obj_store_mem_max_pending_output_per_task
         if per_task_output is None:
             return None
-        return self.num_tasks_running * per_task_output
+
+        # Ray Data launches multiple tasks per actor, but only one task runs at a
+        # time per actor. So, the number of actually running tasks is capped by the
+        # number of active actors.
+        num_tasks_running = self.num_tasks_running
+        if isinstance(self._op, ActorPoolMapOperator):
+            num_tasks_running = min(
+                num_tasks_running, self._op._actor_pool.num_active_actors()
+            )
+
+        return num_tasks_running * per_task_output
 
     def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in a task's generator buffer."""
