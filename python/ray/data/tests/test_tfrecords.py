@@ -468,7 +468,9 @@ def test_read_tfrecords_ignore_missing_paths(
     ]
 
     if ignore_missing_paths:
-        ds = read_tfrecords_with_fast_read_override(path)
+        ds = read_tfrecords_with_fast_read_override(
+            path, ignore_missing_paths=ignore_missing_paths
+        )
         assert ds.input_files() == [path]
     else:
         with pytest.raises(FileNotFoundError):

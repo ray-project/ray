@@ -434,6 +434,11 @@ def _read_records(
 
 
 def _cast_large_list_to_list(batch: pyarrow.Table):
+    """
+    This function transform pyarrow.large_list into list and pyarrow.large_binary into
+    pyarrow.binary so that all types resulting from the tfrecord_datasource are usable
+    with dataset.to_tf().
+    """
     old_schema = batch.schema
     fields = {}
 
@@ -467,11 +472,9 @@ def _infer_schema_and_transform(dataset: "Dataset"):
 
 def _unwrap_single_value_lists(batch: pyarrow.Table, col_lengths: Dict[str, int]):
     """
-    As part of this function we perform two transformations, given that when no
-    schema is provided the ExampleDecoder return large_lists
-        1. We convert the large_list with always a single value to their underlying
-        data type (i.e. pyarrow.int64() and pyarrow.float64())
-        2. We convert large_binary into binary
+    This function will transfrom the dataset converting list types that always
+    contain single values to thery underlying data type
+    (i.e. pyarrow.int64() and pyarrow.float64())
     """
     columns = {}
 
