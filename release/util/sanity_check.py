@@ -34,3 +34,5 @@ if __name__ == "__main__":
     assert ray.get(return_arg.remote(val)) == val
     ray.shutdown()
     print("Sanity check succeeded on Python {}".format(sys.version))
+    print("Ray version: {}".format(ray_version))
+    print("Ray commit: {}".format(ray_commit))
