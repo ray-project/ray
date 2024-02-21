@@ -69,7 +69,7 @@ class DataOpTask(OpTask):
         """Callback when data is ready to be read from the streaming generator.
 
         Args:
-            max_bytes_to_read: Max number of blocks to read. If None, all available
+            max_bytes_to_read: Max bytes of blocks to read. If None, all available
                 will be read.
         Returns: The number of blocks read.
         """

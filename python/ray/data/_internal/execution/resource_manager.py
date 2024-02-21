@@ -230,9 +230,9 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of outputs that can be read from
-        the given operator's running tasks."""
+        the given operator's running tasks. None means no limit."""
         ...
 
 
@@ -323,7 +323,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        """Return whether the given operator can submit a new task."""
         if op not in self._op_budgets:
             return True
         budget = copy.deepcopy(self._op_budgets[op])
@@ -339,11 +338,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         res = op.incremental_resource_usage().satisfies_limit(budget)
         return res
 
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
-        """Return the maximum bytes of outputs that can be read from
-        the given operator's running tasks."""
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
-            return float("inf")
+            return None
         return self._op_budgets[op].object_store_memory
 
     def update_usages(self):
