@@ -60,7 +60,7 @@ class ResourceManager:
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
 
-        self._op_resource_limiter: Optional["OpResourceLimiter"] = None
+        self._op_resource_alloator: Optional["OpResourceAllocator"] = None
         ctx = DataContext.get_current()
 
         if ctx.op_resource_reservation_enabled:
@@ -70,7 +70,7 @@ class ResourceManager:
                     should_enable = False
                     break
             if should_enable:
-                self._op_resource_limiter = ReservationOpResourceLimiter(
+                self._op_resource_alloator = ReservationOpResourceAllocator(
                     self, ctx.op_resource_reservation_ratio
                 )
 
@@ -128,8 +128,8 @@ class ResourceManager:
                 op
             ] = self._global_usage.object_store_memory
 
-        if self._op_resource_limiter is not None:
-            self._op_resource_limiter.update_usages()
+        if self._op_resource_alloator is not None:
+            self._op_resource_alloator.update_usages()
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
@@ -198,20 +198,17 @@ class ResourceManager:
         """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
 
-    def op_resource_limiter_enabled(self) -> bool:
-        """Return whether OpResourceLimiter is enabled."""
-        return self._op_resource_limiter is not None
+    def op_resource_allocator_enabled(self) -> bool:
+        """Return whether OpResourceAllocator is enabled."""
+        return self._op_resource_alloator is not None
 
-    def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
-        """Get the limit of resources that the given op can use at the current time.
-
-        This method can only be called when `op_resource_limiter_enabled` returns True.
-        """
-        assert self._op_resource_limiter is not None
-        return self._op_resource_limiter.get_op_limits(op)
+    def get_op_resource_allocator(self) -> OpResourceAllocator:
+        """Return the OpResourceAllocator."""
+        assert self.op_resource_allocator_enabled()
+        return self._op_resource_alloator
 
 
-class OpResourceLimiter(ABC):
+class OpResourceAllocator(ABC):
     """Interface for limiting resources for each operator.
 
     This interface allows limit the resources that each operator can use, in each
@@ -227,13 +224,19 @@ class OpResourceLimiter(ABC):
         ...
 
     @abstractmethod
-    def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
-        """Get the limit of resources that the given op can use at the current time."""
+    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
+        """Return whether the given operator can submit a new task."""
+        ...
+
+    @abstractmethod
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
+        """Return the maximum bytes of outputs that can be read from
+        the given operator's running tasks."""
         ...
 
 
-class ReservationOpResourceLimiter(OpResourceLimiter):
-    """An OpResourceLimiter implementation that reserves resources for each operator.
+class ReservationOpResourceAllocator(OpResourceAllocator):
+    """An OpResourceAllocator implementation that reserves resources for each operator.
 
     This class reserves memory and CPU resources for map operators, and consider runtime
     resource usages to limit the resources that each operator can use.
@@ -397,9 +400,3 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_budgets[op].gpu = float("inf")
-
-    def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
-        if op in self._op_budgets:
-            return self._op_budgets[op]
-        else:
-            return ExecutionResources.inf()

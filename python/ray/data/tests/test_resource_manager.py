@@ -14,7 +14,7 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
-    ReservationOpResourceLimiter,
+    ReservationOpResourceAllocator,
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -229,8 +229,8 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o3).object_store_memory == 1
 
 
-class TestReservationOpResourceLimiter:
-    """Tests for ReservationOpResourceLimiter."""
+class TestReservationOpResourceAllocator:
+    """Tests for ReservationOpResourceAllocator."""
 
     def test_basic(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
@@ -257,9 +257,9 @@ class TestReservationOpResourceLimiter:
             side_effect=mock_get_global_limits
         )
 
-        assert resource_manager.op_resource_limiter_enabled()
-        op_resource_limiter = resource_manager._op_resource_limiter
-        assert isinstance(op_resource_limiter, ReservationOpResourceLimiter)
+        assert resource_manager.op_resource_allocator_enabled()
+        op_resource_limiter = resource_manager._op_resource_alloator
+        assert isinstance(op_resource_limiter, ReservationOpResourceAllocator)
 
         # Test initial state when no resources are used.
         global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
@@ -348,8 +348,8 @@ class TestReservationOpResourceLimiter:
         )
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
-        op_resource_limiter = resource_manager._op_resource_limiter
-        assert isinstance(op_resource_limiter, ReservationOpResourceLimiter)
+        op_resource_limiter = resource_manager._op_resource_alloator
+        assert isinstance(op_resource_limiter, ReservationOpResourceAllocator)
 
         op_resource_limiter.update_usages()
         assert op_resource_limiter._op_reserved[o2] == incremental_usage
@@ -377,17 +377,17 @@ class TestReservationOpResourceLimiter:
             return_value=ExecutionResources.zero()
         )
 
-        assert resource_manager.op_resource_limiter_enabled()
-        op_resource_limiter = resource_manager._op_resource_limiter
-        assert isinstance(op_resource_limiter, ReservationOpResourceLimiter)
+        assert resource_manager.op_resource_allocator_enabled()
+        op_resource_allocator = resource_manager._op_resource_alloator
+        assert isinstance(op_resource_allocator, ReservationOpResourceAllocator)
 
-        op_resource_limiter.update_usages()
-        assert op_resource_limiter.get_op_limits(o1) == ExecutionResources.inf()
+        op_resource_allocator.update_usages()
+        assert op_resource_allocator.get_op_limits(o1) == ExecutionResources.inf()
 
     def test_only_enable_for_ops_with_accurate_memory_accouting(
         self, restore_data_context
     ):
-        """Test that ReservationOpResourceLimiter is not enabled when
+        """Test that ReservationOpResourceAllocator is not enabled when
         there are ops not in ResourceManager._ACCURRATE_MEMORY_ACCOUNTING_OPS
         """
         DataContext.get_current().op_resource_reservation_enabled = True
@@ -401,7 +401,7 @@ class TestReservationOpResourceLimiter:
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
-        assert not resource_manager.op_resource_limiter_enabled()
+        assert not resource_manager.op_resource_allocator_enabled()
 
 
 if __name__ == "__main__":

@@ -143,12 +143,12 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
 # This follows same format as `retry_exceptions` in Ray Core.
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
-# Whether to enable ReservationOpResourceLimiter by default.
+# Whether to enable ReservationOpResourceAllocator by default.
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = bool(
     os.environ.get("RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", "1")
 )
 
-# The default reservation ratio for ReservationOpResourceLimiter.
+# The default reservation ratio for ReservationOpResourceAllocator.
 DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
@@ -246,9 +246,9 @@ class DataContext:
         # The max number of blocks that can be buffered at the streaming generator of
         # each `DataOpTask`.
         self._max_num_blocks_in_streaming_gen_buffer = 2
-        # Whether to enable ReservationOpResourceLimiter.
+        # Whether to enable ReservationOpResourceAllocator.
         self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
-        # The reservation ratio for ReservationOpResourceLimiter.
+        # The reservation ratio for ReservationOpResourceAllocator.
         self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
 
     @staticmethod
