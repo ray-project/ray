@@ -193,7 +193,7 @@ def query_tags_from_docker_hub(
 
         result = response_json["results"]
         tags = [tag["name"] for tag in result]
-        filtered_tags_page = list(filter(filter_func, tags))
+        filtered_tags_page = list(filter(filter_func, tags)) # Filter tags
 
         # Add enough tags to not exceed num_tags if num_tags is specified
         if num_tags:
