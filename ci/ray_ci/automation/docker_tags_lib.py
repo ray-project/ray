@@ -315,7 +315,7 @@ def query_tags_from_docker_hub(
         with format namespace/repository:tag.
     """
     filtered_tags = []
-    page_count = 250
+    page_count = 1
     url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count}&page_size=100"  # noqa E501
     token = get_docker_hub_auth_token()
     headers = {
