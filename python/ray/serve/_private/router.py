@@ -307,15 +307,26 @@ class Router:
             return replica.send_request(pr), replica.replica_id
 
         while True:
-            obj_ref_or_gen, queue_len_info = await replica.send_request_with_rejection(
-                pr
-            )
-            if self._enable_queue_len_cache:
-                self._replica_scheduler.replica_queue_len_cache.update(
-                    replica.replica_id, queue_len_info.num_ongoing_requests
-                )
-            if queue_len_info.accepted:
-                return obj_ref_or_gen, replica.replica_id
+            obj_ref_or_gen = None
+            try:
+                (
+                    obj_ref_or_gen,
+                    queue_len_info,
+                ) = await replica.send_request_with_rejection(pr)
+                if self._enable_queue_len_cache:
+                    self._replica_scheduler.replica_queue_len_cache.update(
+                        replica.replica_id, queue_len_info.num_ongoing_requests
+                    )
+                if queue_len_info.accepted:
+                    return obj_ref_or_gen, replica.replica_id
+            except asyncio.CancelledError:
+                # NOTE(edoakes): this is not strictly necessary because there are
+                # currently no `await` statements between getting the ref and returning,
+                # but I'm adding it defensively.
+                if obj_ref_or_gen is not None:
+                    ray.cancel(obj_ref_or_gen)
+
+                raise
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
@@ -368,6 +379,7 @@ class Router:
                 **self._get_aggregated_requests(), send_timestamp=time.time()
             )
 
+        ref = None
         try:
             request_args, request_kwargs = await self._resolve_deployment_responses(
                 request_args, request_kwargs
@@ -390,6 +402,14 @@ class Router:
                     ref.completed()._on_completed(callback)
 
             return ref
+        except asyncio.CancelledError:
+            # NOTE(edoakes): this is not strictly necessary because there are currently
+            # no `await` statements between getting the ref and returning, but I'm
+            # adding it defensively.
+            if ref is not None:
+                ray.cancel(ref)
+
+            raise
         finally:
             # If the request is disconnected before assignment, this coroutine
             # gets cancelled by the caller and an asyncio.CancelledError is

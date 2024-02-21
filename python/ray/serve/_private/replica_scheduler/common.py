@@ -190,8 +190,8 @@ class ActorReplicaWrapper:
         assert (
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
-        obj_ref_gen = self._send_request_python(pr, with_rejection=True)
 
+        obj_ref_gen = self._send_request_python(pr, with_rejection=True)
         try:
             first_ref = await obj_ref_gen.__anext__()
             queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
