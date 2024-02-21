@@ -283,7 +283,6 @@ class AwaitableBackgroundReader(ReaderInterface):
                 return_exceptions=True,
             )
 
-            print("READ", res)
             # Set the result on the main thread.
             fut.set_result(res)
 
@@ -346,7 +345,6 @@ class AwaitableBackgroundWriter(WriterInterface):
         loop = asyncio.get_event_loop()
         while True:
             res = await self._queue.get()
-            print("WRITE", res)
             await loop.run_in_executor(self._background_task_executor, self._run, res)
 
     async def write(self, val: Any) -> None:
