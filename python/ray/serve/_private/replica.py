@@ -1066,8 +1066,8 @@ class UserCallableWrapper:
         self._raise_if_not_initialized("call_user_method")
 
         logger.info(
-            f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False, "serve_access_log": True},
+            f"Started executing request to method '{request_metadata.call_method}'.",
+            extra={"log_to_stderr": True, "serve_access_log": True},
         )
 
         result = None
