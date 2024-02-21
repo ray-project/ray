@@ -481,11 +481,11 @@ def test_backup_release_tags(mock_copy_tag, mock_write, mock_query_tags):
         aws_ecr_repo=aws_ecr_repo,
     )
 
-    mock_query_tags.assert_called_once_with(
-        filter_func=lambda t: _is_release_tag(t, None),
-        namespace=namespace,
-        repository=repository,
-    )
+    assert mock_query_tags.call_count == 1
+    assert mock_query_tags.call_args.kwargs["namespace"] == namespace
+    assert mock_query_tags.call_args.kwargs["repository"] == repository
+    assert mock_query_tags.call_args.kwargs["filter_func"].__name__ == "<lambda>"
+    assert mock_query_tags.call_args.kwargs["filter_func"].__code__.co_varnames[0] == 't'
     assert mock_write.call_count == 1
     assert mock_copy_tag.call_count == 10
     for i, call_arg in enumerate(mock_copy_tag.call_args_list):
