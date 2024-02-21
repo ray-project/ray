@@ -33,6 +33,10 @@ class ExecutionResources:
         """Returns an ExecutionResources object with infinite resources."""
         return ExecutionResources(float("inf"), float("inf"), float("inf"))
 
+    def is_zero(self) -> bool:
+        """Returns True if all resources are zero."""
+        return self.cpu == 0.0 and self.gpu == 0.0 and self.object_store_memory == 0
+
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:

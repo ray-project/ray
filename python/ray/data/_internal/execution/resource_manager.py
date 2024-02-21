@@ -3,7 +3,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -255,74 +255,96 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         super().__init__(resource_manager)
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
-        # We only limit map operators.
-        self._eligible_ops = [
-            op for op in self._resource_manager._topology if isinstance(op, MapOperator)
-        ]
         # Per-op reserved resources.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
-        self._reserved_for_outputs: Dict[PhysicalOperator, int] = {}
+        # Memory reserved for the outputs of each operator. This includes the operator's
+        # internal and external output buffers and next operator's input buffers, but
+        # doesn't include the pending task outputs.
+        # Note, if we don't reserve memory for outputs, all the budget may be used by
+        # by the pending task outputs. Then we'll have no budget to pull the outputs
+        # from the running tasks.
+        self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
-        # Resource limits for each operator.
-        self._op_limits: Dict[PhysicalOperator, ExecutionResources] = {}
+        # Resource budgets for each operator.
+        self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
         self._cached_global_limits = ExecutionResources.zero()
+
+    def _get_eligible_ops(self) -> List[PhysicalOperator]:
+        # Only consider map operators that are not completed.
+        return [
+            op
+            for op in self._resource_manager._topology
+            if isinstance(op, MapOperator) and not op.completed()
+        ]
 
     def _on_global_limits_updated(self, global_limits: ExecutionResources):
         from ray.data._internal.execution.operators.actor_pool_map_operator import (
             ActorPoolMapOperator,
         )
 
-        if len(self._eligible_ops) == 0:
+        eligible_ops = self._get_eligible_ops()
+        if len(eligible_ops) == 0:
             return
 
-        self._total_shared = global_limits.scale(1)
+        self._total_shared = copy.deepcopy(global_limits)
 
+        # Reserve `reservation_ratio * global_limits / num_ops` resources for each
+        # operator.
         default_reserved = global_limits.scale(
-            self._reservation_ratio / len(self._eligible_ops)
+            self._reservation_ratio / len(eligible_ops)
         )
-        for op in self._eligible_ops:
-            self._reserved_for_outputs[op] = default_reserved.object_store_memory // 2
-            # Make sure the reserved resources are at least to allow one task.
+        for op in eligible_ops:
+            # Reserve at least half of the default reserved resources for the outputs.
+            # This makes sure that we will have enough budget to pull the outputs from
+            # the running tasks.
+            self._reserved_for_op_outputs[op] = max(
+                default_reserved.object_store_memory // 2, 1
+            )
+            # Adjust the reserved resources in some special cases.
+            # 1. Make sure the reserved resources are at least to allow one task.
+            # TODO: do not consider autoscaling.
             min_reserved = op.incremental_resource_usage()
-            # To ensure that all GPUs are utilized, reserve enough object store memory
+            # 2. To ensure that all GPUs are utilized, reserve enough object store memory
             # to launch one task for each worker.
             if (
                 isinstance(op, ActorPoolMapOperator)
                 and op.base_resource_usage().gpu > 0
             ):
                 min_reserved.object_store_memory *= op._autoscaling_policy.min_workers
-            min_reserved.object_store_memory += self._reserved_for_outputs[op]
+
+            min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
             self._op_reserved[op] = default_reserved.max(min_reserved)
             self._total_shared = self._total_shared.subtract(self._op_reserved[op])
         self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        """Return whether a new task can be submitted to the given operator."""
-        if op not in self._op_limits:
+        """Return whether the given operator can submit a new task."""
+        if op not in self._op_budgets:
             return True
-        limit = copy.deepcopy(self._op_limits[op])
+        budget = copy.deepcopy(self._op_budgets[op])
         # Exclude the reserved memory for outputs.
         outputs_usage = (
             self._resource_manager._obj_store_output_buffers[op]
             + self._resource_manager._obj_store_next_op_input_buffers[op]
         )
-        out_buffers_reamining_reserved = max(
-            self._reserved_for_outputs[op] - outputs_usage, 0
+        outputs_reamining_reserved = max(
+            self._reserved_for_op_outputs[op] - outputs_usage, 0
         )
-        limit.object_store_memory -= out_buffers_reamining_reserved
-        res = op.incremental_resource_usage().satisfies_limit(limit)
+        budget.object_store_memory -= outputs_reamining_reserved
+        res = op.incremental_resource_usage().satisfies_limit(budget)
         return res
 
-    def max_task_outputs_to_fetch(self, op: PhysicalOperator) -> int:
-        """Return the maximum number of task outputs that can be fetched from the given operator."""
-        if op not in self._op_limits:
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
+        """Return the maximum bytes of outputs that can be read from
+        the given operator's running tasks."""
+        if op not in self._op_budgets:
             return float("inf")
-        return self._op_limits[op].object_store_memory
+        return self._op_budgets[op].object_store_memory
 
     def update_usages(self):
-        running_ops = [op for op in self._eligible_ops if not op.completed()]
-        if len(running_ops) == 0:
+        eligible_ops = self._get_eligible_ops()
+        if len(eligible_ops) == 0:
             return
 
         global_limits = self._resource_manager.get_global_limits()
@@ -330,18 +352,18 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             self._on_global_limits_updated(global_limits)
             self._cached_global_limits = global_limits
 
-        self._op_limits.clear()
+        self._op_budgets.clear()
         # Remaining of shared resources.
         remaining_shared = self._total_shared
         for op in self._resource_manager._topology:
             op_usage = self._resource_manager.get_op_usage(op)
-            if op in running_ops:
+            if op in eligible_ops:
                 op_reserved = self._op_reserved[op]
                 # How much of the reserved resources are remaining.
                 op_reserved_remaining = op_reserved.subtract(op_usage).max(
                     ExecutionResources.zero()
                 )
-                self._op_limits[op] = op_reserved_remaining
+                self._op_budgets[op] = op_reserved_remaining
                 # How much of the reserved resources are exceeded.
                 # If exceeded, we need to subtract from the remaining shared resources.
                 op_reserved_exceeded = op_usage.subtract(op_reserved).max(
@@ -354,21 +376,30 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
                 remaining_shared = remaining_shared.subtract(op_usage)
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
-        shared_divided = remaining_shared.scale(1.0 / len(running_ops))
-        for op in reversed(running_ops):
-            op_shared = shared_divided.max(
-                op.incremental_resource_usage().min(remaining_shared)
+
+        # Allocate the remaining shared resources to each operator.
+        for i, op in enumerate(reversed(eligible_ops)):
+            # By default, divide the remaining shared resources equally among the eligible ops.
+            shared_divided = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
+            self._op_budgets[op] = self._op_budgets[op].add(shared_divided)
+            # But if the op's budget is less than `incremental_resource_usage`,
+            # it will be useless. So we'll let the downstream operator
+            # borrow some resources from the upstream operator, if remaining_shared
+            # is still enough.
+            to_borrow = (
+                op.incremental_resource_usage()
+                .subtract(self._op_budgets[op])
+                .max(ExecutionResources.zero())
             )
-            remaining_shared = remaining_shared.subtract(op_shared).max(
-                ExecutionResources.zero()
-            )
-            self._op_limits[op] = self._op_limits[op].add(op_shared)
+            if not to_borrow.is_zero() and to_borrow.satisfies_limit(remaining_shared):
+                self._op_budgets[op] = self._op_budgets[op].add(to_borrow)
+            remaining_shared = remaining_shared.subtract(self._op_budgets[op])
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
-            self._op_limits[op].gpu = float("inf")
+            self._op_budgets[op].gpu = float("inf")
 
     def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
-        if op in self._op_limits:
-            return self._op_limits[op]
+        if op in self._op_budgets:
+            return self._op_budgets[op]
         else:
             return ExecutionResources.inf()
