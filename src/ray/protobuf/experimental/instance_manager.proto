@@ -30,8 +30,6 @@ enum StatusCode {
   UNKNOWN_ERRORS = 3;
   // Unavailable resources or operations. Caller should retry.
   UNAVAILABLE = 4;
-  // Invalid values.
-  INVALID_VALUE = 5;
 }
 
 message Status {
@@ -137,14 +135,14 @@ message InstanceUpdateEvent {
 
   /// Additional metdata for the update event.
 
+  // The instance type for QUEUED/REQUESTED/ALLOCATED event.
+  optional string instance_type = 4;
   // Cloud instance id for ALLOCATED event.
-  optional string cloud_instance_id = 4;
-  // Launch request id for REQUESTED event.
-  optional string launch_request_id = 5;
-  // Instance type for REQUESTED event.
-  optional string instance_type = 6;
+  optional string cloud_instance_id = 5;
   // Ray node id for RAY_RUNNING event.
-  optional string ray_node_id = 7;
+  optional string ray_node_id = 6;
+  // Launch request id for REQUESTED event.
+  optional string launch_request_id = 7;
 }
 
 // Launch request for a node type.
@@ -190,10 +188,8 @@ message TerminationRequest {
 message UpdateInstanceManagerStateRequest {
   // the expected version of the state.
   int64 expected_version = 1;
-  // instance launch requests.
-  repeated LaunchRequest launch_requests = 2;
   // instance state updates.
-  repeated InstanceUpdateEvent updates = 3;
+  repeated InstanceUpdateEvent updates = 2;
 }
 
 message UpdateInstanceManagerStateReply {
