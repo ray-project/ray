@@ -20,7 +20,6 @@
 #include <unistd.h>
 #endif
 
-#include <boost/asio.hpp>
 #include <functional>
 #include <map>
 #include <memory>
