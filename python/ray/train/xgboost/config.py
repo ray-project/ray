@@ -82,7 +82,7 @@ class _XGBoostRabitBackend(Backend):
             # Ranks are assigned in increasing order of the worker's task id.
             # This task id will be sorted by increasing world rank.
             os.environ["DMLC_TASK_ID"] = (
-                f"[xgboost.ray-rank={ray.train.get_context().get_world_rank()}]:"
+                f"[xgboost.ray-rank={ray.train.get_context().get_world_rank():08}]:"
                 f"{ray.get_runtime_context().get_actor_id()}"
             )
 
