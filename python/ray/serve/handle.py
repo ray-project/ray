@@ -294,6 +294,13 @@ class _DeploymentResponseBase:
     def _should_resolve_gen_to_obj_ref(
         self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
     ) -> bool:
+        """Check if the ref is a generator that needs to be resolved to its first ref.
+
+        This is an edge case to handle the routing code path with replica rejection.
+        In that case, the output of `router.assign_request` is *always* a generator,
+        so if this is a unary response we need to resolve it to its first (and only)
+        output ObjectRef.
+        """
         return isinstance(obj_ref_or_gen, ray.ObjectRefGenerator) and isinstance(
             self, DeploymentResponse
         )
