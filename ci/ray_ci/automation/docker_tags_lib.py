@@ -307,7 +307,7 @@ def query_tags_from_docker_hub(
         with format namespace/repository:tag.
     """
     filtered_tags = []
-    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page=1&page_size=100"  # noqa E501
+    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page=250&page_size=100"  # noqa E501
     token = get_docker_hub_auth_token()
     headers = {
         "Authorization": f"Bearer {token}",
@@ -372,6 +372,7 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
     return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
 
 def _write_to_file(file_path: str, content: List[str]) -> None:
+    logger.info(f"Writing to {file_path}......")
     with open(file_path, "w") as f:
         f.write("\n".join(content))
 
