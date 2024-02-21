@@ -1894,6 +1894,8 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
+      reply->set_rejection_reason_message(
+          "The node to be idle terminated is no longer idle.");
     }
   } else {
     // Non-rejectable draining request.
