@@ -20,7 +20,6 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
-        convert_to_data_iterator: bool = True,
     ):
         """Construct a DataConfig.
 
@@ -47,8 +46,6 @@ class DataConfig:
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0
-
-        self._convert_to_data_iterator = convert_to_data_iterator
 
     def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
         """Set the total number of CPUs and GPUs used by training.
@@ -90,6 +87,9 @@ class DataConfig:
         else:
             datasets_to_split = set(self._datasets_to_split)
 
+        locality_hints = (
+            worker_node_ids if self._execution_options.locality_with_output else None
+        )
         for name, ds in datasets.items():
             ds = ds.copy(ds)
             ds.context.execution_options = copy.deepcopy(self._execution_options)
@@ -104,34 +104,15 @@ class DataConfig:
             )
 
             if name in datasets_to_split:
-                splits = (
+                for i, split in enumerate(
                     ds.streaming_split(
-                        world_size,
-                        equal=True,
-                        locality_hints=(
-                            worker_node_ids
-                            if self._execution_options.locality_with_output
-                            else None
-                        ),
+                        world_size, equal=True, locality_hints=locality_hints
                     )
-                    if self._convert_to_data_iterator
-                    else ds.split(
-                        world_size,
-                        equal=True,
-                        locality_hints=(
-                            worker_handles
-                            if self._execution_options.locality_with_output
-                            else None
-                        ),
-                    )
-                )
-                for i, split in enumerate(splits):
+                ):
                     output[i][name] = split
             else:
                 for i in range(world_size):
-                    output[i][name] = (
-                        ds.iterator() if self._convert_to_data_iterator else ds
-                    )
+                    output[i][name] = ds.iterator()
 
         return output
 
