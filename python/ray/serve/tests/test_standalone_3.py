@@ -234,7 +234,7 @@ def test_handle_early_detect_failure(shutdown_ray):
 
         handle = serve.run(f.bind())
         responses = [handle.remote() for _ in range(10)]
-        assert len(set(r.result() for r in responses)) == 2
+        assert len({r.result() for r in responses}) == 2
 
         client = _get_global_client()
         # Kill the controller so that the replicas membership won't be updated
@@ -245,7 +245,7 @@ def test_handle_early_detect_failure(shutdown_ray):
             handle.remote(do_crash=True).result()
 
         responses = [handle.remote() for _ in range(10)]
-        assert len(set(r.result() for r in responses)) == 1
+        assert len({r.result() for r in responses}) == 1
     finally:
         # Restart the controller, and then clean up all the replicas.
         serve.shutdown()
