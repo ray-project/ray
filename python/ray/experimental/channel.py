@@ -29,7 +29,7 @@ def _create_channel_ref(
     Create a channel that can be read and written by co-located Ray processes.
 
     The channel has no buffer, so the writer will block until reader(s) have
-    read the previous value. Only the channel creator may write to the channel.
+    read the previous value.
 
     Args:
         buffer_size_bytes: The number of bytes to allocate for the object data and
@@ -45,7 +45,7 @@ def _create_channel_ref(
 
     try:
         object_ref = worker.put_object(
-            value, owner_address=None, _is_experimental_mutable_object=True
+            value, owner_address=None, _is_experimental_channel=True
         )
     except ray.exceptions.ObjectStoreFullError:
         logger.info(
@@ -72,8 +72,9 @@ class Channel:
         """
         Create a channel that can be read and written by co-located Ray processes.
 
-        Only the caller may write to the channel. The channel has no buffer,
-        so the writer will block until reader(s) have read the previous value.
+        Anyone may write to or read from the channel. The channel has no
+        buffer, so the writer will block until reader(s) have read the previous
+        value.
 
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and
@@ -100,6 +101,23 @@ class Channel:
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
+        self._writer_registered = False
+        self._reader_registered = False
+
+    def _ensure_registered_as_writer(self):
+        if self._writer_registered:
+            return
+
+        self._worker.core_worker.experimental_channel_register_writer(self._base_ref)
+        self._writer_registered = True
+
+    def _ensure_registered_as_reader(self):
+        if self._reader_registered:
+            return
+
+        self._worker.core_worker.experimental_channel_register_reader(self._base_ref)
+        self._reader_registered = True
+
     @staticmethod
     def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
         return Channel(num_readers=num_readers, _base_ref=base_ref)
@@ -125,6 +143,8 @@ class Channel:
         if num_readers <= 0:
             raise ValueError("``num_readers`` must be a positive integer.")
 
+        self._ensure_registered_as_writer()
+
         try:
             serialized_value = self._worker.get_serialization_context().serialize(value)
         except TypeError as e:
@@ -137,7 +157,7 @@ class Channel:
             )
             raise TypeError(msg) from e
 
-        self._worker.core_worker.experimental_mutable_object_put_serialized(
+        self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._base_ref,
             num_readers,
@@ -155,13 +175,12 @@ class Channel:
         Returns:
             Any: The deserialized value.
         """
-        values, _ = self._worker.get_objects(
-            [self._base_ref], _is_experimental_mutable_object=True
-        )
+        self._ensure_registered_as_reader()
+        values = ray.get(self._base_ref)
         return (
-            values[0].args + tuple(values[0].kwargs.values())
-            if isinstance(values[0], ArgsKwargsWrapper)
-            else values[0]
+            tuple(values.args) + tuple(values.kwargs.values())
+            if isinstance(values, ArgsKwargsWrapper)
+            else values
         )
 
     def end_read(self):
@@ -171,9 +190,8 @@ class Channel:
         If begin_read is not called first, then this call will block until a
         value is written, then drop the value.
         """
-        self._worker.core_worker.experimental_mutable_object_read_release(
-            [self._base_ref]
-        )
+        self._ensure_registered_as_reader()
+        self._worker.core_worker.experimental_channel_read_release([self._base_ref])
 
     def close(self) -> None:
         """
@@ -183,4 +201,5 @@ class Channel:
         channel is closed.
         """
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
-        self._worker.core_worker.experimental_mutable_object_set_error(self._base_ref)
+        self._ensure_registered_as_writer()
+        self._worker.core_worker.experimental_channel_set_error(self._base_ref)

@@ -2833,6 +2833,30 @@ py_test(
 # ----------------------
 # new connector examples
 # ----------------------
+
+# Framestacking examples only run in smoke-test mode (a few iters only).
+py_test(
+    name = "examples/connectors/connector_v2_frame_stacking_ppo",
+    main = "examples/connectors/connector_v2_frame_stacking.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+    args = ["--enable-new-api-stack", "--stop-iter=2", "--framework=torch", "--algo=PPO"]
+)
+
+# TODO (sven): multi-agent framestacking doesn't work yet due to a problem
+#  in the default Learner connector piece not recognizing already changed columns
+#  from previous pieces in the MA case (SA works fine).
+# py_test(
+#    name = "examples/connectors/connector_v2_frame_stacking_multi_agent_ppo",
+#    main = "examples/connectors/connector_v2_frame_stacking.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "medium",
+#    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+#    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO"]
+# )
+
+# Nested observation spaces (flattening).
 py_test(
     name = "examples/connectors/connector_v2_nested_observation_spaces_ppo",
     main = "examples/connectors/connector_v2_nested_observation_spaces.py",
@@ -2851,31 +2875,50 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
 )
 
+# Prev-r/prev actions + LSTM example.
+py_test(
+    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_ppo",
+    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=150.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
+)
+
+# py_test(
+#    name = "examples/connectors/connector_v2_prev_actions_prev_rewards_multi_agent_ppo",
+#    main = "examples/connectors/connector_v2_prev_actions_prev_rewards.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "large",
+#    srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
+#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
+# )
+
 # ----------------------
 # old connector examples
 # ----------------------
 py_test(
-    name = "examples/connectors/run_connector_policy",
-    main = "examples/connectors/run_connector_policy.py",
+    name = "examples/connectors/v1/run_connector_policy",
+    main = "examples/connectors/v1/run_connector_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/connectors/run_connector_policy.py"],
+    srcs = ["examples/connectors/v1/run_connector_policy.py"],
 )
 
 py_test(
-    name = "examples/connectors/adapt_connector_policy",
-    main = "examples/connectors/adapt_connector_policy.py",
+    name = "examples/connectors/v1/adapt_connector_policy",
+    main = "examples/connectors/v1/adapt_connector_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/connectors/adapt_connector_policy.py"],
+    srcs = ["examples/connectors/v1/adapt_connector_policy.py"],
 )
 
 py_test(
-    name = "examples/connectors/self_play_with_policy_checkpoint",
-    main = "examples/connectors/self_play_with_policy_checkpoint.py",
+    name = "examples/connectors/v1/self_play_with_policy_checkpoint",
+    main = "examples/connectors/v1/self_play_with_policy_checkpoint.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
+    srcs = ["examples/connectors/v1/self_play_with_policy_checkpoint.py"],
     args = [
         "--train_iteration=1"  # Smoke test.
     ]
