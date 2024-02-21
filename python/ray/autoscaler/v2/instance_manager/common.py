@@ -2,49 +2,7 @@ import time
 import uuid
 from typing import Dict, List, Optional, Set
 
-from google.protobuf.json_format import MessageToDict
-
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
-
-
-class InvalidInstanceUpdateError(ValueError):
-    """Raised when an instance has an invalid status."""
-
-    # The instance manager instance id.
-    instance_id: str
-    # The current status of the instance.
-    cur_status: Instance.InstanceStatus
-    # The new status to be set to.
-    new_status: Instance.InstanceStatus
-    # Extra details
-    details: str
-
-    def __init__(
-        self,
-        instance_id: str,
-        cur_status: Instance.InstanceStatus,
-        update: InstanceUpdateEvent,
-        details: str,
-    ):
-        """
-        Args:
-            instance_id: The instance id.
-            cur_status: The current status of the instance.
-            update: The update to apply.
-            details: The details of the error.
-        """
-        self.instance_id = instance_id
-        self.cur_status = cur_status
-        self.new_status = update.new_instance_status
-        self.details = details
-
-        msg = (
-            f"Instance {instance_id} with current status "
-            f"{Instance.InstanceStatus.Name(cur_status)} "
-            f"cannot be updated by {MessageToDict(update)}: {details}"
-        )
-
-        super().__init__(msg)
+from ray.core.generated.instance_manager_pb2 import Instance
 
 
 class InstanceUtil:
