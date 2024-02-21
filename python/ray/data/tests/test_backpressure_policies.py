@@ -12,7 +12,6 @@ import ray
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
     ConcurrencyCapBackpressurePolicy,
-    StreamingOutputBackpressurePolicy,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -139,6 +138,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
 
 
+# TODO: fix
 class TestStreamOutputBackpressurePolicy(unittest.TestCase):
     """Tests for StreamOutputBackpressurePolicy."""
 

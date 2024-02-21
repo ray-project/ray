@@ -11,6 +11,7 @@ from ray.data._internal.execution.backpressure_policy import (
 )
 
 
+# TODO: fix
 def test_scheduler_accounts_for_in_flight_tasks(shutdown_only, restore_data_context):
     # The executor launches multiple tasks in each scheduling step. If it doesn't
     # account for the potential output of in flight tasks, it may launch too many tasks

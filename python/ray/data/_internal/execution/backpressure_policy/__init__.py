@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 import ray
 from .backpressure_policy import BackpressurePolicy
 from .concurrency_cap_backpressure_policy import ConcurrencyCapBackpressurePolicy
-from .streaming_output_backpressure_policy import StreamingOutputBackpressurePolicy
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 # Use `DataContext.set_config` to config it.
 ENABLED_BACKPRESSURE_POLICIES = [
     ConcurrencyCapBackpressurePolicy,
-    StreamingOutputBackpressurePolicy,
 ]
 ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
 
@@ -29,7 +27,6 @@ def get_backpressure_policies(topology: "Topology"):
 __all__ = [
     "BackpressurePolicy",
     "ConcurrencyCapBackpressurePolicy",
-    "StreamingOutputBackpressurePolicy",
     "ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY",
     "get_backpressure_policies",
 ]

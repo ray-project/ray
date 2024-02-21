@@ -381,16 +381,11 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
-    for policy in backpressure_policies:
-        res = policy.calculate_max_bytes_to_read_per_op(topology, resource_manager)
-        if len(res) > 0:
-            if len(max_bytes_to_read_per_op) > 0:
-                raise ValueError(
-                    "At most one backpressure policy that implements "
-                    "calculate_max_bytes_to_read_per_op() can be used at a time."
-                )
-            else:
-                max_bytes_to_read_per_op = res
+    if resource_manager.op_resource_allocator_enabled():
+        for op, state in topology.items():
+            max_bytes_to_read_per_op[
+                state
+            ] = resource_manager.op_resource_allocator.max_task_output_bytes_to_read(op)
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -404,8 +399,7 @@ def process_completed_tasks(
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
-        # This is because some backpressure policies (e.g.,
-        # StreamingOutputBackpressurePolicy) may limit the number of blocks to read
+        # This is because OpResourceAllocator may limit the number of blocks to read
         # per operator. In this case, we want to have fewer tasks finish quickly and
         # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)

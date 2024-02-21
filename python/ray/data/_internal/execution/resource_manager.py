@@ -202,9 +202,10 @@ class ResourceManager:
         """Return whether OpResourceAllocator is enabled."""
         return self._op_resource_alloator is not None
 
-    def get_op_resource_allocator(self) -> OpResourceAllocator:
+    @property
+    def op_resource_allocator(self) -> "OpResourceAllocator":
         """Return the OpResourceAllocator."""
-        assert self.op_resource_allocator_enabled()
+        assert self._op_resource_alloator is not None
         return self._op_resource_alloator
 
 
