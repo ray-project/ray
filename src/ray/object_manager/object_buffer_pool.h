@@ -216,7 +216,6 @@ class ObjectBufferPool {
       ABSL_GUARDED_BY(pool_mutex_);
   /// Set of object_ids currently being written to.
   absl::flat_hash_set<ray::ObjectID> in_copy_object_ids_ ABSL_GUARDED_BY(pool_mutex_);
-  
   /// Plasma client pool.
   std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
 
