@@ -28,7 +28,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             capacity=capacity, batch_size_B=batch_size_B, batch_length_T=batch_length_T
         )
 
-        assert alpha > 0
+        # `alpha` should be non-negative.
+        assert alpha >= 0
         self._alpha = alpha
 
         # Initialize segment trees for the priority weights. Note, b/c the trees
@@ -215,7 +216,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 be the one executed n steps before such that we always have the
                 state-action pair that triggered the rewards.
                 If `n_step` is a tuple, it is considered as a range to sample
-                from. If `None`, we sample from the range (1, 5).
+                from. If `None`, we use `n_step=1`.
             beta: The exponent of the importance sampling weight (see Schaul et
                 al. (2016)). A `beta=0.0` does not correct for the bias introduced
                 by prioritized replay and `beta=1.0` fully corrects for it.
@@ -246,12 +247,12 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_length_T = batch_length_T or self.batch_length_T
 
         # Sample the n-step if necessary.
-        if n_step is None:
-            # If ' None' we sample from the closed interval (1, 5).
-            n_step = self.rng.integers(1, 5)
-        elif isinstance(n_step, tuple):
-            # Otherwise sample from the user-defined interval.
-            n_step = self.rng.integers(n_step[0], n_step[1])
+        if isinstance(n_step, tuple):
+            # Use random n-step sampling.
+            random_n_step = True
+        else:
+            actual_n_step = n_step
+            random_n_step = False
 
         # Rows to return.
         observations = [[] for _ in range(batch_size_B)]
@@ -261,6 +262,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         is_terminated = [[False] * batch_length_T for _ in range(batch_size_B)]
         is_truncated = [[False] * batch_length_T for _ in range(batch_size_B)]
         weights = [[] for _ in range(batch_size_B)]
+        n_steps = [[] for _ in range(batch_size_B)]
         # If `info` should be included, construct also a container for them.
         # TODO (simon): Add also `extra_model_outs`.
         if include_infos:
@@ -300,25 +302,33 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 index_triple[1],
             )
             episode = self.episodes[episode_idx]
+
+            # If we use random n-step sampling, draw the n-step for this item.
+            if random_n_step:
+                actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
             # If we are at the end of an episode, continue.
             # Note, priority sampling got us `o_(t+n)` and we need for the loss
             # calculation in addition `o_t`.
             # TODO (simon): Maybe introduce a variable `num_retries` until the
             # while loop should break when not enough samples have been collected
             # to make n-step possible.
-            if episode_ts - n_step < 0:
+            if episode_ts - actual_n_step < 0:
                 continue
+            else:
+                n_steps[B].append(actual_n_step)
 
             # Starting a new chunk.
             # Ensure that each row contains a tuple of the form:
             #   (o_t, a_t, sum(r_(t:t+n_step)), o_(t+n_step))
             # TODO (simon): Implement version for sequence sampling when using RNNs.
             eps_observations = episode.get_observations(
-                slice(episode_ts - n_step, episode_ts + 1)
+                slice(episode_ts - actual_n_step, episode_ts + 1)
             )
             # Note, the reward that is collected by transitioning from `o_t` to
             # `o_(t+1)` is stored in the next transition in `SingleAgentEpisode`.
-            eps_rewards = episode.get_rewards(slice(episode_ts - n_step, episode_ts))
+            eps_rewards = episode.get_rewards(
+                slice(episode_ts - actual_n_step, episode_ts)
+            )
             observations[B].append(eps_observations[0])
             next_observations[B].append(eps_observations[-1])
             # Note, this will be the reward after executing action
@@ -364,6 +374,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             SampleBatch.TERMINATEDS: np.array(is_terminated),
             SampleBatch.TRUNCATEDS: np.array(is_truncated),
             "weights": np.array(weights),
+            "n_steps": np.array(n_steps),
         }
         if include_infos:
             ret.update(
@@ -430,7 +441,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Note, TD-errors come in as absolute values or results from
             # cross-entropy loss calculations.
             assert priority > 0
-            assert 0 <= idx < self.get_num_timesteps()
+            assert 0 <= idx < self._sum_segment.capacity
             # TODO (simon): Create metrics.
             # delta = priority**self._alpha - self._sum_segment[idx]
             # Update the priorities in the segment trees.
