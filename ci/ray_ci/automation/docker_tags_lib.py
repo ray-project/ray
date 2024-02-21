@@ -9,6 +9,8 @@ from dateutil import parser
 from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
+
 class DockerHubRateLimitException(Exception):
     """
     Exception for Docker Hub rate limit exceeded.
@@ -296,7 +298,7 @@ def query_tags_from_docker_hub(
     filter_func: Callable[[str], bool],
     namespace: str,
     repository: str,
-    num_tags: int = 100,
+    num_tags: Optional[int] = 1000,
 ) -> List[str]:
     """
     Query tags from Docker Hub repository with filter.
@@ -339,10 +341,11 @@ def query_tags_from_docker_hub(
         tags = [tag["name"] for tag in result]
         filtered_tags_page = list(filter(filter_func, tags))
 
-        # Add enough tags to not exceed num_tags
-        if tag_count + len(filtered_tags_page) > num_tags:
-            filtered_tags.extend(filtered_tags_page[: num_tags - tag_count])
-            break
+        # Add enough tags to not exceed num_tags if num_tags is specified
+        if num_tags:
+            if tag_count + len(filtered_tags_page) > num_tags:
+                filtered_tags.extend(filtered_tags_page[: num_tags - tag_count])
+                break
         filtered_tags.extend(filtered_tags_page)
         tag_count += len(filtered_tags_page)
         logger.info(f"Tag count: {tag_count}")
@@ -380,11 +383,13 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
         raise Exception(f"Failed to query tags from Docker Registry: {result}")
     return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
 
+
 def _write_to_file(file_path: str, content: List[str]) -> None:
     file_path = os.path.join(bazel_workspace_dir, file_path)
     logger.info(f"Writing to {file_path}......")
     with open(file_path, "w") as f:
         f.write("\n".join(content))
+
 
 def backup_release_tags(
     namespace: str,
