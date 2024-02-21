@@ -1,20 +1,26 @@
 import logging
+import math
+import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
     CloudInstanceProviderError,
+    ICloudInstanceProvider,
     LaunchNodeError,
     TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.scheduler import IResourceScheduler
+from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.autoscaler_pb2 import (
+    AutoscalingState,
     ClusterResourceState,
     NodeState,
     NodeStatus,
@@ -43,11 +49,13 @@ class Reconciler:
     def reconcile(
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
+        cloud_provider: ICloudInstanceProvider,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
-    ):
+        autoscaling_config: AutoscalingConfig,
+    ) -> AutoscalingState:
         """
         The reconcile method computes InstanceUpdateEvents for the instance manager
         by:
@@ -73,19 +81,24 @@ class Reconciler:
 
         """
         Reconciler._sync_from(
-            instance_manager,
-            ray_cluster_resource_state.node_states,
-            non_terminated_cloud_instances,
-            cloud_provider_errors,
-            ray_install_errors,
+            instance_manager=instance_manager,
+            ray_nodes=ray_cluster_resource_state.node_states,
+            non_terminated_cloud_instances=non_terminated_cloud_instances,
+            cloud_provider_errors=cloud_provider_errors,
+            ray_install_errors=ray_install_errors,
         )
 
+        autoscaling_state = AutoscalingState()
         Reconciler._step_next(
-            instance_manager,
-            scheduler,
-            ray_cluster_resource_state,
-            non_terminated_cloud_instances,
+            autoscaling_state=autoscaling_state,
+            instance_manager=instance_manager,
+            scheduler=scheduler,
+            cloud_provider=cloud_provider,
+            ray_cluster_resource_state=ray_cluster_resource_state,
+            non_terminated_cloud_instances=non_terminated_cloud_instances,
+            autoscaling_config=autoscaling_config,
         )
+        return autoscaling_state
 
     @staticmethod
     def _sync_from(
@@ -159,35 +172,36 @@ class Reconciler:
 
     @staticmethod
     def _step_next(
+        autoscaling_state: AutoscalingState,
         instance_manager: InstanceManager,
-        ray_cluster_resource_state: ClusterResourceState,
         scheduler: IResourceScheduler,
+        cloud_provider: ICloudInstanceProvider,
+        ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        autoscaling_config: AutoscalingConfig,
     ):
         """
         Step the reconciler to the next state by computing instance status transitions
         that are needed and updating the instance manager's state.
 
         Specifically, we will:
-            1. Shut down extra cloud instances
-              (* -> TERMINATING)
-                a. Leaked cloud instances that are not managed by the instance manager.
+            1. Shut down leak cloud instances
+                Leaked cloud instances that are not managed by the instance manager.
+            2. Terminating instances with ray stopped or ray install failure.
+            3. Scale up/down the cluster:
+              (* -> RAY_STOPPING)
                 b. Extra cloud due to max nodes config.
                 c. Cloud instances with outdated configs.
-                d. Stopped ray nodes or failed to install ray nodes.
-            2. Create new instances
+            4. Create new instances
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
                 scaling up.
-            3. Request cloud provider to launch new instances.
+            5. Request cloud provider to launch new instances.
               (QUEUED -> REQUESTED)
-            4. Install ray
+            6. Install ray
               (ALLOCATED -> RAY_INSTALLING)
-                When ray needs to be manually installed.
-            5. Drain ray nodes
-              (RAY_RUNNING -> RAY_STOPPING):
-                a. Idle terminating ray nodes.
-            6. Handle any stuck instances with timeouts.
+                When ray could be installed and launched.
+            7. Handle any stuck instances with timeouts.
 
         Args:
             instance_manager: The instance manager to reconcile.
@@ -197,7 +211,10 @@ class Reconciler:
                 the cloud provider.
 
         """
-        pass
+
+        Reconciler._handle_instances_launch(
+            instance_manager=instance_manager, autoscaling_config=autoscaling_config
+        )
 
     #######################################################
     # Utility methods for reconciling instance states.
@@ -260,7 +277,7 @@ class Reconciler:
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _try_resolve_pending_allocation(
@@ -349,7 +366,7 @@ class Reconciler:
                 )
 
         # Update the instance manager for the events.
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _handle_cloud_instance_terminated(
@@ -397,7 +414,7 @@ class Reconciler:
                 )
             )
 
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _handle_cloud_instance_termination_errors(
@@ -450,7 +467,7 @@ class Reconciler:
                 )
             )
 
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _get_im_instances(
@@ -466,15 +483,18 @@ class Reconciler:
     @staticmethod
     def _update_instance_manager(
         instance_manager: InstanceManager,
-        updates: Dict[str, IMInstanceUpdateEvent],
         version: int,
+        updates: Dict[str, IMInstanceUpdateEvent],
     ) -> None:
         if not updates:
             return
+
+        updates = list(updates.values()) or []
+
         reply = instance_manager.update_instance_manager_state(
             request=UpdateInstanceManagerStateRequest(
                 expected_version=version,
-                updates=list(updates.values()),
+                updates=updates,
             )
         )
         # TODO: While it's possible that a version mismatch
@@ -556,7 +576,7 @@ class Reconciler:
                     )
                 )
 
-        Reconciler._update_instance_manager(instance_manager, updates, version)
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _reconciled_im_status_from_ray_status(
@@ -593,3 +613,131 @@ class Reconciler:
             return cur_im_status
 
         return reconciled_im_status
+
+    @staticmethod
+    def _handle_instances_launch(
+        instance_manager: InstanceManager, autoscaling_config: AutoscalingConfig
+    ):
+
+        instances, version = Reconciler._get_im_instances(instance_manager)
+
+        queued_instances = []
+        requested_instances = []
+        allocated_instances = []
+
+        for instance in instances:
+            if instance.status == IMInstance.QUEUED:
+                queued_instances.append(instance)
+            elif instance.status == IMInstance.REQUESTED:
+                requested_instances.append(instance)
+            elif instance.cloud_instance_id:
+                allocated_instances.append(instance)
+
+        if not queued_instances:
+            # No QUEUED instances
+            return
+
+        to_launch = Reconciler._compute_to_launch(
+            queued_instances,
+            requested_instances,
+            allocated_instances,
+            autoscaling_config.get_upscaling_speed(),
+            autoscaling_config.get_max_concurrent_launches(),
+        )
+
+        # Transition the instances to REQUESTED for instance launcher to
+        # launch them.
+        updates = {}
+        for instance_type, instances in to_launch.items():
+            for instance in instances:
+                # Reuse launch request id for any QUEUED instances that have been
+                # requested before due to retry.
+                launch_request_id = (
+                    str(uuid.uuid4())
+                    if len(instance.launch_request_id) == 0
+                    else instance.launch_request_id
+                )
+                updates[instance.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance.instance_id,
+                    new_instance_status=IMInstance.REQUESTED,
+                    launch_request_id=launch_request_id,
+                    instance_type=instance_type,
+                )
+                logger.debug(
+                    "Updating {}({}) with {}".format(
+                        instance.instance_id,
+                        IMInstance.InstanceStatus.Name(instance.status),
+                        message_to_dict(updates[instance.instance_id]),
+                    )
+                )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
+    def _compute_to_launch(
+        queued_instances: List[IMInstance],
+        requested_instances: List[IMInstance],
+        allocated_instances: List[IMInstance],
+        upscaling_speed: float,
+        max_concurrent_launches: int,
+    ) -> Dict[NodeType, List[IMInstance]]:
+        def _group_by_type(instances):
+            instances_by_type = defaultdict(list)
+            for instance in instances:
+                instances_by_type[instance.instance_type].append(instance)
+            return instances_by_type
+
+        # Sort the instances by the time they were queued.
+        def _sort_by_earliest_queued(instance: IMInstance) -> List[int]:
+            queue_times = InstanceUtil.get_status_transition_times_ns(
+                instance, IMInstance.QUEUED
+            )
+            return sorted(queue_times)
+
+        queued_instances_by_type = _group_by_type(queued_instances)
+        requested_instances_by_type = _group_by_type(requested_instances)
+        allocated_instances_by_type = _group_by_type(allocated_instances)
+
+        total_num_requested_to_launch = len(requested_instances)
+        all_to_launch: Dict[NodeType : List[IMInstance]] = defaultdict(list)
+
+        for (
+            instance_type,
+            queued_instances_for_type,
+        ) in queued_instances_by_type.items():
+            requested_instances_for_type = requested_instances_by_type.get(
+                instance_type, []
+            )
+            allocated_instances_for_type = allocated_instances_by_type.get(
+                instance_type, []
+            )
+
+            num_desired_to_upscale = max(
+                1,
+                math.ceil(
+                    upscaling_speed
+                    * (
+                        len(requested_instances_for_type)
+                        + len(allocated_instances_for_type)
+                    )
+                ),
+            )
+
+            # Enforce global limit, at most we can launch `max_concurrent_launches`
+            num_to_launch = min(
+                max_concurrent_launches - total_num_requested_to_launch,
+                num_desired_to_upscale,
+            )
+
+            # Cap both ends 0 <= num_to_launch <= num_queued
+            num_to_launch = max(0, num_to_launch)
+            num_to_launch = min(len(queued_instances_for_type), num_to_launch)
+
+            to_launch = sorted(queued_instances_for_type, key=_sort_by_earliest_queued)[
+                :num_to_launch
+            ]
+
+            all_to_launch[instance_type].extend(to_launch)
+            total_num_requested_to_launch += num_to_launch
+
+        return all_to_launch
