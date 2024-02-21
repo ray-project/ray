@@ -24,6 +24,23 @@
 namespace ray {
 namespace raylet {
 
+bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
+  // Check whether the resource is CPU resource or CPU resource inside PG.
+  if (resource_id == ResourceID::CPU()) {
+    return true;
+  }
+
+  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
+                                                       /*for_wildcard_resource*/ true,
+                                                       /*for_indexed_resource*/ true);
+  if (possible_pg_resource.has_value() &&
+      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
+    return true;
+  }
+
+  return false;
+}
+
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
@@ -957,12 +974,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
     // For PG, there may be two cpu resources: wildcard and indexed.
     std::vector<ResourceID> cpu_resource_ids;
     for (const auto resource_id : allocated_instances->ResourceIds()) {
-      auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                           /*for_wildcard_resource*/ true,
-                                                           /*for_indexed_resource*/ true);
-      if ((resource_id == ResourceID::CPU()) ||
-          (possible_pg_resource.has_value() &&
-           possible_pg_resource->original_resource == ResourceID::CPU().Binary())) {
+      if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
         cpu_resource_ids.emplace_back(resource_id);
       }
     }
@@ -987,23 +999,14 @@ bool LocalTaskManager::ReleaseCpuResourcesFromBlockedWorker(
   bool cpu_resources_released = false;
   if (worker->GetAllocatedInstances() != nullptr) {
     for (const auto resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
-      auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                           /*for_wildcard_resource*/ true,
-                                                           /*for_indexed_resource*/ true);
-      if ((resource_id == ResourceID::CPU()) ||
-          (possible_pg_resource.has_value() &&
-           possible_pg_resource->original_resource == ResourceID::CPU().Binary())) {
+      if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
         auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(resource_id);
         cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
             resource_id, cpu_instances);
         cpu_resources_released = true;
 
-        if (resource_id == ResourceID::CPU()) {
-          break;
-        } else {
-          // Cannot break since we need to release
-          // both PG wildcard and indexed CPU resources.
-        }
+        // Cannot break since we need to release
+        // both PG wildcard and indexed CPU resources.
       }
     }
   }
@@ -1025,12 +1028,7 @@ bool LocalTaskManager::ReturnCpuResourcesToUnblockedWorker(
   bool cpu_resources_returned = false;
   if (worker->GetAllocatedInstances() != nullptr) {
     for (const auto resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
-      auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                           /*for_wildcard_resource*/ true,
-                                                           /*for_indexed_resource*/ true);
-      if ((resource_id == ResourceID::CPU()) ||
-          (possible_pg_resource.has_value() &&
-           possible_pg_resource->original_resource == ResourceID::CPU().Binary())) {
+      if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
         auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(resource_id);
         // Important: we allow going negative here, since otherwise you can use infinite
         // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
@@ -1039,12 +1037,8 @@ bool LocalTaskManager::ReturnCpuResourcesToUnblockedWorker(
             resource_id, cpu_instances, /*allow_going_negative=*/true);
         cpu_resources_returned = true;
 
-        if (resource_id == ResourceID::CPU()) {
-          break;
-        } else {
-          // Cannot break since we need to return
-          // both PG wildcard and indexed CPU resources.
-        }
+        // Cannot break since we need to return
+        // both PG wildcard and indexed CPU resources.
       }
     }
   }
@@ -1078,13 +1072,7 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
       // Blocked normal task workers have temporarily released its allocated CPU.
       if (worker->IsBlocked()) {
         for (const auto resource_id : allocated_instances->ResourceIds()) {
-          auto possible_pg_resource =
-              ParsePgFormattedResource(resource_id.Binary(),
-                                       /*for_wildcard_resource*/ true,
-                                       /*for_indexed_resource*/ true);
-          if ((resource_id == ResourceID::CPU()) ||
-              (possible_pg_resource.has_value() &&
-               possible_pg_resource->original_resource == ResourceID::CPU().Binary())) {
+          if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
             resource_set.Set(resource_id, 0);
           }
         }
