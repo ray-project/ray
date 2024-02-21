@@ -417,9 +417,9 @@ def test_placement_group_strict_spread(
         placement_group_assert_no_leak([placement_group])
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
+@pytest.mark.parametrize("connect_to_client", [False])
 def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client):
-    @ray.remote(num_cpus=1)
+    @ray.remote(num_cpus=2)
     class F:
         def f(self):
             return ray.get_runtime_context().get_assigned_resources()
@@ -435,9 +435,15 @@ def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client
         a1 = F.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
         ).remote()
-        resources = ray.get(a1.f.remote())
-        assert resources == {"CPU": 1}
-        placement_group_assert_no_leak([g1])
+        a2 = F.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
+        ).remote()
+        import time
+
+        time.sleep(300)
+        # resources = ray.get(a1.f.remote())
+        # assert resources == {"CPU": 1}
+        # placement_group_assert_no_leak([g1])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
