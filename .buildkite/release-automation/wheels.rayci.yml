@@ -8,7 +8,7 @@ steps:
     job_env: forge
     commands:
       - export PYTHON_VERSION={{matrix}}
-      - ./.buildkite/release-automation/verify-linux-wheels.sh
+      - bash -l .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.8"
       - "3.9"
@@ -25,7 +25,7 @@ steps:
     job_env: forge-arm64
     commands:
       - export PYTHON_VERSION={{matrix}}
-      - ./.buildkite/release-automation/verify-linux-wheels.sh
+      - bash -l .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.8"
       - "3.9"
