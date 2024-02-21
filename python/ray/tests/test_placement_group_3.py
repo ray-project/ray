@@ -27,11 +27,6 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 def get_ray_status_output(address):
     gcs_client = ray._raylet.GcsClient(address=address)
