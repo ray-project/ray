@@ -6,6 +6,7 @@ from typing import Any, Callable, List, Optional, Union
 from ray import cloudpickle
 from ray._private.pydantic_compat import (
     BaseModel,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -66,7 +67,9 @@ class AutoscalingConfig(BaseModel):
     _serialized_policy_def: bytes = b""
 
     # Custom autoscaling config. Defaults to the request-based autoscaler.
-    _policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
+    policy: Union[str, Callable] = Field(
+        default=DEFAULT_AUTOSCALING_POLICY, exclude=True
+    )
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -92,7 +95,7 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    @validator("_policy", always=True, check_fields=False)
+    @validator("policy", always=True)
     def serialize_policy(cls, policy, values) -> str:
         """Serialize policy with cloudpickle.
 
