@@ -336,6 +336,10 @@ class ActorReplicaWrapper:
         return self.deployment_config.max_concurrent_queries
 
     @property
+    def max_queued_requests(self) -> int:
+        return self.deployment_config.max_queued_requests
+
+    @property
     def graceful_shutdown_timeout_s(self) -> float:
         return self.deployment_config.graceful_shutdown_timeout_s
 

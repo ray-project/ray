@@ -9,6 +9,10 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from ray._private.ray_constants import env_integer
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+    DEFAULT_UPSCALING_SPEED,
+)
 from ray.autoscaler._private.util import (
     hash_runtime_conf,
     prepare_config,
@@ -280,6 +284,12 @@ class AutoscalingConfig:
 
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
+
+    def get_upscaling_speed(self) -> float:
+        return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
+
+    def get_max_concurrent_launches(self) -> int:
+        return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
     def get_provider_config(self) -> Dict[str, Any]:
         return self.get_config("provider", {})
