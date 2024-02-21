@@ -206,6 +206,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("smoothing_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance, smoothing_factor, use_upscale_downscale_config
 ):
@@ -395,6 +396,7 @@ def test_e2e_bursty(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_intermediate_downscaling(serve_instance):
     """
     Scales up, then down, and up again.
