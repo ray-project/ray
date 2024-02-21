@@ -247,7 +247,7 @@ class ProcessFD {
       ec = std::error_code(errno, std::system_category());
     }
 #endif
-    OwnedChildrenTracker::instance().addOwnedChild(pid);
+    KnownChildrenTracker::instance().addKnownChild(pid);
     return ProcessFD(pid, fd);
   }
 };

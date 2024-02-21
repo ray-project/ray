@@ -70,7 +70,7 @@ void SetThisProcessAsSubreaper() {
 //
 // TODO: Checking PIDs is not 100% reliable because of PID recycling. If we find issues
 // later due to this, we can use pidfd.
-void KillUnownedChildren() {
+void KillUnknownChildren() {
   auto child_procs = GetAllProcsWithPpid(GetPID());
 
   // Enumerating child procs is not supported on this platform.
@@ -79,11 +79,11 @@ void KillUnownedChildren() {
                       "supports Linux >= 3.4";
     return;
   }
-  auto to_kill = OwnedChildrenTracker::instance().listOwnedChildren(*child_procs);
+  auto to_kill = KnownChildrenTracker::instance().listUnknownChildren(*child_procs);
   for (auto pid : to_kill) {
     RAY_LOG(INFO) << "Killing leaked child process " << pid;
     auto error = KillProc(pid);
-    if (error) {
+    if (error && (*error)) {
       RAY_LOG(WARNING) << "Failed to kill leaked child process " << pid << " with error "
                        << error->message() << ", value = " << error->value();
     }
@@ -122,9 +122,9 @@ void SigchldHandlerKillOrphanSubprocesses(const boost::system::error_code &error
       RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
                     << WTERMSIG(status);
     }
-    OwnedChildrenTracker::instance().removeOwnedChild(pid);
+    KnownChildrenTracker::instance().removeKnownChild(pid);
   }
-  KillUnownedChildren();
+  KillUnknownChildren();
 }
 }  // namespace
 
@@ -144,23 +144,23 @@ void SetupSigchldHandler(bool kill_orphan_subprocesses,
   }
 }
 
-void OwnedChildrenTracker::addOwnedChild(pid_t pid) {
+void KnownChildrenTracker::addKnownChild(pid_t pid) {
   absl::MutexLock lock(&m_);
   children_.insert(pid);
 }
 
-void OwnedChildrenTracker::removeOwnedChild(pid_t pid) {
+void KnownChildrenTracker::removeKnownChild(pid_t pid) {
   absl::MutexLock lock(&m_);
   children_.erase(pid);
 }
 
-std::vector<pid_t> OwnedChildrenTracker::listOwnedChildren(
+std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
     const std::vector<pid_t> &pids) {
   absl::MutexLock lock(&m_);
   std::vector<pid_t> result;
   result.reserve(std::min(pids.size(), children_.size()));
   for (pid_t pid : pids) {
-    if (children_.count(pid) > 0) {
+    if (children_.count(pid) == 0) {
       result.push_back(pid);
     }
   }
@@ -198,9 +198,9 @@ void SetupSigchldHandler(bool kill_orphan_subprocesses,
            "kill subprocesses because Subreaper is only supported on Linux >= 3.4.";
   }
 }
-void OwnedChildrenTracker::addOwnedChild(pid_t pid) {}
-void OwnedChildrenTracker::removeOwnedChild(pid_t pid) {}
-std::vector<pid_t> OwnedChildrenTracker::listOwnedChildren(
+void KnownChildrenTracker::addKnownChild(pid_t pid) {}
+void KnownChildrenTracker::removeKnownChild(pid_t pid) {}
+std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
     const std::vector<pid_t> &pids) {
   return {};
 }
@@ -222,9 +222,9 @@ void SetupSigchldHandler(bool kill_orphan_subprocesses,
   }
   signal(SIGCHLD, SIG_IGN);
 }
-void OwnedChildrenTracker::addOwnedChild(pid_t pid) {}
-void OwnedChildrenTracker::removeOwnedChild(pid_t pid) {}
-std::vector<pid_t> OwnedChildrenTracker::listOwnedChildren(
+void KnownChildrenTracker::addKnownChild(pid_t pid) {}
+void KnownChildrenTracker::removeKnownChild(pid_t pid) {}
+std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
     const std::vector<pid_t> &pids) {
   return {};
 }

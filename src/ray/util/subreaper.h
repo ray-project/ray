@@ -61,25 +61,25 @@ void SetupSigchldHandler(bool kill_orphan_subprocesses,
 // Thread-safe tracker for owned children.
 // Only works in Linux.
 // In non-Linux platforms: do nothing.
-class OwnedChildrenTracker {
+class KnownChildrenTracker {
  public:
-  static OwnedChildrenTracker &instance() {
-    static OwnedChildrenTracker instance;
+  static KnownChildrenTracker &instance() {
+    static KnownChildrenTracker instance;
     return instance;
   }
 
   // If the child is already owned, this is a no-op.
-  void addOwnedChild(pid_t pid);
+  void addKnownChild(pid_t pid);
   // If the child is not owned, this is a no-op.
-  void removeOwnedChild(pid_t pid);
-  // Lists intersection of `pids` and owned children `children_`.
+  void removeKnownChild(pid_t pid);
+  // Returns the subset of `pids` that are NOT in the known `children_`.
   // Thread safe.
-  std::vector<pid_t> listOwnedChildren(const std::vector<pid_t> &pids);
+  std::vector<pid_t> listUnknownChildren(const std::vector<pid_t> &pids);
 
  private:
-  OwnedChildrenTracker() = default;
-  ~OwnedChildrenTracker() = default;
-  RAY_DISALLOW_COPY_AND_ASSIGN(OwnedChildrenTracker);
+  KnownChildrenTracker() = default;
+  ~KnownChildrenTracker() = default;
+  RAY_DISALLOW_COPY_AND_ASSIGN(KnownChildrenTracker);
 #ifdef __linux__
   absl::Mutex m_;
   absl::flat_hash_set<pid_t> children_ ABSL_GUARDED_BY(m_);
