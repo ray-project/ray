@@ -76,20 +76,14 @@ class FakeReplica(ReplicaWrapper):
         self,
         pr: PendingRequest,
     ) -> Tuple[
-        Optional[Union[FakeObjectRef, FakeObjectRefGen]], ReplicaQueueLengthInfo
+        Optional[FakeObjectRefGen], ReplicaQueueLengthInfo
     ]:
         assert not self.is_cross_language, "Rejection not supported for cross language."
         assert (
             self._queue_len_info is not None
         ), "Must set queue_len_info to use `send_request_with_rejection`."
 
-        obj_ref_or_gen = None
-        if pr.metadata.is_streaming:
-            obj_ref_or_gen = FakeObjectRefGen(self._replica_id)
-        else:
-            obj_ref_or_gen = FakeObjectRef(self._replica_id)
-
-        return obj_ref_or_gen, self._queue_len_info
+        return FakeObjectRefGen(self._replica_id), self._queue_len_info
 
 
 class FakeReplicaScheduler(ReplicaScheduler):
@@ -235,12 +229,9 @@ class TestAssignRequest:
             endpoint="",
             is_streaming=is_streaming,
         )
-        obj_ref = await router.assign_request(request_metadata)
-        if is_streaming:
-            assert isinstance(obj_ref, FakeObjectRefGen)
-        else:
-            assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == "test-replica-1"
+        obj_ref_gen = await router.assign_request(request_metadata)
+        assert isinstance(obj_ref_gen, FakeObjectRefGen)
+        assert obj_ref_gen.replica_id == "test-replica-1"
 
         if router._enable_queue_len_cache:
             assert (
@@ -289,10 +280,7 @@ class TestAssignRequest:
             is_streaming=is_streaming,
         )
         obj_ref = await router.assign_request(request_metadata)
-        if is_streaming:
-            assert isinstance(obj_ref, FakeObjectRefGen)
-        else:
-            assert isinstance(obj_ref, FakeObjectRef)
+        assert isinstance(obj_ref, FakeObjectRefGen)
         assert obj_ref.replica_id == "test-replica-2"
 
         if router._enable_queue_len_cache:
