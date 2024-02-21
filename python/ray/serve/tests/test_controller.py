@@ -16,6 +16,7 @@ from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import ServeDeploySchema
+from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 
 
 def test_redeploy_start_time(serve_instance):
@@ -128,7 +129,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
             },
             "proxy_location": "HeadOnly",
             "http_options": {"host": "0.0.0.0"},
-            "grpc_options": {},
+            "grpc_options": {
+                "port": 9000,
+                "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
+            },
             "proxies": {
                 node_id: {
                     "node_id": node_id,
@@ -158,6 +162,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "deployment_config": {
                                 "name": "autoscaling_app",
                                 "max_concurrent_queries": 100,
+                                "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,
