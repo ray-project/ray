@@ -774,12 +774,12 @@ class Algorithm(Trainable, AlgorithmBase):
             # this information only needs to be kept in the Learner and not on the
             # EnvRunners anymore.
             if not self.config.uses_new_env_runners:
-                func = (
+                policies_to_train = (
                     self.config.policies_to_train
-                    or self.config.DEFAULT_POLICY_MAPPING_FN
+                    or set(self.config.policies.keys())
                 )
                 self.workers.foreach_worker(
-                    lambda w: w.set_is_policy_to_train(func),
+                    lambda w: w.set_is_policy_to_train(policies_to_train),
                     healthy_only=True,
                 )
 
