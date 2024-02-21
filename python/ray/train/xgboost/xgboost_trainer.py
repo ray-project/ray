@@ -49,13 +49,13 @@ def _xgboost_train_fn_per_worker(
     }
     eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
 
-    # NOTE: Include the training dataset in the evaluation datasets.
-    # This allows `train-*` metrics to be calculated and reported.
-    eval_dfs[TRAIN_DATASET_KEY] = train_df
-
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     dtrain = xgboost.DMatrix(train_X, label=train_y)
-    evals = []
+
+    # NOTE: Include the training dataset in the evaluation datasets.
+    # This allows `train-*` metrics to be calculated and reported.
+    evals = [(dtrain, TRAIN_DATASET_KEY)]
+
     for eval_name, eval_df in eval_dfs.items():
         eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
         evals.append((xgboost.DMatrix(eval_X, label=eval_y), eval_name))
