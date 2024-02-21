@@ -150,12 +150,14 @@ class InstanceManagerTest(unittest.TestCase):
                     InstanceUpdateEvent(
                         instance_id=instance_ids[0],
                         new_instance_status=Instance.REQUESTED,
+                        instance_type="type-1",
                         launch_request_id="l1",
                     ),
                     InstanceUpdateEvent(
                         instance_id=instance_ids[1],
                         new_instance_status=Instance.REQUESTED,
                         launch_request_id="l1",
+                        instance_type="type-1",
                     ),
                 ],
             )
@@ -204,6 +206,7 @@ class InstanceManagerTest(unittest.TestCase):
                     InstanceUpdateEvent(
                         instance_id=instance_ids[2],
                         new_instance_status=Instance.REQUESTED,
+                        instance_type="type-2",
                     ),
                 ],
             )
@@ -314,6 +317,7 @@ class InstanceManagerTest(unittest.TestCase):
                         instance_id="id-1",
                         new_instance_status=Instance.REQUESTED,
                         launch_request_id="l1",
+                        instance_type="type-1",
                     ),
                 ],
             )
