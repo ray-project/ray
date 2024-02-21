@@ -245,16 +245,24 @@ def _is_release_tag(
 
 def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
     try:
-        return subprocess.check_output(
+        with subprocess.Popen(
             [
                 "crane",
                 "cp",
                 source,
                 f"{aws_ecr_repo}:{tag}",
             ],
-            stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE,
             text=True,
-        )
+        ) as proc:
+            output = ""
+            for line in proc.stdout:
+                logger.info(line + "\n")
+                output += line
+            return_code = proc.wait()
+            if return_code:
+                raise subprocess.CalledProcessError(return_code, proc.args)
+            return output
     except subprocess.CalledProcessError as e:
         return f"Error: {e.output}"
 
