@@ -1,8 +1,8 @@
-from collections import defaultdict
 import copy
 import os
 import time
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
@@ -48,9 +48,13 @@ class ResourceManager:
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
-        self._obj_store_pending_task_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
+        self._obj_store_pending_task_outputs: Dict[PhysicalOperator, int] = defaultdict(
+            int
+        )
         self._obj_store_output_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
-        self._obj_store_next_op_input_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
+        self._obj_store_next_op_input_buffers: Dict[
+            PhysicalOperator, int
+        ] = defaultdict(int)
         self._debug = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
@@ -257,6 +261,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         ]
         # Per-op reserved resources.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
+        self._reserved_for_outputs: Dict[PhysicalOperator, int] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
         # Resource limits for each operator.
@@ -273,13 +278,14 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             self._reservation_ratio / len(self._eligible_ops)
         )
         for op in self._eligible_ops:
+            self._reserved_for_outputs[op] = (
+                default_reserved.object_store_memory // 2
+            )
             # Make sure the reserved resources are at least to allow
             # one task.
-            inc = op.incremental_resource_usage()
-            inc.object_store_memory *= 2
-            self._op_reserved[op] = default_reserved.max(
-                inc
-            )
+            min_reserved = op.incremental_resource_usage()
+            min_reserved.object_store_memory += self._reserved_for_outputs[op]
+            self._op_reserved[op] = default_reserved.max(min_reserved)
             self._total_shared = self._total_shared.subtract(self._op_reserved[op])
         self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
@@ -288,7 +294,15 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         if op not in self._eligible_ops:
             return True
         limit = copy.deepcopy(self._op_limits[op])
-        limit.object_store_memory -= max(self._op_reserved[op].object_store_memory // 2 - self._resource_manager._obj_store_output_buffers[op] - self._resource_manager._obj_store_next_op_input_buffers[op], 0)
+        # Exclude the reserved memory for outputs.
+        outputs_usage = (
+            self._resource_manager._obj_store_output_buffers[op]
+            + self._resource_manager._obj_store_next_op_input_buffers[op]
+        )
+        out_buffers_reamining_reserved = max(
+            self._reserved_for_outputs[op] - outputs_usage, 0
+        )
+        limit.object_store_memory -= out_buffers_reamining_reserved
         res = op.incremental_resource_usage().satisfies_limit(limit)
         return res
 
@@ -296,7 +310,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         """Return the maximum number of task outputs that can be fetched from the given operator."""
         if op not in self._eligible_ops:
             return float("inf")
-        return self._op_limits[op].object_store_memory + max(self._op_reserved[op].object_store_memory // 2 - self._resource_manager._obj_store_output_buffers[op] - self._resource_manager._obj_store_next_op_input_buffers[op], 0)
+        return self._op_limits[op].object_store_memory
 
     def update_usages(self):
         if len(self._eligible_ops) == 0:
