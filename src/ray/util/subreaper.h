@@ -26,6 +26,10 @@
 
 namespace ray {
 
+#ifdef _WIN32
+typedef int pid_t;
+#endif
+
 // Utility class to enable subreaper functionality in Linux.
 //
 // In Ray, raylet creates core_worker processes, which may create grandchild processes.
