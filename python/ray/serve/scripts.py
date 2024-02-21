@@ -590,8 +590,14 @@ def run(
         if is_config:
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
         else:
-            serve.run(app, name=name, route_prefix=route_prefix)
+            # This should not block if reload is true so the watchfiles can be triggered
+            should_block = blocking and not reload
+            serve.run(app, blocking=should_block, name=name, route_prefix=route_prefix)
             cli_logger.success("Deployed app successfully.")
 
         if reload:
@@ -618,13 +624,10 @@ def run(
                     app = _private_api.call_app_builder_with_args_if_necessary(
                         import_attr(import_path, reload_module=True), args_dict
                     )
-                    serve.run(app, name=name, route_prefix=route_prefix)
+                    serve.run(
+                        target=app, blocking=True, name=name, route_prefix=route_prefix
+                    )
                     cli_logger.success("Redeployed app successfully.")
-
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

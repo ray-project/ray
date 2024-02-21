@@ -63,11 +63,13 @@ clean:
 	rm -rf ./source/rllib/package_ref/doc*
 
 html:
+    # Needed for rendering ray-core/api/cli.rst
+    bazel build //:install_py_proto
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
-	
+
 develop: html
 
 dirhtml:

@@ -2991,6 +2991,7 @@
   working_dir: serve_tests
 
   frequency: nightly
+  stable: False
   team: serve
 
   cluster:
@@ -5977,8 +5978,8 @@
     cluster_compute: multi_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
+    # Expect the benchmark to finish within 90 minutes.
+    timeout: 5400
     script: python iter_tensor_batches_benchmark.py --data-size-gb=10
 
   variations:
