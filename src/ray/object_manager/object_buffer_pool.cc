@@ -146,21 +146,22 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     // Update the state from REFERENCED To SEALED before releasing the lock to ensure
     // that no other thread sees a REFERENCED state.
     it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
-    // Increment the number of inflight copies to ensure Abort does not release the buffer
+    // Increment the number of inflight copies to ensure Abort does not release the buffer.
     it->second.num_inflight_copies++;
   }
 
   RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
-  // Unguarded copy call
+  // The num_inflight_copies is used to ensure that another thread cannot call Release
+  // on the object_id, which makes the unguarded copy call safe.
   std::memcpy(chunk_info->data, data.data(), chunk_info->buffer_length);
 
   {
-    // Ensure the process of object_id Seal and Release is mutex guarded
+    // Ensure the process of object_id Seal and Release is mutex guarded.
     absl::MutexLock lock(&pool_mutex_);
     auto it = create_buffer_state_.find(object_id);
     // Abort cannot be called during inflight copy operations.
-    RAY_CHECK(it != create_buffer_state_.end())
-    // Decrement the number of inflight copies to ensure Abort can release the buffer
+    RAY_CHECK(it != create_buffer_state_.end());
+    // Decrement the number of inflight copies to ensure Abort can release the buffer.
     it->second.num_inflight_copies--;
     it->second.num_seals_remaining--;
     if (it->second.num_seals_remaining == 0) {
@@ -187,7 +188,7 @@ void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
   };
 
   pool_mutex_.Await(absl::Condition(&no_copy_inflight));
-  // Mutex is acquired, no copy inflight, safe to abort the object_id
+  // Mutex is acquired, no copy inflight, safe to abort the object_id.
   auto it = create_buffer_state_.find(object_id);
   if (it != create_buffer_state_.end()) {
     RAY_CHECK_OK(store_client_->Release(object_id));
