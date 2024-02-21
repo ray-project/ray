@@ -269,6 +269,10 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         self._cached_global_limits = ExecutionResources.zero()
 
     def _on_global_limits_updated(self, global_limits: ExecutionResources):
+        from ray.data._internal.execution.operators.actor_pool_map_operator import (
+            ActorPoolMapOperator,
+        )
+
         if len(self._eligible_ops) == 0:
             return
 
@@ -278,12 +282,16 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             self._reservation_ratio / len(self._eligible_ops)
         )
         for op in self._eligible_ops:
-            self._reserved_for_outputs[op] = (
-                default_reserved.object_store_memory // 2
-            )
-            # Make sure the reserved resources are at least to allow
-            # one task.
+            self._reserved_for_outputs[op] = default_reserved.object_store_memory // 2
+            # Make sure the reserved resources are at least to allow one task.
             min_reserved = op.incremental_resource_usage()
+            # To ensure that all GPUs are utilized, reserve enough object store memory
+            # to launch one task for each worker.
+            if (
+                isinstance(op, ActorPoolMapOperator)
+                and op.base_resource_usage().gpu > 0
+            ):
+                min_reserved.object_store_memory *= op._autoscaling_policy.min_workers
             min_reserved.object_store_memory += self._reserved_for_outputs[op]
             self._op_reserved[op] = default_reserved.max(min_reserved)
             self._total_shared = self._total_shared.subtract(self._op_reserved[op])
@@ -346,12 +354,14 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
                 remaining_shared = remaining_shared.subtract(op_usage)
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
-        shared_divided = remaining_shared.scale(
-            1.0 / len(running_ops)
-        )
+        shared_divided = remaining_shared.scale(1.0 / len(running_ops))
         for op in reversed(running_ops):
-            op_shared = shared_divided.max(op.incremental_resource_usage().min(remaining_shared))
-            remaining_shared = remaining_shared.subtract(op_shared).max(ExecutionResources.zero())
+            op_shared = shared_divided.max(
+                op.incremental_resource_usage().min(remaining_shared)
+            )
+            remaining_shared = remaining_shared.subtract(op_shared).max(
+                ExecutionResources.zero()
+            )
             self._op_limits[op] = self._op_limits[op].add(op_shared)
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
