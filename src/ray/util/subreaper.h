@@ -14,8 +14,12 @@
 
 #pragma once
 
+#ifdef _WIN32
+typedef int pid_t;
+#else
 #include <signal.h>
 #include <sys/types.h>
+#endif
 
 #include <boost/asio.hpp>
 #include <vector>
@@ -25,10 +29,6 @@
 #include "ray/util/macros.h"
 
 namespace ray {
-
-#ifdef _WIN32
-typedef int pid_t;
-#endif
 
 // Utility class to enable subreaper functionality in Linux.
 //
