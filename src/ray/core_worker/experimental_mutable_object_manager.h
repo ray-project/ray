@@ -124,29 +124,30 @@ class ExperimentalMutableObjectManager {
     std::unique_ptr<plasma::MutableObject> mutable_object;
   };
 
+  // Thread-safe for multiple ReadAcquire threads and one ReadRelease thread.
   struct ReaderChannel {
     ReaderChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : mutable_object(std::move(mutable_object_ptr)) {}
+        : mutable_object(std::move(mutable_object_ptr)) {
+      RAY_CHECK(sem_init(&reader_semaphore, /*pshared=*/0, /*value=*/1) == 0);
+    }
 
     /// The last version that we read. To read again, we must pass a newer
     /// version than this.
     int64_t next_version_to_read = 1;
+    /// Use a semaphore to protect next_version_to_read. This is necessary if
+    /// begin_read and end_read are called from different threads.
+    sem_t reader_semaphore;
     /// Whether we currently have a read lock on the object. If this is true,
-    /// then it is safe to read the value of the object. For immutable objects,
-    /// this will always be true once the object has been sealed. For mutable
-    /// objects, ReadRelease resets this to false, and ReadAcquire resets to
-    /// true.
+    /// then it is safe to read the value of the object.
     bool read_acquired = false;
     std::unique_ptr<plasma::MutableObject> mutable_object;
   };
 
-  Status EnsureGetAcquired(ReaderChannel &channel);
-
-  /// All channels for which we are registered as a writer. This can overlap
-  /// with reader channels (e.g., if the CoreWorker is multithreaded and one
-  /// thread reads while the other writes).
+  // TODO(swang): Access to these maps is not threadsafe. This is fine in the
+  // case that all channels are initialized before any reads and writes are
+  // issued, but may not work if channels are added/removed during run time
+  // (i.e., if there are multiple DAGs).
   absl::flat_hash_map<ObjectID, WriterChannel> writer_channels_;
-  /// All channels for which we are registered as a reader.
   absl::flat_hash_map<ObjectID, ReaderChannel> reader_channels_;
 };
 
