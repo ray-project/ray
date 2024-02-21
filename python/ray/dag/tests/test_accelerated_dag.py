@@ -303,18 +303,10 @@ def test_asyncio(ray_start_regular, max_queue_size):
         async with output_channel as result:
             assert result == i
 
-    e = None
-    try:
-        loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
-    except Exception as exc:
-        e = exc
-    finally:
-        # Note: must teardown before starting a new Ray session, otherwise you'll get
-        # a segfault from the dangling monitor thread upon the new Ray init.
-        compiled_dag.teardown()
-
-    if e is not None:
-        raise e
+    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

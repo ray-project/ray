@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import io
 import logging
 from typing import Any, List, Optional
@@ -18,7 +19,7 @@ def _create_channel_ref(
     """
     Create a channel that can be read and written by co-located Ray processes.
 
-    The channel has no buffer, so the writer will block until reader(s) have
+    The channel has no buffer, so the writer will block until ReaderInterface(s) have
     read the previous value.
 
     Args:
@@ -63,7 +64,7 @@ class Channel:
         Create a channel that can be read and written by co-located Ray processes.
 
         Anyone may write to or read from the channel. The channel has no
-        buffer, so the writer will block until reader(s) have read the previous
+        buffer, so the writer will block until ReaderInterface(s) have read the previous
         value.
 
         Args:
@@ -191,7 +192,7 @@ class Channel:
 
 
 # Interfaces for channel I/O.
-class InputReader:
+class ReaderInterface:
     def __init__(self, input_channels: List[Channel]):
         if isinstance(input_channels, List):
             for chan in input_channels:
@@ -232,7 +233,7 @@ class InputReader:
             channel.close()
 
 
-class SynchronousInputReader(InputReader):
+class SynchronousReader(ReaderInterface):
     def __init__(self, input_channels: List[Channel]):
         super().__init__(input_channels)
 
@@ -247,11 +248,22 @@ class SynchronousInputReader(InputReader):
             c.end_read()
 
 
-class AwaitableBackgroundOutputReader(InputReader):
-    def __init__(self, input_channels: List[Channel], _fut_queue: asyncio.Queue):
+class AwaitableBackgroundReader(ReaderInterface):
+    """
+    Asyncio-compatible channel reader.
+
+    The reader is constructed with an async queue of futures whose values it
+    will fulfill. It uses a threadpool to execute the blocking calls to read
+    from the input channel(s).
+    """
+
+    def __init__(self, input_channels: List[Channel], fut_queue: asyncio.Queue):
         super().__init__(input_channels)
-        self._fut_queue = _fut_queue
+        self._fut_queue = fut_queue
         self._background_task = None
+        self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="channel.AwaitableBackgroundWriter"
+        )
 
     def start(self):
         self._background_task = asyncio.ensure_future(self.run())
@@ -266,11 +278,13 @@ class AwaitableBackgroundOutputReader(InputReader):
         loop = asyncio.get_running_loop()
         while not self._closed:
             res, fut = await asyncio.gather(
-                loop.run_in_executor(None, self._run),
+                loop.run_in_executor(self._background_task_executor, self._run),
                 self._fut_queue.get(),
                 return_exceptions=True,
             )
 
+            print("READ", res)
+            # Set the result on the main thread.
             fut.set_result(res)
 
     def end_read(self) -> Any:
@@ -282,7 +296,7 @@ class AwaitableBackgroundOutputReader(InputReader):
         super().close()
 
 
-class OutputWriter:
+class WriterInterface:
     def __init__(self, output_channel: Channel):
         self._output_channel = output_channel
         self._closed = False
@@ -302,7 +316,7 @@ class OutputWriter:
         self._output_channel.close()
 
 
-class SynchronousOutputWriter(OutputWriter):
+class SynchronousWriter(WriterInterface):
     def start(self):
         pass
 
@@ -311,13 +325,16 @@ class SynchronousOutputWriter(OutputWriter):
         self._num_writes += 1
 
 
-class AwaitableBackgroundOutputWriter(OutputWriter):
+class AwaitableBackgroundWriter(WriterInterface):
     def __init__(self, output_channel: Channel, max_queue_size: Optional[int] = None):
         super().__init__(output_channel)
         if max_queue_size is None:
             max_queue_size = 0
         self._queue = asyncio.Queue(max_queue_size)
         self._background_task = None
+        self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="channel.AwaitableBackgroundWriter"
+        )
 
     def start(self):
         self._background_task = asyncio.ensure_future(self.run())
@@ -329,7 +346,8 @@ class AwaitableBackgroundOutputWriter(OutputWriter):
         loop = asyncio.get_event_loop()
         while True:
             res = await self._queue.get()
-            await loop.run_in_executor(None, self._run, res)
+            print("WRITE", res)
+            await loop.run_in_executor(self._background_task_executor, self._run, res)
 
     async def write(self, val: Any) -> None:
         if self._closed:

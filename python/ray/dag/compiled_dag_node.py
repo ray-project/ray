@@ -9,12 +9,12 @@ import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
     Channel,
-    InputReader,
-    SynchronousInputReader,
-    OutputWriter,
-    SynchronousOutputWriter,
-    AwaitableBackgroundOutputReader,
-    AwaitableBackgroundOutputWriter,
+    ReaderInterface,
+    SynchronousReader,
+    WriterInterface,
+    SynchronousWriter,
+    AwaitableBackgroundReader,
+    AwaitableBackgroundWriter,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -73,10 +73,8 @@ def do_exec_compiled_task(
             else:
                 resolved_inputs.append(inp)
 
-        self._input_reader: InputReader = SynchronousInputReader(input_channels)
-        self._output_writer: OutputWriter = SynchronousOutputWriter(
-            self._output_channel
-        )
+        self._input_reader: ReaderInterface = SynchronousReader(input_channels)
+        self._output_writer: WriterInterface = SynchronousWriter(self._output_channel)
         self._input_reader.start()
         self._output_writer.start()
 
@@ -118,9 +116,9 @@ def do_cancel_compiled_task(self):
 
 
 class AwaitableDAGOutput:
-    def __init__(self, fut: asyncio.Future, reader: InputReader):
+    def __init__(self, fut: asyncio.Future, ReaderInterface: ReaderInterface):
         self._fut = fut
-        self._reader = reader
+        self._reader = ReaderInterface
 
     def begin_read(self):
         return self._fut
@@ -184,6 +182,25 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
     ):
+        """
+        Args:
+            buffer_size_bytes: The number of bytes to allocate for object data and
+                metadata. Each argument passed to a task in the DAG must be
+                less than or equal to this value when serialized.
+            enable_asyncio: Whether to enable asyncio. If enabled, caller must
+                be running in an event loop and must use `execute_async` to
+                invoke the DAG. Otherwise, the caller should use `execute` to
+                invoke the DAG.
+            async_max_queue_size: Optional parameter to limit how many DAG
+                inputs can be queued at a time. The actual number of concurrent
+                DAG invocations may be higher than this, if there are already
+                inputs being processed by the DAG executors. If used, the
+                caller is responsible for preventing deadlock, i.e. if the
+                input queue is full, another asyncio task is reading from the
+                DAG output.
+        Returns:
+            Channel: A wrapper around ray.ObjectRef.
+        """
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = MAX_BUFFER_SIZE
@@ -219,8 +236,8 @@ class CompiledDAG:
         # Cached attributes that are set during compilation.
         self.dag_input_channel: Optional[Channel] = None
         self.dag_output_channels: Optional[List[Channel]] = None
-        self._dag_submitter: Optional[OutputWriter] = None
-        self._dag_output_fetcher: Optional[InputReader] = None
+        self._dag_submitter: Optional[WriterInterface] = None
+        self._dag_output_fetcher: Optional[ReaderInterface] = None
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -443,16 +460,16 @@ class CompiledDAG:
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
         if self._enable_asyncio:
-            self._dag_submitter = AwaitableBackgroundOutputWriter(
+            self._dag_submitter = AwaitableBackgroundWriter(
                 self.dag_input_channel, self._async_max_queue_size
             )
-            self._dag_output_fetcher = AwaitableBackgroundOutputReader(
+            self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
                 self._fut_queue,
             )
         else:
-            self._dag_submitter = SynchronousOutputWriter(self.dag_input_channel)
-            self._dag_output_fetcher = SynchronousInputReader(self.dag_output_channels)
+            self._dag_submitter = SynchronousWriter(self.dag_input_channel)
+            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
