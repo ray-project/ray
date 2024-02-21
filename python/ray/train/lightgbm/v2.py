@@ -113,9 +113,7 @@ class LightGBMTrainer(DataParallelTrainer):
             This is typically used for specifying hyperparameters.
         lightgbm_config: The configuration for setting up the distributed lightgbm
             backend. See :class:`~ray.train.lightgbm.LightGBMConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. All non-training datasets will
-            be used as separate validation sets, each reporting a separate metric.
+        datasets: The Ray Datasets to use for training and validation.
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.

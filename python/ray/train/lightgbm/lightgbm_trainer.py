@@ -150,6 +150,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         num_boost_round: int = 10,
         scaling_config: Optional[ray.train.ScalingConfig] = None,
         run_config: Optional[ray.train.RunConfig] = None,
+        dataset_config: Optional[ray.train.DataConfig] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = _DEPRECATED_VALUE,
@@ -158,9 +159,10 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         # TODO(justinvyu): [Deprecated] Remove in 2.11
         if dmatrix_params != _DEPRECATED_VALUE:
             raise DeprecationWarning(
-                "`dmatrix_params` is deprecated, since LightGBMTrainer no longer "
+                "`dmatrix_params` is deprecated, since XGBoostTrainer no longer "
                 "depends on the `xgboost_ray.RayDMatrix` utility. "
-                "Please remove this argument."
+                "You can remove this argument and use `dataset_config` instead "
+                "to customize Ray Dataset ingestion."
             )
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
@@ -197,6 +199,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
+            dataset_config=dataset_config,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )
