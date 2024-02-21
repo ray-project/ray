@@ -12,10 +12,10 @@ from ci.ray_ci.automation.docker_tags_lib import (
     get_image_creation_time,
     delete_tag,
     copy_tag_to_aws_ecr,
-    copy_tag_to_aws_ecr,
     list_recent_commit_short_shas,
     query_tags_from_docker_hub,
     query_tags_from_docker_with_crane,
+    delete_old_commit_tags,
     _is_release_tag,
     _safe_to_delete,
     _is_old_commit_tag,
@@ -461,6 +461,51 @@ def test_query_tags_from_docker_with_crane_failure(mock_call_crane_ls, mock_get_
         query_tags_from_docker_with_crane("test_namespace", "test_repo")
     mock_call_crane_ls.assert_called_once_with(
         namespace="test_namespace", repository="test_repo"
+    )
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.query_tags_from_docker_hub")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.query_tags_from_docker_with_crane")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.delete_tag")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._safe_to_delete")
+def test_delete_old_commit_tags(
+    mock_safe_to_delete,
+    mock_delete_tag,
+    mock_query_crane,
+    mock_query_hub,
+):
+    namespace = "test_namespace"
+    repository = "test_repository"
+    mock_query_hub.return_value = [
+        f"{namespace}/{repository}:abc12{i}" for i in range(3, 10)
+    ]
+    mock_query_crane.return_value = [
+        f"{namespace}/{repository}:abc12{i}" for i in range(10)
+    ]
+    mock_safe_to_delete.side_effect = [True, True, False, False, False, False, False]
+
+    delete_old_commit_tags(
+        namespace=namespace,
+        repository=repository,
+        n_days=30,
+    )
+
+    assert mock_query_hub.call_count == 1
+    assert mock_query_hub.call_args.kwargs["namespace"] == namespace
+    assert mock_query_hub.call_args.kwargs["repository"] == repository
+
+    assert mock_query_crane.call_count == 1
+    assert mock_query_crane.call_args.kwargs["namespace"] == namespace
+    assert mock_query_crane.call_args.kwargs["repository"] == repository
+
+    assert mock_delete_tag.call_count == 2
+    assert (
+        mock_delete_tag.call_args_list[0].kwargs["tag"]
+        == f"{namespace}/{repository}:abc123"
+    )
+    assert (
+        mock_delete_tag.call_args_list[1].kwargs["tag"]
+        == f"{namespace}/{repository}:abc124"
     )
 
 
