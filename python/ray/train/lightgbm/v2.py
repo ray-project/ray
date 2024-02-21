@@ -27,7 +27,7 @@ def get_network_params() -> dict:
 
     network_params = session.get_state(NETWORK_PARAMS_KEY)
     assert network_params is not None, (
-        "`LightGBMConfig.backend_cls` must set `LightGBMConfig.NETWORK_PARAMS_KEY` "
+        f"`LightGBMConfig.backend_cls` must set '{NETWORK_PARAMS_KEY}' "
         "in the session state in `on_training_start`. "
         "Please fix this if you provided a custom `LightGBMConfig` subclass."
         "Otherwise, please file a bug report to the Ray Team."

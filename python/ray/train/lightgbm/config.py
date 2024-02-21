@@ -16,9 +16,6 @@ NETWORK_PARAMS_KEY = "LIGHTGBM_NETWORK_PARAMS"
 class LightGBMConfig(BackendConfig):
     """Configuration for LightGBM distributed data-parallel training setup.
 
-    Ray Train will set up the necessary coordinator processes and environment
-    variables for your workers to communicate with each other.
-
     See the LightGBM docs for more information on the "network parameters"
     that Ray Train sets up for you:
     https://lightgbm.readthedocs.io/en/latest/Parameters.html#network-parameters
@@ -30,9 +27,6 @@ class LightGBMConfig(BackendConfig):
 
 
 class _LightGBMBackend(Backend):
-    def __init__(self):
-        pass
-
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: LightGBMConfig
     ):
@@ -43,7 +37,7 @@ class _LightGBMBackend(Backend):
         )
         num_machines = len(worker_group)
 
-        def send_network_params(
+        def set_network_params(
             num_machines: int, local_listen_port: int, machines: str
         ):
             from ray.train._internal.session import get_session
@@ -61,11 +55,8 @@ class _LightGBMBackend(Backend):
         ray.get(
             [
                 worker_group.execute_single_async(
-                    rank, send_network_params, num_machines, ports[rank], machines
+                    rank, set_network_params, num_machines, ports[rank], machines
                 )
                 for rank in range(len(worker_group))
             ]
         )
-
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: LightGBMConfig):
-        pass
