@@ -3371,7 +3371,7 @@
       cluster:
         cluster_compute: 4gpus_64cpus_gce.yaml
 
-- name: rllib_learning_tests_appo_hybrid_api_stack_tf
+- name: rllib_learning_tests_appo_hybrid_api_stack_tf2
   group: RLlib tests
   working_dir: rllib_tests
   stable: false
@@ -3467,9 +3467,9 @@
 
 
 # --------------------------
-# BC (old API stack)
+# BC (hybrid API stack)
 # --------------------------
-- name: rllib_learning_tests_bc_old_api_stack_torch
+- name: rllib_learning_tests_bc_hybrid_api_stack_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3499,7 +3499,7 @@
       cluster:
         cluster_compute: 1gpu_16cpus_gce.yaml
 
-- name: rllib_learning_tests_bc_old_api_stack_tf
+- name: rllib_learning_tests_bc_hybrid_api_stack_tf2
   group: RLlib tests
   working_dir: rllib_tests
   stable: false
@@ -3518,7 +3518,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=tf2
 
   alert: default
 
