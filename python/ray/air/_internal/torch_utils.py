@@ -10,8 +10,10 @@ import ray
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+
 if HPU_PACKAGE_AVAILABLE:
     import habana_frameworks.torch.hpu as torch_hpu
+
 
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.

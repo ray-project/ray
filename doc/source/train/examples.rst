@@ -66,3 +66,18 @@ Advanced
     - :ref:`Fine-tune vicuna-13b with PyTorch Lightning and DeepSpeed <vicuna_lightning_deepspeed_finetuning>`
   * - Lightning
     - :ref:`Fine-tune dolly-v2-7b with PyTorch Lightning and FSDP <dolly_lightning_fsdp_finetuning>`
+
+
+Community Examples
+------------------
+
+.. list-table::
+  :widths: 1 5
+  :header-rows: 1
+
+  * - Topic
+    - Example
+  * - HPU
+    - `BERT Model Training with HPU <hpu_bert_training>`
+  * - HPU
+    - `ResNet Model Training with HPU <hpu_resnet_training>`
