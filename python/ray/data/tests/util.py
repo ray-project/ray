@@ -79,13 +79,16 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     If only_existing is True, this function will only run the currently existing tasks.
     """
     tasks = op.get_active_tasks()
+    ref_to_task = {task.get_waitable(): task for task in tasks}
     while tasks:
-        ray.wait(
+        ready, _ = ray.wait(
             [task.get_waitable() for task in tasks],
             num_returns=len(tasks),
             fetch_local=False,
+            timeout=0.1,
         )
-        for task in tasks:
+        for ref in ready:
+            task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
                 task.on_data_ready(None)
             else:
