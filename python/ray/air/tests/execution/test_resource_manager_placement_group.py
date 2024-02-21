@@ -207,8 +207,8 @@ def test_bind_two_bundles(ray_start_4_cpus):
     )
 
     res1, res2 = ray.get([av1.remote(), av2.remote()])
-    assert res1 == {"CPU": 1}
-    assert res2 == {"CPU": 2}
+    assert res1 == {"CPU": 1, "bundle": 0.001}
+    assert res2 == {"CPU": 2, "bundle": 0.001}
 
 
 def test_bind_empty_head_bundle(ray_start_4_cpus):
@@ -241,8 +241,8 @@ def test_bind_empty_head_bundle(ray_start_4_cpus):
     )
 
     res1, res2 = ray.get([av1.remote(), av2.remote()])
-    assert res1 == {}
-    assert res2 == {"CPU": 2}
+    assert res1 == {"bundle": 0.001}
+    assert res2 == {"CPU": 2, "bundle": 0.001}
 
 
 def test_capture_child_tasks(ray_start_4_cpus):

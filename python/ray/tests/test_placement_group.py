@@ -417,9 +417,9 @@ def test_placement_group_strict_spread(
         placement_group_assert_no_leak([placement_group])
 
 
-@pytest.mark.parametrize("connect_to_client", [False])
+@pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client):
-    @ray.remote(num_cpus=2)
+    @ray.remote(num_cpus=1)
     class F:
         def f(self):
             return ray.get_runtime_context().get_assigned_resources()
@@ -435,15 +435,9 @@ def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client
         a1 = F.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
         ).remote()
-        a2 = F.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
-        ).remote()
-        import time
-
-        time.sleep(300)
-        # resources = ray.get(a1.f.remote())
-        # assert resources == {"CPU": 1}
-        # placement_group_assert_no_leak([g1])
+        resources = ray.get(a1.f.remote())
+        assert resources == {"CPU": 1, "bundle": 0.001}
+        placement_group_assert_no_leak([g1])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -473,7 +467,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster, connect_to_client)
             )
         ).remote()
         resources = ray.get(o1)
-        assert resources == {"CPU": 1}
+        assert resources == {"CPU": 1, "bundle": 0.001}
 
         placement_group_assert_no_leak([g1])
 
@@ -502,7 +496,7 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
         ).remote()
 
         resources = ray.get(o1)
-        assert resources == {"CPU": 1}
+        assert resources == {"CPU": 1, "bundle": 0.001}
 
         placement_group_assert_no_leak([g1])
 
@@ -635,7 +629,7 @@ def test_get_assigned_resources_in_pg(ray_start_cluster):
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
         ).remote()
     )
-    assert resources == {"CPU": 1}
+    assert resources == {"CPU": 1, "bundle": 0.001}
 
     resources = ray.get(
         get_assigned_resources.options(
@@ -646,7 +640,7 @@ def test_get_assigned_resources_in_pg(ray_start_cluster):
             ),
         ).remote()
     )
-    assert resources == {"CPU": 1, "memory": 100}
+    assert resources == {"CPU": 1, "memory": 100, "bundle": 0.001}
 
 
 def test_omp_num_threads_in_pg(ray_start_cluster):

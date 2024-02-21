@@ -196,8 +196,8 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     }
   }
   // Add the placement group constraint even in case of no resources.
-  auto bundle_key = FormatPlacementGroupResource(
-      kBundle_ResourceLabel, placement_group_id, -1);
+  auto bundle_key =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
   new_resources[bundle_key] = 0.001;
   return new_resources;
 }
