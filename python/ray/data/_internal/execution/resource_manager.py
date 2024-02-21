@@ -48,13 +48,14 @@ class ResourceManager:
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
-        self._obj_store_pending_task_outputs: Dict[PhysicalOperator, int] = defaultdict(
-            int
-        )
-        self._obj_store_output_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
-        self._obj_store_next_op_input_buffers: Dict[
-            PhysicalOperator, int
-        ] = defaultdict(int)
+        # Object store memory usage of the pending task outputs.
+        self._mem_pending_task_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
+        # Object store memory usage of the internal and external output buffers.
+        self._mem_output_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
+        # Object store memory usage of the input buffers of the output dependency
+        # operators.
+        self._mem_next_op_input_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
+        # Whether to print debug information.
         self._debug = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
@@ -92,9 +93,9 @@ class ResourceManager:
                 + next_op.metrics.obj_store_mem_pending_task_inputs
             )
 
-        self._obj_store_pending_task_outputs[op] = pending_task_outputs
-        self._obj_store_output_buffers[op] = output_buffers
-        self._obj_store_next_op_input_buffers[op] = next_op_input_buffers
+        self._mem_pending_task_outputs[op] = pending_task_outputs
+        self._mem_output_buffers[op] = output_buffers
+        self._mem_next_op_input_buffers[op] = next_op_input_buffers
 
         return pending_task_outputs + output_buffers + next_op_input_buffers
 
@@ -178,16 +179,19 @@ class ResourceManager:
         return self._op_usages[op]
 
     def get_op_usage_str(self, op: PhysicalOperator) -> str:
-        usage_str = f"CPU: {self._op_usages[op].cpu:.1f}"
+        """Return a human-readable string representation of the resource usage of
+        the given operator."""
+        usage_str = f"[cpu: {self._op_usages[op].cpu:.1f}"
         if self._op_usages[op].gpu:
-            usage_str += f", GPU: {self._op_usages[op].gpu:.1f}"
-        usage_str += f", ObjStore: {self._op_usages[op].object_store_memory_str()}"
+            usage_str += f", gpu: {self._op_usages[op].gpu:.1f}"
+        usage_str += f", objects: {self._op_usages[op].object_store_memory_str()}"
         if self._debug:
-            usage_str += f" (PendingTaskOutputs: {memory_string(self._obj_store_pending_task_outputs[op])}, "
             usage_str += (
-                f"OutputBuffers: {memory_string(self._obj_store_output_buffers[op])}, "
+                f" (PendingTaskOutputs: {memory_string(self._mem_pending_task_outputs[op])}, "
+                f"OutBuffers: {memory_string(self._mem_output_buffers[op])}, "
+                f"NextOpInBuffers: {memory_string(self._mem_next_op_input_buffers[op])})"
             )
-            usage_str += f"NextOpInputBuffers: {memory_string(self._obj_store_next_op_input_buffers[op])})"
+        usage_str += "]"
         return usage_str
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
@@ -328,8 +332,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         budget = copy.deepcopy(self._op_budgets[op])
         # Exclude the reserved memory for outputs.
         outputs_usage = (
-            self._resource_manager._obj_store_output_buffers[op]
-            + self._resource_manager._obj_store_next_op_input_buffers[op]
+            self._resource_manager._mem_output_buffers[op]
+            + self._resource_manager._mem_next_op_input_buffers[op]
         )
         outputs_reamining_reserved = max(
             self._reserved_for_op_outputs[op] - outputs_usage, 0
