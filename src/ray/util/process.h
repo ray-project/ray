@@ -84,6 +84,7 @@ class Process {
   // NOTE: if `kill_child_processes_on_worker_exit` is true (default), raylet will kill
   // any orphan subprocesses as grandchildren of the raylet process. This is to prevent
   // leaked processes from dead core workers. If you intend to keep the subprocesses
+  // running after the parent process dies, you should set that to false.
   explicit Process(const char *argv[],
                    void *io_service,
                    std::error_code &ec,
@@ -143,20 +144,6 @@ std::optional<std::error_code> KillProc(pid_t pid);
 //
 // Currently only supported on Linux. Returns nullopt on other platforms.
 std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
-
-// Set up a SIGCHLD handler.
-//
-// kill_orphan_subprocesses: only supported in Linux. On any other platform, a warning
-// is logged and we fall back to the `false` case.
-//
-// If kill_orphan_subprocesses is false, simply reap the zombie children.
-//
-// If kill_orphan_subprocesses is true, also sets this process as a subreaper to make all
-// orphaned sub-subprocesses be reparented to this process. Then in the SIGCHLD handler,
-// kill all of them. They are recognized by the fact that those processes are not created
-// via `Process` class.
-void SetupSigchldHandler(bool kill_orphan_subprocesses,
-                         boost::asio::io_context &io_service);
 
 }  // namespace ray
 

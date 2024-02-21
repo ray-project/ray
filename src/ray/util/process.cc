@@ -30,12 +30,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef __linux__
-#include <sys/prctl.h>
-
-#include "absl/synchronization/mutex.h"
-#endif
-
 #include <string.h>
 
 #include <algorithm>
@@ -44,7 +38,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
