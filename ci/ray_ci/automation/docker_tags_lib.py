@@ -11,6 +11,13 @@ from ci.ray_ci.utils import logger
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
+def _write_to_file(file_path: str, content: List[str]) -> None:
+    file_path = os.path.join(bazel_workspace_dir, file_path)
+    logger.info(f"Writing to {file_path}......")
+    with open(file_path, "w") as f:
+        f.write("\n".join(content))
+
+
 class DockerHubRateLimitException(Exception):
     """
     Exception for Docker Hub rate limit exceeded.
@@ -166,6 +173,7 @@ def delete_tag(tag: str) -> bool:
         logger.info(f"Deleted tag {tag}")
         return True
 
+
 def _is_release_tag(
     tag: str,
     release_versions: Optional[List[str]] = None,
@@ -199,6 +207,7 @@ def _is_release_tag(
         return False
 
     return True
+
 
 def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
     try:
@@ -245,36 +254,6 @@ def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
         return False
     logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name}......")
     return True
-
-def _write_to_file(file_path: str, content: List[str]) -> None:
-    file_path = os.path.join(bazel_workspace_dir, file_path)
-    logger.info(f"Writing to {file_path}......")
-    with open(file_path, "w") as f:
-        f.write("\n".join(content))
-
-
-def backup_release_tags(
-    namespace: str,
-    repository: str,
-    release_versions: List[str],
-    aws_ecr_repo: str,
-    num_tags: int,
-) -> None:
-    """
-    Backup release tags to AWS ECR.
-    Args:
-        release_versions: List of release versions to backup
-        aws_ecr_repo: AWS ECR repository
-    """
-    docker_hub_tags = query_tags_from_docker_hub(
-        filter_func=lambda t: _is_release_tag(t, release_versions),
-        namespace=namespace,
-        repository=repository,
-        num_tags=num_tags,
-    )
-    _write_to_file("release_tags.txt", docker_hub_tags)
-    for t in docker_hub_tags:
-        copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
 
 
 def query_tags_from_docker_hub(
@@ -367,3 +346,27 @@ def query_tags_from_docker_with_crane(namespace: str, repository: str) -> List[s
     if "Error" in result:
         raise Exception(f"Failed to query tags from Docker Registry: {result}")
     return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
+
+
+def backup_release_tags(
+    namespace: str,
+    repository: str,
+    release_versions: List[str],
+    aws_ecr_repo: str,
+    num_tags: int,
+) -> None:
+    """
+    Backup release tags to AWS ECR.
+    Args:
+        release_versions: List of release versions to backup
+        aws_ecr_repo: AWS ECR repository
+    """
+    docker_hub_tags = query_tags_from_docker_hub(
+        filter_func=lambda t: _is_release_tag(t, release_versions),
+        namespace=namespace,
+        repository=repository,
+        num_tags=num_tags,
+    )
+    _write_to_file("release_tags.txt", docker_hub_tags)
+    for t in docker_hub_tags:
+        copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
