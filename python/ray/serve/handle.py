@@ -291,6 +291,14 @@ class _DeploymentResponseBase:
         # The result of `object_ref_future` must be an ObjectRef or ObjectRefGenerator.
         self._object_ref_future = object_ref_future
 
+    def _should_resolve_gen_to_obj_ref(
+        self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
+    ) -> bool:
+        return (
+            isinstance(obj_ref_or_gen, ray.ObjectRefGenerator)
+            and isinstance(self, DeploymentResponse)
+        )
+
     async def _to_object_ref_or_gen(
         self,
         _record_telemetry: bool = True,
@@ -304,7 +312,11 @@ class _DeploymentResponseBase:
 
         # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
         # from any asyncio loop.
-        return await asyncio.wrap_future(self._object_ref_future)
+        obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
+        if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+            obj_ref_or_gen = await obj_ref_or_gen.__anext__()
+
+        return obj_ref_or_gen
 
     def _to_object_ref_or_gen_sync(
         self,
@@ -323,7 +335,11 @@ class _DeploymentResponseBase:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         try:
-            return self._object_ref_future.result(timeout=_timeout_s)
+            obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
+            if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+                obj_ref_or_gen = next(obj_ref_or_gen)
+
+            return obj_ref_or_gen
         except concurrent.futures.TimeoutError:
             raise TimeoutError(
                 f"Failed to resolve to ObjectRef within {_timeout_s}s."
@@ -441,14 +457,6 @@ class DeploymentResponse(_DeploymentResponseBase):
     def __await__(self):
         """Yields the final result of the deployment handle call."""
         obj_ref = yield from self._to_object_ref_or_gen(_record_telemetry=False).__await__()
-
-        # TODO:comment.
-        print("GOT INITIAL obj_ref", obj_ref)
-        if isinstance(obj_ref, ObjectRefGenerator):
-            print("RESOLVING GEN TO OBJ REF")
-            obj_ref = yield from obj_ref.__anext__().__await__()
-            print("GOT FINAL obj_ref", obj_ref)
-
         result = yield from obj_ref.__await__()
         return result
 
@@ -505,15 +513,11 @@ class DeploymentResponse(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        obj_ref_or_gen = self._to_object_ref_or_gen_sync(
+        return self._to_object_ref_or_gen_sync(
             _record_telemetry=_record_telemetry,
             _timeout_s=_timeout_s,
             _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
         )
-        if isinstance(obj_ref_or_gen, ObjectRefGenerator):
-            return next(obj_ref_or_gen)
-        else:
-            return obj_ref_or_gen
 
 
 @PublicAPI(stability="beta")

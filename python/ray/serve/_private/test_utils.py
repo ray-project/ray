@@ -1,4 +1,3 @@
-import asyncio
 import threading
 import time
 from typing import Any, Dict, Optional
@@ -282,13 +281,6 @@ def ping_fruit_stand(channel, app_name):
     metadata = (("application", app_name),)
     response = stub.FruitStand(request=request, metadata=metadata)
     assert response.costs == 32
-
-
-async def send_signal_on_cancellation(signal_actor: ActorHandle):
-    try:
-        await asyncio.sleep(100000)
-    except asyncio.CancelledError:
-        await signal_actor.send.remote()
 
 
 class FakeGrpcContext:
