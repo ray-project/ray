@@ -75,6 +75,9 @@ To check that ports are accessible, use a tool like ``telnet <ip> <port>``. The 
 - The head node port (6379 by default)
 - The raylet port on all nodes, including the head node. Ray chooses a random port by default for the raylet, but you can override this by passing `--node-manager-port <port>` to `ray start`.
 
+If you are using cloud VMs, a common pitfall that can cause ports to be unreachable is the security group configuration.
+In this case, check if you can use Ray's cloud [cluster launcher](cloud-vm-index) to create clusters instead; otherwise, check your security group configuration.
+
 (manual-setup-cluster)=
 
 ## Manually Set up a Ray Cluster
