@@ -18,13 +18,13 @@
 #include <stddef.h>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <vector>
 
 #ifdef __linux__
 #include <sys/prctl.h>
+#include <sys/wait.h>
 #endif
 
 #include "absl/container/flat_hash_set.h"
