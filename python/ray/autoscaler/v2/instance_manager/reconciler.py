@@ -1,6 +1,6 @@
 import logging
 import math
-import time
+import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -653,7 +653,7 @@ class Reconciler:
                 # Reuse launch request id for any QUEUED instances that have been
                 # requested before due to retry.
                 launch_request_id = (
-                    str(time.time_ns())
+                    str(uuid.uuid4())
                     if len(instance.launch_request_id) == 0
                     else instance.launch_request_id
                 )
