@@ -1067,7 +1067,7 @@ class UserCallableWrapper:
 
         logger.info(
             f"Started executing request to method '{request_metadata.call_method}'.",
-            extra={"log_to_stderr": True, "serve_access_log": True},
+            extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
         result = None
