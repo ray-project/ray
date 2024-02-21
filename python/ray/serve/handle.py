@@ -468,7 +468,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         result = yield from obj_ref.__await__()
         return result
 
-    def result(self, timeout_s: Optional[float] = None) -> Any:
+    def result(self, *, timeout_s: Optional[float] = None) -> Any:
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
