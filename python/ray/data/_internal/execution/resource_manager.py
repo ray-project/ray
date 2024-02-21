@@ -313,7 +313,8 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         return self._op_limits[op].object_store_memory
 
     def update_usages(self):
-        if len(self._eligible_ops) == 0:
+        running_ops = [op for op in self._eligible_ops if not op.completed()]
+        if len(running_ops) == 0:
             return
 
         global_limits = self._resource_manager.get_global_limits()
@@ -326,7 +327,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
         remaining_shared = self._total_shared
         for op in self._resource_manager._topology:
             op_usage = self._resource_manager.get_op_usage(op)
-            if op in self._eligible_ops:
+            if op in running_ops:
                 op_reserved = self._op_reserved[op]
                 # How much of the reserved resources are remaining.
                 op_reserved_remaining = op_reserved.subtract(op_usage).max(
@@ -345,9 +346,9 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
                 remaining_shared = remaining_shared.subtract(op_usage)
 
         shared_divided = remaining_shared.max(ExecutionResources.zero()).scale(
-            1.0 / len(self._eligible_ops)
+            1.0 / len(running_ops)
         )
-        for op in self._eligible_ops:
+        for op in running_ops:
             self._op_limits[op] = self._op_limits[op].add(shared_divided)
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
