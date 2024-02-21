@@ -159,9 +159,8 @@ class Channel:
         Read the latest value from the channel. This call will block until a
         value is available to read.
 
-        Subsequent calls to begin_read() will return the same value, until
-        end_read() is called. Then, the client must begin_read() again to get
-        the next value.
+        Subsequent calls to begin_read() will *block*, until end_read() is
+        called and the next value is available to read.
 
         Returns:
             Any: The deserialized value.
