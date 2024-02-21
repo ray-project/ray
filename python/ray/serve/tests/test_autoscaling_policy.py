@@ -1081,7 +1081,7 @@ def test_autoscaling_status_changes(serve_instance):
     app = AutoscalingDeployment.bind()
 
     # Start the AutoscalingDeployment.
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
 
     # Active replicas are replicas that are waiting or running.
     expected_num_active_replicas: int = min_replicas
@@ -1165,7 +1165,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
@@ -1221,7 +1221,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)

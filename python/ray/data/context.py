@@ -121,10 +121,7 @@ WARN_PREFIX = "⚠️ "
 OK_PREFIX = "✔️ "
 
 # Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 4096
-
-# Default batch size for batch transformations in strict mode.
-STRICT_MODE_DEFAULT_BATCH_SIZE = 1024
+DEFAULT_BATCH_SIZE = 1024
 
 # Whether to enable progress bars.
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(
