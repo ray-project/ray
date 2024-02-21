@@ -119,10 +119,6 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         params: XGBoost training parameters.
             Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
             for a list of possible parameters.
-        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
-            :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
-            to ``xgboost.DMatrix`` objects created on each worker. For example, this can
-            be used to add sample weights with the ``weight`` parameter.
         num_boost_round: Target number of boosting iterations (trees in the model).
             Note that unlike in ``xgboost.train``, this is the target number
             of trees, meaning that if you set ``num_boost_round=10`` and pass a model
