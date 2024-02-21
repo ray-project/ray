@@ -477,7 +477,11 @@ class DeploymentResponse(_DeploymentResponseBase):
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+        obj_ref_or_gen = await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+        if isinstance(obj_ref_or_gen, ray.ObjectRef):
+            return obj_ref_or_gen
+        else:
+            return await obj_ref_or_gen.__anext__()
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -498,11 +502,15 @@ class DeploymentResponse(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(
+        obj_ref_or_gen = self._to_object_ref_or_gen_sync(
             _record_telemetry=_record_telemetry,
             _timeout_s=_timeout_s,
             _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
         )
+        if isinstance(obj_ref_or_gen, ray.ObjectRef):
+            return obj_ref_or_gen
+        else:
+            return next(obj_ref_or_gen)
 
 
 @PublicAPI(stability="beta")

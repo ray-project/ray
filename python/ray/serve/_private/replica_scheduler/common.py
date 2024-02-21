@@ -179,17 +179,20 @@ class ActorReplicaWrapper:
         ), "Request rejection not supported for Java."
         obj_ref_gen = self._send_request_python(pr, with_rejection=True)
 
-        first_ref = await obj_ref_gen.__anext__()
-        queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
+        try:
+            first_ref = await obj_ref_gen.__anext__()
+            queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
 
-        if not queue_len_info.accepted:
-            return None, queue_len_info
-        elif pr.metadata.is_streaming:
-            return obj_ref_gen, queue_len_info
-        else:
-            # For non-streaming requests, resolve the generator to its next
-            # object ref, which will contain the unary response.
-            return await obj_ref_gen.__anext__(), queue_len_info
+            if not queue_len_info.accepted:
+                return None, queue_len_info
+            else:
+                return obj_ref_gen, queue_len_info
+        except asyncio.CancelledError as e:
+            print(
+                "Cancelled while in send_request_with_rejection, so cancelling the generator."
+            )
+            ray.cancel(obj_ref_gen)
+            raise e from None
 
 
 @dataclass(frozen=True)

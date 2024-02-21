@@ -135,7 +135,7 @@ message InstanceUpdateEvent {
 
   /// Additional metdata for the update event.
 
-  // The instance type for QUEUED event.
+  // The instance type for QUEUED/REQUESTED/ALLOCATED event.
   optional string instance_type = 4;
   // Cloud instance id for ALLOCATED event.
   optional string cloud_instance_id = 5;

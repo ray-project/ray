@@ -182,7 +182,6 @@ class InstanceManager:
             instance: The instance to update.
             update: The update to apply.
         """
-
         if update.new_instance_status == Instance.ALLOCATED:
             assert (
                 update.cloud_instance_id
@@ -197,7 +196,9 @@ class InstanceManager:
             assert (
                 update.launch_request_id
             ), "REQUESTED update must have launch_request_id"
+            assert update.instance_type, "REQUESTED update must have instance_type"
             instance.launch_request_id = update.launch_request_id
+            instance.instance_type = update.instance_type
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
