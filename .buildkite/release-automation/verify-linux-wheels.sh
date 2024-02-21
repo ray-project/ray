@@ -15,7 +15,6 @@ if [[ -z "$RAY_HASH" ]]; then
 fi
 
 export PATH="/root/miniconda3/bin:$PATH"
-source "$TMP_DIR/miniconda3/etc/profile.d/conda.sh"
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 
