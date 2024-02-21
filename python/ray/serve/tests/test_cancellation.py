@@ -14,6 +14,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
+from ray.serve._private.test_utils import send_signal_on_cancellation
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -21,11 +22,12 @@ def test_cancel_on_http_client_disconnect_during_execution(
     serve_instance, use_fastapi: bool
 ):
     """Test the client disconnecting while the handler is executing."""
-    signal_actor = SignalActor.remote()
+    inner_signal_actor = SignalActor.remote()
+    outer_signal_actor = SignalActor.remote()
 
     @serve.deployment
     async def inner():
-        await asyncio.sleep(1000)
+        await send_signal_on_cancellation(inner_signal_actor)
 
     if use_fastapi:
         app = FastAPI()
@@ -39,15 +41,7 @@ def test_cancel_on_http_client_disconnect_during_execution(
             @app.get("/")
             async def wait_for_cancellation(self):
                 r = self._handle.remote()
-                try:
-                    await asyncio.sleep(1000)
-                except asyncio.CancelledError:
-                    print("Outer cancelled!")
-
-                    with pytest.raises(ray.exceptions.TaskCancelledError):
-                        await r
-
-                    await signal_actor.send.remote()
+                await send_signal_on_cancellation(outer_signal_actor)
 
     else:
 
@@ -58,15 +52,7 @@ def test_cancel_on_http_client_disconnect_during_execution(
 
             async def __call__(self, request: Request):
                 r = self._handle.remote()
-                try:
-                    await asyncio.sleep(1000)
-                except asyncio.CancelledError:
-                    print("Outer cancelled!")
-
-                    with pytest.raises(ray.exceptions.TaskCancelledError):
-                        await r
-
-                    await signal_actor.send.remote()
+                await send_signal_on_cancellation(outer_signal_actor)
 
     serve.run(Ingress.bind(inner.bind()))
 
@@ -75,7 +61,8 @@ def test_cancel_on_http_client_disconnect_during_execution(
         requests.get("http://localhost:8000", timeout=0.5)
 
     # Both the HTTP handler and the inner deployment handle call should be cancelled.
-    ray.get(signal_actor.wait.remote(), timeout=10)
+    ray.get(inner_signal_actor.wait.remote(), timeout=10)
+    ray.get(outer_signal_actor.wait.remote(), timeout=10)
 
 
 def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
@@ -114,22 +101,24 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
 
 def test_cancel_sync_handle_call_during_execution(serve_instance):
     """Test cancelling handle request during execution (sync context)."""
-    signal_actor = SignalActor.remote()
+    running_signal_actor = SignalActor.remote()
+    cancelled_signal_actor = SignalActor.remote()
 
     @serve.deployment
     class Ingress:
         async def __call__(self, *args):
-            await signal_actor.send.remote()
-            await asyncio.sleep(1000)
+            await running_signal_actor.send.remote()
+            await send_signal_on_cancellation(cancelled_signal_actor)
 
     h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to start executing.
     r = h.remote()
-    ray.get(signal_actor.wait.remote(), timeout=10)
+    ray.get(running_signal_actor.wait.remote(), timeout=10)
 
-    # Cancel it and verify that it is cancelled.
+    # Cancel it and verify that it is cancelled via signal.
     r.cancel()
+    ray.get(cancelled_signal_actor.wait.remote(), timeout=10)
 
     with pytest.raises(ray.exceptions.TaskCancelledError):
         r.result()
@@ -173,13 +162,14 @@ def test_cancel_sync_handle_call_during_assignment(serve_instance):
 
 def test_cancel_async_handle_call_during_execution(serve_instance):
     """Test cancelling handle request during execution (async context)."""
-    signal_actor = SignalActor.remote()
+    running_signal_actor = SignalActor.remote()
+    cancelled_signal_actor = SignalActor.remote()
 
     @serve.deployment
     class Downstream:
         async def __call__(self, *args):
-            await signal_actor.send.remote()
-            await asyncio.sleep(1000)
+            await running_signal_actor.send.remote()
+            await send_signal_on_cancellation(cancelled_signal_actor)
 
     @serve.deployment
     class Ingress:
@@ -189,12 +179,13 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
         async def __call__(self, *args):
             # Send a request and wait for it to start executing.
             r = self._h.remote()
-            await signal_actor.wait.remote()
+            await running_signal_actor.wait.remote()
 
             # Cancel it and verify that it is cancelled via signal.
             r.cancel()
+            await cancelled_signal_actor.wait.remote()
 
-            with pytest.raises((asyncio.CancelledError, ray.exceptions.TaskCancelledError)):
+            with pytest.raises(ray.exceptions.TaskCancelledError):
                 await r
 
     h = serve.run(Ingress.bind(Downstream.bind()))
@@ -250,11 +241,13 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
 
 def test_cancel_generator_sync(serve_instance):
     """Test cancelling streaming handle request during execution."""
+    signal_actor = SignalActor.remote()
+
     @serve.deployment
     class Ingress:
         async def __call__(self, *args):
             yield "hi"
-            await asyncio.sleep(1000)
+            await send_signal_on_cancellation(signal_actor)
 
     h = serve.run(Ingress.bind()).options(stream=True)
 
@@ -263,19 +256,24 @@ def test_cancel_generator_sync(serve_instance):
 
     assert next(g) == "hi"
 
-    # Cancel it and verify that it is cancelled.
+    # Cancel it and verify that it is cancelled via signal.
     g.cancel()
 
     with pytest.raises(ray.exceptions.TaskCancelledError):
         next(g)
 
+    ray.get(signal_actor.wait.remote(), timeout=10)
+
 
 def test_cancel_generator_async(serve_instance):
     """Test cancelling streaming handle request during execution."""
+    signal_actor = SignalActor.remote()
+
     @serve.deployment
     class Downstream:
         async def __call__(self, *args):
             yield "hi"
+            await send_signal_on_cancellation(signal_actor)
 
     @serve.deployment
     class Ingress:
@@ -287,11 +285,13 @@ def test_cancel_generator_async(serve_instance):
             g = self._h.remote()
             assert await g.__anext__() == "hi"
 
-            # Cancel it and verify that it is cancelled.
+            # Cancel it and verify that it is cancelled via signal.
             g.cancel()
 
             with pytest.raises(ray.exceptions.TaskCancelledError):
                 assert await g.__anext__() == "hi"
+
+            await signal_actor.wait.remote()
 
     h = serve.run(Ingress.bind(Downstream.bind()))
     h.remote().result()  # Would raise if test failed.
