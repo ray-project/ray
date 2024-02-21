@@ -12,6 +12,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     get_image_creation_time,
     delete_tag,
     copy_tag_to_aws_ecr,
+    copy_tag_to_aws_ecr,
     list_recent_commit_short_shas,
     query_tags_from_docker_hub,
     query_tags_from_docker_with_crane,

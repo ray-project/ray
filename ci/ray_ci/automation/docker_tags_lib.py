@@ -173,6 +173,116 @@ def delete_tag(tag: str) -> bool:
         logger.info(f"Deleted tag {tag}")
         return True
 
+def _is_release_tag(
+    tag: str,
+    release_versions: Optional[List[str]] = None,
+) -> bool:
+    """
+    Check if tag is a release tag & is in the list of release versions.
+    Args:
+        tag: Docker tag name
+        release_versions: List of release versions.
+            If None, don't filter by release version.
+    Returns:
+        True if tag is a release tag and is in the list of release versions.
+            False otherwise.
+    """
+    variables = tag.split(".")
+    if len(variables) != 3 and "post1" not in tag:
+        return False
+    if not variables[0].isnumeric() or not variables[1].isnumeric():
+        return False
+    if (
+        not variables[2].isnumeric()
+        and "rc" not in variables[2]
+        and "-" not in variables[2]
+    ):
+        return False
+
+    if "-" in variables[2]:
+        variables[2] = variables[2].split("-")[0]
+    release_version = ".".join(variables)
+    if release_versions and release_version not in release_versions:
+        return False
+
+    return True
+
+def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
+    try:
+        with subprocess.Popen(
+            [
+                "crane",
+                "cp",
+                source,
+                f"{aws_ecr_repo}:{tag}",
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        ) as proc:
+            output = ""
+            for line in proc.stdout:
+                logger.info(line + "\n")
+                output += line
+            return_code = proc.wait()
+            if return_code:
+                raise subprocess.CalledProcessError(return_code, proc.args)
+            return output
+    except subprocess.CalledProcessError as e:
+        return f"Error: {e.output}"
+
+
+def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
+    """
+    Copy tag from Docker Hub to AWS ECR.
+    Args:
+        tag: Docker tag name in format "namespace/repository:tag"
+    Returns:
+        True if tag was copied successfully, False otherwise.
+    """
+    _, repo_tag = tag.split("/")
+    tag_name = repo_tag.split(":")[1]
+    logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
+    result = _call_crane_cp(
+        tag=tag_name,
+        source=tag,
+        aws_ecr_repo=aws_ecr_repo,
+    )
+    if "Error" in result:
+        logger.info(f"Failed to copy {tag} to AWS ECR: {result}")
+        return False
+    logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name}......")
+    return True
+
+def _write_to_file(file_path: str, content: List[str]) -> None:
+    file_path = os.path.join(bazel_workspace_dir, file_path)
+    logger.info(f"Writing to {file_path}......")
+    with open(file_path, "w") as f:
+        f.write("\n".join(content))
+
+
+def backup_release_tags(
+    namespace: str,
+    repository: str,
+    release_versions: List[str],
+    aws_ecr_repo: str,
+    num_tags: int,
+) -> None:
+    """
+    Backup release tags to AWS ECR.
+    Args:
+        release_versions: List of release versions to backup
+        aws_ecr_repo: AWS ECR repository
+    """
+    docker_hub_tags = query_tags_from_docker_hub(
+        filter_func=lambda t: _is_release_tag(t, release_versions),
+        namespace=namespace,
+        repository=repository,
+        num_tags=num_tags,
+    )
+    _write_to_file("release_tags.txt", docker_hub_tags)
+    for t in docker_hub_tags:
+        copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
+
 
 def _is_release_tag(
     tag: str,
