@@ -173,6 +173,7 @@ def delete_tag(tag: str) -> bool:
         logger.info(f"Deleted tag {tag}")
         return True
 
+
 def _is_release_tag(
     tag: str,
     release_versions: Optional[List[str]] = None,
@@ -206,6 +207,7 @@ def _is_release_tag(
         return False
 
     return True
+
 
 def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
     try:
