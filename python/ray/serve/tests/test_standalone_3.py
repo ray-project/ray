@@ -225,6 +225,7 @@ def test_handle_early_detect_failure(shutdown_ray):
     """
 
     try:
+
         @serve.deployment(num_replicas=2, max_concurrent_queries=1)
         def f(do_crash: bool = False):
             if do_crash:
