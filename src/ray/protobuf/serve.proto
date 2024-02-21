@@ -88,44 +88,46 @@ message LoggingConfig {
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
   // The number of processes to start up that will handle requests to this deployment.
-  // Defaults to 1.
   int32 num_replicas = 1;
 
   // The maximum number of queries that will be sent to a replica of this deployment
-  // without receiving a response. Defaults to 100.
+  // without receiving a response.
   int32 max_concurrent_queries = 2;
+
+  // The maximum number of requests that will be queued in deployment handles.
+  int32 max_queued_requests = 3;
 
   // Arguments to pass to the reconfigure method of the deployment. The reconfigure method
   // is called if user_config is not None.
-  bytes user_config = 3;
+  bytes user_config = 4;
 
   // Duration that deployment replicas will wait until there is no more work to be done
   // before shutting down.
-  double graceful_shutdown_wait_loop_s = 4;
+  double graceful_shutdown_wait_loop_s = 5;
 
   // Controller waits for this duration to forcefully kill the replica for shutdown.
-  double graceful_shutdown_timeout_s = 5;
+  double graceful_shutdown_timeout_s = 6;
 
   // Frequency at which the controller health checks replicas.
-  double health_check_period_s = 6;
+  double health_check_period_s = 7;
 
   // Timeout after which a replica is marked unhealthy without a response.
-  double health_check_timeout_s = 7;
+  double health_check_timeout_s = 8;
 
   // Is the construction of deployment is cross language?
-  bool is_cross_language = 8;
+  bool is_cross_language = 9;
 
   // The deployment's programming language.
-  DeploymentLanguage deployment_language = 9;
+  DeploymentLanguage deployment_language = 10;
 
   // The deployment's autoscaling configuration.
-  AutoscalingConfig autoscaling_config = 10;
+  AutoscalingConfig autoscaling_config = 11;
 
-  string version = 11;
+  string version = 12;
 
-  repeated string user_configured_option_names = 12;
+  repeated string user_configured_option_names = 13;
 
-  LoggingConfig logging_config = 13;
+  LoggingConfig logging_config = 14;
 }
 
 // Deployment language.

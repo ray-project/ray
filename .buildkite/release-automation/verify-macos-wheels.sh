@@ -15,18 +15,16 @@ if [[ $# -ne 1 ]]; then
 fi
 
 mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
-export RAY_VERSION="${RAY_VERSION:-2.9.1}"
-export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
 export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-5.4.1}"
 
 install_bazel() {
     if [[ "${mac_architecture}" = "arm64" ]]; then
-      URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
+        URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
     elif [[ "${mac_architecture}" = "x86_64" ]]; then
-      URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-amd64"
+        URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-amd64"
     else
-      echo "Could not find matching bazelisk URL for Mac ${mac_architecture}"
-      exit 1
+        echo "Could not find matching bazelisk URL for Mac ${mac_architecture}"
+        exit 1
     fi
 
     TARGET="$TMP_DIR/bin/bazel"
@@ -85,4 +83,3 @@ install_bazel
 for python_version in "${PYTHON_VERSIONS[@]}"; do
     run_sanity_check "$python_version"
 done
-
