@@ -734,7 +734,7 @@ if __name__ == "__main__":
 @pytest.mark.skipif(
     client_test_enabled(), reason="JobConfig doesn't work in client mode"
 )
-def test_use_dynamic_function_and_class():
+def test_use_dynamic_function_and_class(shutdown_only):
     # Test use dynamically defined functions
     # and classes for remote tasks and actors.
     # See https://github.com/ray-project/ray/issues/12834.
@@ -787,7 +787,7 @@ def test_use_dynamic_function_and_class():
     )
 
 
-def test_worker_use_working_dir_path():
+def test_worker_use_working_dir_path(shutdown_only):
     """
     Tests that, in a working_dir job, the worker uses the working dir as
     module search path, and NOT use the driver's path. This means the `lib` module used
@@ -823,17 +823,7 @@ print(ray.get(my_file.remote()))
         assert "/tmp/ray/session_" in output, output
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "num_cpus": 1,
-            "num_nodes": 1,
-        },
-    ],
-    indirect=True,
-)
-def test_worker_use_working_dir_path_job(ray_start_cluster):
+def test_worker_use_working_dir_path_job(shutdown_only):
     """
     Same test as `test_worker_use_working_dir_path` but in job submission.
     """
@@ -876,7 +866,7 @@ print(ray.get(my_file.remote()))
         assert "/tmp/ray/session_" in output, output
 
 
-def test_worker_use_driver_path_if_no_working_dir():
+def test_worker_use_driver_path_if_no_working_dir(shutdown_only):
     """
     Tests that, in a NO working_dir job, the worker adds the driver's path in the search
     path. This means the `lib` module used in the worker is from the driver's dir.

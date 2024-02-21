@@ -2337,9 +2337,16 @@ def connect(
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory.
+        # paths of the workers. Also add the current directory. This is useful when the
+        # worker code references local libraries like `import local_lib`, *without*
+        # working_dir set and the worker and driver are on the same node, e.g. when the
+        # user is running on a single node cluster on their laptop.
         #
-        # Note that this is only meaningful when all of these are true:
+        # In production, This is not encouraged, and won't work if the driver and worker
+        # are on different nodes. In that case, the user should use `working_dir` to
+        # specify the code search path.
+        #
+        # Formally, the local path(s) should be added when all of these are true:
         # (1) there's no working_dir (or code search path should be in working_dir),
         # (2) it's not interactive mode, (there's no script file in interactive mode),
         # (3) it's not in dashboard,
@@ -2347,7 +2354,8 @@ def connect(
         # (5) the driver is at the same node (machine) as the worker.
         #
         # We only do the first 4 checks here.
-        # TODO: do the (5) check by also passing node id.
+        # TODO: do the (5) check in _raylet.pyx maybe_initialize_job_config by checking
+        # worker's node_id == driver's node_id.
         if not any(
             [
                 job_config._runtime_env_has_working_dir(),
