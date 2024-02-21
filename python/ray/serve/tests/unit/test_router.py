@@ -75,9 +75,7 @@ class FakeReplica(ReplicaWrapper):
     async def send_request_with_rejection(
         self,
         pr: PendingRequest,
-    ) -> Tuple[
-        Optional[FakeObjectRefGen], ReplicaQueueLengthInfo
-    ]:
+    ) -> Tuple[Optional[FakeObjectRefGen], ReplicaQueueLengthInfo]:
         assert not self.is_cross_language, "Rejection not supported for cross language."
         assert (
             self._queue_len_info is not None
