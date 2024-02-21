@@ -188,9 +188,6 @@ class ActorReplicaWrapper:
             else:
                 return obj_ref_gen, queue_len_info
         except asyncio.CancelledError as e:
-            print(
-                "Cancelled while in send_request_with_rejection, so cancelling the generator."
-            )
             ray.cancel(obj_ref_gen)
             raise e from None
 

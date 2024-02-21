@@ -294,9 +294,8 @@ class _DeploymentResponseBase:
     def _should_resolve_gen_to_obj_ref(
         self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
     ) -> bool:
-        return (
-            isinstance(obj_ref_or_gen, ray.ObjectRefGenerator)
-            and isinstance(self, DeploymentResponse)
+        return isinstance(obj_ref_or_gen, ray.ObjectRefGenerator) and isinstance(
+            self, DeploymentResponse
         )
 
     async def _to_object_ref_or_gen(
@@ -456,7 +455,9 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        obj_ref = yield from self._to_object_ref_or_gen(_record_telemetry=False).__await__()
+        obj_ref = yield from self._to_object_ref_or_gen(
+            _record_telemetry=False
+        ).__await__()
         result = yield from obj_ref.__await__()
         return result
 
