@@ -92,13 +92,24 @@ class ExecutionResources:
 
     def min(self, other: "ExecutionResources") -> "ExecutionResources":
         """Returns the minimum for each resource type."""
+        cpu1 = self.cpu if self.cpu is not None else float("inf")
+        cpu2 = other.cpu if other.cpu is not None else float("inf")
+        gpu1 = self.gpu if self.gpu is not None else float("inf")
+        gpu2 = other.gpu if other.gpu is not None else float("inf")
+        object_store_memory1 = (
+            self.object_store_memory
+            if self.object_store_memory is not None
+            else float("inf")
+        )
+        object_store_memory2 = (
+            other.object_store_memory
+            if other.object_store_memory is not None
+            else float("inf")
+        )
         return ExecutionResources(
-            cpu=min(self.cpu or float("inf"), other.cpu or float("inf")),
-            gpu=min(self.gpu or float("inf"), other.gpu or float("inf")),
-            object_store_memory=min(
-                self.object_store_memory or float("inf"),
-                other.object_store_memory or float("inf"),
-            ),
+            cpu=min(cpu1, cpu2),
+            gpu=min(gpu1, gpu2),
+            object_store_memory=min(object_store_memory1, object_store_memory2),
         )
 
     def satisfies_limit(self, limit: "ExecutionResources") -> bool:

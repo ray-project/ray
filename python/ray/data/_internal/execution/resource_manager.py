@@ -345,11 +345,14 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
                 # their usage from the remaining shared resources.
                 remaining_shared = remaining_shared.subtract(op_usage)
 
-        shared_divided = remaining_shared.max(ExecutionResources.zero()).scale(
+        remaining_shared = remaining_shared.max(ExecutionResources.zero())
+        shared_divided = remaining_shared.scale(
             1.0 / len(running_ops)
         )
-        for op in running_ops:
-            self._op_limits[op] = self._op_limits[op].add(shared_divided)
+        for op in reversed(running_ops):
+            op_shared = shared_divided.max(op.incremental_resource_usage().min(remaining_shared))
+            remaining_shared = remaining_shared.subtract(op_shared).max(ExecutionResources.zero())
+            self._op_limits[op] = self._op_limits[op].add(op_shared)
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_limits[op].gpu = float("inf")
