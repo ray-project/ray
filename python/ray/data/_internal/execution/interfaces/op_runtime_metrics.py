@@ -197,6 +197,7 @@ class OpRuntimeMetrics:
 
         return num_tasks_running * per_task_output
 
+    @property
     def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in a task's generator buffer."""
         context = ray.data.DataContext.get_current()
