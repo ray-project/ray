@@ -221,12 +221,12 @@ def test_delete_tag_failure_rate_limit_exceeded(mock_get_token, mock_requests):
 def _make_docker_hub_response(
     tag: str, page_count: int, namespace: str, repository: str, page_limit: int
 ):
-    next_url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count+1}&page_size=100"  # noqa
+    next_url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count+1}&page_size=1"  # noqa
     return mock.Mock(
         status_code=200,
         json=mock.MagicMock(
             return_value={
-                "count": 100,
+                "count": page_limit,
                 "next": next_url if page_count < page_limit else None,
                 "previous": "previous_url",
                 "results": [{"name": tag}],
@@ -240,7 +240,7 @@ def _make_docker_hub_response(
     ("filter_func", "tags", "expected_tags"),
     [
         (
-            lambda t: t.startswith("a1s3d3"),
+            lambda t: t.startswith("a1s2d3"),
             ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py39-cu123"],
             ["a1s2d3-py38"],
         ),
@@ -267,7 +267,6 @@ def test_query_tags_from_docker_hub(
         filter_func=filter_func,
         namespace="test_namespace",
         repository="test_repo",
-        num_tags=100,
     )
     expected_tags = sorted([f"test_namespace/test_repo:{t}" for t in expected_tags])
 
@@ -279,7 +278,7 @@ def test_query_tags_from_docker_hub(
     ("filter_func", "tags", "expected_tags"),
     [
         (
-            lambda t: t.startswith("a1s3d3"),
+            lambda t: t.startswith("a1s2d3"),
             ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py39-cu123"],
             ["a1s2d3-py38"],
         ),

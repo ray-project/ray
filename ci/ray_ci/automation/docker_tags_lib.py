@@ -221,6 +221,8 @@ def query_tags_from_docker_hub(
         filtered_tags.extend(filtered_tags_page)
 
         logger.info(f"Tag count: {len(filtered_tags)}")
+        if not response_json["next"]:
+            break
         page_count += 1
     return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
