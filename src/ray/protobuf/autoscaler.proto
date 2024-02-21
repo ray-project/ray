@@ -306,6 +306,8 @@ message DrainNodeReply {
   // Whether the drain request is accepted.
   // If it's accepted, the node will transition into DRAINING status.
   bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
 }
 
 service AutoscalerStateService {
