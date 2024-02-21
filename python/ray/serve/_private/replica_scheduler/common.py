@@ -78,11 +78,14 @@ class ReplicaWrapper(ABC):
     async def send_request_with_rejection(
         self,
         pr: PendingRequest,
-    ) -> Tuple[Optional[Union[ObjectRef, ObjectRefGenerator]], ReplicaQueueLengthInfo]:
+    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
         """Send request to this replica.
 
         The replica will yield a system message (ReplicaQueueLengthInfo) before
         executing the actual request. This can cause it to reject the request.
+
+        The result will *always* be a generator, so for non-streaming requests it's up
+        to the caller to resolve it to its first (and only) ObjectRef.
 
         Only supported for Python replicas.
         """
@@ -186,7 +189,7 @@ class ActorReplicaWrapper:
     async def send_request_with_rejection(
         self,
         pr: PendingRequest,
-    ) -> Tuple[Optional[Union[ObjectRef, ObjectRefGenerator]], ReplicaQueueLengthInfo]:
+    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
         assert (
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
