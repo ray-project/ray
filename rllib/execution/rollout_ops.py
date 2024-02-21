@@ -108,7 +108,7 @@ def synchronous_parallel_sample(
                 )
         all_sample_batches_or_eps.extend(sample_batches_or_eps)
 
-    if concat is True:
+    if concat is True and all_sample_batches_or_eps:
         # If we have a SampleBatch we concatenate.
         if isinstance(all_sample_batches_or_eps[0], (SampleBatch, MultiAgentBatch)):
             full_batch = concat_samples(all_sample_batches_or_eps)

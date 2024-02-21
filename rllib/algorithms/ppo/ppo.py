@@ -417,7 +417,6 @@ class PPO(Algorithm):
             # TODO (simon): Implement multi-agent.
             episodes = synchronous_parallel_sample(
                 worker_set=self.workers,
-                max_env_steps=self.config.train_batch_size,
                 concat=True,
             )
 
