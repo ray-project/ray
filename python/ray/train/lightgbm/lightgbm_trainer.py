@@ -47,17 +47,21 @@ def _lightgbm_train_fn_per_worker(
     }
     eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
 
-    # NOTE: Include the training dataset in the evaluation datasets.
-    # This allows `train-*` metrics to be calculated and reported.
-    eval_dfs[TRAIN_DATASET_KEY] = train_df
-
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     train_set = lightgbm.Dataset(train_X, label=train_y)
-    valid_sets = []
-    for eval_df in eval_dfs.values():
+
+    # NOTE: Include the training dataset in the evaluation datasets.
+    # This allows `train-*` metrics to be calculated and reported.
+    valid_sets = [train_set]
+    valid_names = [TRAIN_DATASET_KEY]
+
+    for eval_name, eval_df in eval_dfs.items():
         eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
         valid_sets.append(lightgbm.Dataset(eval_X, label=eval_y))
-    valid_names = list(eval_dfs.keys())
+        valid_names.append(eval_name)
+
+    # Add network params of the worker group to enable distributed training.
+    config.update(ray.train.lightgbm.v2.get_network_params())
 
     lightgbm.train(
         params=config,
