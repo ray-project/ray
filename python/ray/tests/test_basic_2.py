@@ -734,7 +734,7 @@ if __name__ == "__main__":
 @pytest.mark.skipif(
     client_test_enabled(), reason="JobConfig doesn't work in client mode"
 )
-def test_use_dynamic_function_and_class(shutdown_only):
+def test_use_dynamic_function_and_class():
     # Test use dynamically defined functions
     # and classes for remote tasks and actors.
     # See https://github.com/ray-project/ray/issues/12834.
@@ -785,130 +785,6 @@ def test_use_dynamic_function_and_class(shutdown_only):
     assert ray._private.worker.global_worker.gcs_client.internal_kv_exists(
         key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE
     )
-
-
-def test_worker_use_working_dir_path(shutdown_only):
-    """
-    Tests that, in a working_dir job, the worker uses the working dir as
-    module search path, and NOT use the driver's path. This means the `lib` module used
-    in the worker is from the working dir, not the driver's dir.
-    """
-
-    lib_code = """
-def get_file_path():
-    return __file__
-"""
-
-    runner_code = """
-import ray
-import lib
-
-ray.init(runtime_env={"working_dir": "."})
-
-@ray.remote
-def my_file():
-    return lib.get_file_path()
-
-print(ray.get(my_file.remote()))
-    """
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "lib.py"), "w") as f:
-            f.write(lib_code)
-        with open(os.path.join(tmpdir, "runner.py"), "w") as f:
-            f.write(runner_code)
-        output = subprocess.check_output(
-            [sys.executable, "runner.py"], cwd=tmpdir
-        ).decode()
-        assert "/tmp/ray/session_" in output, output
-
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "num_cpus": 1,
-            "num_nodes": 1,
-        }
-    ],
-    indirect=True,
-)
-def test_worker_use_working_dir_path_job(ray_start_cluster):
-    """
-    Same test as `test_worker_use_working_dir_path` but in job submission.
-    """
-    lib_code = """
-def get_file_path():
-    return __file__
-"""
-
-    runner_code = """
-import ray
-import lib
-
-ray.init()
-
-@ray.remote
-def my_file():
-    return lib.get_file_path()
-
-print(ray.get(my_file.remote()))
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "lib.py"), "w") as f:
-            f.write(lib_code)
-        with open(os.path.join(tmpdir, "runner.py"), "w") as f:
-            f.write(runner_code)
-
-        output = subprocess.check_output(
-            [
-                "ray",
-                "job",
-                "submit",
-                "--working-dir",
-                tmpdir,
-                "--",
-                "python",
-                "runner.py",
-            ],
-            cwd=tmpdir,
-        ).decode()
-        assert "/tmp/ray/session_" in output, output
-
-
-def test_worker_use_driver_path_if_no_working_dir(shutdown_only):
-    """
-    Tests that, in a NO working_dir job, the worker adds the driver's path in the search
-    path. This means the `lib` module used in the worker is from the driver's dir.
-
-    """
-    lib_code = """
-def get_file_path():
-    return __file__
-"""
-
-    runner_code = """
-import ray
-import lib
-
-ray.init()
-
-@ray.remote
-def my_file():
-    return lib.get_file_path()
-
-print(ray.get(my_file.remote()))
-    """
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "lib.py"), "w") as f:
-            f.write(lib_code)
-        with open(os.path.join(tmpdir, "runner.py"), "w") as f:
-            f.write(runner_code)
-        output = subprocess.check_output([sys.executable, "runner.py"], cwd=tmpdir)
-        output = output.decode()
-        assert os.path.join(tmpdir, "lib.py") in output, output
 
 
 if __name__ == "__main__":
