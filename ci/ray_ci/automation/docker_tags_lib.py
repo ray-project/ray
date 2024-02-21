@@ -1,7 +1,7 @@
 import json
 import subprocess
-from datetime import datetime, timezone
-from typing import List, Optional, Callable, Set
+from datetime import datetime
+from typing import List, Optional, Callable
 import os
 import requests
 from dateutil import parser
@@ -167,84 +167,6 @@ def delete_tag(tag: str) -> bool:
         return True
 
 
-def _safe_to_delete(
-    tag: str,
-    n_days: int,
-    registry_tags: List[str],
-) -> bool:
-    """
-    Check if tag is safe to delete by:
-    1. If tag's image config is not found and tag is not in the Docker Registry.
-    2. If tag's image was created more than N days ago.
-    """
-    try:
-        image_creation_time = get_image_creation_time(tag=tag)
-    except RetrieveImageConfigException:
-        return tag not in registry_tags
-
-    time_difference = datetime.now(timezone.utc) - image_creation_time
-    if time_difference.days < n_days:
-        return False
-    return True
-
-
-def _is_old_commit_tag(tag: str, recent_commit_short_shas: Set[str]) -> bool:
-    """
-    Check if tag is:
-    1. A commit tag
-    2. Not in the list of recent commit SHAs
-    """
-    commit_hash = tag.split("-")[0]
-    # Check and truncate if prefix is a release version
-    if "." in commit_hash:
-        variables = commit_hash.split(".")
-        if not _is_release_tag(".".join(variables[:-1])):
-            return False
-        commit_hash = variables[-1]
-
-    if len(commit_hash) != 6 or commit_hash in recent_commit_short_shas:
-        return False
-
-    return True
-
-
-def _is_release_tag(
-    tag: str,
-    release_versions: Optional[List[str]] = None,
-) -> bool:
-    """
-    Check if tag is a release tag & is in the list of release versions.
-
-    Args:
-        tag: Docker tag name
-        release_versions: List of release versions.
-            If None, don't filter by release version.
-
-    Returns:
-        True if tag is a release tag and is in the list of release versions.
-            False otherwise.
-    """
-    variables = tag.split(".")
-    if len(variables) != 3 and "post1" not in tag:
-        return False
-    if not variables[0].isnumeric() or not variables[1].isnumeric():
-        return False
-    if (
-        not variables[2].isnumeric()
-        and "rc" not in variables[2]
-        and "-" not in variables[2]
-    ):
-        return False
-
-    if "-" in variables[2]:
-        variables[2] = variables[2].split("-")[0]
-    release_version = ".".join(variables)
-    if release_versions and release_version not in release_versions:
-        return False
-
-    return True
-
-
 def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
     try:
         with subprocess.Popen(
@@ -323,6 +245,7 @@ def query_tags_from_docker_hub(
     headers = {
         "Authorization": f"Bearer {token}",
     }
+
     tag_count = 0
     while url:
         logger.info(f"Querying page {page_count}")
@@ -335,17 +258,21 @@ def query_tags_from_docker_hub(
             return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
         response_json = response.json()
+
+        # Update next page url & page counter
         url = response_json["next"]
         page_count += 1
+
         result = response_json["results"]
         tags = [tag["name"] for tag in result]
-        filtered_tags_page = list(filter(filter_func, tags))
+        filtered_tags_page = list(filter(filter_func, tags))  # Filter tags
 
-        # Add enough tags to not exceed num_tags if num_tags is specified
+        # if num_tags is specified, add enough to not exceed num_tags
         if num_tags:
             if tag_count + len(filtered_tags_page) > num_tags:
                 filtered_tags.extend(filtered_tags_page[: num_tags - tag_count])
                 break
+
         filtered_tags.extend(filtered_tags_page)
         tag_count += len(filtered_tags_page)
         logger.info(f"Tag count: {tag_count}")
@@ -382,73 +309,3 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
     if "Error" in result:
         raise Exception(f"Failed to query tags from Docker Registry: {result}")
     return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
-
-
-def _write_to_file(file_path: str, content: List[str]) -> None:
-    file_path = os.path.join(bazel_workspace_dir, file_path)
-    logger.info(f"Writing to {file_path}......")
-    with open(file_path, "w") as f:
-        f.write("\n".join(content))
-
-
-def backup_release_tags(
-    namespace: str,
-    repository: str,
-    release_versions: List[str],
-    aws_ecr_repo: str,
-    num_tags: int,
-) -> None:
-    """
-    Backup release tags to AWS ECR.
-
-    Args:
-        release_versions: List of release versions to backup
-        aws_ecr_repo: AWS ECR repository
-    """
-    docker_hub_tags = query_tags_from_docker_hub(
-        filter_func=lambda t: _is_release_tag(t, release_versions),
-        namespace=namespace,
-        repository=repository,
-        num_tags=num_tags,
-    )
-    _write_to_file("release_tags.txt", docker_hub_tags)
-    for t in docker_hub_tags:
-        copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
-
-
-def delete_old_commit_tags(
-    namespace: str,
-    repository: str,
-    n_days: int,
-    num_tags: int,
-) -> None:
-    """
-    Delete old commit tags with images that were created at least N days ago.
-
-    Args:
-        namespace: Docker namespace
-        repository: Docker repository
-        n_days: The threshold for deletion.
-            Tags with images created at least N days ago will be deleted.
-        num_tags: The max number of tags to delete.
-    """
-    docker_hub_tags = query_tags_from_docker_hub(
-        filter_func=lambda t: _is_old_commit_tag(
-            t,
-            set(list_recent_commit_short_shas(n_days=n_days)),
-        ),
-        namespace=namespace,
-        repository=repository,
-        num_tags=num_tags,
-    )
-    registry_tags = query_tags_from_docker_registry(
-        namespace=namespace,
-        repository=repository,
-    )
-    for t in docker_hub_tags:
-        if _safe_to_delete(
-            tag=t,
-            n_days=n_days,
-            registry_tags=registry_tags,
-        ):
-            delete_tag(tag=t)
