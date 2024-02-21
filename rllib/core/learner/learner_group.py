@@ -56,17 +56,6 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
     return backend_config
 
 
-def _default_should_module_be_updated_fn(
-    module_id: ModuleID,
-    batch: MultiAgentBatch,
-) -> bool:
-    """Default implemntation for `LearnerGroup.should_module_be_updated_fn()`.
-
-    It assumes that all modules are to be updated by default.
-    """
-    return True
-
-
 @PublicAPI(stability="alpha")
 class LearnerGroup:
     """Coordinator of n (possibly remote) Learner workers.
@@ -129,10 +118,6 @@ class LearnerGroup:
         # true. the backend executor would otherwise log a warning to the console from
         # ray train.
         self._is_shut_down = False
-
-        # The callable to use to figure out whether a (single-agent) sub-module is
-        # trainable (via its ModuleID and the train batch) or not.
-        self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
         self._ts_dropped = 0
@@ -601,10 +586,7 @@ class LearnerGroup:
             )
             learner_state = self._get_results(results)[0]
 
-        return {
-            "learner_state": learner_state,
-            "should_module_be_updated_fn": self.should_module_be_updated_fn,
-        }
+        return {"learner_state": learner_state}
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of this LearnerGroup.
@@ -620,8 +602,6 @@ class LearnerGroup:
                 self._learner.set_state(learner_state)
             else:
                 self._worker_manager.foreach_actor(lambda w: w.set_state(learner_state))
-        if state.get("should_module_be_updated_fn"):
-            self.set_should_module_be_updated_fn(state["should_module_be_updated_fn"])
 
     def foreach_learner(
         self, func: Callable[[Learner, Optional[Any]], T], **kwargs

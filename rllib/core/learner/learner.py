@@ -1303,20 +1303,25 @@ class Learner:
 
         """
         self._check_is_built()
+
+        module_state = state.get("module_state")
         # TODO: once we figure out the optimizer format, we can set/get the state
-        if "module_state" not in state:
+        if module_state is None:
             raise ValueError(
                 "state must have a key 'module_state' for the module weights"
             )
-        if "optimizer_state" not in state:
+        self.set_module_state(module_state)
+
+        optimizer_state = state.get("optimizer_state")
+        if optimizer_state is None:
             raise ValueError(
                 "state must have a key 'optimizer_state' for the optimizer weights"
             )
-
-        module_state = state.get("module_state")
-        optimizer_state = state.get("optimizer_state")
-        self.set_module_state(module_state)
         self.set_optimizer_state(optimizer_state)
+
+        # Update our trainable Modules information/function via our config.
+        # If not provided in state (None), all Modules will be trained by default.
+        self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
 
     def get_state(self) -> Dict[str, Any]:
         """Get the state of the learner.
@@ -1329,6 +1334,7 @@ class Learner:
         return {
             "module_state": self.get_module_state(),
             "optimizer_state": self.get_optimizer_state(),
+            "modules_to_train": self.config.policies_to_train,
         }
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
