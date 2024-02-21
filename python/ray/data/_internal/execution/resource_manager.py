@@ -366,19 +366,6 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_limits[op].gpu = float("inf")
-            continue
-            print(
-                op.name,
-                "limit:",
-                self._op_limits[op],
-                "reserved:",
-                self._op_reserved[op],
-                "usage:",
-                self._resource_manager.get_op_usage_str(op),
-                # self._resource_manager.get_op_usage(op),
-                # "pending task outputs:",
-                # op.metrics.obj_store_mem_pending_task_outputs,
-            )
 
     def get_op_limits(self, op: PhysicalOperator) -> ExecutionResources:
         if op in self._op_limits:
