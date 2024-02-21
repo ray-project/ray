@@ -302,7 +302,7 @@ def test_preemption_handling(
     # Preempt a node.
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
     print("Draining node...")
-    is_accepted = gcs_client.drain_node(
+    is_accepted, _ = gcs_client.drain_node(
         node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",

@@ -14,4 +14,5 @@ DataIterator API
    DataIterator.iter_batches
    DataIterator.iter_torch_batches
    DataIterator.to_tf
+   DataIterator.materialize
    DataIterator.stats

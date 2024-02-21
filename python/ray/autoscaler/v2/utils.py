@@ -59,29 +59,105 @@ def _count_by(data: Any, key: str) -> Dict[str, int]:
     return counts
 
 
-# TODO: unify the ClusterStatus to use proto definitions directly.
-def resource_requests_by_count(
-    requests: List[ResourceRequest],
-) -> List[ResourceRequestByCountProto]:
+class ProtobufUtil:
     """
-    Aggregate resource requests by shape.
-    Args:
-        requests: the list of resource requests
-    Returns:
-        resource_requests_by_count: the aggregated resource requests by count
+    A utility class for protobuf objects.
     """
-    resource_requests_by_count = defaultdict(int)
-    for request in requests:
-        serialized_request = request.SerializeToString()
-        resource_requests_by_count[serialized_request] += 1
 
-    results = []
-    for serialized_request, count in resource_requests_by_count.items():
+    @staticmethod
+    def to_dict(proto):
+        """
+        Convert a protobuf object to a dict.
+
+        This is a slow conversion, and should only be used for debugging or
+        latency insensitve code.
+
+        Args:
+            proto: the protobuf object
+        Returns:
+            dict: the dict
+        """
+        from ray._private.protobuf_compat import message_to_dict
+
+        return message_to_dict(
+            proto,
+            preserving_proto_field_name=True,
+            always_print_fields_with_no_presence=True,
+        )
+
+    @staticmethod
+    def to_dict_list(protos):
+        """
+        Convert a list of protobuf objects to a list of dicts.
+
+        Args:
+            protos: the list of protobuf objects
+        Returns:
+            dict_list: the list of dicts
+        """
+        return [ProtobufUtil.to_dict(proto) for proto in protos]
+
+
+class ResourceRequestUtil(ProtobufUtil):
+    """
+    A utility class for resource requests, autoscaler.proto.ResourceRequest
+    """
+
+    @staticmethod
+    def group_by_count(
+        requests: List[ResourceRequest],
+    ) -> List[ResourceRequestByCountProto]:
+        """
+        Aggregate resource requests by shape.
+        Args:
+            requests: the list of resource requests
+        Returns:
+            resource_requests_by_count: the aggregated resource requests by count
+        """
+        resource_requests_by_count = defaultdict(int)
+        for request in requests:
+            serialized_request = request.SerializeToString()
+            resource_requests_by_count[serialized_request] += 1
+
+        results = []
+        for serialized_request, count in resource_requests_by_count.items():
+            request = ResourceRequest()
+            request.ParseFromString(serialized_request)
+            results.append(ResourceRequestByCountProto(request=request, count=count))
+
+        return results
+
+    @staticmethod
+    def ungroup_by_count(
+        requests_by_count: List[ResourceRequestByCountProto],
+    ) -> List[ResourceRequest]:
+        """
+        Flatten the resource requests by count to resource requests.
+        Args:
+            requests_by_count: the resource requests by count
+        Returns:
+            requests: the flattened resource requests
+        """
+        reqs = []
+        for r in requests_by_count:
+            reqs += [r.request] * r.count
+
+        return reqs
+
+    @staticmethod
+    def make(resources_map: Dict[str, float]) -> ResourceRequest:
+        """
+        Make a resource request from the given resources map.
+        Args:
+            resources_map: the resources map
+        Returns:
+            request: the resource request
+        """
         request = ResourceRequest()
-        request.ParseFromString(serialized_request)
-        results.append(ResourceRequestByCountProto(request=request, count=count))
+        for resource_name, quantity in resources_map.items():
+            request.resources_bundle[resource_name] = quantity
 
-    return results
+        return request
 
 
 class ClusterStatusFormatter:
