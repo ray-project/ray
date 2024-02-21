@@ -16,7 +16,7 @@ class UserCodeException(Exception):
     By default, the stack trace for these exceptions is omitted from
     stdout, but will still be emitted to the Ray Data specific log file.
     To emit all stack frames to stdout, set
-    `DataContext.internal_stack_trace_stdout` to True."""
+    `DataContext.log_internal_stack_trace_to_stdout` to True."""
 
     pass
 
@@ -59,7 +59,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                         "is omitted from stdout, and only written to the Ray Data log "
                         f"file at {data_exception_logger._log_path}. To output the "
                         "full stack trace to stdout, set "
-                        "`DataContext.internal_stack_trace_stdout` to True`."
+                        "`DataContext.log_internal_stack_trace_to_stdout` to True`."
                     )
             else:
                 # Exception has occurred in internal Ray Data / Ray Core code.

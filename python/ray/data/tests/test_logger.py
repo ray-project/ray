@@ -61,11 +61,10 @@ def check_exception_text_logged_to_stdout(text, mock_calls):
         if text in call_args.args[0]:
             found_exception_call = True
             break
-    if not found_exception_call:
-        raise Exception(
-            f"Searched logs for the following text, but did not find: `{text}` "
-            f"All calls: {mock_calls}"
-        )
+    assert found_exception_call, (
+        f"Searched logs for the following text, but did not find: `{text}` "
+        f"All calls: {mock_calls}"
+    )
 
 
 def test_omit_traceback_stdout_user_exception(ray_start_regular_shared):
