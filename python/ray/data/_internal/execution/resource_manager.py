@@ -214,10 +214,11 @@ class ResourceManager:
 
 
 class OpResourceAllocator(ABC):
-    """Interface for limiting resources for each operator.
+    """An interface for dynamic operator resource allocation.
 
-    This interface allows limit the resources that each operator can use, in each
-    scheduling iteration.
+    This interface allows dynamically allocate available resources to each operator,
+    limiting how many tasks each operator can submit, and how much data each operator
+    can read from its running tasks.
     """
 
     def __init__(self, resource_manager: ResourceManager):
@@ -249,7 +250,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     It works in the following way:
     1. Currently we only limit map operators. Non-map operators get unlimited resources.
     2. For each map operator, we reserve `reservation_ratio * global_resources /
-        num_map_ops` resources. The remaining are shared among all map operators.
+        num_map_ops` resources, half of which is reserved only for the operator outputs,
+        excluding pending task outputs.
+    3. Non-reserved resources are shared among all operators.
     3. In each scheduling iteration, each map operator will get "remaining of their own
        reserved resources" + "remaining of shared resources / num_map_ops" resources.
 
@@ -384,7 +387,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         # Allocate the remaining shared resources to each operator.
         for i, op in enumerate(reversed(eligible_ops)):
-            # By default, divide the remaining shared resources equally among the eligible ops.
+            # By default, divide the remaining shared resources equally.
             shared_divided = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
             self._op_budgets[op] = self._op_budgets[op].add(shared_divided)
             # But if the op's budget is less than `incremental_resource_usage`,
