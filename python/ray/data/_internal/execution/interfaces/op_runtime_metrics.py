@@ -173,22 +173,6 @@ class OpRuntimeMetrics:
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
 
     @property
-    def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
-        context = ray.data.DataContext.get_current()
-        if context._max_num_blocks_in_streaming_gen_buffer is None:
-            return None
-
-        bytes_per_output = (
-            self.average_bytes_per_output or context.target_max_block_size
-        )
-        num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
-        if self.average_num_outputs_per_task is not None:
-            num_pending_outputs = min(
-                num_pending_outputs, self.average_num_outputs_per_task
-            )
-        return bytes_per_output * num_pending_outputs
-
-    @property
     def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
 
@@ -220,15 +204,6 @@ class OpRuntimeMetrics:
         if context._max_num_blocks_in_streaming_gen_buffer is None:
             return None
 
-        estimated_bytes_per_output = (
-            self.average_bytes_per_output or context.target_max_block_size
-        )
-        return (
-            self.num_tasks_running
-            * estimated_bytes_per_output
-            * context._max_num_blocks_in_streaming_gen_buffer
-        )
-
         bytes_per_output = (
             self.average_bytes_per_output or context.target_max_block_size
         )
@@ -239,7 +214,6 @@ class OpRuntimeMetrics:
                 num_pending_outputs, self.average_num_outputs_per_task
             )
         return bytes_per_output * num_pending_outputs
->>>>>>> master
 
     @property
     def average_bytes_inputs_per_task(self) -> Optional[float]:
