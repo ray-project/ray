@@ -72,6 +72,7 @@ from ray.serve._private.proxy_router import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import call_function_from_import_path, generate_request_id
 from ray.serve.config import gRPCOptions
+from ray.serve.exceptions import BackPressureError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.handle import DeploymentHandle
@@ -723,6 +724,12 @@ class gRPCProxy(GenericProxy):
                 is_error=True,
                 message=message,
             )
+        except BackPressureError as e:
+            yield ResponseStatus(
+                code=grpc.StatusCode.UNAVAILABLE,
+                is_error=True,
+                message=e.message,
+            )
         except Exception as e:
             if isinstance(e, (RayActorError, RayTaskError)):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
@@ -766,16 +773,6 @@ class HTTPProxy(GenericProxy):
         for message in convert_object_to_asgi_messages(
             f"Path '{proxy_request.path}' not found. "
             "Ping http://.../-/routes for available routes.",
-            status_code=status_code,
-        ):
-            yield message
-
-        yield ResponseStatus(code=status_code, is_error=True)
-
-    async def timeout_response(self, request_id: str) -> ResponseGenerator:
-        status_code = 408
-        for message in convert_object_to_asgi_messages(
-            f"Request {request_id} timed out after {self.request_timeout_s}s.",
             status_code=status_code,
         ):
             yield message
@@ -1013,7 +1010,10 @@ class HTTPProxy(GenericProxy):
             # any messages to the client yet. Header (including status code)
             # messages can only be sent once.
             if not response_started:
-                async for message in self.timeout_response(request_id):
+                for message in convert_object_to_asgi_messages(
+                    f"Request {request_id} timed out after {self.request_timeout_s}s.",
+                    status_code=408,
+                ):
                     yield message
         except asyncio.CancelledError:
             status = ResponseStatus(
@@ -1023,6 +1023,18 @@ class HTTPProxy(GenericProxy):
             logger.info(
                 f"Client for request {request_id} disconnected, cancelling request."
             )
+        except BackPressureError as e:
+            status_code = 503
+            status = ResponseStatus(
+                code=status_code,
+                is_error=True,
+                message=e.message,
+            )
+            for message in convert_object_to_asgi_messages(
+                e.message,
+                status_code=status_code,
+            ):
+                yield message
         except Exception as e:
             if isinstance(e, (RayActorError, RayTaskError)):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
