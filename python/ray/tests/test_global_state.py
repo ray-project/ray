@@ -488,7 +488,7 @@ def test_get_draining_nodes(ray_start_cluster):
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     # Drain the worker nodes.
-    is_accepted = gcs_client.drain_node(
+    is_accepted, _ = gcs_client.drain_node(
         worker1_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
@@ -496,7 +496,7 @@ def test_get_draining_nodes(ray_start_cluster):
     )
     assert is_accepted
 
-    is_accepted = gcs_client.drain_node(
+    is_accepted, _ = gcs_client.drain_node(
         worker2_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
