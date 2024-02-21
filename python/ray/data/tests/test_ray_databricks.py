@@ -76,8 +76,9 @@ def setup_mock(default_chunk_bytes, tmp_dir):
 
     MOCK_ENV = "_RAY_DATABRICKS_FROM_SPARK_READ_CHUNK_FN_PATH"
 
-    def unpersist_chunk(chunk_id):
-        os.remove(os.path.join(tmp_dir, chunk_id))
+    def unpersist_chunks(chunk_ids):
+        for chunk_id in chunk_ids:
+            os.remove(os.path.join(tmp_dir, chunk_id))
 
     with mock.patch(
         "ray.data.datasource.spark_datasource.validate_requirements",
@@ -87,7 +88,7 @@ def setup_mock(default_chunk_bytes, tmp_dir):
         persist_df_as_chunks,
     ), mock.patch(
         "ray.data.datasource.spark_datasource._unpersist_chunks",
-        unpersist_chunk,
+        unpersist_chunks,
     ), mock.patch(
         "ray.util.spark.utils.is_in_databricks_runtime",
         return_value=True,
@@ -98,6 +99,12 @@ def setup_mock(default_chunk_bytes, tmp_dir):
         MOCK_ENV: read_chunk_fn_path,
     }):
         yield
+
+
+@pytest.fixture(autouse=True)
+def shutdown_ray_per_test():
+    yield
+    ray.shutdown()
 
 
 def test_from_simple_databricks_spark_dataframe(tmp_path):
@@ -115,9 +122,7 @@ def test_from_simple_databricks_spark_dataframe(tmp_path):
     time.sleep(1)  # waiting for ray_ds GC
 
     # assert all chunk data files are removed from the tmp dir.
-    os.listdir(tmp_path.as_posix()) == ['read_chunk_fn.pkl']
-
-    ray.shutdown()
+    assert [file.name for file in tmp_path.iterdir()] == ['read_chunk_fn.pkl']
 
 
 def test_from_mul_cols_databricks_spark_dataframe(tmp_path):
@@ -131,7 +136,6 @@ def test_from_mul_cols_databricks_spark_dataframe(tmp_path):
         del ray_ds
 
     pd.testing.assert_frame_equal(result, fake_spark_df)
-    ray.shutdown()
 
 
 def test_large_size_row_databricks_spark_dataframe(tmp_path):
@@ -146,7 +150,6 @@ def test_large_size_row_databricks_spark_dataframe(tmp_path):
         del ray_ds
 
     pd.testing.assert_frame_equal(result, fake_spark_df)
-    ray.shutdown()
 
 
 if __name__ == "__main__":

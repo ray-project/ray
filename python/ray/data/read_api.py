@@ -2534,11 +2534,10 @@ def from_spark(
             override_num_blocks=parallelism,
         )
 
-        def patched_dataset_del(obj):
-            super(obj.__class__, obj).__del__()
+        def cleanup_hook():
             datasource.dispose_spark_cache()
 
-        dataset.__del__ = patched_dataset_del
+        dataset._cleanup_hook = cleanup_hook
 
         try:
             get_databricks_function("displayHTML")(
