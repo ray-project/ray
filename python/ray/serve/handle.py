@@ -334,7 +334,11 @@ class _DeploymentResponseBase:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         try:
-            return self._object_ref_future.result(timeout=_timeout_s)
+            obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
+            if not self._is_generator and isinstance(obj_ref_or_gen, ObjectRefGenerator):
+                return next(obj_ref_or_gen)
+            else:
+                return obj_ref_or_gen
         except concurrent.futures.TimeoutError:
             raise TimeoutError(
                 f"Failed to resolve to ObjectRef within {_timeout_s}s."
