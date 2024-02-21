@@ -190,7 +190,7 @@ py_test(
 # TODO(edoakes): remove this after it's on by default.
 py_test_module_list(
   name_suffix="_with_queue_len_cache_enabled",
-  env={"RAY_SERVE_ENABLE_QUEUE_LEN_CACHE": "1"},
+  env={"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "1"},
   files = [
     "test_autoscaling_policy.py",
     "test_handle.py",
