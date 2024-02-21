@@ -683,7 +683,7 @@ class TestReconciler:
 
         reconcile_config = InstanceReconcileConfig(
             request_status_timeout_s=5,
-            max_num_retry_request_to_allocate=2,
+            max_num_retry_request_to_allocate=1,  # max 1 retry.
         )
 
         instances = [
@@ -702,7 +702,7 @@ class TestReconciler:
                 Instance.REQUESTED,
                 status_times=[
                     (Instance.REQUESTED, 1 * s_to_ns),
-                    (Instance.REQUESTED, 2 * s_to_ns),
+                    (Instance.REQUESTED, 2 * s_to_ns),  # This is a retry.
                 ],
             ),
         ]

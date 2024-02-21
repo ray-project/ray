@@ -191,7 +191,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
+    serve._run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
         client._wait_for_application_running("app", timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
@@ -231,7 +231,7 @@ def test_controller_recover_initializing_actor(serve_instance):
         def __call__(self, request):
             return f"1|{os.getpid()}"
 
-    serve.run(V1.bind(), _blocking=False, name="app")
+    serve._run(V1.bind(), _blocking=False, name="app")
     ray.get(pending_init_indicator.remote())
 
     def get_actor_info(name: str):
