@@ -76,6 +76,10 @@ class Process {
   /// \param[in] pipe_to_stdin If true, it creates a pipe and redirect to child process'
   /// stdin. It is used for health checking from a child process.
   /// Child process can read stdin to detect when the current process dies.
+  /// \param[in] mask_sigchld If true, the SIGCHLD signal will be masked in the creation
+  /// of the subprocess. This is to avoid race condition in subreaper.cc. Note: if your
+  /// environment does not have a subreaper (e.g. anywhere other than Raylet) you should
+  /// set this to false.
   //
   // The subprocess is child of this process, so it's caller process's duty to handle
   // SIGCHLD signal and reap the zombie children.
@@ -88,7 +92,8 @@ class Process {
                    void *io_service,
                    std::error_code &ec,
                    const ProcessEnvironment &env = {},
-                   bool pipe_to_stdin = false);
+                   bool pipe_to_stdin = false,
+                   bool mask_sigchld = true);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
@@ -111,6 +116,8 @@ class Process {
   bool IsAlive() const;
   /// Convenience function to start a process in the background.
   /// \param pid_file A file to write the PID of the spawned process in.
+  ///
+  /// Note: `mask_sigchld` is set to False.
   static std::pair<Process, std::error_code> Spawn(
       const std::vector<std::string> &args,
       const std::string &pid_file = std::string(),

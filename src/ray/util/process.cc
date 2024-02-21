@@ -104,9 +104,6 @@ class ProcessFD {
                             std::error_code &ec,
                             const ProcessEnvironment &env,
                             bool pipe_to_stdin) {
-    // Masks sigchld until the process is spawned and registered to the owned children.
-    [[maybe_unused]] SigchldMasker masker;
-
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -350,9 +347,16 @@ Process::Process(const char *argv[],
                  void *io_service,
                  std::error_code &ec,
                  const ProcessEnvironment &env,
-                 bool pipe_to_stdin) {
+                 bool pipe_to_stdin,
+                 bool mask_sigchld) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
+
+  // Conditional RAII object to mask SIGCHLD in the creation of the subprocess.
+  std::unique_ptr<SigchldMasker> masker;
+  if (mask_sigchld) {
+    masker = std::make_unique<SigchldMasker>();
+  }
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
@@ -423,7 +427,8 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(), NULL, error, env);
+  Process proc(
+      &*argv.begin(), NULL, error, env, /*pipe_to_stdin=*/false, /*mask_sigchld=*/false);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
     file << proc.GetId() << std::endl;
