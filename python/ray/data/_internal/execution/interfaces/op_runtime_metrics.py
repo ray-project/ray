@@ -3,9 +3,6 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 from ray.data._internal.memory_tracing import trace_allocation
 
 if TYPE_CHECKING:
@@ -188,6 +185,10 @@ class OpRuntimeMetrics:
         # Ray Data launches multiple tasks per actor, but only one task runs at a
         # time per actor. So, the number of actually running tasks is capped by the
         # number of active actors.
+        from ray.data._internal.execution.operators.actor_pool_map_operator import (
+            ActorPoolMapOperator,
+        )
+
         num_tasks_running = self.num_tasks_running
         if isinstance(self._op, ActorPoolMapOperator):
             num_tasks_running = min(
