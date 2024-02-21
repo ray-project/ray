@@ -1,27 +1,8 @@
 import time
-from dataclasses import dataclass
+import uuid
 from typing import Dict, List, Optional, Set
 
 from ray.core.generated.instance_manager_pb2 import Instance
-
-
-@dataclass
-class InvalidInstanceStatusTransitionError(ValueError):
-    """Raised when an instance has an invalid status."""
-
-    # The instance manager instance id.
-    instance_id: str
-    # The current status of the instance.
-    cur_status: Instance.InstanceStatus
-    # The new status to be set to.
-    new_status: Instance.InstanceStatus
-
-    def __str__(self):
-        return (
-            f"Instance {self.instance_id} with current status "
-            f"{Instance.InstanceStatus.Name(self.cur_status)} "
-            f"cannot be set to {Instance.InstanceStatus.Name(self.new_status)}"
-        )
 
 
 class InstanceUtil:
@@ -41,18 +22,32 @@ class InstanceUtil:
     def new_instance(
         instance_id: str,
         instance_type: str,
-        request_id: str = "",
+        status: Instance.InstanceStatus,
+        details: str = "",
     ) -> Instance:
+        """
+        Returns a new instance with the given status.
+
+        Args:
+            instance_id: The instance id.
+            instance_type: The instance type.
+            status: The status of the new instance.
+            details: The details of the status transition.
+        """
         instance = Instance()
         instance.version = 0  # it will be populated by the underlying storage.
         instance.instance_id = instance_id
         instance.instance_type = instance_type
-        instance.launch_request_id = request_id
-        instance.status = Instance.QUEUED
-        InstanceUtil._record_status_transition(
-            instance, Instance.QUEUED, "created from InstanceUtil"
-        )
+        instance.status = status
+        InstanceUtil._record_status_transition(instance, status, details)
         return instance
+
+    @staticmethod
+    def random_instance_id() -> str:
+        """
+        Returns a random instance id.
+        """
+        return str(uuid.uuid4())
 
     @staticmethod
     def is_cloud_instance_allocated(instance_status: Instance.InstanceStatus) -> bool:
@@ -87,7 +82,7 @@ class InstanceUtil:
         instance: Instance,
         new_instance_status: Instance.InstanceStatus,
         details: str = "",
-    ):
+    ) -> bool:
         """Transitions the instance to the new state.
 
         Args:
@@ -95,20 +90,17 @@ class InstanceUtil:
             new_instance_status: The new status to transition to.
             details: The details of the transition.
 
-        Raises:
-            InvalidInstanceStatusTransitionError if the transition is not allowed.
+        Returns:
+            True if the status transition is successful, False otherwise.
         """
         if (
             new_instance_status
             not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
-            raise InvalidInstanceStatusTransitionError(
-                instance_id=instance.instance_id,
-                cur_status=instance.status,
-                new_status=new_instance_status,
-            )
+            return False
         instance.status = new_instance_status
         InstanceUtil._record_status_transition(instance, new_instance_status, details)
+        return True
 
     @staticmethod
     def _record_status_transition(

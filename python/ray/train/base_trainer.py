@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import warnings
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
@@ -66,6 +67,40 @@ class TrainingFailedError(RuntimeError):
         "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = -1` "
         "for unlimited retries."
     )
+
+
+def _train_coordinator_fn(
+    config: dict, trainer_cls: Type["BaseTrainer"], metadata: dict
+):
+    """This is the function that defines the logic of the Ray Train coordinator.
+    This is responsible for setting up a remote instance of the `trainer_cls`
+    (a different instance than the one calling `trainer.fit` on the driver!)
+    and running the training loop.
+    """
+    assert metadata is not None, metadata
+    # Propagate user metadata from the Trainer constructor.
+    _get_session().metadata = metadata
+
+    # config already contains merged values.
+    # Instantiate new Trainer in Trainable.
+    trainer = trainer_cls(**config)
+
+    # Get the checkpoint from Tune and pass it to workers later on.
+    checkpoint = ray.train.get_checkpoint()
+    if checkpoint:
+        # Set `starting_checkpoint` for auto-recovery fault-tolerance
+        # as well as manual restoration.
+        trainer.starting_checkpoint = checkpoint
+    # else: Train will restore from the user-provided
+    # `resume_from_checkpoint` == `starting_checkpoint`.
+
+    # Evaluate datasets if they are wrapped in a factory.
+    trainer.datasets = {
+        k: d() if callable(d) else d for k, d in trainer.datasets.items()
+    }
+
+    trainer.setup()
+    trainer.training_loop()
 
 
 @DeveloperAPI
@@ -656,38 +691,15 @@ class BaseTrainer(abc.ABC):
         scaling_config = self.scaling_config
         metadata = self.metadata
 
-        def train_func(config):
-            assert metadata is not None, metadata
-            # Propagate user metadata from the Trainer constructor.
-            _get_session().metadata = metadata
-
-            # config already contains merged values.
-            # Instantiate new Trainer in Trainable.
-            trainer = trainer_cls(**config)
-
-            # Get the checkpoint from Tune and pass it to workers later on.
-            checkpoint = ray.train.get_checkpoint()
-            if checkpoint:
-                # Set `starting_checkpoint` for auto-recovery fault-tolerance
-                # as well as manual restoration.
-                trainer.starting_checkpoint = checkpoint
-            # else: Train will restore from the user-provided
-            # `resume_from_checkpoint` == `starting_checkpoint`.
-
-            # Evaluate datasets if they are wrapped in a factory.
-            trainer.datasets = {
-                k: d() if callable(d) else d for k, d in self.datasets.items()
-            }
-
-            trainer.setup()
-            trainer.training_loop()
-
+        train_coordinator_fn = partial(
+            _train_coordinator_fn, trainer_cls=trainer_cls, metadata=metadata
+        )
         # Change the name of the training function to match the name of the Trainer
         # class. This will mean the Tune trial name will match the name of Trainer on
         # stdout messages and the results directory.
-        train_func.__name__ = trainer_cls.__name__
+        train_coordinator_fn.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func)
+        trainable_cls = wrap_function(train_coordinator_fn)
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
             from ray.data.context import DataContext
