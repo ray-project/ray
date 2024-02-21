@@ -291,7 +291,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         """Return whether a new task can be submitted to the given operator."""
-        if op not in self._eligible_ops:
+        if op not in self._op_limits:
             return True
         limit = copy.deepcopy(self._op_limits[op])
         # Exclude the reserved memory for outputs.
@@ -308,7 +308,7 @@ class ReservationOpResourceLimiter(OpResourceLimiter):
 
     def max_task_outputs_to_fetch(self, op: PhysicalOperator) -> int:
         """Return the maximum number of task outputs that can be fetched from the given operator."""
-        if op not in self._eligible_ops:
+        if op not in self._op_limits:
             return float("inf")
         return self._op_limits[op].object_store_memory
 
