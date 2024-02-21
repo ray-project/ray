@@ -70,16 +70,6 @@ py_library(
     ],
 )
 
-py_binary(
-    name = "process_docker_tags",
-    srcs = ["process_docker_tags.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    deps = [
-        ":docker_tags_lib",
-        ci_require("click"),
-    ],
-)
-
 py_test(
     name = "test_docker_tags_lib",
     size = "small",
