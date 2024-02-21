@@ -386,5 +386,34 @@ def test_query_tags_from_docker_with_oci_failure(mock_requests, mock_get_token):
         query_tags_from_docker_with_oci("test_namespace", "test_repo")
 
 
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.query_tags_from_docker_hub")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._write_to_file")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.copy_tag_to_aws_ecr")
+def test_backup_release_tags(mock_copy_tag, mock_write, mock_query_tags):
+    namespace = "test_namespace"
+    repository = "test_repository"
+    aws_ecr_repo = "test_aws_ecr_repo"
+    mock_query_tags.return_value = [
+        f"{namespace}/{repository}:2.0.{i}" for i in range(10)
+    ]
+
+    backup_release_tags(
+        namespace=namespace,
+        repository=repository,
+        aws_ecr_repo=aws_ecr_repo,
+    )
+
+    mock_query_tags.assert_called_once_with(
+        filter_func=lambda t: _is_release_tag(t, None),
+        namespace=namespace,
+        repository=repository,
+    )
+    assert mock_write.call_count == 1
+    assert mock_copy_tag.call_count == 10
+    for i, call_arg in enumerate(mock_copy_tag.call_args_list):
+        assert call_arg.kwargs["aws_ecr_repo"] == aws_ecr_repo
+        assert call_arg.kwargs["tag"] == f"{namespace}/{repository}:2.0.{i}"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
