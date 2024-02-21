@@ -866,7 +866,7 @@ def run_learning_tests_from_yaml(
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
 ):
-    return run_learning_tests_from_yaml(
+    return run_learning_tests_from_yaml_or_py(
         yaml_files,
         framework=framework,
         max_num_repeats=max_num_repeats,
