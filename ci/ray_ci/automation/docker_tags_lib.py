@@ -1,7 +1,7 @@
 import json
 import subprocess
-from datetime import datetime, timezone
-from typing import List, Optional, Callable, Set
+from datetime import datetime
+from typing import List, Optional, Callable
 import os
 import requests
 from dateutil import parser
@@ -204,19 +204,19 @@ def query_tags_from_docker_hub(
 
         # Stop querying if Docker Hub API returns an error
         if response.status_code != 200:
-            logger.info(
-                f"Failed to query tags from Docker Hub: Error: {response_json}"
-            )
+            logger.info(f"Failed to query tags from Docker Hub: Error: {response_json}")
             return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
         result = response_json["results"]
         tags = [tag["name"] for tag in result]
-        filtered_tags_page = list(filter(filter_func, tags)) # Filter tags
+        filtered_tags_page = list(filter(filter_func, tags))  # Filter tags
 
         # Add enough tags to not exceed num_tags if num_tags is specified
         if num_tags:
             if len(filtered_tags) + len(filtered_tags_page) > num_tags:
-                filtered_tags.extend(filtered_tags_page[: num_tags - len(filtered_tags)])
+                filtered_tags.extend(
+                    filtered_tags_page[: num_tags - len(filtered_tags)]
+                )
                 break
         filtered_tags.extend(filtered_tags_page)
 

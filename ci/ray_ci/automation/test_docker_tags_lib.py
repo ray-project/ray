@@ -2,7 +2,7 @@ from unittest import mock
 import sys
 import os
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import pytest
 
 from ci.ray_ci.automation.docker_tags_lib import (
@@ -272,6 +272,7 @@ def test_query_tags_from_docker_hub(
 
     assert mock_requests.call_count == len(tags)
     assert queried_tags == expected_tags
+
 
 # TODO: use actual filter functions for real use case once they are merged
 @pytest.mark.parametrize(
