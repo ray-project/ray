@@ -5,6 +5,7 @@ import ray.train
 from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.lightgbm import LightGBMConfig
+from ray.train.lightgbm.config import NETWORK_PARAMS_KEY
 from ray.train.trainer import GenDataset
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ def get_network_params() -> dict:
         )
         return {}
 
-    network_params = session.get_state(LightGBMConfig.NETWORK_PARAMS_KEY)
+    network_params = session.get_state(NETWORK_PARAMS_KEY)
     assert network_params is not None, (
         "`LightGBMConfig.backend_cls` must set `LightGBMConfig.NETWORK_PARAMS_KEY` "
         "in the session state in `on_training_start`. "

@@ -9,6 +9,9 @@ from ray.train.backend import Backend, BackendConfig
 logger = logging.getLogger(__name__)
 
 
+NETWORK_PARAMS_KEY = "LIGHTGBM_NETWORK_PARAMS"
+
+
 @dataclass
 class LightGBMConfig(BackendConfig):
     """Configuration for LightGBM distributed data-parallel training setup.
@@ -20,8 +23,6 @@ class LightGBMConfig(BackendConfig):
     that Ray Train sets up for you:
     https://lightgbm.readthedocs.io/en/latest/Parameters.html#network-parameters
     """
-
-    NETWORK_PARAMS_KEY = "LIGHTGBM_NETWORK_PARAMS"
 
     @property
     def backend_cls(self):
@@ -49,7 +50,7 @@ class _LightGBMBackend(Backend):
 
             session = get_session()
             session.set_state(
-                LightGBMConfig.NETWORK_PARAMS_KEY,
+                NETWORK_PARAMS_KEY,
                 dict(
                     num_machines=num_machines,
                     local_listen_port=local_listen_port,
