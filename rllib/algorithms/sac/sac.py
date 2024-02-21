@@ -187,7 +187,10 @@ class SACConfig(AlgorithmConfig):
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
-                postprocessed to become sa[discounted sum of R][s t+n] tuples.
+                postprocessed to become sa[discounted sum of R][s t+n] tuples. An
+                integer will be interpreted as a fixed n-step value. In case of a tuple
+                the n-step value will be drawn for each sample in the train batch from
+                a uniform distribution over the  interval defined by the 'n-step'-tuple.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -327,15 +330,23 @@ class SACConfig(AlgorithmConfig):
         super().validate()
 
         # Check rollout_fragment_length to be compatible with n_step.
+        if isinstance(self.n_step, tuple):
+            min_rollout_fragment_length = self.n_step[1]
+        else:
+            min_rollout_fragment_length = self.n_step
+
         if (
             not self.in_evaluation
             and self.rollout_fragment_length != "auto"
-            and self.rollout_fragment_length < self.n_step
+            and self.rollout_fragment_length
+            < min_rollout_fragment_length  # (self.n_step or 1)
         ):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
-                f"smaller than `n_step` ({self.n_step})! "
-                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+                f"smaller than needed for `n_step` ({self.n_step})! If `n_step` is "
+                f"an integer try setting `rollout_fragment_length={self.n_step}`. If "
+                "`n_step` is a tuple, try setting "
+                f"`rollout_fragment_length={self.n_step[1]}`."
             )
 
         if self.use_state_preprocessor != DEPRECATED_VALUE:
@@ -371,7 +382,7 @@ class SACConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step
+            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
         else:
             return self.rollout_fragment_length
 

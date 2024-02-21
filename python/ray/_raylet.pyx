@@ -2878,12 +2878,14 @@ cdef class GcsClient:
         cdef:
             int64_t timeout_ms = -1
             c_bool is_accepted = False
+            c_string rejection_reason_message
         with nogil:
             check_status(self.inner.get().DrainNode(
                 node_id, reason, reason_message,
-                deadline_timestamp_ms, timeout_ms, is_accepted))
+                deadline_timestamp_ms, timeout_ms, is_accepted,
+                rejection_reason_message))
 
-        return is_accepted
+        return (is_accepted, rejection_reason_message.decode())
 
     @_auto_reconnect
     def drain_nodes(self, node_ids, timeout=None):
