@@ -92,11 +92,9 @@ class XGBoostTrainer(DataParallelTrainer):
         xgboost_config: The configuration for setting up the distributed xgboost
             backend. Defaults to using the "rabit" backend.
             See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. All non-training datasets will
-            be used as separate validation sets, each reporting a separate metric.
+        datasets: The Ray Datasets to use for training and validation.
         dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Dataset are split equally across workers.
+            By default, all the Ray Datasets are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
