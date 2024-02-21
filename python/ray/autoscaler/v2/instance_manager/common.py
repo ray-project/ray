@@ -131,6 +131,7 @@ class InstanceUtil:
         Returns True if the instance is in a status where the ray process is
         running on the cloud instance.
         """
+        assert instance_status != Instance.UNKNOWN
         return instance_status in {
             Instance.RAY_RUNNING,
             Instance.RAY_STOPPING,
@@ -143,6 +144,7 @@ class InstanceUtil:
         Returns True if the instance is in a status where the ray process is
         pending to be started on the cloud instance.
         """
+        assert instance_status != Instance.UNKNOWN
         return instance_status in {
             Instance.QUEUED,
             Instance.REQUESTED,

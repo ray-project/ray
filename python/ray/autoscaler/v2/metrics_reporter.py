@@ -1,10 +1,10 @@
 from collections import defaultdict
 from typing import Dict, List
+
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import NodeType
-
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 
 

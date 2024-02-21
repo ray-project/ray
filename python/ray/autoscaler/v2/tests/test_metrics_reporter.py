@@ -1,13 +1,12 @@
-import logging
 import os
 import sys
 from typing import List
 
 import pytest
-from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 
-from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
+from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.tests.util import create_instance
 from ray.core.generated.instance_manager_pb2 import Instance
 
