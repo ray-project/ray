@@ -460,11 +460,15 @@ def test_multiplexed_multiple_replicas(serve_instance):
             return os.getpid()
 
     handle = serve.run(Model.bind()).options(multiplexed_model_id="1")
-    pid1_ref = handle.remote()._to_object_ref_sync()
-    # Second request should be sent to the second replica
-    pid2_ref = handle.remote()._to_object_ref_sync()
-    signal.send.remote()
-    assert ray.get(pid1_ref) != ray.get(pid2_ref)
+
+    # Each request should go to different replicas.
+    pid1_ref = handle.remote()
+    pid2_ref = handle.remote()
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 2)
+
+    # Unblock both requests to finish.
+    ray.get(signal.send.remote())
+    assert pid1_ref.result() != pid2_ref.result()
 
     wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="1")
 
