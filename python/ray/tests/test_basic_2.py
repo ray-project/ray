@@ -823,7 +823,18 @@ print(ray.get(my_file.remote()))
         assert "/tmp/ray/session_" in output, output
 
 
-def test_worker_use_working_dir_path_job(shutdown_only):
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 1,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_worker_use_working_dir_path_job(ray_start_cluster):
     """
     Same test as `test_worker_use_working_dir_path` but in job submission.
     """
