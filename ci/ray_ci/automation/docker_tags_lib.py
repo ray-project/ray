@@ -8,7 +8,7 @@ from dateutil import parser
 
 from ci.ray_ci.utils import logger
 
-
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 class DockerHubRateLimitException(Exception):
     """
     Exception for Docker Hub rate limit exceeded.
@@ -307,13 +307,13 @@ def query_tags_from_docker_hub(
         with format namespace/repository:tag.
     """
     filtered_tags = []
-    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page=250&page_size=100"  # noqa E501
+    page_count = 1
+    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count}&page_size=100"  # noqa E501
     token = get_docker_hub_auth_token()
     headers = {
         "Authorization": f"Bearer {token}",
     }
     tag_count = 0
-    page_count = 1
     while url:
         logger.info(f"Querying page {page_count}")
         response = requests.get(url, headers=headers)
@@ -337,6 +337,7 @@ def query_tags_from_docker_hub(
             break
         filtered_tags.extend(filtered_tags_page)
         tag_count += len(filtered_tags_page)
+        logger.info(f"Tag count: {tag_count}")
     return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
 
@@ -372,6 +373,7 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
     return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
 
 def _write_to_file(file_path: str, content: List[str]) -> None:
+    file_path = os.path.join(bazel_workspace_dir, file_path)
     logger.info(f"Writing to {file_path}......")
     with open(file_path, "w") as f:
         f.write("\n".join(content))
