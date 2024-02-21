@@ -38,7 +38,7 @@ class AuthTokenException(Exception):
         super().__init__(f"Failed to retrieve auth token from {message}.")
 
 
-def get_docker_registry_auth_token(namespace: str, repository: str) -> Optional[str]:
+def get_docker_auth_token(namespace: str, repository: str) -> Optional[str]:
     """
     Retrieve Docker Registry token.
 
@@ -47,7 +47,7 @@ def get_docker_registry_auth_token(namespace: str, repository: str) -> Optional[
         repository: Docker repository
 
     Returns:
-        Auth token for Docker Registry.
+        Auth token for Docker.
     """
     service, scope = (
         "registry.docker.io",
@@ -56,7 +56,7 @@ def get_docker_registry_auth_token(namespace: str, repository: str) -> Optional[
     auth_url = f"https://auth.docker.io/token?service={service}&scope={scope}"
     response = requests.get(auth_url)
     if response.status_code != 200:
-        raise AuthTokenException(f"Docker Registry. Error code: {response.status_code}")
+        raise AuthTokenException(f"Docker. Error code: {response.status_code}")
     token = response.json().get("token", None)
     return token
 
@@ -241,9 +241,9 @@ def _call_crane_ls(namespace: str, repository: str):
         return f"Error: {e.output}"
 
 
-def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str]:
+def query_tags_from_docker_with_crane(namespace: str, repository: str) -> List[str]:
     """
-    Query all repo tags from Docker Registry.
+    Query all repo tags from Docker using Crane.
 
     Args:
         namespace: Docker namespace
@@ -252,7 +252,7 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
     Returns:
         List of tags from Docker Registry in format namespace/repository:tag.
     """
-    get_docker_registry_auth_token(namespace=namespace, repository=repository)
+    get_docker_auth_token(namespace=namespace, repository=repository)
     result = _call_crane_ls(namespace=namespace, repository=repository)
     if "Error" in result:
         raise Exception(f"Failed to query tags from Docker Registry: {result}")

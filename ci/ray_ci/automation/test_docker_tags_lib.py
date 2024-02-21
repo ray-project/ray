@@ -6,13 +6,13 @@ from datetime import datetime, timezone
 import pytest
 
 from ci.ray_ci.automation.docker_tags_lib import (
-    get_docker_registry_auth_token,
+    get_docker_auth_token,
     get_docker_hub_auth_token,
     get_image_creation_time,
     delete_tag,
     list_recent_commit_short_shas,
     query_tags_from_docker_hub,
-    query_tags_from_docker_registry,
+    query_tags_from_docker_with_crane,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -20,14 +20,14 @@ from ci.ray_ci.automation.docker_tags_lib import (
 
 
 @mock.patch("requests.get")
-def test_get_docker_registry_auth_token(mock_requests):
+def test_get_docker_auth_token(mock_requests):
     namespace = "test_namespace"
     repository = "test_repository"
     mock_requests.return_value = mock.Mock(
         status_code=200, json=mock.MagicMock(return_value={"token": "test_token"})
     )
 
-    token = get_docker_registry_auth_token(namespace, repository)
+    token = get_docker_auth_token(namespace, repository)
 
     assert mock_requests.call_count == 1
     assert (
@@ -38,14 +38,14 @@ def test_get_docker_registry_auth_token(mock_requests):
 
 
 @mock.patch("requests.get")
-def test_get_docker_registry_auth_token_no_token(mock_requests):
+def test_get_docker_auth_token_no_token(mock_requests):
     namespace = "test_namespace"
     repository = "test_repository"
     mock_requests.return_value = mock.Mock(
         status_code=200, json=mock.MagicMock(return_value={})
     )
 
-    token = get_docker_registry_auth_token(namespace, repository)
+    token = get_docker_auth_token(namespace, repository)
 
     assert mock_requests.call_count == 1
     assert (
@@ -56,7 +56,7 @@ def test_get_docker_registry_auth_token_no_token(mock_requests):
 
 
 @mock.patch("requests.get")
-def test_get_docker_registry_auth_token_failure(mock_requests):
+def test_get_docker_auth_token_failure(mock_requests):
     namespace = "test_namespace"
     repository = "test_repository"
     mock_requests.return_value = mock.Mock(
@@ -64,7 +64,7 @@ def test_get_docker_registry_auth_token_failure(mock_requests):
     )
 
     with pytest.raises(AuthTokenException, match="Docker Registry. Error code: 400"):
-        get_docker_registry_auth_token(namespace, repository)
+        get_docker_auth_token(namespace, repository)
 
 
 @mock.patch("requests.post")
@@ -312,13 +312,13 @@ def test_query_tags_from_docker_hub_failure(
     assert queried_tags == expected_tags
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_registry_auth_token")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_auth_token")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_ls")
-def test_query_tags_from_docker_registry(mock_call_crane_ls, mock_get_token):
+def test_query_tags_from_docker_with_crane(mock_call_crane_ls, mock_get_token):
     mock_get_token.return_value = "test_token"
     mock_call_crane_ls.return_value = "test_tag1\ntest_tag2\ntest_tag3"
 
-    tags = query_tags_from_docker_registry("test_namespace", "test_repo")
+    tags = query_tags_from_docker_with_crane("test_namespace", "test_repo")
     mock_call_crane_ls.assert_called_once_with(
         namespace="test_namespace", repository="test_repo"
     )
@@ -329,14 +329,14 @@ def test_query_tags_from_docker_registry(mock_call_crane_ls, mock_get_token):
     ]
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_registry_auth_token")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_auth_token")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_ls")
-def test_query_tags_from_docker_registry_failure(mock_call_crane_ls, mock_get_token):
+def test_query_tags_from_docker_with_crane_failure(mock_call_crane_ls, mock_get_token):
     mock_get_token.return_value = "test_token"
     mock_call_crane_ls.return_value = "Error: Failed to list tags."
 
     with pytest.raises(Exception, match="Failed to list tags."):
-        query_tags_from_docker_registry("test_namespace", "test_repo")
+        query_tags_from_docker_with_crane("test_namespace", "test_repo")
     mock_call_crane_ls.assert_called_once_with(
         namespace="test_namespace", repository="test_repo"
     )
