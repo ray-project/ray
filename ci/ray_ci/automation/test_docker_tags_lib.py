@@ -22,7 +22,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     DockerHubRateLimitException,
 )
 
-
+print("test")
 @mock.patch("requests.get")
 def test_get_docker_registry_auth_token(mock_requests):
     namespace = "test_namespace"
