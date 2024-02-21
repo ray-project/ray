@@ -334,7 +334,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             PARALLELIZE_META_FETCH_THRESHOLD,
             RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
             RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK,
-            RETRY_MAX_INTERVAL_FOR_META_FETCH_TASK,
+            RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK,
             _fetch_metadata,
             _fetch_metadata_serialization_wrapper,
             _SerializedFragment,
@@ -351,7 +351,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
                     # Ensure that retry settings are propagated to remote tasks.
                     retry_match=RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
                     retry_max_attempts=RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK,
-                    retry_max_interval=RETRY_MAX_INTERVAL_FOR_META_FETCH_TASK,
+                    retry_max_interval=RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK,
                 )
 
             return list(

@@ -61,8 +61,8 @@ NUM_CPUS_FOR_META_FETCH_TASK = 0.5
 RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
 # Maximum number of retries for metadata prefetching task due to transient errors.
 RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
-# Maximum interval in seconds between retries for metadata prefetching task.
-RETRY_MAX_INTERVAL_S_FOR_META_FETCH_TASK = 64
+# Maximum retry back-off interval in seconds for failed metadata prefetching task.
+RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -540,10 +540,10 @@ def _fetch_metadata_serialization_wrapper(
             "```\n"
             "ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
             "```\n"
-            "To increase the maximum retry interval, configure "
-            "`RETRY_MAX_INTERVAL_S_FOR_META_FETCH_TASK`. For example:\n"
+            "To increase the maximum retry backoff interval, configure "
+            "`RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK`. For example:\n"
             "```\n"
-            "ray.data.datasource.parquet_datasource.RETRY_MAX_INTERVAL_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
+            "ray.data.datasource.parquet_datasource.RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
             "```\n"
             "If the error continues to occur, you can also try decresasing the "
             "concurency of metadata fetching tasks by setting "
