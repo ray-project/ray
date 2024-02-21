@@ -320,7 +320,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&pool_mutex_);
-  auto not_in_copy = [this](const std::vector<ObjectID> &object_ids) {
+  auto not_in_copy = [this, object_ids]() {
     pool_mutex_.AssertReaderHeld();
     for (const auto &object_id : object_ids) {
       if (in_copy_object_ids_.count(object_id) > 0) {
@@ -329,7 +329,7 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
     }
     return true;
   };
-  pool_mutex_.Await(absl::Condition(&not_in_copy, object_ids));
+  pool_mutex_.Await(absl::Condition(&not_in_copy));
   RAY_CHECK_OK(store_client_->Delete(object_ids));
 }
 
