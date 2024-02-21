@@ -45,7 +45,9 @@ def do_exec_compiled_task(
         inputs: The arguments to the task. Arguments that are not Channels will
             get passed through to the actor method. If the argument is a channel,
             it will be replaced by the value read from the channel before the
-            method execute.
+            method execute. Note that if there are multiple arguments, they will
+            still be passed through a single input channel, with different read
+            index marking which part of read result corresponds to that argument.
         actor_method_name: The name of the actual actor method to execute in
             the loop.
     """
@@ -269,7 +271,7 @@ class CompiledDAG:
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
             if len(task.downstream_node_idxs) == 0:
-                # for multi-arg scenario, input args are passed through
+                # For multi-arg scenario, input args are passed through
                 # InputAttributeNodes, InputNode is not connected to any node
                 #                             ┌───────────────────────────────────┐
                 #                             │           InputNode               │
