@@ -231,7 +231,7 @@ def _make_docker_hub_response(
     ("filter_func", "tags", "expected_tags"),
     [
         (
-            lambda t: t.startswith("a1s3d3"),
+            lambda t: t.startswith("a1s2d3"),
             ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py39-cu123"],
             ["a1s2d3-py38"],
         ),
@@ -267,7 +267,7 @@ def test_query_tags_from_docker_hub(mock_requests, filter_func, tags, expected_t
     ("filter_func", "tags", "expected_tags"),
     [
         (
-            lambda t: t.startswith("a1s3d3"),
+            lambda t: t.startswith("a1s2d3"),
             ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py39-cu123"],
             ["a1s2d3-py38"],
         ),
