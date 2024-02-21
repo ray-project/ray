@@ -576,7 +576,7 @@ def test_autoscaling_policy_serializations(policy):
     """
     autoscaling_config = AutoscalingConfig()
     if policy:
-        autoscaling_config = AutoscalingConfig(policy=policy)
+        autoscaling_config = AutoscalingConfig(_policy=policy)
 
     config = DeploymentConfig.from_default(autoscaling_config=autoscaling_config)
     deserialized_autoscaling_policy = DeploymentConfig.from_proto_bytes(
@@ -597,7 +597,7 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
     """
     policy = "i.dont.exist:fake_policy"
     with pytest.raises(ModuleNotFoundError):
-        AutoscalingConfig(policy=policy)
+        AutoscalingConfig(_policy=policy)
 
 
 def test_default_autoscaling_policy_import_path():
