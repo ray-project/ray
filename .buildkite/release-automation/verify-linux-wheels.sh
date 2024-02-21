@@ -5,8 +5,8 @@ set -euo pipefail
 set -x
 
 export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
-export RAY_VERSION="${RAY_VERSION:-2.9.1}"
-export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
+export RAY_VERSION="${RAY_VERSION:-2.9.3}"
+export RAY_HASH="${RAY_HASH:-62655e11ed76509b78654b60be67bc59f8f3460a}"
 
 export PATH="/root/miniconda3/bin:$PATH"
 
