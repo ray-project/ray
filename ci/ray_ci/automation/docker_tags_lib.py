@@ -351,9 +351,8 @@ def query_tags_from_docker_with_crane(namespace: str, repository: str) -> List[s
 def backup_release_tags(
     namespace: str,
     repository: str,
-    release_versions: List[str],
     aws_ecr_repo: str,
-    num_tags: int,
+    release_versions: Optional[List[str]] = None,
 ) -> None:
     """
     Backup release tags to AWS ECR.
@@ -365,7 +364,6 @@ def backup_release_tags(
         filter_func=lambda t: _is_release_tag(t, release_versions),
         namespace=namespace,
         repository=repository,
-        num_tags=num_tags,
     )
     _write_to_file("release_tags.txt", docker_hub_tags)
     for t in docker_hub_tags:
