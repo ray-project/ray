@@ -146,7 +146,8 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     // Update the state from REFERENCED To SEALED before releasing the lock to ensure
     // that no other thread sees a REFERENCED state.
     it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
-    // Increment the number of inflight copies to ensure Abort does not release the buffer.
+    // Increment the number of inflight copies to ensure Abort
+    // does not release the buffer.
     it->second.num_inflight_copies++;
   }
 
@@ -180,7 +181,6 @@ void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
 }
 
 void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
-  pool_mutex_.Unlock();
   auto no_copy_inflight = [this, object_id]() {
     pool_mutex_.AssertReaderHeld();
     auto it = create_buffer_state_.find(object_id);
