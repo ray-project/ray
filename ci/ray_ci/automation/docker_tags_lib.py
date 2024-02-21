@@ -313,7 +313,9 @@ def query_tags_from_docker_hub(
         "Authorization": f"Bearer {token}",
     }
     tag_count = 0
+    page_count = 1
     while url:
+        logger.info(f"Querying page {page_count}")
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
             logger.info(
@@ -324,6 +326,7 @@ def query_tags_from_docker_hub(
 
         response_json = response.json()
         url = response_json["next"]
+        page_count += 1
         result = response_json["results"]
         tags = [tag["name"] for tag in result]
         filtered_tags_page = list(filter(filter_func, tags))
@@ -368,6 +371,9 @@ def query_tags_from_docker_registry(namespace: str, repository: str) -> List[str
         raise Exception(f"Failed to query tags from Docker Registry: {result}")
     return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
 
+def _write_to_file(file_path: str, content: List[str]) -> None:
+    with open(file_path, "w") as f:
+        f.write("\n".join(content))
 
 def backup_release_tags(
     namespace: str,
@@ -387,6 +393,7 @@ def backup_release_tags(
         namespace=namespace,
         repository=repository,
     )
+    _write_to_file("release_tags.txt", docker_hub_tags)
     for t in docker_hub_tags:
         copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
 
