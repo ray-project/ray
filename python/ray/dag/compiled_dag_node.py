@@ -16,7 +16,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
 )
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
@@ -115,6 +115,7 @@ def do_cancel_compiled_task(self):
     self._output_writer.close()
 
 
+@PublicAPI(stability="alpha")
 class AwaitableDAGOutput:
     def __init__(self, fut: asyncio.Future, ReaderInterface: ReaderInterface):
         self._fut = fut

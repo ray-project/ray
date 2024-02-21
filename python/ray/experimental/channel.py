@@ -5,7 +5,7 @@ import logging
 from typing import Any, List, Optional
 
 import ray
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -19,7 +19,7 @@ def _create_channel_ref(
     """
     Create a channel that can be read and written by co-located Ray processes.
 
-    The channel has no buffer, so the writer will block until ReaderInterface(s) have
+    The channel has no buffer, so the writer will block until reader(s) have
     read the previous value.
 
     Args:
@@ -64,7 +64,7 @@ class Channel:
         Create a channel that can be read and written by co-located Ray processes.
 
         Anyone may write to or read from the channel. The channel has no
-        buffer, so the writer will block until ReaderInterface(s) have read the previous
+        buffer, so the writer will block until reader(s) have read the previous
         value.
 
         Args:
@@ -192,6 +192,7 @@ class Channel:
 
 
 # Interfaces for channel I/O.
+@DeveloperAPI
 class ReaderInterface:
     def __init__(self, input_channels: List[Channel]):
         if isinstance(input_channels, List):
@@ -233,6 +234,7 @@ class ReaderInterface:
             channel.close()
 
 
+@DeveloperAPI
 class SynchronousReader(ReaderInterface):
     def __init__(self, input_channels: List[Channel]):
         super().__init__(input_channels)
@@ -248,6 +250,7 @@ class SynchronousReader(ReaderInterface):
             c.end_read()
 
 
+@DeveloperAPI
 class AwaitableBackgroundReader(ReaderInterface):
     """
     Asyncio-compatible channel reader.
@@ -295,6 +298,7 @@ class AwaitableBackgroundReader(ReaderInterface):
         super().close()
 
 
+@DeveloperAPI
 class WriterInterface:
     def __init__(self, output_channel: Channel):
         self._output_channel = output_channel
@@ -315,6 +319,7 @@ class WriterInterface:
         self._output_channel.close()
 
 
+@DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
         pass
@@ -324,6 +329,7 @@ class SynchronousWriter(WriterInterface):
         self._num_writes += 1
 
 
+@DeveloperAPI
 class AwaitableBackgroundWriter(WriterInterface):
     def __init__(self, output_channel: Channel, max_queue_size: Optional[int] = None):
         super().__init__(output_channel)
