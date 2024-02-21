@@ -126,6 +126,31 @@ class InstanceUtil:
         }
 
     @staticmethod
+    def is_ray_running(instance_status: Instance.InstanceStatus) -> bool:
+        """
+        Returns True if the instance is in a status where the ray process is
+        running on the cloud instance.
+        """
+        return instance_status in {
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOPPING,
+            Instance.RAY_STOP_REQUESTED,
+        }
+
+    @staticmethod
+    def is_ray_pending(instance_status: Instance.InstanceStatus) -> bool:
+        """
+        Returns True if the instance is in a status where the ray process is
+        pending to be started on the cloud instance.
+        """
+        return instance_status in {
+            Instance.QUEUED,
+            Instance.REQUESTED,
+            Instance.ALLOCATED,
+            Instance.RAY_INSTALLING,
+        }
+
+    @staticmethod
     def set_status(
         instance: Instance,
         new_instance_status: Instance.InstanceStatus,

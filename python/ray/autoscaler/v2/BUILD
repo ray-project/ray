@@ -150,3 +150,11 @@ py_test(
     tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_metrics_reporter",
+    size = "small",
+    srcs = ["tests/test_metrics_reporter.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)

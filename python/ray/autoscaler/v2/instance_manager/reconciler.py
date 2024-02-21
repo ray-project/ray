@@ -23,6 +23,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
+from ray.autoscaler.v2.metric_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.core.generated.autoscaler_pb2 import (
@@ -201,6 +202,7 @@ class Reconciler:
         cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
         ray_install_errors: Optional[List[RayInstallError]] = None,
         ray_stop_errors: Optional[List[RayStopError]] = None,
+        metric_reporter: Optional[AutoscalerMetricsReporter] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
@@ -226,6 +228,8 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
+            metric_reporter: The metric reporter to report the autoscaler metrics.
+            _logger: The logger (for testing).
 
         """
         cloud_provider_errors = cloud_provider_errors or []
@@ -255,6 +259,13 @@ class Reconciler:
             autoscaling_config=autoscaling_config,
             _logger=_logger,
         )
+
+        Reconciler._report_metrics(
+            instance_manager=instance_manager,
+            autoscaling_config=autoscaling_config,
+            metric_reporter=metric_reporter,
+        )
+
         return autoscaling_state
 
     @staticmethod
@@ -1577,3 +1588,18 @@ class Reconciler:
             f"Terminating leaked cloud instances: {leaked_cloud_instance_ids}: no"
             " matching instance found in instance manager."
         )
+
+    @staticmethod
+    def _report_metrics(
+        instance_manager: InstanceManager,
+        autoscaling_config: AutoscalingConfig,
+        metric_reporter: Optional[AutoscalerMetricsReporter] = None,
+    ):
+        if not metric_reporter:
+            return
+
+        instances, _ = Reconciler._get_im_instances(instance_manager)
+        node_type_configs = autoscaling_config.get_node_type_configs()
+
+        metric_reporter.report_instances(instances)
+        metric_reporter.report_resources(instances, node_type_configs)
