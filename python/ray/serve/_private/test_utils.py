@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import grpc
 import pytest
@@ -14,6 +14,7 @@ from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
@@ -125,7 +126,7 @@ def check_num_replicas_gte(
 ) -> int:
     """Check if num replicas is >= target."""
 
-    assert get_num_running_replicas(name) >= target
+    assert get_num_running_replicas(name, app_name) >= target
     return True
 
 
@@ -134,7 +135,7 @@ def check_num_replicas_eq(
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_running_replicas(name) == target
+    assert get_num_running_replicas(name, app_name) == target
     return True
 
 
@@ -143,7 +144,50 @@ def check_num_replicas_lte(
 ) -> int:
     """Check if num replicas is <= target."""
 
-    assert get_num_running_replicas(name) <= target
+    assert get_num_running_replicas(name, app_name) <= target
+    return True
+
+
+def check_replica_counts(
+    controller: ActorHandle,
+    deployment_id: DeploymentID,
+    total: Optional[int] = None,
+    by_state: Optional[List[Tuple[ReplicaState, int, Callable]]] = None,
+):
+    """Uses _dump_replica_states_for_testing to check replica counts.
+
+    Args:
+        controller: A handle to the Serve controller.
+        deployment_id: The deployment to check replica counts for.
+        total: The total number of expected replicas for the deployment.
+        by_state: A list of tuples of the form
+            (replica state, number of replicas, filter function).
+            Used for more fine grained checks.
+    """
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_id)
+    )
+
+    if total is not None:
+        replica_counts = {
+            state: len(replicas.get([state]))
+            for state in ALL_REPLICA_STATES
+            if replicas.get([state])
+        }
+        assert replicas.count() == total, replica_counts
+
+    if by_state is not None:
+        for state, count, check in by_state:
+            assert isinstance(state, ReplicaState)
+            assert isinstance(count, int) and count >= 0
+            if check:
+                filtered = {r for r in replicas.get(states=[state]) if check(r)}
+                curr_count = len(filtered)
+            else:
+                curr_count = replicas.count(states=[state])
+            msg = f"Expected {count} for state {state} but got {curr_count}."
+            assert curr_count == count, msg
+
     return True
 
 
