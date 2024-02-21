@@ -146,6 +146,7 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     // Update the state from REFERENCED To SEALED before releasing the lock to ensure
     // that no other thread sees a REFERENCED state.
     it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
+    in_copy_object_ids_.insert(object_id);
   }
 
   RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
@@ -157,6 +158,8 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   {
     // Ensure the process of object_id Seal and Release is mutex guarded
     absl::MutexLock lock(&pool_mutex_);
+    in_copy_object_ids_.erase(object_id);
+
     auto it = create_buffer_state_.find(object_id);
     if (it == create_buffer_state_.end()) {
       RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
@@ -317,6 +320,18 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&pool_mutex_);
+  
+  auto not_in_copy = [this](const std::vector<ObjectID> &object_ids) {
+    pool_mutex_.AssertReaderHeld();
+    for (const auto &object_id : object_ids) {
+      if (in_copy_object_ids_.count(object_id) > 0) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  pool_mutex_.Await(absl::Condition(&not_in_copy, object_ids));
   RAY_CHECK_OK(store_client_->Delete(object_ids));
 }
 

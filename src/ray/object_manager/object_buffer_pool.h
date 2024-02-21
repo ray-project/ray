@@ -214,7 +214,9 @@ class ObjectBufferPool {
   /// The state of a buffer that's currently being used.
   absl::flat_hash_map<ray::ObjectID, CreateBufferState> create_buffer_state_
       ABSL_GUARDED_BY(pool_mutex_);
-
+  /// Set of object_ids currently being written to.
+  absl::flat_hash_set<ray::ObjectID> in_copy_object_ids_ ABSL_GUARDED_BY(pool_mutex_);
+  
   /// Plasma client pool.
   std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
 
