@@ -195,13 +195,14 @@ def query_tags_from_docker_hub(
         tags = [tag["name"] for tag in result]
         filtered_tags_page = list(filter(filter_func, tags))  # Filter tags
 
-        # Add enough tags to not exceed num_tags if num_tags is specified
+        # if num_tags is specified, add enough to not exceed num_tags
         if num_tags:
             if len(filtered_tags) + len(filtered_tags_page) > num_tags:
                 filtered_tags.extend(
                     filtered_tags_page[: num_tags - len(filtered_tags)]
                 )
                 break
+
         filtered_tags.extend(filtered_tags_page)
 
         logger.info(f"Tag count: {len(filtered_tags)}")

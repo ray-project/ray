@@ -209,6 +209,32 @@ def test_delete_tag_failure_rate_limit_exceeded(mock_requests):
     }
 
 
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
+def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
+    tag = "test_namespace/test_repository:test_tag"
+    mock_call_crane_cp.return_value = (
+        "aws-ecr/name/repo:test_tag: digest: sha256:sample-sha256 size: 1788"
+    )
+
+    is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
+    mock_call_crane_cp.assert_called_once_with(
+        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
+    )
+    assert is_copied is True
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
+def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
+    tag = "test_namespace/test_repository:test_tag"
+    mock_call_crane_cp.return_value = "Error: Failed to copy tag."
+
+    is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
+    mock_call_crane_cp.assert_called_once_with(
+        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
+    )
+    assert is_copied is False
+
+
 def _make_docker_hub_response(
     tag: str, page_count: int, namespace: str, repository: str, page_limit: int
 ):
