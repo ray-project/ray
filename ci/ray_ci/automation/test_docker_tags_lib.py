@@ -209,6 +209,7 @@ def test_delete_tag_failure_rate_limit_exceeded(mock_requests):
         "Authorization": "Bearer test_token"
     }
 
+
 @pytest.mark.parametrize(
     ("tag", "release_versions", "expected_value"),
     [
@@ -230,6 +231,7 @@ def test_delete_tag_failure_rate_limit_exceeded(mock_requests):
 )
 def test_is_release_tag(tag, release_versions, expected_value):
     assert _is_release_tag(tag, release_versions) == expected_value
+
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
 def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
@@ -255,6 +257,7 @@ def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
         tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
     )
     assert is_copied is False
+
 
 def _make_docker_hub_response(
     tag: str, page_count: int, namespace: str, repository: str, page_limit: int
