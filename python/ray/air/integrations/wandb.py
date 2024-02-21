@@ -213,9 +213,6 @@ def _is_allowed_type(obj):
 
 def _clean_log(obj: Any):
     # Fixes https://github.com/ray-project/ray/issues/10631
-    if isinstance(obj, np.array) and obj.size > 1:
-        print("Got an object that is unusual: ")
-        print(obj)
     if isinstance(obj, dict):
         return {k: _clean_log(v) for k, v in obj.items()}
     elif isinstance(obj, (list, set)):
