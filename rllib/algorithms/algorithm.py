@@ -776,7 +776,7 @@ class Algorithm(Trainable, AlgorithmBase):
             if not self.config.uses_new_env_runners:
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(
-                        self.learner_group.policies_to_train
+                        self.config.policies_to_train
                     ),
                     healthy_only=True,
                 )
