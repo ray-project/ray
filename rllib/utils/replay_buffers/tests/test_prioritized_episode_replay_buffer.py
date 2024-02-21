@@ -91,7 +91,16 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
         for _ in range(1000):
             sample = buffer.sample(batch_size_B=16, n_step=1)
-            obs, actions, rewards, next_obs, is_terminated, is_truncated, weights = (
+            (
+                obs,
+                actions,
+                rewards,
+                next_obs,
+                is_terminated,
+                is_truncated,
+                weights,
+                n_steps,
+            ) = (
                 sample["obs"],
                 sample["actions"],
                 sample["rewards"],
@@ -99,6 +108,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 sample["terminateds"],
                 sample["truncateds"],
                 sample["weights"],
+                sample["n_steps"],
             )
 
             # Make sure terminated and truncated are never both True.
@@ -124,14 +134,26 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             # Assert that the reward comes from the next observation.
             self.assertTrue(np.all(rewards * 10 - next_obs < tolerance))
 
-            # Furthermore, assert that the improtance sampling weights are
+            # Furthermore, assert that the importance sampling weights are
             # one for `beta=0.0`.
             self.assertTrue(np.all(weights - 1.0 < tolerance))
+
+            # Assert that all n-steps are 1.0 as passed into `sample`.
+            self.assertTrue(np.all(n_steps - 1.0 < tolerance))
 
         # Now test a 3-step sampling.
         for _ in range(1000):
             sample = buffer.sample(batch_size_B=16, n_step=3, beta=1.0)
-            obs, actions, rewards, next_obs, is_terminated, is_truncated, weights = (
+            (
+                obs,
+                actions,
+                rewards,
+                next_obs,
+                is_terminated,
+                is_truncated,
+                weights,
+                n_steps,
+            ) = (
                 sample["obs"],
                 sample["actions"],
                 sample["rewards"],
@@ -139,6 +161,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 sample["terminateds"],
                 sample["truncateds"],
                 sample["weights"],
+                sample["n_steps"],
             )
 
             # Make sure terminated and truncated are never both True.
@@ -167,6 +190,55 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 next_obs * 0.99**2 + (next_obs - 1) * 0.99 + next_obs - 2
             ) * 0.1
             self.assertTrue(np.all(rewards - reward_sum < tolerance))
+
+            # Furtermore, ensure that all n-steps are 3 as passed into `sample`.
+            self.assertTrue(np.all(n_steps - 3.0 < tolerance))
+
+        # Now test a random n-step sampling.
+        for _ in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=None, beta=1.0)
+            (
+                obs,
+                actions,
+                rewards,
+                next_obs,
+                is_terminated,
+                is_truncated,
+                weights,
+                n_steps,
+            ) = (
+                sample["obs"],
+                sample["actions"],
+                sample["rewards"],
+                sample["new_obs"],
+                sample["terminateds"],
+                sample["truncateds"],
+                sample["weights"],
+                sample["n_steps"],
+            )
+
+            # Make sure terminated and truncated are never both True.
+            assert not np.any(np.logical_and(is_truncated, is_terminated))
+
+            # All fields have same shape.
+            assert (
+                obs.shape[:2]
+                == rewards.shape
+                == actions.shape
+                == next_obs.shape
+                == is_truncated.shape
+                == is_terminated.shape
+            )
+
+            # Note, floating point numbers cannot be compared directly.
+            tolerance = 1e-8
+
+            # Furtermore, ensure that n-steps are in between 1 and 5.
+            self.assertTrue(np.all(n_steps - 5.0 < tolerance))
+            self.assertTrue(np.all(n_steps - 1.0 > -tolerance))
+
+            # Ensure that there is variation in the n-steps.
+            self.assertTrue(np.var(n_steps) > 0.0)
 
     def test_update_priorities(self):
         # Define replay buffer (alpha=1.0).
