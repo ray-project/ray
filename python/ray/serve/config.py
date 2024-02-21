@@ -10,6 +10,7 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    PrivateAttr,
     validator,
 )
 from ray._private.utils import import_attr
@@ -63,10 +64,10 @@ class AutoscalingConfig(BaseModel):
     upscale_delay_s: NonNegativeFloat = 30.0
 
     # Cloudpickled policy definition.
-    _serialized_policy_def: bytes = b""
+    _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
     # Custom autoscaling config. Defaults to the request-based autoscaler.
-    _policy: Union[str, Callable] = DEFAULT_AUTOSCALING_POLICY
+    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -92,13 +93,18 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    @validator("_policy", always=True, check_fields=False)
-    def serialize_policy(cls, policy, values) -> str:
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.serialize_policy()
+
+    def serialize_policy(self) -> None:
         """Serialize policy with cloudpickle.
 
         Import the policy if it's passed in as a string import path. Then cloudpickle
         the policy and set `serialized_policy_def` if it's empty.
         """
+        values = self.dict()
+        policy = values.get("_policy")
         if isinstance(policy, Callable):
             policy = f"{policy.__module__}.{policy.__name__}"
 
@@ -109,9 +115,8 @@ class AutoscalingConfig(BaseModel):
         policy = import_attr(policy)
 
         if not values.get("_serialized_policy_def"):
-            values["_serialized_policy_def"] = cloudpickle.dumps(policy)
-
-        return policy_path
+            self._serialized_policy_def = cloudpickle.dumps(policy)
+        self._policy = policy_path
 
     @classmethod
     def default(cls):
