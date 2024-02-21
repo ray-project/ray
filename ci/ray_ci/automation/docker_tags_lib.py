@@ -1,7 +1,7 @@
 import json
 import subprocess
-from datetime import datetime
-from typing import List, Optional, Callable
+from datetime import datetime, timezone
+from typing import List, Optional, Callable, Set
 import os
 import requests
 from dateutil import parser
@@ -172,6 +172,47 @@ def delete_tag(tag: str) -> bool:
     else:
         logger.info(f"Deleted tag {tag}")
         return True
+
+
+def _safe_to_delete(
+    tag: str,
+    n_days: int,
+    registry_tags: List[str],
+) -> bool:
+    """
+    Check if tag is safe to delete by:
+    1. If tag's image config is not found and tag is not in the Docker Registry.
+    2. If tag's image was created more than N days ago.
+    """
+    try:
+        image_creation_time = get_image_creation_time(tag=tag)
+    except RetrieveImageConfigException:
+        return tag not in registry_tags
+
+    time_difference = datetime.now(timezone.utc) - image_creation_time
+    if time_difference.days < n_days:
+        return False
+    return True
+
+
+def _is_old_commit_tag(tag: str, recent_commit_short_shas: Set[str]) -> bool:
+    """
+    Check if tag is:
+    1. A commit tag
+    2. Not in the list of recent commit SHAs
+    """
+    commit_hash = tag.split("-")[0]
+    # Check and truncate if prefix is a release version
+    if "." in commit_hash:
+        variables = commit_hash.split(".")
+        if not _is_release_tag(".".join(variables[:-1])):
+            return False
+        commit_hash = variables[-1]
+
+    if len(commit_hash) != 6 or commit_hash in recent_commit_short_shas:
+        return False
+
+    return True
 
 
 def _is_release_tag(
@@ -480,3 +521,40 @@ def backup_release_tags(
     _write_to_file("release_tags.txt", docker_hub_tags)
     for t in docker_hub_tags:
         copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
+
+
+def delete_old_commit_tags(
+    namespace: str,
+    repository: str,
+    n_days: int,
+    num_tags: int,
+) -> None:
+    """
+    Delete old commit tags with images that were created at least N days ago.
+    Args:
+        namespace: Docker namespace
+        repository: Docker repository
+        n_days: The threshold for deletion.
+            Tags with images created at least N days ago will be deleted.
+        num_tags: The max number of tags to delete.
+    """
+    docker_hub_tags = query_tags_from_docker_hub(
+        filter_func=lambda t: _is_old_commit_tag(
+            t,
+            set(list_recent_commit_short_shas(n_days=n_days)),
+        ),
+        namespace=namespace,
+        repository=repository,
+        num_tags=num_tags,
+    )
+    registry_tags = query_tags_from_docker_registry(
+        namespace=namespace,
+        repository=repository,
+    )
+    for t in docker_hub_tags:
+        if _safe_to_delete(
+            tag=t,
+            n_days=n_days,
+            registry_tags=registry_tags,
+        ):
+            delete_tag(tag=t)

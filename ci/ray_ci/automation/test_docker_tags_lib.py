@@ -2,7 +2,7 @@ from unittest import mock
 import sys
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pytest
 
 from ci.ray_ci.automation.docker_tags_lib import (
@@ -17,6 +17,8 @@ from ci.ray_ci.automation.docker_tags_lib import (
     query_tags_from_docker_hub,
     query_tags_from_docker_with_crane,
     _is_release_tag,
+    _safe_to_delete,
+    _is_old_commit_tag,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -220,6 +222,73 @@ def test_delete_tag_failure_rate_limit_exceeded(mock_get_token, mock_requests):
     assert mock_requests.call_args[1]["headers"] == {
         "Authorization": "Bearer test_token"
     }
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_image_creation_time")
+def test_safe_to_delete_safe(mock_get_image_creation_time):
+    # Image creation time is more than 30 days ago
+    mock_get_image_creation_time.return_value = datetime.now(timezone.utc) - timedelta(
+        days=60
+    )
+    registry_tags = ["test_tag1", "test_tag2"]
+    is_safe = _safe_to_delete("test_tag1", 30, registry_tags)
+
+    mock_get_image_creation_time.assert_called_once_with(tag="test_tag1")
+    assert is_safe is True
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_image_creation_time")
+def test_safe_to_delete_not_safe(mock_get_image_creation_time):
+    # Image creation time is less than 30 days ago
+    mock_get_image_creation_time.return_value = datetime.now(timezone.utc) - timedelta(
+        days=15
+    )
+    registry_tags = ["test_tag1", "test_tag2"]
+    is_safe = _safe_to_delete("test_tag1", 30, registry_tags)
+
+    mock_get_image_creation_time.assert_called_once_with(tag="test_tag1")
+    assert is_safe is False
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_image_creation_time")
+def test_safe_to_delete_no_image_config(mock_get_image_creation_time):
+    # Image config is not found
+    # Tag is not in the registry
+    mock_get_image_creation_time.side_effect = RetrieveImageConfigException
+    registry_tags = ["test_tag1", "test_tag2"]
+    is_safe = _safe_to_delete("test_tag3", 30, registry_tags)
+
+    mock_get_image_creation_time.assert_called_once_with(tag="test_tag3")
+    assert is_safe is True
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_image_creation_time")
+def test_safe_to_delete_no_image_config_tag_in_registry(mock_get_image_creation_time):
+    # Image config is not found
+    # Tag is in the registry
+    mock_get_image_creation_time.side_effect = RetrieveImageConfigException
+    registry_tags = ["test_tag1", "test_tag2"]
+    is_safe = _safe_to_delete("test_tag1", 30, registry_tags)
+
+    mock_get_image_creation_time.assert_called_once_with(tag="test_tag1")
+    assert is_safe is False
+
+
+@pytest.mark.parametrize(
+    ("tag", "recent_commit_shas", "expected_value"),
+    [
+        ("a1s2d3", {}, True),
+        ("a1s2d3-py38-cu123", {}, True),
+        ("2.7.0.a1s2d3-py37", {}, True),
+        ("2.7.0rc0.a1s2d3-py37", {}, True),
+        ("2.7.0.post1.a1s2d3-py37", {}, True),
+        ("a1s2d3", {"a1s2d3"}, False),
+        ("2.7.0rc0.a1s2d3-py37", {"a1s2d3"}, False),
+        ("2.7.0.a1s2d3-py37", {"q2w3e4"}, True),
+    ],
+)
+def test_is_old_commit_tag(tag, recent_commit_shas, expected_value):
+    assert _is_old_commit_tag(tag, recent_commit_shas) == expected_value
 
 
 @pytest.mark.parametrize(
