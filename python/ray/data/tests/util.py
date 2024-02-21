@@ -79,8 +79,8 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     If only_existing is True, this function will only run the currently existing tasks.
     """
     tasks = op.get_active_tasks()
-    ref_to_task = {task.get_waitable(): task for task in tasks}
     while tasks:
+        ref_to_task = {task.get_waitable(): task for task in tasks}
         ready, _ = ray.wait(
             [task.get_waitable() for task in tasks],
             num_returns=len(tasks),
