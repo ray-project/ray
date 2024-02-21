@@ -190,38 +190,38 @@ def query_tags_from_docker_hub(
         with format namespace/repository:tag.
     """
     filtered_tags = []
-    page_count = 1
-    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count}&page_size=100"  # noqa E501
-    token = get_docker_hub_auth_token()
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {get_docker_hub_auth_token()}",
     }
-    tag_count = 0
-    while url:
+
+    page_count = 1
+    while page_count:
         logger.info(f"Querying page {page_count}")
+        url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count}&page_size=100"  # noqa E501
+
         response = requests.get(url, headers=headers)
+        response_json = response.json()
+
+        # Stop querying if Docker Hub API returns an error
         if response.status_code != 200:
             logger.info(
-                f"Failed to query tags from Docker Hub: Error: {response.json()}"
+                f"Failed to query tags from Docker Hub: Error: {response_json}"
             )
-            logger.info("Querying stopped.")
             return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
-        response_json = response.json()
-        url = response_json["next"]
-        page_count += 1
         result = response_json["results"]
         tags = [tag["name"] for tag in result]
-        filtered_tags_page = list(filter(filter_func, tags))
+        filtered_tags_page = list(filter(filter_func, tags)) # Filter tags
 
         # Add enough tags to not exceed num_tags if num_tags is specified
         if num_tags:
-            if tag_count + len(filtered_tags_page) > num_tags:
-                filtered_tags.extend(filtered_tags_page[: num_tags - tag_count])
+            if len(filtered_tags) + len(filtered_tags_page) > num_tags:
+                filtered_tags.extend(filtered_tags_page[: num_tags - len(filtered_tags)])
                 break
         filtered_tags.extend(filtered_tags_page)
-        tag_count += len(filtered_tags_page)
-        logger.info(f"Tag count: {tag_count}")
+
+        logger.info(f"Tag count: {len(filtered_tags)}")
+        page_count += 1
     return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
 
