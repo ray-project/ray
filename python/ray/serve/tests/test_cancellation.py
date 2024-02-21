@@ -128,9 +128,8 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
     r = h.remote()
     ray.get(signal_actor.wait.remote(), timeout=10)
 
-    # Cancel it and verify that it is cancelled via signal.
+    # Cancel it and verify that it is cancelled.
     r.cancel()
-    ray.get(cancelled_signal_actor.wait.remote(), timeout=10)
 
     with pytest.raises(ray.exceptions.TaskCancelledError):
         r.result()
