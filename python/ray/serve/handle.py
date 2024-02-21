@@ -15,6 +15,7 @@ from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    calculate_remaining_timeout,
     generate_request_id,
     get_current_actor_id,
     get_random_string,
@@ -340,16 +341,25 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        start_time_s = time.time()
+
         try:
             obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
-            if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-                obj_ref_or_gen = next(obj_ref_or_gen)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError("Timed out resolving to ObjectRef.") from None
+
+        if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+            obj_ref_or_gen = obj_ref_or_gen._next_sync(
+                timeout_s=calculate_remaining_timeout(
+                    timeout_s=_timeout_s,
+                    start_time_s=start_time_s,
+                    curr_time_s=time.time(),
+                )
+            )
+            if obj_ref_or_gen.is_nil():
+                raise TimeoutError("Timed out resolving to ObjectRef.")
 
             return obj_ref_or_gen
-        except concurrent.futures.TimeoutError:
-            raise TimeoutError(
-                f"Failed to resolve to ObjectRef within {_timeout_s}s."
-            ) from None
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
@@ -477,16 +487,13 @@ class DeploymentResponse(_DeploymentResponseBase):
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
         """
-        start = time.time()
+        start_time_s = time.time()
         obj_ref = self._to_object_ref_sync(
             _record_telemetry=False, _timeout_s=timeout_s
         )
-
-        if timeout_s is None:
-            remaining_timeout_s = None
-        else:
-            remaining_timeout_s = max(0, timeout_s - (time.time() - start))
-
+        remaining_timeout_s = calculate_remaining_timeout(
+            timeout_s=timeout_s, start_time_s=start_time_s, curr_time_s=time.time()
+        )
         return ray.get(obj_ref, timeout=remaining_timeout_s)
 
     @DeveloperAPI
