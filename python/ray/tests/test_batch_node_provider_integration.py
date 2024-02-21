@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 class FakeBatchingNodeProvider(BatchingNodeProvider):
     """Class for e2e local testing of BatchingNodeProvider.
-    Recycles parts of the implementation of FakeMultiNodeProvider without inheriting it.
+    Uses FakeMultiNodeProvider as a proxy for managing the nodes.
 
     This node provider requires the "available_node_types" section of the
     autoscaling config to be copied into the "provider" section.
@@ -46,20 +46,22 @@ class FakeBatchingNodeProvider(BatchingNodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         BatchingNodeProvider.__init__(self, provider_config, cluster_name)
-        FakeMultiNodeProvider.__init__(self, provider_config, cluster_name)
+        self.fake_multi_node_provider = FakeMultiNodeProvider(
+            provider_config, cluster_name
+        )
 
     # Manually "inherit" internal utility functions.
     # I prefer this over attempting multiple inheritance.
     def _next_hex_node_id(self):
-        return FakeMultiNodeProvider._next_hex_node_id(self)
+        return self.fake_multi_node_provider._next_hex_node_id()
 
     def _terminate_node(self, node):
-        return FakeMultiNodeProvider._terminate_node(self, node)
+        return self.fake_multi_node_provider._terminate_node(node)
 
     def get_node_data(self):
         node_data_dict = {}
-        for node_id in self._nodes:
-            tags = self._nodes[node_id]["tags"]
+        for node_id in self.fake_multi_node_provider._nodes:
+            tags = self.fake_multi_node_provider._nodes[node_id]["tags"]
             node_data_dict[node_id] = NodeData(
                 kind=tags[TAG_RAY_NODE_KIND],
                 type=tags[TAG_RAY_USER_NODE_TYPE],
@@ -91,8 +93,7 @@ class FakeBatchingNodeProvider(BatchingNodeProvider):
                 TAG_RAY_USER_NODE_TYPE: node_type,
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             }
-            FakeMultiNodeProvider.create_node_with_resources_and_labels(
-                self,
+            self.fake_multi_node_provider.create_node_with_resources_and_labels(
                 node_config={},
                 tags=tags,
                 count=diff,
