@@ -75,6 +75,19 @@ class ReplicaWrapper(ABC):
         """Send request to this replica."""
         pass
 
+    async def send_request_with_rejection(
+        self,
+        pr: PendingRequest,
+    ) -> Tuple[Optional[Union[ObjectRef, ObjectRefGenerator]], ReplicaQueueLengthInfo]:
+        """Send request to this replica.
+
+        The replica will yield a system message (ReplicaQueueLengthInfo) before
+        executing the actual request. This can cause it to reject the request.
+
+        Only supported for Python replicas.
+        """
+        pass
+
 
 class ActorReplicaWrapper:
     def __init__(self, replica_info: RunningReplicaInfo):
@@ -249,7 +262,7 @@ class ReplicaScheduler(ABC):
         pass
 
     @abstractmethod
-    def update_replicas(self, replicas: List[ActorReplicaWrapper]):
+    def update_replicas(self, replicas: List[ReplicaWrapper]):
         pass
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):

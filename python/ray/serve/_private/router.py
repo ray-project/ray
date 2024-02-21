@@ -48,6 +48,8 @@ class Router:
         event_loop: asyncio.BaseEventLoop = None,
         _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
+        enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+        enable_strict_max_concurrent_queries: bool = RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,  # noqa: E501
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -57,6 +59,10 @@ class Router:
         self._event_loop = event_loop
         self.deployment_id = deployment_id
         self.handle_id = handle_id
+        self._enable_queue_len_cache = enable_queue_len_cache
+        self._enable_strict_max_concurrent_queries = (
+            enable_strict_max_concurrent_queries
+        )
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
@@ -71,7 +77,7 @@ class Router:
                 self_node_id,
                 self_actor_id,
                 self_availability_zone,
-                use_replica_queue_len_cache=RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+                use_replica_queue_len_cache=enable_queue_len_cache,
             )
 
         logger.info(
@@ -293,27 +299,23 @@ class Router:
         request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self._replica_scheduler.choose_replica_for_request(pr)
-        replica_id = replica.replica_id
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
-        if (
-            not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
-            or replica.is_cross_language
-        ):
-            return replica.send_request(pr), replica_id
+        if not self._enable_strict_max_concurrent_queries or replica.is_cross_language:
+            return replica.send_request(pr), replica.replica_id
 
         while True:
             obj_ref_or_gen, queue_len_info = await replica.send_request_with_rejection(
                 pr
             )
-            if RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE:
+            if self._enable_queue_len_cache:
                 self._replica_scheduler.replica_queue_len_cache.update(
-                    replica_id, queue_len_info.num_ongoing_requests
+                    replica.replica_id, queue_len_info.num_ongoing_requests
                 )
             if queue_len_info.accepted:
-                return obj_ref_or_gen, replica_id
+                return obj_ref_or_gen, replica.replica_id
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
