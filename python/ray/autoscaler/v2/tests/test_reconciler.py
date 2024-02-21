@@ -50,9 +50,9 @@ def setup():
 
     mock_subscriber = MockSubscriber()
 
-    instance_storage.add_status_change_subscribers([mock_subscriber])
     instance_manager = InstanceManager(
         instance_storage=instance_storage,
+        instance_status_update_subscribers=[mock_subscriber],
     )
 
     yield instance_manager, instance_storage, mock_subscriber
