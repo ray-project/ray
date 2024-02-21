@@ -65,7 +65,7 @@ def test_get_docker_auth_token_failure(mock_requests):
         status_code=400, json=mock.MagicMock(return_value={"error": "test_error"})
     )
 
-    with pytest.raises(AuthTokenException, match="Docker Registry. Error code: 400"):
+    with pytest.raises(AuthTokenException, match="Docker. Error code: 400"):
         get_docker_auth_token(namespace, repository)
 
 
