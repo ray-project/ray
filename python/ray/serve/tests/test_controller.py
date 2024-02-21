@@ -111,9 +111,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-    # Right now we don't allow modifying the autoscaling policy, so this will always
-    # be the default autoscaling policy
-    policy_path = "ray.serve.autoscaling_policy:default_autoscaling_policy"
 
     expected_json = json.dumps(
         {

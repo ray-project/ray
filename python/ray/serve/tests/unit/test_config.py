@@ -25,6 +25,12 @@ from ray.serve.schema import (
     ServeDeploySchema,
 )
 
+fake_policy_return_value = 123
+
+
+def fake_policy():
+    return fake_policy_return_value
+
 
 def test_autoscaling_config_validation():
     # Check validation over publicly exposed options
