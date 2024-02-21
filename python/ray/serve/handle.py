@@ -359,7 +359,7 @@ class _DeploymentResponseBase:
             if obj_ref_or_gen.is_nil():
                 raise TimeoutError("Timed out resolving to ObjectRef.")
 
-            return obj_ref_or_gen
+        return obj_ref_or_gen
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
