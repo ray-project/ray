@@ -150,8 +150,9 @@ async def test_send_request_with_rejection(
             next_obj_ref = await obj_ref_or_gen.__anext__()
             assert await next_obj_ref == f"Hello-{i}"
     else:
-        assert isinstance(obj_ref_or_gen, ObjectRef)
-        assert await obj_ref_or_gen == "Hello"
+        assert isinstance(obj_ref_or_gen, ObjectRefGenerator)
+        obj_ref = await obj_ref_or_gen.__anext__()
+        assert await obj_ref == "Hello"
 
 
 if __name__ == "__main__":
