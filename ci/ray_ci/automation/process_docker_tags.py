@@ -23,7 +23,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
 @click.option("--num_tags", help="Number of tags to process", required=False, type=int)
 def main(task, namespace, repository, release_versions, aws_ecr_repo, n_days, num_tags):
     if task == "backup_release_tags":
-        backup_release_tags(namespace, repository, release_versions, aws_ecr_repo)
+        backup_release_tags(namespace, repository, release_versions, aws_ecr_repo, num_tags)
     elif task == "delete_commit_tags":
         delete_old_commit_tags(namespace, repository, n_days, num_tags)
     else:
