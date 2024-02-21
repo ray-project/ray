@@ -775,7 +775,10 @@ class Algorithm(Trainable, AlgorithmBase):
             # EnvRunners anymore.
             if not self.config.uses_new_env_runners:
                 self.workers.foreach_worker(
-                    lambda w: w.set_is_policy_to_train(self.config.policies_to_train),
+                    lambda w: w.set_is_policy_to_train(
+                        self.config.policies_to_train
+                        or self.config.DEFAULT_POLICY_MAPPING_FN
+                    ),
                     healthy_only=True,
                 )
 
