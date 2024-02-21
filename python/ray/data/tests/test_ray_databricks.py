@@ -1,5 +1,4 @@
 import os
-import shutil
 import time
 import pytest
 import pyarrow as pa
@@ -7,7 +6,6 @@ import pandas as pd
 from ray import cloudpickle as pickle
 import uuid
 import math
-import tempfile
 from contextlib import contextmanager
 from unittest import mock
 import ray
@@ -21,7 +19,7 @@ class ChunkMeta(NamedTuple):
 
 
 @contextmanager
-def setup_mock(default_chunk_bytes, tmp_dir):
+def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
     """
     `ray.data.from_spark` supports Databricks runtime, but it relies on databricks
     internal APIs.
@@ -52,7 +50,7 @@ def setup_mock(default_chunk_bytes, tmp_dir):
 
             chunk_table = pa.Table.from_pandas(chunk_pdf)
 
-            with open(os.path.join(tmp_dir, chunk_id), "wb") as f:
+            with open(tmp_path /chunk_id, "wb") as f:
                 pickle.dump(chunk_table, f)
 
             return ChunkMeta(
@@ -67,10 +65,10 @@ def setup_mock(default_chunk_bytes, tmp_dir):
         ]
 
     def read_chunk(chunk_id):
-        with open(os.path.join(tmp_dir, chunk_id), "rb") as f:
+        with open(tmp_path / chunk_id, "rb") as f:
             return pickle.load(f)
 
-    read_chunk_fn_path = os.path.join(tmp_dir, "read_chunk_fn.pkl")
+    read_chunk_fn_path = tmp_path / "read_chunk_fn.pkl"
     with open(read_chunk_fn_path, "wb") as fp:
         pickle.dump(read_chunk, fp)
 
@@ -78,7 +76,7 @@ def setup_mock(default_chunk_bytes, tmp_dir):
 
     def unpersist_chunks(chunk_ids):
         for chunk_id in chunk_ids:
-            os.remove(os.path.join(tmp_dir, chunk_id))
+            os.remove(os.path.join(tmp_path, chunk_id))
 
     with mock.patch(
         "ray.data.datasource.spark_datasource.validate_requirements",
@@ -95,9 +93,8 @@ def setup_mock(default_chunk_bytes, tmp_dir):
     ), mock.patch(
         "ray.data.read_api._DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES",
         default_chunk_bytes
-    ), mock.patch.dict(os.environ, {
-        MOCK_ENV: read_chunk_fn_path,
-    }):
+    ):
+        monkeypatch.setenv(MOCK_ENV, read_chunk_fn_path.as_posix())
         yield
 
 
@@ -107,12 +104,12 @@ def shutdown_ray_per_test():
     ray.shutdown()
 
 
-def test_from_simple_databricks_spark_dataframe(tmp_path):
+def test_from_simple_databricks_spark_dataframe(tmp_path, monkeypatch):
     fake_spark_df = pd.DataFrame({
         "x": range(1000)
     })
 
-    with setup_mock(default_chunk_bytes=1000, tmp_dir=tmp_path.as_posix()):
+    with setup_mock(default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
@@ -125,12 +122,12 @@ def test_from_simple_databricks_spark_dataframe(tmp_path):
     assert [file.name for file in tmp_path.iterdir()] == ['read_chunk_fn.pkl']
 
 
-def test_from_mul_cols_databricks_spark_dataframe(tmp_path):
+def test_from_mul_cols_databricks_spark_dataframe(tmp_path, monkeypatch):
     fake_spark_df = pd.DataFrame({
         "x": range(1000)
     })
 
-    with setup_mock(default_chunk_bytes=1000, tmp_dir=tmp_path.as_posix()):
+    with setup_mock(default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
@@ -138,13 +135,13 @@ def test_from_mul_cols_databricks_spark_dataframe(tmp_path):
     pd.testing.assert_frame_equal(result, fake_spark_df)
 
 
-def test_large_size_row_databricks_spark_dataframe(tmp_path):
+def test_large_size_row_databricks_spark_dataframe(tmp_path, monkeypatch):
     fake_spark_df = pd.DataFrame([
         {'a': uuid.uuid4().hex * 100}
         for _ in range(10)
     ])
 
-    with setup_mock(default_chunk_bytes=3500, tmp_dir=tmp_path.as_posix()):
+    with setup_mock(default_chunk_bytes=3500, tmp_path=tmp_path, monkeypatch=monkeypatch):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
