@@ -26,6 +26,7 @@ class SACCatalog(Catalog):
         observation_space: gym.Space,
         action_space: gym.Space,
         model_config_dict: dict,
+        view_requirements: dict = None,
     ):
         """Initializes the SACCatalog.
 
@@ -34,6 +35,10 @@ class SACCatalog(Catalog):
             action_space: The action space for the Pi Head.
             model_config_dict: The model config to use.
         """
+        assert view_requirements is None, (
+            "Instead, use the new ConnectorV2 API to pick whatever information "
+            "you need from the running episodes"
+        )
 
         super().__init__(
             observation_space=observation_space,
@@ -169,6 +174,3 @@ class SACCatalog(Catalog):
     def get_action_dist_cls(self, framework: str) -> "TorchSquashedGaussian":
         assert framework == "torch"
         return TorchSquashedGaussian
-
-
-# __sphinx_doc_end__

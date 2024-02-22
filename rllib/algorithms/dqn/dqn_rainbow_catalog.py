@@ -1,5 +1,6 @@
-# __sphinx_doc_begin__
 import gymnasium as gym
+from gymnasium.spaces import Box
+from typing import Tuple
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_noisy_net_configs import (
     NoisyMLPEncoderConfig,
@@ -7,6 +8,7 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_noisy_net_configs import (
 )
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import (
@@ -25,9 +27,13 @@ class DQNRainbowCatalog(Catalog):
         - Target_Encoder: The encoder used to encode the observations
             for the target network.
         - Af Head: Either the head of the advantage stream, if a dueling
-            architecture is used or the head of the Q-function.
+            architecture is used or the head of the Q-function. This is
+            a multi-node head with `action_space.n` many nodes in case
+            of expectation learning and `action_space.n` times the number
+            of atoms (`num_atoms`) in case of distributional Q-learning.
         - Vf Head (optional): The head of the value function in case a
-            dueling architecture is chosen.
+            dueling architecture is chosen. This is a single node head.
+            If no dueling aarchitecture is used, this head does not exist.
 
     All networks can include noisy layers, if `noisy` is `True`.
 
@@ -55,6 +61,11 @@ class DQNRainbowCatalog(Catalog):
             action_space: The action space for the Af Head.
             model_config_dict: The model config to use.
         """
+        assert view_requirements is None, (
+            "Instead, use the new ConnectorV2 API to pick whatever information "
+            "you need from the running episodes"
+        )
+
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
@@ -63,23 +74,6 @@ class DQNRainbowCatalog(Catalog):
 
         # Is a noisy net used.
         self.uses_noisy = self._model_config_dict["noisy"]
-        # If a noisy network should be used.
-        if self.uses_noisy:
-            # TODO (simon): Add all other arguments here.
-            # In this case define the encoder.
-            if self._model_config_dict["encoder_latent_dim"]:
-                self.af_and_vf_encoder_hiddens = self._model_config_dict[
-                    "fcnet_hiddens"
-                ]
-            else:
-                self.af_and_vf_encoder_hiddens = self._model_config_dict[
-                    "fcnet_hiddens"
-                ][:-1]
-            self.af_and_vf_encoder_activation = self._model_config_dict[
-                "fcnet_activation"
-            ]
-            # TODO (simon): Once the old stack is gone, rename to `std_init`.
-            self.std_init = self._model_config_dict["sigma0"]
 
         # Define the heads.
         self.af_and_vf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
@@ -94,53 +88,11 @@ class DQNRainbowCatalog(Catalog):
         if self.uses_noisy:
             # Note, we are overriding the default behavior of `Catalog`. Like
             # this we can use the default method `build_encoder()`.
-            self._encoder_config = NoisyMLPEncoderConfig(
-                input_dims=self.observation_space.shape,
-                hidden_layer_dims=self.af_and_vf_encoder_hiddens,
-                hidden_layer_activation=self.af_and_vf_encoder_activation,
-                output_layer_activation=self.af_and_vf_encoder_activation,
-                output_layer_dim=self.latent_dims[0],
-                std_init=self.std_init,
-            )
-        # TODO (simon): Add all other arguments to the Heads.
-        if self.uses_noisy:
-            # In case of noisy networks we need to provide the intial standard
-            # deviation and use the corresponding `NoisyMLPHeadConfig`.
-            self.af_head_config = NoisyMLPHeadConfig(
-                input_dims=self.latent_dims,
-                hidden_layer_dims=self.af_and_vf_head_hiddens,
-                hidden_layer_activation=self.af_and_vf_head_activation,
-                output_layer_activation="linear",
-                output_layer_dim=int(
-                    action_space.n * self._model_config_dict["num_atoms"]
-                ),
-                std_init=self.std_init,
-            )
-            self.vf_head_config = NoisyMLPHeadConfig(
-                input_dims=self.latent_dims,
-                hidden_layer_dims=self.af_and_vf_head_hiddens,
-                hidden_layer_activation=self.af_and_vf_head_activation,
-                output_layer_activation="linear",
-                output_layer_dim=1,
-                std_init=self.std_init,
-            )
-        else:
-            self.af_head_config = MLPHeadConfig(
-                input_dims=self.latent_dims,
-                hidden_layer_dims=self.af_and_vf_head_hiddens,
-                hidden_layer_activation=self.af_and_vf_head_activation,
-                output_layer_activation="linear",
-                output_layer_dim=int(
-                    action_space.n * self._model_config_dict["num_atoms"]
-                ),
-            )
-            self.vf_head_config = MLPHeadConfig(
-                input_dims=self.latent_dims,
-                hidden_layer_dims=self.af_and_vf_head_hiddens,
-                hidden_layer_activation=self.af_and_vf_head_activation,
-                output_layer_activation="linear",
-                output_layer_dim=1,
-            )
+            self._encoder_config = self._get_encoder_config()
+
+        # In case of noisy networks we need to provide the intial standard
+        # deviation and use the corresponding `NoisyMLPHeadConfig`.
+        self.af_head_config, self.vf_head_config = self._get_head_configs()
 
     @OverrideToImplementCustomLogic
     def build_af_head(self, framework: str) -> Model:
@@ -184,8 +136,274 @@ class DQNRainbowCatalog(Catalog):
     @override(Catalog)
     def get_action_dist_cls(self, framework: str) -> "TorchCategorical":
         # We only implement DQN Rainbow for Torch.
-        assert framework == "torch"
+        if framework == "torch":
+            raise ValueError("DQN Rainbow is only supported for framework `torch`.")
         return TorchCategorical
 
+    def _get_encoder_config(
+        self,
+    ) -> ModelConfig:
+        """Returns the encoder config.
 
-# __sphinx_doc_end__
+        In case noisy networks should be used, the base encoder config
+        (`self._encoder_config`) is ovverriden and a `NoisyMLPEncoderConfig`
+        is used.
+
+        Returns:
+
+        """
+        # Check, if we use
+        use_lstm = self._model_config_dict["use_lstm"]
+        use_attention = self._model_config_dict["use_attention"]
+
+        # In cases of LSTM or Attention, fall back to the basic encoder.
+        if not use_lstm and not use_attention:
+            # Check, if the observation space is 1D Box. Only then we can use an MLP.
+            if (
+                isinstance(self.observation_space, Box)
+                and len(self.observation_space.shape) == 1
+            ):
+                # Define the encoder hiddens.
+                if self._model_config_dict["encoder_latent_dim"]:
+                    self.af_and_vf_encoder_hiddens = self._model_config_dict[
+                        "fcnet_hiddens"
+                    ]
+                else:
+                    self.af_and_vf_encoder_hiddens = self._model_config_dict[
+                        "fcnet_hiddens"
+                    ][:-1]
+                # Define the encoder activation.
+                self.af_and_vf_encoder_activation = self._model_config_dict[
+                    "fcnet_activation"
+                ]
+                # TODO (simon): Once the old stack is gone, rename to `std_init`.
+                self.std_init = self._model_config_dict["sigma0"]
+
+                # Instead of a regular MLP use a NoisyMLP.
+                return NoisyMLPEncoderConfig(
+                    input_dims=self.observation_space.shape,
+                    hidden_layer_dims=self.af_and_vf_encoder_hiddens,
+                    hidden_layer_activation=self.af_and_vf_encoder_activation,
+                    hidden_layer_use_layernorm=self._model_config_dict[
+                        "hidden_layer_use_layernorm"
+                    ],
+                    hidden_layer_use_bias=self._model_config_dict[
+                        "hidden_layer_use_bias"
+                    ],
+                    hidden_layer_weights_initializer=self._model_config_dict[
+                        "fcnet_weights_initializer"
+                    ],
+                    hidden_layer_weights_initializer_config=self._model_config_dict[
+                        "fcnet_weights_initializer_config"
+                    ],
+                    hidden_layer_bias_initializer=self._model_config_dict[
+                        "fcnet_bias_initializer"
+                    ],
+                    hidden_layer_bias_initializer_config=self._model_config_dict[
+                        "fcnet_bias_initializer_config"
+                    ],
+                    output_layer_activation=self.af_and_vf_encoder_activation,
+                    output_layer_dim=self.latent_dims[0],
+                    output_layer_use_bias=self._model_config_dict[
+                        "output_layer_use_bias"
+                    ],
+                    # TODO (simon): Should these initializers rather the fcnet ones?
+                    output_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    output_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    output_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    output_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                    std_init=self.std_init,
+                )
+        # Otherwise return the base encoder config chosen by the parent.
+        return self._encoder_config()
+
+    def _get_head_configs(self) -> Tuple[ModelConfig, ModelConfig]:
+        """Returns the head configs.
+
+        Two network configurations are returned:
+            - Af(Qf)-head configuration
+            - Vf-head configuration.
+        Both of them can define a noisy network architecture.
+
+        Returns:
+            In case noisy networks should be used two `NoisyMLPHeadConfigs`. In
+            the other case regular `MLPHeadConfig`s are returned.
+        """
+        # TODO (simon): This is bad design, setting attributes in functions.
+        self.af_and_vf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
+        self.af_and_vf_head_activation = self._model_config_dict[
+            "post_fcnet_activation"
+        ]
+
+        if self.uses_noisy:
+            return (
+                # Af(Qf)-head config.
+                NoisyMLPHeadConfig(
+                    input_dims=self.latent_dims,
+                    hidden_layer_dims=self.af_and_vf_head_hiddens,
+                    hidden_layer_activation=self.af_and_vf_head_activation,
+                    # TODO (simon): No clue where we get this from.
+                    # hidden_layer_use_layernorm=self._model_config_dict
+                    # ["hidden_layer_use_layernorm"],
+                    # hidden_layer_use_bias=self._model_config_dict["hidden_layer_use_bias"],
+                    hidden_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    hidden_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    hidden_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    hidden_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                    output_layer_activation="linear",
+                    output_layer_dim=int(
+                        self.action_space.n * self._model_config_dict["num_atoms"]
+                    ),
+                    # TODO (simon): CHeck where we get this from.
+                    # output_layer_use_bias=self._model_config_dict["output_layer_use_bias"],
+                    output_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    output_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    output_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    output_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                    std_init=self.std_init,
+                ),
+                # Vf-head config.
+                NoisyMLPHeadConfig(
+                    input_dims=self.latent_dims,
+                    hidden_layer_dims=self.af_and_vf_head_hiddens,
+                    hidden_layer_activation=self.af_and_vf_head_activation,
+                    # TODO (simon): No clue where we get this from.
+                    # hidden_layer_use_layernorm=self._model_config_dict
+                    # ["hidden_layer_use_layernorm"],
+                    # hidden_layer_use_bias=self._model_config_dict["hidden_layer_use_bias"],
+                    hidden_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    hidden_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    hidden_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    hidden_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                    output_layer_activation="linear",
+                    output_layer_dim=1,
+                    # TODO (simon): CHeck where we get this from.
+                    # output_layer_use_bias=self._model_config_dict["output_layer_use_bias"],
+                    output_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    output_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    output_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    output_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                    std_init=self.std_init,
+                ),
+            )
+        else:
+            return (
+                # Af(Qf)-head config.
+                MLPHeadConfig(
+                    nput_dims=self.latent_dims,
+                    hidden_layer_dims=self.af_and_vf_head_hiddens,
+                    hidden_layer_activation=self.af_and_vf_head_activation,
+                    # TODO (simon): No clue where we get this from.
+                    # hidden_layer_use_layernorm=self._model_config_dict
+                    # ["hidden_layer_use_layernorm"],
+                    # hidden_layer_use_bias=self._model_config_dict["hidden_layer_use_bias"],
+                    hidden_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    hidden_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    hidden_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    hidden_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                    output_layer_activation="linear",
+                    output_layer_dim=int(
+                        self.action_space.n * self._model_config_dict["num_atoms"]
+                    ),
+                    # TODO (simon): CHeck where we get this from.
+                    # output_layer_use_bias=self._model_config_dict["output_layer_use_bias"],
+                    output_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    output_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    output_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    output_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                ),
+                # Vf-head config.
+                MLPHeadConfig(
+                    input_dims=self.latent_dims,
+                    hidden_layer_dims=self.af_and_vf_head_hiddens,
+                    hidden_layer_activation=self.af_and_vf_head_activation,
+                    # TODO (simon): No clue where we get this from.
+                    # hidden_layer_use_layernorm=self._model_config_dict
+                    # ["hidden_layer_use_layernorm"],
+                    # hidden_layer_use_bias=self._model_config_dict["hidden_layer_use_bias"],
+                    hidden_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    hidden_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    hidden_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    hidden_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                    output_layer_activation="linear",
+                    output_layer_dim=1,
+                    # TODO (simon): CHeck where we get this from.
+                    # output_layer_use_bias=self._model_config_dict["output_layer_use_bias"],
+                    output_layer_weights_initializer=self._model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    output_layer_weights_initializer_config=self._model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    output_layer_bias_initializer=self._model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    output_layer_bias_initializer_config=self._model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
+                ),
+            )
