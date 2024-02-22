@@ -768,15 +768,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             # Only when using RolloutWorkers: Update also the worker set's
-            # `is_policy_to_train` (analogous to LearnerGroup's
-            # `should_module_be_updated_fn`).
+            # `is_policy_to_train`.
             # Note that with the new EnvRunner API in combination with the new stack,
             # this information only needs to be kept in the Learner and not on the
             # EnvRunners anymore.
             if not self.config.uses_new_env_runners:
-                policies_to_train = (
-                    self.config.policies_to_train
-                    or set(self.config.policies.keys())
+                policies_to_train = self.config.policies_to_train or set(
+                    self.config.policies.keys()
                 )
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(policies_to_train),
@@ -2131,10 +2129,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 module_spec=SingleAgentRLModuleSpec.from_module(module),
             )
 
-            # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+            # Update each Learner's `policies_to_train` information, but only
             # if the arg is explicitly provided here.
             if policies_to_train is not None:
-                self.learner_group.set_should_module_be_updated_fn(policies_to_train)
+                self.learner_group.foreach_learner(
+                    lambda learner: learner.config.multi_agent(
+                        policies_to_train=policies_to_train
+                    )
+                )
 
             weights = policy.get_weights()
             self.learner_group.set_weights({policy_id: weights})
@@ -2271,10 +2273,14 @@ class Algorithm(Trainable, AlgorithmBase):
         # Update all EnvRunner workers.
         self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
 
-        # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+        # Update each Learner's `policies_to_train` information, but only
         # if the arg is explicitly provided here.
         if self.config._enable_new_api_stack and policies_to_train is not None:
-            self.learner_group.set_should_module_be_updated_fn(policies_to_train)
+            self.learner_group.foreach_learner(
+                lambda learner: learner.config.multi_agent(
+                    policies_to_train=policies_to_train
+                )
+            )
 
         # Update the evaluation worker set's workers, if required.
         if evaluation_workers and self.evaluation_workers is not None:
