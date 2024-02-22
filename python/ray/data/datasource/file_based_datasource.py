@@ -251,7 +251,7 @@ class FileBasedDatasource(Datasource):
                     if len(read_paths) < num_threads:
                         num_threads = len(read_paths)
 
-                    logger.get_logger().debug(
+                    logger.get_logger(log_to_stdout=False).debug(
                         f"Reading {len(read_paths)} files with {num_threads} threads."
                     )
 
@@ -261,7 +261,8 @@ class FileBasedDatasource(Datasource):
                         num_workers=num_threads,
                     )
                 else:
-                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
+                    logger.get_logger(log_to_stdout=False).debug(
+                        f"Reading {len(read_paths)} files.")
                     yield from read_files(read_paths)
 
             return read_task_fn

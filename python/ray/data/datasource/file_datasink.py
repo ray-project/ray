@@ -196,7 +196,7 @@ class RowBasedFileDatasink(_FileDatasink):
                 with self.open_output_stream(write_path) as file:
                     self.write_row_to_file(row, file)
 
-            logger.get_logger().debug(f"Writing {write_path} file.")
+            logger.get_logger(log_to_stdout=False).debug(f"Writing {write_path} file.")
             call_with_retry(
                 write_row_to_path,
                 description=f"write '{write_path}'",
@@ -262,7 +262,7 @@ class BlockBasedFileDatasink(_FileDatasink):
             with self.open_output_stream(write_path) as file:
                 self.write_block_to_file(block, file)
 
-        logger.get_logger().debug(f"Writing {write_path} file.")
+        logger.get_logger(log_to_stdout=False).debug(f"Writing {write_path} file.")
         call_with_retry(
             write_block_to_path,
             description=f"write '{write_path}'",
