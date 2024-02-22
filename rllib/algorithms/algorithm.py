@@ -1461,7 +1461,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 _weights_ref=weights_ref,
                 _weights_seq_no=weights_seq_no,
                 _env_runner=True,
-                _env_runner_num_episodes=(1 if unit == "episodes" else None),
+                _env_runner_num_episodes=(
+                    eval_cfg.num_envs_per_worker if unit == "episodes" else None
+                ),
             )
 
             rollout_metrics = []
