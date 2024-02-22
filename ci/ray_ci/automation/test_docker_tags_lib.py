@@ -258,54 +258,6 @@ def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
     )
     assert is_copied is False
 
-@pytest.mark.parametrize(
-    ("tag", "release_versions", "expected_value"),
-    [
-        ("2.0.0", ["2.0.0"], True),
-        ("2.0.0rc0", ["2.0.0rc0"], True),
-        ("2.0.0-py38", ["2.0.0"], True),
-        ("2.0.0-py38-cu123", ["2.0.0"], True),
-        ("2.0.0.post1", ["2.0.0.post1"], True),
-        ("2.0.0.1", ["2.0.0"], False),
-        ("2.0.0.1r", ["2.0.0"], False),
-        ("a.1.c", ["2.0.0"], False),
-        ("1.a.b", ["2.0.0"], False),
-        ("2.0.0rc0", ["2.0.0"], False),
-        ("2.0.0", ["2.0.0rc0"], False),
-        ("2.0.0.a1s2d3", ["2.0.0"], False),
-        ("2.0.0.a1s2d3-py38-cu123", ["2.0.0"], False),
-        ("2.0.0", None, True),
-    ],
-)
-def test_is_release_tag(tag, release_versions, expected_value):
-    assert _is_release_tag(tag, release_versions) == expected_value
-
-
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
-def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
-    tag = "test_namespace/test_repository:test_tag"
-    mock_call_crane_cp.return_value = (
-        "aws-ecr/name/repo:test_tag: digest: sha256:sample-sha256 size: 1788"
-    )
-
-    is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
-    mock_call_crane_cp.assert_called_once_with(
-        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
-    )
-    assert is_copied is True
-
-
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
-def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
-    tag = "test_namespace/test_repository:test_tag"
-    mock_call_crane_cp.return_value = "Error: Failed to copy tag."
-
-    is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
-    mock_call_crane_cp.assert_called_once_with(
-        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
-    )
-    assert is_copied is False
-
 
 def _make_docker_hub_response(
     tag: str, page_count: int, namespace: str, repository: str, page_limit: int
@@ -462,10 +414,6 @@ def test_backup_release_tags(
     assert mock_query_tags.call_args.kwargs["namespace"] == namespace
     assert mock_query_tags.call_args.kwargs["repository"] == repository
     assert mock_query_tags.call_args.kwargs["docker_hub_token"] == "test_token"
-    assert mock_query_tags.call_args.kwargs["filter_func"].__name__ == "<lambda>"
-    assert (
-        mock_query_tags.call_args.kwargs["filter_func"].__code__.co_varnames[0] == "t"
-    )
     assert mock_write.call_count == 1
     assert mock_copy_tag.call_count == 10
     for i, call_arg in enumerate(mock_copy_tag.call_args_list):
