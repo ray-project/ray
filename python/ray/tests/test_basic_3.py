@@ -151,6 +151,10 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
+# It uses slashes in Linux and MacOS, and backslashes in Windows.
+WORKING_DIR_SUB_PATH = os.path.join("runtime_resources", "working_dir_files")
+
+
 def test_worker_use_working_dir_path(shutdown_only):
     """
     Tests that, in a working_dir job, the worker uses the working dir as
@@ -184,7 +188,7 @@ print(ray.get(my_file.remote()))
         output = subprocess.check_output(
             [sys.executable, "runner.py"], cwd=tmpdir
         ).decode()
-        assert "/tmp/ray/session_" in output, output
+        assert WORKING_DIR_SUB_PATH in output, output
 
 
 @pytest.mark.skipif(
@@ -241,7 +245,7 @@ print(ray.get(my_file.remote()))
             ],
             cwd=tmpdir,
         ).decode()
-        assert "/tmp/ray/session_" in output, output
+        assert WORKING_DIR_SUB_PATH in output, output
 
 
 def test_worker_use_driver_path_if_no_working_dir(shutdown_only):
