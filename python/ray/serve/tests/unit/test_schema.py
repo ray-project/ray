@@ -833,7 +833,7 @@ def test_serve_instance_details_is_json_serializable():
                             "name": "deployment1",
                             "autoscaling_config": {
                                 # Byte object will cause json serializable error
-                                "serialized_policy_def": serialized_policy_def
+                                "_serialized_policy_def": serialized_policy_def
                             },
                         },
                         "replicas": [],
@@ -880,7 +880,7 @@ def test_serve_instance_details_is_json_serializable():
     application = details["applications"]["app1"]
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
-    assert "serialized_policy_def" not in autoscaling_config
+    assert "_serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":
