@@ -19,7 +19,7 @@ to manage resources consumed by RayJob and RayCluster. See the
 ## Step 0: Create a Kubernetes cluster on GKE (Optional)
 
 If you already have a Kubernetes cluster with GPUs, you can skip this step.
-Otherwise, follow [Start Google Cloud GKE Cluster with GPUs for KubeRay](kuberay-gke-gpu-cluster-setup) for more details on setting up a Kubernetes cluster on GKE.
+Otherwise, follow [Start Google Cloud GKE Cluster with GPUs for KubeRay](kuberay-gke-gpu-cluster-setup) to set up a Kubernetes cluster on GKE.
 
 ## Step 1: Install the KubeRay operator
 
@@ -96,12 +96,12 @@ description: "Priority class for development jobs"
 The YAML manifest configures:
 
 * **ResourceFlavor**
-  * The ResourceFlavor `default-flavor` is an empty ResourceFlavor because the compute resources in the Kubernetes cluster are homogeneous. In other words, users can request 1 GPU without considering whether it's a NVIDIA A100 or T4 GPU.
+  * The ResourceFlavor `default-flavor` is an empty ResourceFlavor because the compute resources in the Kubernetes cluster are homogeneous. In other words, users can request 1 GPU without considering whether it's an NVIDIA A100 or a T4 GPU.
 * **ClusterQueue**
     * The ClusterQueue `cluster-queue` only has 1 ResourceFlavor `default-flavor` with quotas for 2 CPUs, 8G memory, and 1 GPU. It exactly matches the resources requested by 1 RayJob custom resource. ***Hence, only 1 RayJob can run at a time.***
     * The ClusterQueue `cluster-queue` has a preemption policy `withinClusterQueue: LowerPriority`. This policy allows the pending RayJob that doesn’t fit within the nominal quota for its ClusterQueue to preempt active RayJob custom resources in the ClusterQueue that have lower priority.
 * **LocalQueue**
-  * The LocalQueue `user-queue` is a namespaced object in the `default` namespace which belongs to a ClusterQueue. A namespace is typically assigned to a tenant, team or user, of the organization. Users submit jobs to a LocalQueue, instead of to a ClusterQueue directly.
+  * The LocalQueue `user-queue` is a namespaced object in the `default` namespace which belongs to a ClusterQueue. A typical practice is to assign a namespace to a tenant, team or user, of an organization. Users submit jobs to a LocalQueue, instead of to a ClusterQueue directly.
 * **WorkloadPriorityClass**
   * The WorkloadPriorityClass `prod-priority` has a higher value than the WorkloadPriorityClass `dev-priority`. This means that RayJob custom resources with the `prod-priority` priority class take precedence over RayJob custom resources with the `dev-priority` priority class.  
 
@@ -132,7 +132,7 @@ metadata:
 * `kueue.x-k8s.io/priority-class: dev-priority`: Assign the RayJob with the `dev-priority` WorkloadPriorityClass.
 * A modified name to indicate that this job is for development.
 
-Also note the resources required for this RayJob by looking at the resources requested by the Ray head Pod:
+Also note the resources required for this RayJob by looking at the resources that the Ray head Pod requests:
 ```yaml
 resources:
   limits:
