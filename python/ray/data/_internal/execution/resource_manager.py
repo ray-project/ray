@@ -14,6 +14,9 @@ from ray.data._internal.execution.interfaces.physical_operator import PhysicalOp
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
@@ -279,7 +282,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator.
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
+
         self._cached_global_limits = ExecutionResources.zero()
+        self._cached_num_eligible_ops = 0
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         # Only consider map operators that are not completed.
@@ -289,16 +294,24 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             if isinstance(op, MapOperator) and not op.completed()
         ]
 
-    def _on_global_limits_updated(self, global_limits: ExecutionResources):
-        from ray.data._internal.execution.operators.actor_pool_map_operator import (
-            ActorPoolMapOperator,
-        )
-
+    def _update_reservation(self):
+        global_limits = self._resource_manager.get_global_limits()
         eligible_ops = self._get_eligible_ops()
+
+        if (
+            global_limits == self._cached_global_limits
+            and len(eligible_ops) == self._cached_num_eligible_ops
+        ):
+            return
+        self._cached_global_limits = global_limits
+        self._cached_num_eligible_ops = len(eligible_ops)
+
+        self._op_reserved.clear()
+        self._reserved_for_op_outputs.clear()
+        self._total_shared = copy.deepcopy(global_limits)
+
         if len(eligible_ops) == 0:
             return
-
-        self._total_shared = copy.deepcopy(global_limits)
 
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
         # operator.
@@ -355,10 +368,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if len(eligible_ops) == 0:
             return
 
-        global_limits = self._resource_manager.get_global_limits()
-        if global_limits != self._cached_global_limits:
-            self._on_global_limits_updated(global_limits)
-            self._cached_global_limits = global_limits
+        self._update_reservation()
 
         self._op_budgets.clear()
         # Remaining of shared resources.
@@ -398,12 +408,18 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 .subtract(self._op_budgets[op].add(op_shared))
                 .max(ExecutionResources.zero())
             )
-            if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(remaining_shared):
+            if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(
+                remaining_shared
+            ):
                 op_shared = op_shared.add(to_borrow)
             remaining_shared = remaining_shared.subtract(op_shared)
-            assert remaining_shared.non_negative(), (remaining_shared, op, op_shared, to_borrow)
+            assert remaining_shared.non_negative(), (
+                remaining_shared,
+                op,
+                op_shared,
+                to_borrow,
+            )
             self._op_budgets[op] = self._op_budgets[op].add(op_shared)
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_budgets[op].gpu = float("inf")
-
