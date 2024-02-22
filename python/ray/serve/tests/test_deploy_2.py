@@ -343,7 +343,6 @@ def test_num_replicas_auto(serve_instance, use_options):
         "downscale_smoothing_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
-        "policy": "ray.serve.autoscaling_policy:default_autoscaling_policy",
     }
 
     for i in range(3):

@@ -243,7 +243,8 @@ class Learner:
                 help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
                 error=True,
             )
-        self.config = config
+        # TODO (sven): Figure out how to do this
+        self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
         self._module_obj = module
         self._device = None
@@ -868,6 +869,27 @@ class Learner:
         self.module.remove_module(module_id)
 
     @OverrideToImplementCustomLogic
+    def should_module_be_updated(self, module_id, multi_agent_batch=None):
+        """Returns whether a module should be updated or not based on `self.config`.
+
+        Args:
+            module_id: The ModuleID that we want to query on whether this module
+                should be updated or not.
+            multi_agent_batch: An optional MultiAgentBatch to possibly provide further
+                information on the decision on whether the RLModule should be updated
+                or not.
+        """
+        should_module_be_updated_fn = self.config.policies_to_train
+        # If None, return True (by default, all modules should be updated).
+        if should_module_be_updated_fn is None:
+            return True
+        # If container given, return whether `module_id` is in that container.
+        elif not callable(should_module_be_updated_fn):
+            return module_id in set(should_module_be_updated_fn)
+
+        return should_module_be_updated_fn(module_id, multi_agent_batch)
+
+    @OverrideToImplementCustomLogic
     def compute_loss(
         self,
         *,
@@ -1281,20 +1303,25 @@ class Learner:
 
         """
         self._check_is_built()
+
+        module_state = state.get("module_state")
         # TODO: once we figure out the optimizer format, we can set/get the state
-        if "module_state" not in state:
+        if module_state is None:
             raise ValueError(
                 "state must have a key 'module_state' for the module weights"
             )
-        if "optimizer_state" not in state:
+        self.set_module_state(module_state)
+
+        optimizer_state = state.get("optimizer_state")
+        if optimizer_state is None:
             raise ValueError(
                 "state must have a key 'optimizer_state' for the optimizer weights"
             )
-
-        module_state = state.get("module_state")
-        optimizer_state = state.get("optimizer_state")
-        self.set_module_state(module_state)
         self.set_optimizer_state(optimizer_state)
+
+        # Update our trainable Modules information/function via our config.
+        # If not provided in state (None), all Modules will be trained by default.
+        self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
 
     def get_state(self) -> Dict[str, Any]:
         """Get the state of the learner.
@@ -1307,6 +1334,7 @@ class Learner:
         return {
             "module_state": self.get_module_state(),
             "optimizer_state": self.get_optimizer_state(),
+            "modules_to_train": self.config.policies_to_train,
         }
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
@@ -1369,6 +1397,12 @@ class Learner:
                 data=batch,
                 episodes=episodes,
             )
+
+        # Filter out those RLModules from the final train batch that should not be
+        # updated.
+        for module_id in list(batch.policy_batches.keys()):
+            if not self.should_module_be_updated(module_id, batch):
+                del batch.policy_batches[module_id]
 
         if minibatch_size and self._learner_connector is not None:
             batch_iter = partial(MiniBatchCyclicIterator, uses_new_env_runners=True)
