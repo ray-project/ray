@@ -422,8 +422,6 @@ class TunerInternal:
 
     # This has to be done through a function signature (@property won't do).
     def get_experiment_checkpoint_dir(self) -> str:
-        # TODO(justinvyu): This is used to populate an error message.
-        # This should point to the storage path experiment dir instead.
         return Path(self._run_config.storage_path, self._experiment_dir_name).as_posix()
 
     @property
