@@ -212,6 +212,10 @@ class Reconciler:
 
         """
 
+        Reconciler._handle_extra_cloud_instances(
+            instance_manager, non_terminated_cloud_instances
+        )
+
         Reconciler._handle_instances_launch(
             instance_manager=instance_manager, autoscaling_config=autoscaling_config
         )
@@ -741,3 +745,60 @@ class Reconciler:
             total_num_requested_to_launch += num_to_launch
 
         return all_to_launch
+
+    @staticmethod
+    def _handle_extra_cloud_instances(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    ):
+        """
+        Shut down extra cloud instances that are not managed by the instance manager.
+
+        Since we have sync the IM states with the cloud provider's states in
+        earlier step (`sync_from`), each non terminated cloud instance should either
+        be:
+            1. assigned to a newly ALLOCATED im instance
+            2. already associated with an im instance that's running/terminating.
+
+        Any cloud instance that's not managed by the IM should be considered leak.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+        """
+        instances, version = Reconciler._get_im_instances(instance_manager)
+
+        cloud_instance_ids_managed_by_im = {
+            instance.cloud_instance_id
+            for instance in instances
+            if instance.cloud_instance_id
+        }
+
+        leaked_cloud_instance_ids = []
+        for cloud_instance_id, _ in non_terminated_cloud_instances.items():
+            if cloud_instance_id in cloud_instance_ids_managed_by_im:
+                continue
+
+            leaked_cloud_instance_ids.append(cloud_instance_id)
+
+        if not leaked_cloud_instance_ids:
+            return
+
+        # Update the IM with TERMINATING status for the leaked cloud instances.
+        updates = {}
+
+        for cloud_instance_id in leaked_cloud_instance_ids:
+            updates[cloud_instance_id] = IMInstanceUpdateEvent(
+                instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
+                cloud_instance_id=cloud_instance_id,
+                new_instance_status=IMInstance.TERMINATING,
+                details="Leaked cloud instance",
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
+
+        logger.warning(
+            f"Terminating leaked cloud instances: {leaked_cloud_instance_ids}: no"
+            " matching instance found in instance manager."
+        )
