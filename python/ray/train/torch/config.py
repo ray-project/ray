@@ -16,6 +16,19 @@ from ray.util import PublicAPI
 logger = logging.getLogger(__name__)
 
 
+class TorchConfigContextManager:
+    def __enter__(self):
+        # Set default cuda device
+        if torch.cuda.is_available():
+            device = ray.train.torch.get_device()
+            if device.type == "cuda":
+                torch.cuda.set_device(device)
+
+    def __exit__(self, type, value, traceback):
+        # Propagate exceptions if any
+        return False
+
+
 @PublicAPI(stability="stable")
 @dataclass
 class TorchConfig(BackendConfig):
@@ -42,6 +55,10 @@ class TorchConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _TorchBackend
+
+    @property
+    def train_func_context(self):
+        return TorchConfigContextManager
 
 
 def _setup_torch_process_group(

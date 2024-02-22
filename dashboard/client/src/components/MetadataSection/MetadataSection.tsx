@@ -119,7 +119,9 @@ export const MetadataContentField: React.FC<{
   );
 
   if (content === undefined || "value" in content) {
-    return content === undefined || !("link" in content) ? (
+    return content === undefined ||
+      !("link" in content) ||
+      content.link === undefined ? (
       <div className={classes.contentContainer}>
         <Typography
           className={classes.content}

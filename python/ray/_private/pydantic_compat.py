@@ -21,6 +21,7 @@ if not PYDANTIC_INSTALLED:
     NonNegativeInt = None
     PositiveFloat = None
     PositiveInt = None
+    StrictInt = None
     ValidationError = None
     root_validator = None
     validator = None
@@ -40,6 +41,7 @@ elif not hasattr(pydantic, "__version__") or packaging.version.parse(
         NonNegativeInt,
         PositiveFloat,
         PositiveInt,
+        StrictInt,
         ValidationError,
         root_validator,
         validator,
@@ -58,6 +60,7 @@ else:
         NonNegativeInt,
         PositiveFloat,
         PositiveInt,
+        StrictInt,
         ValidationError,
         root_validator,
         validator,
