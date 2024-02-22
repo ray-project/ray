@@ -2728,7 +2728,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 py_test(
@@ -2737,7 +2737,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 py_test(
@@ -2746,7 +2746,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
 )
 
 py_test(
@@ -2755,7 +2755,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=8"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=8"]
 )
 
 py_test(
