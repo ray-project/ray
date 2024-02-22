@@ -2296,7 +2296,7 @@ class AlgorithmConfig(_Config):
 
         if policy_mapping_fn is not NotProvided:
             # Create `policy_mapping_fn` from a config dict.
-            # Helpful is users would like to specify custom callable classes in
+            # Helpful if users would like to specify custom callable classes in
             # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)

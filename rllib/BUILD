@@ -178,7 +178,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-appo.yaml"],
+    data = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -329,7 +329,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/multi-agent-cartpole-impala.yaml"],
+    data = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--dir=tuned_examples/impala"]
 )
 
