@@ -1547,11 +1547,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 for name, estimator in self.reward_estimators.items():
                     estimates = estimator.estimate(total_batch)
                     metrics["off_policy_estimator"][name] = estimates
-            
+
             del remote_fn_partial
-        
+
         del weights_ref
-        
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on Algorithm, so it can be attached to

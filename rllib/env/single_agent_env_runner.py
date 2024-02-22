@@ -574,9 +574,14 @@ class SingleAgentEnvRunner(EnvRunner):
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
-    def set_weights(self, weights: ModelWeights, global_vars: Optional[Dict]=None, weights_seq_no: int = 0) -> None:
+    def set_weights(
+        self,
+        weights: ModelWeights,
+        global_vars: Optional[Dict] = None,
+        weights_seq_no: int = 0,
+    ) -> None:
         """Writes the weights of our (single-agent) RLModule.
-        
+
         Args:
             weigths: A dictionary mapping `ModuleID`s to the new weigths to
                 be used in the `MultiAgentRLModule` stored in this instance.

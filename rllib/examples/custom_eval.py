@@ -145,18 +145,19 @@ def custom_eval_function(algorithm, eval_workers):
     metrics["foo"] = 1
     return metrics
 
+
 def custom_async_eval_function(algorithm, eval_workers, weigths_ref, weights_seq_no):
     """Example of a custom asynchronous evaluation function.
-    
+
     Args:
         algorithm: Algorithm class to evaluate.
         eval_workers: Evaluation WorkerSet.
-        weights_ref: Object reference (`ObjectRef`) to the module weights in Ray's 
+        weights_ref: Object reference (`ObjectRef`) to the module weights in Ray's
             object store.
-        weights_seq_no: Integer, identifying the synchronization round. This 
+        weights_seq_no: Integer, identifying the synchronization round. This
             identifies during ayschnronous evaluation, if the weights are already
             synched between evaluation workers and learners.
-            
+
     Returns:
         metrics: Evaluation metrics dict.
     """
@@ -165,9 +166,7 @@ def custom_async_eval_function(algorithm, eval_workers, weigths_ref, weights_seq
 
         # Pass in weights seq-no so that eval workers may ignore this call if no update
         # has happened since the last call to `remote_fn` (sample).
-        worker.set_weights(
-            weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
-        )
+        worker.set_weights(weights=ray.get(weights_ref), weights_seq_no=weights_seq_no)
 
         # Set different env settings for each worker. Here we use the worker's
         # `worker_index` property.
@@ -180,7 +179,7 @@ def custom_async_eval_function(algorithm, eval_workers, weigths_ref, weights_seq
         metrics = worker.get_metrics()
 
         return worker.worker_index, episodes, metrics, weights_seq_no
-    
+
     # Create a partial to bake in the `weights_ref.` such that we can delete later this
     # partial and resolve any pointers to `weigths_ref` in Ray's object store. Note,
     # this avoids a memory leak.
@@ -218,6 +217,7 @@ def custom_async_eval_function(algorithm, eval_workers, weigths_ref, weights_seq
     metrics = dict({"sampler_results": sampler_results})
 
     return metrics
+
 
 if __name__ == "__main__":
     args = parser.parse_args()

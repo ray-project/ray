@@ -1979,7 +1979,7 @@ class AlgorithmConfig(_Config):
                 metrics: dict. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
-            custom_async_evaluation_function: In case the new `EnvRunner API` is used 
+            custom_async_evaluation_function: In case the new `EnvRunner API` is used
                 and `enable_async_evaluation=True` customize the asynchronous evaluation
                 method. This must be a function of signature (algo: Algorithm,
                 eval_workers: WorkerSet, weights_ref: ObjectRef, weights_seq_no: int)
@@ -3983,7 +3983,7 @@ class AlgorithmConfig(_Config):
             raise ValueError(
                 "`custom_async_evaluation_func` expects a callable that "
                 "evaluates asynchronous, i.e. it uses "
-                "`eval_workers.foreach_worker_async()`"                
+                "`eval_workers.foreach_worker_async()`"
             )
 
     @staticmethod
