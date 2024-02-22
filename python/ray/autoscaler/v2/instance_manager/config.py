@@ -50,11 +50,28 @@ class IConfigReader(ABC):
 class InstanceReconcileConfig:
     # The timeout for waiting for a REQUESTED instance to be ALLOCATED.
     request_status_timeout_s: int = env_integer(
-        "RAY_AUTOSCALER_REQUEST_STATUS_TIMEOUT_S", 300
+        "RAY_AUTOSCALER_RECONCILE_REQUEST_STATUS_TIMEOUT_S", 10 * 60
+    )
+    # The timeout for waiting for a ALLOCATED instance to be RAY_RUNNING.
+    allocate_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_ALLOCATE_STATUS_TIMEOUT_S", 300
+    )
+    # The timeout for waiting for a RAY_INSTALLING instance to be RAY_RUNNING.
+    ray_install_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_RAY_INSTALL_STATUS_TIMEOUT_S", 30 * 60
+    )
+    # The timeout for waiting for a TERMINATING instance to be TERMINATED.
+    terminating_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_TERMINATING_STATUS_TIMEOUT_S", 300
+    )
+    # The interval for raise a warning when an instance in transient status
+    # is not updated for a long time.
+    transient_status_warn_interval_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_TRANSIENT_STATUS_WARN_INTERVAL_S", 90
     )
     # The number of times to retry requesting to allocate an instance.
     max_num_retry_request_to_allocate: int = env_integer(
-        "RAY_AUTOSCALER_MAX_NUM_REQUEST_TO_ALLOCATE", 3
+        "RAY_AUTOSCALER_RECONCILE_MAX_NUM_RETRY_REQUEST_TO_ALLOCATE", 3
     )
 
 
@@ -290,6 +307,15 @@ class AutoscalingConfig:
 
     def get_max_concurrent_launches(self) -> int:
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
+
+    def skip_ray_install(self) -> bool:
+        return self.provider == Provider.KUBERAY
+
+    def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
+        # TODO(rickyx): we need a way to customize these configs,
+        # either extending the current ray-schema.json, or just use another
+        # schema validation paths.
+        return InstanceReconcileConfig()
 
     def get_provider_config(self) -> Dict[str, Any]:
         return self.get_config("provider", {})
