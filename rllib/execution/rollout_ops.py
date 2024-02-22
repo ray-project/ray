@@ -70,7 +70,7 @@ def synchronous_parallel_sample(
 
     agent_or_env_steps = 0
     max_agent_or_env_steps = max_agent_steps or max_env_steps or None
-    all_sample_batches_or_eps = []
+    sample_batches_or_episodes = []
 
     # Stop collecting batches as soon as one criterium is met.
     while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
@@ -80,10 +80,10 @@ def synchronous_parallel_sample(
         # No remote workers in the set -> Use local worker for collecting
         # samples.
         if worker_set.num_remote_workers() <= 0:
-            sample_batches_or_eps = [worker_set.local_worker().sample()]
+            sampled_data = [worker_set.local_worker().sample()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
-            sample_batches_or_eps = worker_set.foreach_worker(
+            sampled_data = worker_set.foreach_worker(
                 lambda w: w.sample(), local_worker=False, healthy_only=True
             )
             if worker_set.num_healthy_remote_workers() <= 0:
@@ -91,27 +91,27 @@ def synchronous_parallel_sample(
                 # get any new samples if we don't have any healthy remote workers left.
                 break
         # Update our counters for the stopping criterion of the while loop.
-        for b_or_e in sample_batches_or_eps:
+        for batch_or_episode in sampled_data:
             if max_agent_steps:
                 # TODO (simon): Add `get_agent_steps` to MAE.
                 # TODO (sven): Can't we update here the main counters, too?
                 agent_or_env_steps += (
-                    b_or_e.agent_steps()
-                    if isinstance(b_or_e, (SampleBatch, MultiAgentBatch))
-                    else sum(len(e) for e in b_or_e)
+                    batch_or_episode.agent_steps()
+                    if isinstance(batch_or_episode, (SampleBatch, MultiAgentBatch))
+                    else sum(e.agent_steps() for e in batch_or_episode)
                 )
             else:
                 agent_or_env_steps += (
-                    b_or_e.env_steps()
-                    if isinstance(b_or_e, (SampleBatch, MultiAgentBatch))
-                    else sum(len(e) for e in b_or_e)
+                    batch_or_episode.env_steps()
+                    if isinstance(batch_or_episode, (SampleBatch, MultiAgentBatch))
+                    else sum(e.env_steps() for e in batch_or_episode)
                 )
-        all_sample_batches_or_eps.extend(sample_batches_or_eps)
+        sample_batches_or_episodes.extend(sampled_data)
 
-    if concat is True and all_sample_batches_or_eps:
+    if concat is True and len(sample_batches_or_episodes) > 0:
         # If we have a SampleBatch we concatenate.
-        if isinstance(all_sample_batches_or_eps[0], (SampleBatch, MultiAgentBatch)):
-            full_batch = concat_samples(all_sample_batches_or_eps)
+        if isinstance(sample_batches_or_episodes[0], (SampleBatch, MultiAgentBatch)):
+            full_batch = concat_samples(sample_batches_or_episodes)
             # Discard collected incomplete episodes in episode mode.
             # if max_episodes is not None and episodes >= max_episodes:
             #    last_complete_ep_idx = len(full_batch) - full_batch[
@@ -121,10 +121,10 @@ def synchronous_parallel_sample(
             return full_batch
         # Otherwise, we flatten the episode lists.
         else:
-            return tree.flatten(all_sample_batches_or_eps)
+            return tree.flatten(sample_batches_or_episodes)
 
     else:
-        return all_sample_batches_or_eps
+        return sample_batches_or_episodes
 
 
 def standardize_fields(samples: SampleBatchType, fields: List[str]) -> SampleBatchType:
