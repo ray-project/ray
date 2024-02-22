@@ -42,14 +42,15 @@ class XGBoostConfig(BackendConfig):
 class _XGBoostRabitBackend(Backend):
     def __init__(self):
         self._tracker = None
-        self._rabit_args = {}
 
-    def on_start(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
+    def on_training_start(
+        self, worker_group: WorkerGroup, backend_config: XGBoostConfig
+    ):
         assert backend_config.xgboost_communicator == "rabit"
 
         # Set up the rabit tracker on the Train driver.
         num_workers = len(worker_group)
-        self._rabit_args = {"DMLC_NUM_WORKER": num_workers}
+        rabit_args = {"DMLC_NUM_WORKER": num_workers}
         train_driver_ip = ray.util.get_node_ip_address()
 
         # NOTE: sortby="task" is needed to ensure that the xgboost worker ranks
@@ -59,19 +60,14 @@ class _XGBoostRabitBackend(Backend):
         self._tracker = RabitTracker(
             host_ip=train_driver_ip, n_workers=num_workers, sortby="task"
         )
-        self._rabit_args.update(self._tracker.worker_envs())
+        rabit_args.update(self._tracker.worker_envs())
         self._tracker.start(num_workers)
 
         start_log = (
             "RabitTracker coordinator started with parameters:\n"
-            f"{json.dumps(self._rabit_args, indent=2)}"
+            f"{json.dumps(rabit_args, indent=2)}"
         )
         logger.debug(start_log)
-
-    def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: XGBoostConfig
-    ):
-        rabit_args = self._rabit_args
 
         def set_xgboost_env_vars():
             import ray.train
@@ -89,11 +85,12 @@ class _XGBoostRabitBackend(Backend):
         worker_group.execute(set_xgboost_env_vars)
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
-        self._tracker.thread.join(timeout=5)
+        timeout = 5
+        self._tracker.thread.join(timeout=timeout)
 
         if self._tracker.thread.is_alive():
             logger.warning(
                 "During shutdown, the RabitTracker thread failed to join "
-                "within 5 seconds. "
+                f"within {timeout} seconds. "
                 "The process will still be terminated as part of Ray actor cleanup."
             )
