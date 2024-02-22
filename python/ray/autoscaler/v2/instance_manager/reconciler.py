@@ -22,8 +22,8 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
-from ray.autoscaler.v2.scheduler import IResourceScheduler
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
+from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -191,6 +191,7 @@ class Reconciler:
             ray_install_errors: The errors from RayInstaller.
 
         """
+        autoscaling_state = AutoscalingState()
         Reconciler._sync_from(
             instance_manager=instance_manager,
             ray_nodes=ray_cluster_resource_state.node_states,
@@ -199,7 +200,6 @@ class Reconciler:
             ray_install_errors=ray_install_errors,
         )
 
-        autoscaling_state = AutoscalingState()
         Reconciler._step_next(
             autoscaling_state=autoscaling_state,
             instance_manager=instance_manager,
@@ -301,11 +301,11 @@ class Reconciler:
             1. Shut down leak cloud instances
                 Leaked cloud instances that are not managed by the instance manager.
             2. Terminating instances with ray stopped or ray install failure.
-            3. Scale up/down the cluster:
-              (* -> RAY_STOPPING)
+            3. Scale down the cluster:
+              (* -> RAY_STOP_REQUESTED/TERMINATING)
                 b. Extra cloud due to max nodes config.
                 c. Cloud instances with outdated configs.
-            4. Create new instances
+            4. Scale up the cluster:
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
                 scaling up.
@@ -333,6 +333,14 @@ class Reconciler:
             instance_manager=instance_manager,
             reconcile_config=autoscaling_config.get_instance_reconcile_config(),
             _logger=_logger or logger,
+        )
+
+        Reconciler._scale_cluster(
+            autoscaling_state=autoscaling_state,
+            instance_manager=instance_manager,
+            ray_state=ray_cluster_resource_state,
+            scheduler=scheduler,
+            autoscaling_config=autoscaling_config,
         )
 
         Reconciler._handle_instances_launch(
@@ -962,6 +970,20 @@ class Reconciler:
             if update:
                 im_updates[instance.instance_id] = update
 
+        # If we tried to stop ray on the instance, but it doesn't stop after a long
+        # time, we will transition it back to RAY_RUNNING as the stop/drain somehow
+        # failed. If it had succeed, we should have transitioned it to RAY_STOPPING
+        # or RAY_STOPPED.
+        for instance in instances_by_status[IMInstance.RAY_STOP_REQUESTED]:
+            update = Reconciler._handle_stuck_instance(
+                instance,
+                reconcile_config.ray_stop_requested_status_timeout_s,
+                new_status=IMInstance.RAY_RUNNING,
+                ray_node_id=instance.node_id,
+            )
+            if update:
+                im_updates[instance.instance_id] = update
+
         # These statues could be unbounded or transient, and we don't have a timeout
         # mechanism to handle them. We only warn if they are stuck for too long.
         for status in [
@@ -1012,6 +1034,125 @@ class Reconciler:
                         (time.time_ns() - status_time_ns) // 1e9,
                     )
                 )
+
+    @staticmethod
+    def _scale_cluster(
+        autoscaling_state: AutoscalingState,
+        instance_manager: InstanceManager,
+        ray_state: ClusterResourceState,
+        scheduler: IResourceScheduler,
+        autoscaling_config: AutoscalingConfig,
+    ) -> None:
+        """
+        Scale the cluster based on the resource state and the resource scheduler's
+        decision:
+
+        - It launches new instances if needed.
+        - It terminates extra ray nodes if they should be shut down (preemption
+            or idle termination)
+
+        Args:
+            autoscaling_state: The autoscaling state to reconcile.
+            instance_manager: The instance manager to reconcile.
+            ray_state: The ray cluster's resource state.
+            scheduler: The resource scheduler to make scaling decisions.
+            autoscaling_config: The autoscaling config.
+
+        """
+
+        # Get the current instance states.
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+
+        autoscaler_instances = []
+        ray_nodes_by_id = {
+            node.node_id.decode(): node for node in ray_state.node_states
+        }
+
+        for im_instance in im_instances:
+            ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            autoscaler_instances.append(
+                AutoscalerInstance(
+                    ray_node=ray_node,
+                    im_instance=im_instance,
+                    cloud_instance_id=im_instance.cloud_instance_id
+                    if im_instance.cloud_instance_id
+                    else None,
+                )
+            )
+
+        # TODO(rickyx): We should probably name it as "Planner" or "Scaler"
+        # or "ClusterScaler"
+        sched_request = SchedulingRequest(
+            node_type_configs=autoscaling_config.get_node_type_configs(),
+            max_num_nodes=autoscaling_config.get_max_num_nodes(),
+            resource_requests=ray_state.pending_resource_requests,
+            gang_resource_requests=ray_state.pending_gang_resource_requests,
+            cluster_resource_constraints=ray_state.cluster_resource_constraints,
+            current_instances=autoscaler_instances,
+        )
+
+        # Ask scheduler for updates to the cluster shape.
+        reply = scheduler.schedule(sched_request)
+
+        # Populate the autoscaling state.
+        autoscaling_state.infeasible_resource_requests.extend(
+            reply.infeasible_resource_requests
+        )
+        autoscaling_state.infeasible_gang_resource_requests.extend(
+            reply.infeasible_gang_resource_requests
+        )
+        autoscaling_state.infeasible_cluster_resource_constraints.extend(
+            reply.infeasible_cluster_resource_constraints
+        )
+
+        to_launch = reply.to_launch
+        to_terminate = reply.to_terminate
+        updates = {}
+        # Add terminating instances.
+        for terminate_request in to_terminate:
+            instance_id = terminate_request.instance_id
+            if autoscaling_config.need_ray_stop():
+                # If we would need to stop/drain ray.
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                    termination_request=terminate_request,
+                )
+                logger.info(
+                    "Stopping ray on {} with {}".format(
+                        instance_id, message_to_dict(updates[instance_id])
+                    )
+                )
+            else:
+                # If we would just terminate the cloud instance.
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATING,
+                )
+                logger.info(
+                    "Terminating {} with {}".format(
+                        instance_id,
+                        message_to_dict(updates[instance_id]),
+                    )
+                )
+
+        # Add new instances.
+        for launch_request in to_launch:
+            for _ in range(launch_request.count):
+                instance_id = InstanceUtil.random_instance_id()
+                updates[instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.QUEUED,
+                    instance_type=launch_request.instance_type,
+                )
+
+                logger.info(
+                    "Queueing new instance {} of type {}".format(
+                        instance_id, launch_request.instance_type
+                    )
+                )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _terminate_instances(instance_manager: InstanceManager):
@@ -1151,6 +1292,7 @@ class Reconciler:
         instance: IMInstance,
         timeout_s: int,
         new_status: IMInstance.InstanceStatus,
+        **update_kwargs: Dict,
     ) -> Optional[IMInstanceUpdateEvent]:
         """
         Fail the instance if it's stuck in the status for too long.
@@ -1159,6 +1301,7 @@ class Reconciler:
             instance: The instance to handle.
             timeout_s: The timeout in seconds.
             new_status: The new status to transition to.
+            update_kwargs: The update kwargs for InstanceUpdateEvent
 
         Returns:
             Instance update to the new status: if the instance is stuck in the status
@@ -1175,6 +1318,7 @@ class Reconciler:
             new_instance_status=new_status,
             details=f"Timeout={timeout_s}s at status "
             f"{IMInstance.InstanceStatus.Name(instance.status)}",
+            **update_kwargs,
         )
 
     @staticmethod

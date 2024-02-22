@@ -23,10 +23,17 @@ from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
 from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
+    GangResourceRequest,
     NodeState,
     NodeStatus,
+    ResourceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    LaunchRequest,
+    NodeKind,
+    TerminationRequest,
+)
 
 s_to_ns = 1 * 1_000_000_000
 
@@ -45,6 +52,10 @@ class MockAutoscalingConfig:
     def get_max_num_worker_nodes(self):
         return self._configs.get("max_num_worker_nodes")
 
+    def get_max_num_nodes(self):
+        n = self._configs.get("max_num_worker_nodes")
+        return n + 1 if n is not None else None
+
     def get_upscaling_speed(self):
         return self._configs.get("upscaling_speed", 0.0)
 
@@ -56,6 +67,9 @@ class MockAutoscalingConfig:
 
     def skip_ray_install(self):
         return self._configs.get("skip_ray_install", True)
+
+    def need_ray_stop(self):
+        return self._configs.get("need_ray_stop", True)
 
 
 class MockScheduler(IResourceScheduler):
@@ -737,6 +751,56 @@ class TestReconciler:
 
     @staticmethod
     @mock.patch("time.time_ns")
+    def test_stuck_instances_ray_stop_requested(mock_time_ns, setup):
+        instance_manager, instance_storage, subscriber = setup
+        timeout_s = 5
+        cur_time_s = 20
+        mock_time_ns.return_value = cur_time_s * s_to_ns
+
+        config = InstanceReconcileConfig(
+            ray_stop_requested_status_timeout_s=timeout_s,
+        )
+        cur_status = Instance.RAY_STOP_REQUESTED
+
+        instances = [
+            create_instance(
+                "no-update",
+                cur_status,
+                status_times=[(cur_status, (cur_time_s - timeout_s + 1) * s_to_ns)],
+                ray_node_id="r-1",
+            ),
+            create_instance(
+                "updated",
+                cur_status,
+                status_times=[(cur_status, (cur_time_s - timeout_s - 1) * s_to_ns)],
+                ray_node_id="r-2",
+            ),
+        ]
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "instance_reconcile_config": config,
+                    "max_concurrent_launches": 0,  # prevent launches
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["no-update"].status == cur_status
+        assert instances["updated"].status == Instance.RAY_RUNNING
+
+    @staticmethod
+    @mock.patch("time.time_ns")
     @pytest.mark.parametrize(
         "cur_status,expect_status",
         [
@@ -861,6 +925,7 @@ class TestReconciler:
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
             Instance.TERMINATING,
+            Instance.RAY_STOP_REQUESTED,
         }
 
         transient_statuses = {
@@ -903,6 +968,87 @@ class TestReconciler:
 
         assert subscriber.events == []
         assert mock_logger.warning.call_count == 0
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "need_ray_stop",
+        [True, False],
+        ids=["need_ray_stop", "no_ray_stop"],
+    )
+    def test_scaling_updates(setup, need_ray_stop):
+        """
+        Tests that new instances should be launched due to autoscaling
+        decisions, and existing instances should be terminated if needed.
+        """
+        instance_manager, instance_storage, _ = setup
+
+        im_instances = [
+            create_instance(
+                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+            ),  # To be reconciled.
+        ]
+        TestReconciler._add_instances(instance_storage, im_instances)
+
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+        }
+
+        mock_scheduler = MagicMock()
+        mock_scheduler.schedule.return_value = SchedulingReply(
+            to_launch=[
+                LaunchRequest(instance_type="type-1", count=2),
+            ],
+            to_terminate=[
+                TerminationRequest(
+                    id="t1",
+                    ray_node_id="r-1",
+                    instance_id="i-1",
+                    cause=TerminationRequest.Cause.IDLE,
+                    idle_time_ms=1000,
+                )
+            ],
+            infeasible_gang_resource_requests=[
+                GangResourceRequest(
+                    requests=[ResourceRequest(resources_bundle={"CPU": 1})]
+                )
+            ],
+        )
+
+        state = Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=mock_scheduler,
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "max_concurrent_launches": 0,  # don't launch anything.
+                    "need_ray_stop": need_ray_stop,
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+
+        assert len(instances) == 3
+        for id, instance in instances.items():
+            if id == "i-1":
+                assert (
+                    instance.status == Instance.RAY_STOP_REQUESTED
+                    if need_ray_stop
+                    else Instance.TERMINATING
+                )
+            else:
+                assert instance.status == Instance.QUEUED
+                assert instance.instance_type == "type-1"
+
+        assert len(state.infeasible_gang_resource_requests) == 1
 
     @staticmethod
     def test_terminating_instances(setup):

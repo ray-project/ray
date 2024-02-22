@@ -12,6 +12,7 @@ from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
+    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
     hash_runtime_conf,
@@ -63,6 +64,11 @@ class InstanceReconcileConfig:
     # The timeout for waiting for a TERMINATING instance to be TERMINATED.
     terminating_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_TERMINATING_STATUS_TIMEOUT_S", 300
+    )
+    # The timeout for waiting for a RAY_STOP_REQUESTED instance
+    # to be RAY_STOPPING or RAY_STOPPED.
+    ray_stop_requested_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_RAY_STOP_REQUESTED_STATUS_TIMEOUT_S", 300
     )
     # The interval for raise a warning when an instance in transient status
     # is not updated for a long time.
@@ -299,6 +305,12 @@ class AutoscalingConfig:
     def get_max_num_worker_nodes(self) -> Optional[int]:
         return self.get_config("max_workers", None)
 
+    def get_max_num_nodes(self) -> Optional[int]:
+        max_num_workers = self.get_max_num_worker_nodes()
+        if max_num_workers is not None:
+            return max_num_workers + 1  # For head node
+        return None
+
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
 
@@ -310,6 +322,10 @@ class AutoscalingConfig:
 
     def skip_ray_install(self) -> bool:
         return self.provider == Provider.KUBERAY
+
+    def need_ray_stop(self) -> bool:
+        provider_config = self._configs.get("provider", {})
+        return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 
     def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
         # TODO(rickyx): we need a way to customize these configs,
