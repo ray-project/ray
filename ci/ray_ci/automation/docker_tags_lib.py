@@ -1,4 +1,3 @@
-import json
 import subprocess
 from datetime import datetime
 from typing import List, Optional, Callable
@@ -25,8 +24,8 @@ class RetrieveImageConfigException(Exception):
     Exception for failing to retrieve image config.
     """
 
-    def __init__(self):
-        super().__init__("Failed to retrieve image config.")
+    def __init__(self, message: str):
+        super().__init__(f"Failed to retrieve {message}")
 
 
 class AuthTokenException(Exception):
@@ -92,9 +91,7 @@ def _get_git_log(n_days: int = 30):
     )
 
 
-def list_recent_commit_short_shas(
-    n_days: int = 30,
-) -> List[str]:
+def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
     """
     Get list of recent commit SHAs (short version, first 6 char) on ray master branch.
 
@@ -110,16 +107,31 @@ def list_recent_commit_short_shas(
     ]
     return short_commit_shas
 
+def get_config_docker_oci(tag: str, namespace: str, repository: str):
+    """Get Docker image config from tag using OCI API."""
+    token = get_docker_auth_token(namespace=namespace, repository=repository)
 
-def _call_crane_config(tag: str):
-    try:
-        return subprocess.check_output(
-            ["crane", "config", tag],
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-    except subprocess.CalledProcessError as e:
-        return e.output
+    # Pull image manifest to get config digest
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.docker.distribution.manifest.v2+json"
+    }
+    image_manifest_url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/manifests/{tag}"
+    response = requests.get(image_manifest_url, headers=headers)
+    if response.status_code != 200:
+        raise RetrieveImageConfigException("image manifest.")
+    config_blob_digest = response.json()["config"]["digest"]
+
+    # Pull image config
+    config_blob_url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/blobs/{config_blob_digest}"
+    config_headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.docker.container.image.v1+json"
+    }
+    response = requests.get(config_blob_url, headers=config_headers)
+    if response.status_code != 200:
+        raise RetrieveImageConfigException("image config.")
+    return response.json()
 
 
 def get_image_creation_time(tag: str) -> datetime:
@@ -132,10 +144,11 @@ def get_image_creation_time(tag: str) -> datetime:
     Returns:
         Datetime object of image creation time.
     """
-    result = _call_crane_config(tag=tag)
-    if "MANIFEST_UNKNOWN" in result or "created" not in result:
-        raise RetrieveImageConfigException()
-    config = json.loads(result)
+    namespace, repo_tag = tag.split("/")
+    repository, tag = repo_tag.split(":")
+    config = get_config_docker_oci(tag=tag, namespace=namespace, repository=repository)
+    if "created" not in config:
+        raise RetrieveImageConfigException("image creation time.")
     return parser.isoparse(config["created"])
 
 

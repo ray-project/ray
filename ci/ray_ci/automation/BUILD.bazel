@@ -70,6 +70,12 @@ py_library(
     ],
 )
 
+py_binary(
+    name = "test",
+    srcs = ["test.py"],
+    deps = [":docker_tags_lib"]
+)
+
 py_test(
     name = "test_docker_tags_lib",
     size = "small",

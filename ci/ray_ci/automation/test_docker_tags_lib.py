@@ -119,40 +119,34 @@ def test_list_recent_commit_short_shas_empty(mock_git_log):
     assert shas == []
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_config")
-def test_get_image_creation_time(mock_crane_config):
-    mock_crane_config.return_value = json.dumps(
-        {
-            "architecture": "amd64",
-            "created": "2024-01-26T23:00:00.000000000Z",
-            "variant": "v1",
-        }
-    )
-    created_time = get_image_creation_time(tag="test_tag")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
+def test_get_image_creation_time(mock_config_docker_oci):
+    mock_config_docker_oci.return_value = {
+        "architecture": "amd64",
+        "created": "2024-01-26T23:00:00.000000000Z",
+        "variant": "v1",
+    }
+    created_time = get_image_creation_time(tag="test_namespace/test_repo:test_tag")
 
-    mock_crane_config.assert_called_once_with(tag="test_tag")
+    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
     assert created_time == datetime(2024, 1, 26, 23, 0, tzinfo=timezone.utc)
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_config")
-def test_get_image_creation_time_failure_unknown(mock_crane_config):
-    mock_crane_config.return_value = (
-        "Error: Failed to get tag. MANIFEST_UNKNOWN: Tag manifest unknown"
-    )
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
+def test_get_image_creation_time_failure_unknown(mock_config_docker_oci):
+    mock_config_docker_oci.side_effect = RetrieveImageConfigException("Failed to retrieve image config.")
 
     with pytest.raises(RetrieveImageConfigException):
-        get_image_creation_time(tag="test_tag")
-    mock_crane_config.assert_called_once_with(tag="test_tag")
+        get_image_creation_time(tag="test_namespace/test_repo:test_tag")
+    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_config")
-def test_get_image_creation_time_failure_no_create_time(mock_crane_config):
-    mock_crane_config.return_value = json.dumps(
-        {"architecture": "amd64", "variant": "v1"}
-    )
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
+def test_get_image_creation_time_failure_no_create_time(mock_config_docker_oci):
+    mock_config_docker_oci.return_value = {"architecture": "amd64", "variant": "v1"}
     with pytest.raises(RetrieveImageConfigException):
-        get_image_creation_time(tag="test_tag")
-    mock_crane_config.assert_called_once_with(tag="test_tag")
+        get_image_creation_time(tag="test_namespace/test_repo:test_tag")
+    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
 
 
 @mock.patch("requests.delete")
