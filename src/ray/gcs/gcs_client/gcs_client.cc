@@ -573,7 +573,7 @@ Status PythonGcsClient::ReportAutoscalingState(int64_t timeout_ms,
   if (!state.ParseFromString(serialized_state)) {
     return Status::IOError("Failed to parse ReportAutoscalingState");
   }
-  request.mutable_state()->CopyFrom(state);
+  request.mutable_autoscaling_state()->CopyFrom(state);
   grpc::Status status =
       autoscaler_stub_->ReportAutoscalingState(&context, request, &reply);
 

@@ -56,81 +56,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def parse_resource_demands(resource_load_by_shape):
-    """Handle the message.resource_load_by_shape protobuf for the demand
-    based autoscaling. Catch and log all exceptions so this doesn't
-    interfere with the utilization based autoscaler until we're confident
-    this is stable. Worker queue backlogs are added to the appropriate
-    resource demand vector.
-
-    Args:
-        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
-            in protobuf form or None.
-
-    Returns:
-        List[ResourceDict]: Waiting bundles (ready and feasible).
-        List[ResourceDict]: Infeasible bundles.
-    """
-    waiting_bundles, infeasible_bundles = [], []
-    try:
-        for resource_demand_pb in list(resource_load_by_shape.resource_demands):
-            request_shape = dict(resource_demand_pb.shape)
-            for _ in range(resource_demand_pb.num_ready_requests_queued):
-                waiting_bundles.append(request_shape)
-            for _ in range(resource_demand_pb.num_infeasible_requests_queued):
-                infeasible_bundles.append(request_shape)
-
-            # Infeasible and ready states for tasks are (logically)
-            # mutually exclusive.
-            if resource_demand_pb.num_infeasible_requests_queued > 0:
-                backlog_queue = infeasible_bundles
-            else:
-                backlog_queue = waiting_bundles
-            for _ in range(resource_demand_pb.backlog_size):
-                backlog_queue.append(request_shape)
-            if (
-                len(waiting_bundles + infeasible_bundles)
-                > AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-            ):
-                break
-    except Exception:
-        logger.exception("Failed to parse resource demands.")
-
-    return waiting_bundles, infeasible_bundles
-
-
-# Readonly provider config (e.g., for laptop mode, manually setup clusters).
-BASE_READONLY_CONFIG = {
-    "cluster_name": "default",
-    "max_workers": 0,
-    "upscaling_speed": 1.0,
-    "docker": {},
-    "idle_timeout_minutes": 0,
-    "provider": {
-        "type": "readonly",
-        "use_node_id_as_ip": True,  # For emulated multi-node on laptop.
-    },
-    "auth": {},
-    "available_node_types": {
-        "ray.head.default": {"resources": {}, "node_config": {}, "max_workers": 0}
-    },
-    "head_node_type": "ray.head.default",
-    "file_mounts": {},
-    "cluster_synced_files": [],
-    "file_mounts_sync_continuously": False,
-    "rsync_exclude": [],
-    "rsync_filter": [],
-    "initialization_commands": [],
-    "setup_commands": [],
-    "head_setup_commands": [],
-    "worker_setup_commands": [],
-    "head_start_ray_commands": [],
-    "worker_start_ray_commands": [],
-    "head_node": {},
-    "worker_nodes": {},
-}
-
-
 class AutoscalerMonitor:
     """Autoscaling monitor.
 
@@ -240,7 +165,10 @@ class AutoscalerMonitor:
         gcs_client: GcsClient, autoscaling_state: AutoscalingState
     ):
         """Report the autoscaling state to the GCS."""
-        gcs_client.report_autoscaling_state(autoscaling_state.SerializeToString())
+        try:
+            gcs_client.report_autoscaling_state(autoscaling_state.SerializeToString())
+        except Exception:
+            logger.exception("Error reporting autoscaling state to GCS.")
 
     def _run(self):
         """Run the monitor loop."""
