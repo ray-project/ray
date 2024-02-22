@@ -5,8 +5,10 @@ import time
 
 import pytest
 
+import mock
 from mock import MagicMock
 
+from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
@@ -48,6 +50,12 @@ class MockAutoscalingConfig:
 
     def get_max_concurrent_launches(self):
         return self._configs.get("max_concurrent_launches", 100)
+
+    def get_instance_reconcile_config(self):
+        return self._configs.get("instance_reconcile_config", InstanceReconcileConfig())
+
+    def skip_ray_install(self):
+        return self._configs.get("skip_ray_install", False)
 
 
 class MockScheduler(IResourceScheduler):
@@ -665,6 +673,231 @@ class TestReconciler:
                 == instances[event.instance_id].launch_request_id
             )
             assert event.instance_type == "type-1"
+
+    @staticmethod
+    @mock.patch("time.time_ns")
+    def test_stuck_instances_requested(mock_time_ns, setup):
+        instance_manager, instance_storage, subscriber = setup
+        cur_time_s = 10
+        mock_time_ns.return_value = cur_time_s * s_to_ns
+
+        reconcile_config = InstanceReconcileConfig(
+            request_status_timeout_s=5,
+            max_num_retry_request_to_allocate=1,  # max 1 retry.
+        )
+
+        instances = [
+            create_instance(
+                "no-update",
+                Instance.REQUESTED,
+                status_times=[(Instance.REQUESTED, 9 * s_to_ns)],
+            ),
+            create_instance(
+                "retry",
+                Instance.REQUESTED,
+                status_times=[(Instance.REQUESTED, 2 * s_to_ns)],
+            ),
+            create_instance(
+                "failed",
+                Instance.REQUESTED,
+                status_times=[
+                    (Instance.REQUESTED, 1 * s_to_ns),
+                    (Instance.REQUESTED, 2 * s_to_ns),  # This is a retry.
+                ],
+            ),
+        ]
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "instance_reconcile_config": reconcile_config,
+                    "max_concurrent_launches": 0,  # prevent launches
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["no-update"].status == Instance.REQUESTED
+        assert instances["retry"].status == Instance.QUEUED
+        assert instances["failed"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
+    @mock.patch("time.time_ns")
+    @pytest.mark.parametrize(
+        "cur_status,expect_status",
+        [
+            (Instance.ALLOCATED, Instance.TERMINATING),
+            (Instance.RAY_INSTALLING, Instance.RAY_INSTALL_FAILED),
+            (Instance.TERMINATING, Instance.TERMINATION_FAILED),
+        ],
+    )
+    def test_stuck_instances(mock_time_ns, cur_status, expect_status, setup):
+        instance_manager, instance_storage, subscriber = setup
+        timeout_s = 5
+        cur_time_s = 20
+        mock_time_ns.return_value = cur_time_s * s_to_ns
+        config = InstanceReconcileConfig(
+            allocate_status_timeout_s=timeout_s,
+            terminating_status_timeout_s=timeout_s,
+            ray_install_status_timeout_s=timeout_s,
+        )
+        instances = [
+            create_instance(
+                "no-update",
+                cur_status,
+                status_times=[(cur_status, (cur_time_s - timeout_s + 1) * s_to_ns)],
+            ),
+            create_instance(
+                "updated",
+                cur_status,
+                status_times=[(cur_status, (cur_time_s - timeout_s - 1) * s_to_ns)],
+            ),
+        ]
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "instance_reconcile_config": config,
+                    "max_concurrent_launches": 0,  # prevent launches
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["no-update"].status == cur_status
+        assert instances["updated"].status == expect_status
+
+    @staticmethod
+    @mock.patch("time.time_ns")
+    @pytest.mark.parametrize(
+        "status",
+        [
+            Instance.InstanceStatus.Name(Instance.RAY_STOPPING),
+            Instance.InstanceStatus.Name(Instance.RAY_INSTALL_FAILED),
+            Instance.InstanceStatus.Name(Instance.RAY_STOPPED),
+            Instance.InstanceStatus.Name(Instance.TERMINATION_FAILED),
+            Instance.InstanceStatus.Name(Instance.QUEUED),
+        ],
+    )
+    def test_warn_stuck_transient_instances(mock_time_ns, status, setup):
+        instance_manager, instance_storage, subscriber = setup
+        cur_time_s = 10
+        mock_time_ns.return_value = cur_time_s * s_to_ns
+        timeout_s = 5
+        status = Instance.InstanceStatus.Value(status)
+
+        config = InstanceReconcileConfig(
+            transient_status_warn_interval_s=timeout_s,
+        )
+        instances = [
+            create_instance(
+                "no-warn",
+                status,
+                status_times=[(status, (cur_time_s - timeout_s + 1) * s_to_ns)],
+            ),
+            create_instance(
+                "warn",
+                status,
+                status_times=[(status, (cur_time_s - timeout_s - 1) * s_to_ns)],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+        mock_logger = mock.MagicMock()
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "instance_reconcile_config": config,
+                    "max_concurrent_launches": 0,  # prevent launches
+                }
+            ),
+            _logger=mock_logger,
+        )
+
+        assert mock_logger.warning.call_count == 1
+
+    @staticmethod
+    @mock.patch("time.time_ns")
+    def test_stuck_instances_no_op(mock_time_ns, setup):
+        instance_manager, instance_storage, subscriber = setup
+        # Large enough to not trigger any timeouts
+        mock_time_ns.return_value = 999999 * s_to_ns
+
+        config = InstanceReconcileConfig()
+
+        all_status = set(Instance.InstanceStatus.values())
+        reconciled_stuck_statuses = {
+            Instance.REQUESTED,
+            Instance.ALLOCATED,
+            Instance.RAY_INSTALLING,
+            Instance.TERMINATING,
+        }
+
+        transient_statuses = {
+            Instance.RAY_STOPPING,
+            Instance.RAY_INSTALL_FAILED,
+            Instance.RAY_STOPPED,
+            Instance.TERMINATION_FAILED,
+            Instance.QUEUED,
+        }
+        no_op_statuses = all_status - reconciled_stuck_statuses - transient_statuses
+
+        for status in no_op_statuses:
+            instances = [
+                create_instance(
+                    f"no-op-{status}",
+                    status,
+                    status_times=[(status, 1 * s_to_ns)],
+                ),
+            ]
+            TestReconciler._add_instances(instance_storage, instances)
+
+        subscriber.clear()
+        mock_logger = mock.MagicMock()
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "instance_reconcile_config": config,
+                    "max_concurrent_launches": 0,  # prevent launches
+                }
+            ),
+            _logger=mock_logger,
+        )
+
+        assert subscriber.events == []
+        assert mock_logger.warning.call_count == 0
 
     @staticmethod
     def test_extra_cloud_instances(setup):

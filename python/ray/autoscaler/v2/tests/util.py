@@ -1,5 +1,6 @@
 import abc
 import operator
+import time
 from abc import abstractmethod
 from typing import Dict, List, Optional, Tuple
 
@@ -64,6 +65,10 @@ def create_instance(
     version=0,
     cloud_instance_id="",
 ):
+
+    if not status_times:
+        status_times = [(status, time.time_ns())]
+
     return Instance(
         instance_id=instance_id,
         status=status,
@@ -73,9 +78,7 @@ def create_instance(
         status_history=[
             Instance.StatusHistory(instance_status=status, timestamp_ns=ts)
             for status, ts in status_times
-        ]
-        if status_times
-        else [],
+        ],
         cloud_instance_id=cloud_instance_id,
     )
 
