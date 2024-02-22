@@ -3641,8 +3641,8 @@ class Dataset:
         Args:
             prefetch_batches: The number of batches to prefetch ahead of the current
                 batch during the scan.
-            prefetch_blocks: [Deprecated] The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_blocks: This argument is deprecated. Use ``prefetch_batches`` 
+                instead.
 
         Returns:
             An iterable over the rows in this dataset.
