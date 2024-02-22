@@ -11,12 +11,12 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
@@ -335,17 +335,24 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 and op.base_resource_usage().gpu > 0
             ):
                 min_reserved.object_store_memory *= op._autoscaling_policy.min_workers
-
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
-            self._op_reserved[op] = default_reserved.max(min_reserved)
-            self._total_shared = self._total_shared.subtract(self._op_reserved[op])
+
+            op_total_reserved = default_reserved.max(min_reserved)
+            self._total_shared = self._total_shared.subtract(op_total_reserved)
+            self._op_reserved[op] = op_total_reserved.object_store_memory
+            self._op_reserved[op].object_store_memory -= self._reserved_for_op_outputs[op]
         self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         if op not in self._op_budgets:
             return True
-        budget = copy.deepcopy(self._op_budgets[op])
-        # Exclude the reserved memory for outputs.
+        budget = self._op_budgets[op]
+        res = op.incremental_resource_usage().satisfies_limit(budget)
+        return res
+
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
+        if op not in self._op_budgets:
+            return None
         outputs_usage = (
             self._resource_manager._mem_output_buffers[op]
             + self._resource_manager._mem_next_op_input_buffers[op]
@@ -353,14 +360,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         outputs_reamining_reserved = max(
             self._reserved_for_op_outputs[op] - outputs_usage, 0
         )
-        budget.object_store_memory -= outputs_reamining_reserved
-        res = op.incremental_resource_usage().satisfies_limit(budget)
-        return res
-
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        if op not in self._op_budgets:
-            return None
-        return self._op_budgets[op].object_store_memory
+        return self._op_budgets[op].object_store_memory + outputs_reamining_reserved
 
     def update_usages(self):
         eligible_ops = self._get_eligible_ops()
