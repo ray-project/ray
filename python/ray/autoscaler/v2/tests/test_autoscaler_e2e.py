@@ -1,9 +1,10 @@
 import os
 import sys
+
 import pytest
 
-from ray.cluster_utils import AutoscalingCluster
 import ray
+from ray.cluster_utils import AutoscalingCluster
 
 
 def test_basic():
