@@ -85,7 +85,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(PPORLModule)
-    def _compute_values(self, batch):
+    def _compute_values(self, batch, device=None):
         infos = batch.pop(SampleBatch.INFOS, None)
         batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
         if infos is not None:
