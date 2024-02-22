@@ -121,6 +121,6 @@ class _BigQueryDatasink(Datasink):
         _write_single_block = cached_remote_fn(_write_single_block)
 
         # Launch a remote task for each block within this write task
-        for block in blocks:
-            ray.get(_write_single_block.remote(block, self.project_id, self.dataset))
+        ray.get([_write_single_block.remote(block, self.project_id, self.dataset) for block in blocks])
+
         return "ok"
