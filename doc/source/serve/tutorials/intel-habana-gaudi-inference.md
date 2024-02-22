@@ -4,11 +4,11 @@
 
 This tutorial shows how to deploy [Llama2-7b](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf) using a single HPU:
 
-    * How to load a model in an HPU
+* How to load a model in an HPU
 
-    * How to perform generation on an HPU
+* How to perform generation on an HPU
 
-    * How to enable HPU Graph optimizations
+* How to enable HPU Graph optimizations
 
 This tutorial helps you serve a large language model on HPUs.
 

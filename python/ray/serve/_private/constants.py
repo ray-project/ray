@@ -306,3 +306,9 @@ SERVE_GRPC_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
+
+# Feature flag to eagerly start replacement replicas. This means new
+# replicas will start before waiting for old replicas to fully stop.
+RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
+    os.environ.get("RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS", "1") == "1"
+)
