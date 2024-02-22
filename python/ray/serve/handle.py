@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import threading
-import time
 import warnings
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
@@ -15,7 +14,6 @@ from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
-    calculate_remaining_timeout,
     generate_request_id,
     get_current_actor_id,
     get_random_string,
@@ -288,23 +286,10 @@ class _DeploymentHandleBase:
 
 class _DeploymentResponseBase:
     def __init__(self, object_ref_future: concurrent.futures.Future):
-        self._cancelled = False
-        # The result of `object_ref_future` must be an ObjectRef or ObjectRefGenerator.
+        # The result of `object_ref_future` must be an ObjectRef or
+        # ObjectRefGenerator.
         self._object_ref_future = object_ref_future
-
-    def _should_resolve_gen_to_obj_ref(
-        self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
-    ) -> bool:
-        """Check if the ref is a generator that needs to be resolved to its first ref.
-
-        This is an edge case to handle the routing code path with replica rejection.
-        In that case, the output of `router.assign_request` is *always* a generator,
-        so if this is a unary response we need to resolve it to its first (and only)
-        output ObjectRef.
-        """
-        return isinstance(obj_ref_or_gen, ray.ObjectRefGenerator) and isinstance(
-            self, DeploymentResponse
-        )
+        self._cancelled = False
 
     async def _to_object_ref_or_gen(
         self,
@@ -319,16 +304,11 @@ class _DeploymentResponseBase:
 
         # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
         # from any asyncio loop.
-        obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
-        if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-            obj_ref_or_gen = await obj_ref_or_gen.__anext__()
-
-        return obj_ref_or_gen
+        return await asyncio.wrap_future(self._object_ref_future)
 
     def _to_object_ref_or_gen_sync(
         self,
         _record_telemetry: bool = True,
-        _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
@@ -341,25 +321,7 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        start_time_s = time.time()
-
-        try:
-            obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
-        except concurrent.futures.TimeoutError:
-            raise TimeoutError("Timed out resolving to ObjectRef.") from None
-
-        if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-            obj_ref_or_gen = obj_ref_or_gen._next_sync(
-                timeout_s=calculate_remaining_timeout(
-                    timeout_s=_timeout_s,
-                    start_time_s=start_time_s,
-                    curr_time_s=time.time(),
-                )
-            )
-            if obj_ref_or_gen.is_nil():
-                raise TimeoutError("Timed out resolving to ObjectRef.")
-
-        return obj_ref_or_gen
+        return self._object_ref_future.result()
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
@@ -472,13 +434,11 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        obj_ref = yield from self._to_object_ref_or_gen(
-            _record_telemetry=False
-        ).__await__()
+        obj_ref = yield from asyncio.wrap_future(self._object_ref_future)
         result = yield from obj_ref.__await__()
         return result
 
-    def result(self, *, timeout_s: Optional[float] = None) -> Any:
+    def result(self, timeout_s: Optional[float] = None) -> Any:
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
@@ -487,14 +447,9 @@ class DeploymentResponse(_DeploymentResponseBase):
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
         """
-        start_time_s = time.time()
-        obj_ref = self._to_object_ref_sync(
-            _record_telemetry=False, _timeout_s=timeout_s
+        return ray.get(
+            self._to_object_ref_sync(_record_telemetry=False), timeout=timeout_s
         )
-        remaining_timeout_s = calculate_remaining_timeout(
-            timeout_s=timeout_s, start_time_s=start_time_s, curr_time_s=time.time()
-        )
-        return ray.get(obj_ref, timeout=remaining_timeout_s)
 
     @DeveloperAPI
     async def _to_object_ref(self, _record_telemetry: bool = True) -> ray.ObjectRef:
@@ -513,7 +468,6 @@ class DeploymentResponse(_DeploymentResponseBase):
     def _to_object_ref_sync(
         self,
         _record_telemetry: bool = True,
-        _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
@@ -530,7 +484,6 @@ class DeploymentResponse(_DeploymentResponseBase):
         """
         return self._to_object_ref_or_gen_sync(
             _record_telemetry=_record_telemetry,
-            _timeout_s=_timeout_s,
             _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
         )
 
@@ -639,7 +592,6 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     def _to_object_ref_gen_sync(
         self,
         _record_telemetry: bool = True,
-        _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
@@ -653,7 +605,6 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """
         return self._to_object_ref_or_gen_sync(
             _record_telemetry=_record_telemetry,
-            _timeout_s=_timeout_s,
             _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
         )
 
