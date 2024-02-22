@@ -15,6 +15,7 @@ from ray.autoscaler._private.resource_demand_scheduler import (
     _fits,
     _inplace_subtract,
 )
+from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.utils import ResourceRequestUtil
@@ -219,14 +220,7 @@ class SchedulingNode:
 
         # These are the statuses where there's a running ray node or
         # could eventually run ray.
-        if instance.im_instance.status in (
-            Instance.QUEUED,
-            Instance.REQUESTED,
-            Instance.ALLOCATED,
-            Instance.RAY_INSTALLING,
-            Instance.RAY_RUNNING,
-            Instance.RAY_STOP_REQUESTED,
-        ):
+        if InstanceUtil.is_ray_running_reachable(instance.im_instance.status):
             return True
 
         return False
