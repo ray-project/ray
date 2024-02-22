@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import ray
 from ray.air.constants import (  # noqa: F401
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     EVALUATION_DATASET_KEY,
@@ -8,6 +9,13 @@ from ray.air.constants import (  # noqa: F401
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
 )
+
+
+def get_ray_train_session_dir() -> str:
+    assert ray.is_initialized()
+    return Path(
+        ray._private.worker._global_node.get_session_dir_path(), "artifacts/train"
+    ).as_posix()
 
 
 def _get_defaults_results_dir() -> str:
