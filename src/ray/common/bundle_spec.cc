@@ -195,7 +195,11 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
       new_resources[index_name] = iter->second;
     }
   }
-  // Add the placement group constraint even in case of no resources.
+
+  // Note that all nodes that have placement group have a special
+  // keyword bundle_group_[pg_id].
+  // Always include bundle resource wildcard resources, so that
+  // even when the task doesn't require any resource, it can use the placement group.
   auto bundle_key =
       FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
   new_resources[bundle_key] = 0.001;

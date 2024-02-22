@@ -351,13 +351,11 @@ class RuntimeContext(object):
                  worker. Current mode: {self.worker.mode}"
         self.worker.check_connected()
         resource_id_map = self.worker.core_worker.resource_ids()
-        print("SANG-TODO resource_id_map", resource_id_map)
         resource_map = {
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
         result = pasre_pg_formatted_resources_to_original(resource_map)
-        print("SANG-TODO result", result)
         return result
 
     def get_runtime_env_string(self):

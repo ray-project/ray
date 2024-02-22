@@ -75,6 +75,7 @@ PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
 )
 PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+PLACEMENT_GROUP_BUNDLE_KEY_RESOURCE_PATTERN = re.compile(r"bundle_group_([0-9a-zA-Z]+)")
 
 
 def get_user_temp_dir():
@@ -2008,6 +2009,14 @@ def pasre_pg_formatted_resources_to_original(
     original_resources = {}
 
     for key, value in pg_formatted_resources.items():
+        # Filter out resources that have bundle_group_[pg_id] since
+        # it is an implementation detail.
+        # This resource is automatically added to the resource
+        # request for all tasks that require placement groups.
+        result = PLACEMENT_GROUP_BUNDLE_KEY_RESOURCE_PATTERN.match(key)
+        if result:
+            continue
+
         result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 2:
             original_resources[result.group(1)] = value
