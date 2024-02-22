@@ -2,6 +2,7 @@ import _thread
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -922,6 +923,29 @@ def test_internal_kv_in_proxy_mode(call_ray_start_shared):
     assert client_api._internal_kv_get(b"key") == b"val"
     assert client_api._internal_kv_del(b"key") == 1
     assert client_api._internal_kv_get(b"key") is None
+
+
+def test_actor_streaming_returns_error_message(call_ray_start_shared):
+    """
+    num_returns="streaming" is not supported with Ray Client.
+    """
+
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+
+        @ray.remote
+        class Actor:
+            def stream(self):
+                yield "hi"
+
+        a = Actor.remote()
+        with pytest.raises(
+            RuntimeError,
+            match=re.escape(
+                'Streaming actor methods (num_returns="streaming") are '
+                "not currently supported when using Ray Client."
+            ),
+        ):
+            a.stream.options(num_returns="streaming").remote()
 
 
 if __name__ == "__main__":
