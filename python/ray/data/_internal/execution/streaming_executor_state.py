@@ -514,7 +514,12 @@ def select_operator_to_run(
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
-        under_resource_limits = _execution_allowed(op, resource_manager)
+        if resource_manager.op_resource_allocator_enabled():
+            under_resource_limits = (
+                resource_manager.op_resource_allocator.can_submit_new_task(op)
+            )
+        else:
+            under_resource_limits = _execution_allowed(op, resource_manager)
         if (
             under_resource_limits
             and not op.completed()
@@ -629,12 +634,8 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     Returns:
         Whether the op is allowed to run.
     """
-
     if op.throttling_disabled():
         return True
-
-    if resource_manager.op_resource_allocator_enabled():
-        return resource_manager.op_resource_allocator.can_submit_new_task(op)
 
     global_usage = resource_manager.get_global_usage()
     global_limits = resource_manager.get_global_limits()
