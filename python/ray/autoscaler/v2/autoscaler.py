@@ -4,6 +4,9 @@ from typing import List, Optional
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    KubeRayProvider,
+)
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
 from ray.autoscaler.v2.instance_manager.instance_manager import (
@@ -97,15 +100,22 @@ class Autoscaler:
             config_reader: The config reader.
 
         """
-        node_provider_v1 = _get_node_provider(
-            config.get_provider_config(),
-            config.get_config("cluster_name"),
-        )
+        provider_config = config.get_provider_config()
+        if provider_config["type"] == "kuberay":
+            self._cloud_provider = KubeRayProvider(
+                provider_config,
+                cluster_name=config.get_config("cluster_name"),
+            )
+        else:
+            node_provider_v1 = _get_node_provider(
+                provider_config,
+                config.get_config("cluster_name"),
+            )
 
-        self._cloud_provider = NodeProviderAdapter(
-            v1_provider=node_provider_v1,
-            config_reader=config_reader,
-        )
+            self._cloud_provider = NodeProviderAdapter(
+                v1_provider=node_provider_v1,
+                config_reader=config_reader,
+            )
 
     def _init_instance_manager(
         self,

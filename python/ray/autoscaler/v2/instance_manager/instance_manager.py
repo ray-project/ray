@@ -4,7 +4,6 @@ from typing import List, Optional
 
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
-    InvalidInstanceUpdateError,
 )
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.core.generated.instance_manager_pb2 import (
@@ -93,18 +92,12 @@ class InstanceManager:
         # Handle instances states update.
         to_upsert_instances = []
         for instance_id, update in ids_to_updates.items():
-            try:
-                if instance_id in to_update_instances:
-                    instance = self._update_instance(
-                        to_update_instances[instance_id], update
-                    )
-                else:
-                    instance = self._create_instance(update)
-            except InvalidInstanceUpdateError as e:
-                logger.error(e)
-                return InstanceManager._get_update_im_state_reply(
-                    StatusCode.INVALID_VALUE, version, str(e)
+            if instance_id in to_update_instances:
+                instance = self._update_instance(
+                    to_update_instances[instance_id], update
                 )
+            else:
+                instance = self._create_instance(update)
 
             to_upsert_instances.append(instance)
 
@@ -191,64 +184,24 @@ class InstanceManager:
         Args:
             instance: The instance to update.
             update: The update to apply.
-
-        Raises:
-            InvalidInstanceUpdateError: If the update is invalid.
         """
-        err_msg = None
         if update.new_instance_status == Instance.ALLOCATED:
-            if not update.cloud_instance_id:
-                err_msg = "ALLOCATED update must have cloud_instance_id"
-            elif update.node_kind not in [
-                NodeKind.WORKER,
-                NodeKind.HEAD,
-            ]:
-                err_msg = "ALLOCATED update must have node_kind as WORKER or HEAD"
-            elif not update.instance_type:
-                err_msg = "ALLOCATED update must have instance_type"
-
-            if err_msg:
-                raise InvalidInstanceUpdateError(
-                    instance_id=update.instance_id,
-                    cur_status=instance.status,
-                    update=update,
-                    details=err_msg,
-                )
+            assert (
+                update.cloud_instance_id
+            ), "ALLOCATED update must have cloud_instance_id"
             instance.cloud_instance_id = update.cloud_instance_id
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
         elif update.new_instance_status == Instance.RAY_RUNNING:
-            if not update.ray_node_id:
-                raise InvalidInstanceUpdateError(
-                    instance_id=update.instance_id,
-                    cur_status=instance.status,
-                    update=update,
-                    details=("RAY_RUNNING update must have ray_node_id"),
-                )
+            assert update.ray_node_id, "RAY_RUNNING update must have ray_node_id"
             instance.node_id = update.ray_node_id
         elif update.new_instance_status == Instance.REQUESTED:
-            if not update.launch_request_id:
-                err_msg = "REQUESTED update must have launch_request_id"
-            if not update.instance_type:
-                err_msg = "REQUESTED update must have instance_type"
-
-            if err_msg:
-                raise InvalidInstanceUpdateError(
-                    instance_id=update.instance_id,
-                    cur_status=instance.status,
-                    update=update,
-                    details=err_msg,
-                )
-            instance.instance_type = update.instance_type
+            assert (
+                update.launch_request_id
+            ), "REQUESTED update must have launch_request_id"
+            assert update.instance_type, "REQUESTED update must have instance_type"
             instance.launch_request_id = update.launch_request_id
-        elif update.new_instance_status == Instance.TERMINATING:
-            if not update.cloud_instance_id:
-                raise InvalidInstanceUpdateError(
-                    instance_id=update.instance_id,
-                    cur_status=instance.status,
-                    update=update,
-                    details=("TERMINATING update must have cloud_instance_id"),
-                )
+            instance.instance_type = update.instance_type
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
@@ -256,7 +209,7 @@ class InstanceManager:
         Create a new instance from the given update.
         """
 
-        if update.new_instance_status not in [
+        assert update.new_instance_status in [
             # For unmanaged instance not initialized by InstanceManager,
             # e.g. head node
             Instance.ALLOCATED,
@@ -264,16 +217,10 @@ class InstanceManager:
             Instance.QUEUED,
             # For leaked cloud instance that needs to be terminated.
             Instance.TERMINATING,
-        ]:
-            raise InvalidInstanceUpdateError(
-                instance_id=update.instance_id,
-                cur_status=Instance.UNKNOWN,
-                update=update,
-                details=(
-                    "Invalid status for new instance, must be one of "
-                    "[ALLOCATED, QUEUED, TERMINATING]"
-                ),
-            )
+        ], (
+            "Invalid status for new instance, must be one of "
+            "[ALLOCATED, QUEUED, TERMINATING]"
+        )
 
         # Create a new instance first for common fields.
         instance = InstanceUtil.new_instance(
@@ -298,19 +245,11 @@ class InstanceManager:
 
         Returns:
             The updated instance.
-
-        Raises:
-            InvalidInstanceUpdateError: If the update is invalid.
         """
-        if not InstanceUtil.set_status(
-            instance, update.new_instance_status, update.details
-        ):
-            raise InvalidInstanceUpdateError(
-                instance_id=update.instance_id,
-                cur_status=instance.status,
-                update=update,
-                details="Invalid status transition",
-            )
+        assert InstanceUtil.set_status(instance, update.new_instance_status), (
+            f"Invalid status transition from {instance.status} to "
+            f"{update.new_instance_status}"
+        )
         InstanceManager._apply_update(instance, update)
 
         return instance

@@ -184,18 +184,19 @@ class InstanceManagerTest(unittest.TestCase):
 
         # Invalid instances status update.
         subscriber.clear()
-        reply = im.update_instance_manager_state(
-            UpdateInstanceManagerStateRequest(
-                expected_version=2,
-                updates=[
-                    InstanceUpdateEvent(
-                        instance_id=instance_ids[2],
-                        new_instance_status=Instance.RAY_RUNNING,  # Not requested yet.
-                    ),
-                ],
+        with pytest.raises(AssertionError):
+            reply = im.update_instance_manager_state(
+                UpdateInstanceManagerStateRequest(
+                    expected_version=2,
+                    updates=[
+                        InstanceUpdateEvent(
+                            instance_id=instance_ids[2],
+                            # Not requested yet.
+                            new_instance_status=Instance.RAY_RUNNING,
+                        ),
+                    ],
+                )
             )
-        )
-        assert reply.status.code == StatusCode.INVALID_VALUE
         assert len(subscriber.events) == 0
 
         # Invalid versions.
@@ -207,6 +208,117 @@ class InstanceManagerTest(unittest.TestCase):
                         instance_id=instance_ids[2],
                         new_instance_status=Instance.REQUESTED,
                         instance_type="type-2",
+                    ),
+                ],
+            )
+        )
+        assert reply.status.code == StatusCode.VERSION_MISMATCH
+        assert len(subscriber.events) == 0
+
+    def test_insert(self):
+        ins_storage = InstanceStorage(
+            "cluster-id",
+            InMemoryStorage(),
+        )
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
+
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=0,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_type="type-1",
+                        instance_id="id-1",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                    InstanceUpdateEvent(
+                        instance_id="id-2",
+                        new_instance_status=Instance.TERMINATING,
+                        cloud_instance_id="cloud-id-2",
+                    ),
+                    InstanceUpdateEvent(
+                        instance_id="id-3",
+                        new_instance_status=Instance.ALLOCATED,
+                        cloud_instance_id="cloud-id-3",
+                    ),
+                ],
+            )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 3
+        instance_by_ids = {ins.instance_id: ins for ins in reply.state.instances}
+        assert instance_by_ids["id-1"].status == Instance.QUEUED
+        assert instance_by_ids["id-1"].instance_type == "type-1"
+        assert instance_by_ids["id-2"].status == Instance.TERMINATING
+        assert instance_by_ids["id-3"].status == Instance.ALLOCATED
+        assert instance_by_ids["id-3"].cloud_instance_id == "cloud-id-3"
+        version = reply.state.version
+
+        # With invalid statuses
+        all_statuses = set(Instance.InstanceStatus.values())
+        non_insertable_statuses = all_statuses - {
+            Instance.QUEUED,
+            Instance.TERMINATING,
+            Instance.ALLOCATED,
+        }
+
+        for status in non_insertable_statuses:
+            subscriber.clear()
+            with pytest.raises(AssertionError):
+                reply = im.update_instance_manager_state(
+                    UpdateInstanceManagerStateRequest(
+                        expected_version=version,
+                        updates=[
+                            InstanceUpdateEvent(
+                                instance_id="id-999",
+                                new_instance_status=status,
+                            ),
+                        ],
+                    )
+                )
+            assert len(subscriber.events) == 0
+
+    def test_apply_update(self):
+        ins_storage = InstanceStorage(
+            "cluster-id",
+            InMemoryStorage(),
+        )
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
+
+        # Insert a new instance.
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=0,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_type="type-1",
+                        instance_id="id-1",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                ],
+            )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 1
+        assert reply.state.instances[0].status == Instance.QUEUED
+        assert reply.state.instances[0].instance_type == "type-1"
+
+        # Request
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=1,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id="id-1",
+                        new_instance_status=Instance.REQUESTED,
+                        launch_request_id="l1",
+                        instance_type="type-1",
                     ),
                 ],
             )
@@ -268,20 +380,18 @@ class InstanceManagerTest(unittest.TestCase):
 
         for status in non_insertable_statuses:
             subscriber.clear()
-            reply = im.update_instance_manager_state(
-                UpdateInstanceManagerStateRequest(
-                    expected_version=version,
-                    updates=[
-                        InstanceUpdateEvent(
-                            instance_id="id-999",
-                            new_instance_status=status,
-                        ),
-                    ],
+            with pytest.raises(AssertionError):
+                reply = im.update_instance_manager_state(
+                    UpdateInstanceManagerStateRequest(
+                        expected_version=version,
+                        updates=[
+                            InstanceUpdateEvent(
+                                instance_id="id-999",
+                                new_instance_status=status,
+                            ),
+                        ],
+                    )
                 )
-            )
-            assert (
-                reply.status.code == StatusCode.INVALID_VALUE
-            ), f"status {status} shouldn't be insertable"
             assert len(subscriber.events) == 0
 
     def test_apply_update(self):

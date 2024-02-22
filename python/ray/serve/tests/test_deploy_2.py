@@ -256,7 +256,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         def __call__(self):
             return "hello world"
 
-    serve.run(Model.bind(), _blocking=False)
+    serve._run(Model.bind(), _blocking=False)
 
     def check_fail():
         app_status = serve.status().applications["default"]
