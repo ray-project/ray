@@ -26,6 +26,7 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
+from ray.train.constants import _get_defaults_results_dir
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 
@@ -598,9 +599,9 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        fs, fs_path = get_fs_and_path(
-            self.run_config.storage_path, self.run_config.storage_filesystem
-        )
+        # TODO(justinvyu): [local_dir] Make storage_path non-optional and remove this.
+        storage_path = self.run_config.storage_path or _get_defaults_results_dir()
+        fs, fs_path = get_fs_and_path(storage_path, self.run_config.storage_filesystem)
         experiment_dir_name = (
             self.run_config.name or StorageContext.get_experiment_dir_name(trainable)
         )

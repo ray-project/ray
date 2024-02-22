@@ -26,6 +26,7 @@ from ray.train._internal.storage import StorageContext, get_fs_and_path
 from ray.tune import Experiment, ExperimentAnalysis, ResumeConfig, TuneError
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
+from ray.tune.result import _get_defaults_results_dir
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -135,9 +136,9 @@ class TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        fs, fs_path = get_fs_and_path(
-            self._run_config.storage_path, self._run_config.storage_filesystem
-        )
+        # TODO(justinvyu): [local_dir] Make storage_path non-optional and remove this.
+        storage_path = self._run_config.storage_path or _get_defaults_results_dir()
+        fs, fs_path = get_fs_and_path(storage_path, self._run_config.storage_filesystem)
         self._experiment_dir_name = (
             run_config.name or StorageContext.get_experiment_dir_name(trainable)
         )
