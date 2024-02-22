@@ -415,7 +415,7 @@ def stop(
 @click.argument("job-id", type=str)
 @add_common_job_options
 @add_click_logging_options
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def delete(
     address: Optional[str],
     job_id: str,

@@ -310,7 +310,7 @@ def test_cancel_on_http_timeout_during_execution(
 
             @app.get("/")
             async def wait_for_cancellation(self):
-                await self._handle.remote()._to_object_ref()
+                _ = self._handle.remote()
                 await send_signal_on_cancellation(outer_signal_actor)
 
     else:
@@ -321,7 +321,7 @@ def test_cancel_on_http_timeout_during_execution(
                 self._handle = handle
 
             async def __call__(self, request: Request):
-                await self._handle.remote()._to_object_ref()
+                _ = self._handle.remote()
                 await send_signal_on_cancellation(outer_signal_actor)
 
     serve.run(Ingress.bind(inner.bind()))
