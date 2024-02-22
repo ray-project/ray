@@ -187,6 +187,10 @@ print(ray.get(my_file.remote()))
         assert "/tmp/ray/session_" in output, output
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="Jobs are not in Ray minimal",
+)
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -274,6 +278,10 @@ print(ray.get(my_file.remote()))
         assert os.path.join(tmpdir, "lib.py") in output, output
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="Jobs are not in Ray minimal",
+)
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -324,8 +332,6 @@ print(ray.get(my_file.remote()))
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
