@@ -706,7 +706,7 @@ def _check_info(info, base_env=False, agent_ids=None):
                 ):
                     error = (
                         f"Your dones dictionary must have agent ids that belong to "
-                        f"the environment. Agent_ids recieved from "
+                        f"the environment. Agent_ids received from "
                         f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
