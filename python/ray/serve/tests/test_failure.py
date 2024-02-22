@@ -233,7 +233,7 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
     for _ in range(2):
         starting_actor = SignalActor.remote()
         finish_starting_actor = SignalActor.remote()
-        serve.run(
+        serve._run(
             SlowStarter.bind(starting_actor, finish_starting_actor), _blocking=False
         )
 
