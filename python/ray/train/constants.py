@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 
 import ray
@@ -12,9 +13,11 @@ from ray.air.constants import (  # noqa: F401
 
 
 def get_ray_train_session_dir() -> str:
-    assert ray.is_initialized()
+    if not ray.is_initialized():
+        return tempfile.mkdtemp()
+
     return Path(
-        ray._private.worker._global_node.get_session_dir_path(), "artifacts/train"
+        ray._private.worker._global_node.get_session_dir_path(), "artifacts"
     ).as_posix()
 
 
