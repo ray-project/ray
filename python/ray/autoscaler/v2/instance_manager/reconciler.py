@@ -2,6 +2,7 @@ import logging
 import math
 import time
 import uuid
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -40,6 +41,111 @@ from ray.core.generated.instance_manager_pb2 import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class IInstanceUpdater(ABC):
+    """
+    An interface to for making instance update.
+    """
+
+    @abstractmethod
+    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
+        """
+        Make an instance update for the instance.
+
+        Args:
+            instance: The instance to make update.
+
+        Returns:
+            The instance update event if there's an update. None otherwise.
+        """
+        raise NotImplementedError
+
+
+class TimeoutInstanceUpdater(IInstanceUpdater):
+    """
+    An instance updater that updates the instance to a new status if it's stuck in the
+    current status for too long.
+    """
+
+    def __init__(
+        self,
+        cur_status: IMInstance.InstanceStatus,
+        timeout_s: int,
+        new_status: Optional["IMInstance.InstanceStatus"] = None,
+    ):
+        """
+        Args:
+            cur_status: The current status of the instance.
+            timeout_s: The timeout in seconds.
+            new_status: The new status to transition to if the instance is stuck in the
+                current status for too long.
+        """
+        self.cur_status = cur_status
+        self.timeout_s = timeout_s
+        self.new_status = new_status
+
+    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
+        if InstanceUtil.has_timeout(instance, self.timeout_s):
+            return IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=self.new_status,
+                details=(
+                    f"Timeout={self.timeout_s}s at status "
+                    f"{IMInstance.InstanceStatus.Name(self.cur_status)}"
+                ),
+            )
+        return None
+
+
+class StuckRequestedInstanceUpdater(IInstanceUpdater):
+    """
+    An instance updater that makes updates for instances stuck in the REQUESTED status
+    for too long.
+    """
+
+    def __init__(
+        self,
+        timeout_s: int,
+        max_num_request_to_allocate: int,
+    ):
+        """
+        Args:
+            timeout_s: The timeout in seconds.
+            max_num_request_to_allocate: The maximum number of times an instance
+                could be requested to allocate.
+        """
+        self.max_num_request_to_allocate = max_num_request_to_allocate
+        self.timeout_s = timeout_s
+
+    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
+        if not InstanceUtil.has_timeout(instance, self.timeout_s):
+            # Not timeout yet, be patient.
+            return None
+
+        all_request_times_ns = sorted(
+            InstanceUtil.get_status_transition_times_ns(
+                instance, select_instance_status=IMInstance.REQUESTED
+            )
+        )
+
+        # Fail the allocation if we have tried too many times.
+        if len(all_request_times_ns) >= self.max_num_request_to_allocate:
+            return IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.ALLOCATION_FAILED,
+                details=(
+                    "Failed to allocate cloud instance after "
+                    f"{len(all_request_times_ns)} attempts"
+                ),
+            )
+
+        # Retry the allocation if we could by transitioning to QUEUED again.
+        return IMInstanceUpdateEvent(
+            instance_id=instance.instance_id,
+            new_instance_status=IMInstance.QUEUED,
+            details=f"QUEUED again after timeout={self.timeout_s}s",
+        )
 
 
 class Reconciler:
