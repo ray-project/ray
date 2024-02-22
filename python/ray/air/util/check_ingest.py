@@ -83,7 +83,6 @@ class DummyTrainer(DataParallelTrainer):
                 batch_start = time.perf_counter()
                 for batch in data_shard.iter_batches(
                     prefetch_batches=prefetch_batches,
-                    prefetch_blocks=prefetch_blocks,
                     batch_size=batch_size,
                 ):
                     batch_delay = time.perf_counter() - batch_start
