@@ -10,6 +10,8 @@ import ray
 from ray.autoscaler.v2.scheduler import (
     NodeTypeConfig,
     ResourceDemandScheduler,
+    SchedulingNode,
+    SchedulingNodeStatus,
     SchedulingReply,
     SchedulingRequest,
 )
@@ -66,6 +68,116 @@ def _launch_and_terminate(
     return actual_to_launch, actual_to_terminate
 
 
+class TestSchedulingNode:
+    @staticmethod
+    def test_is_schedulable():
+        instance = make_autoscaler_instance(im_instance=None)
+        assert SchedulingNode.is_schedulable(instance) is False
+
+        all_im_status = set(Instance.InstanceStatus.values())
+        positive_statuses = {
+            Instance.QUEUED,
+            Instance.REQUESTED,
+            Instance.ALLOCATED,
+            Instance.RAY_INSTALLING,
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
+        }
+        negative_statues = {
+            Instance.UNKNOWN,
+            Instance.RAY_STOPPING,
+            Instance.RAY_STOPPED,
+            Instance.TERMINATING,
+            Instance.TERMINATED,
+            Instance.ALLOCATION_FAILED,
+            Instance.RAY_INSTALL_FAILED,
+            Instance.TERMINATION_FAILED,
+        }
+        for status in all_im_status:
+            instance = make_autoscaler_instance(
+                im_instance=Instance(instance_type="type_1", status=status)
+            )
+
+            if status in positive_statuses:
+                assert SchedulingNode.is_schedulable(instance) is True
+            elif status in negative_statues:
+                assert SchedulingNode.is_schedulable(instance) is False
+            else:
+                assert False, f"Unknown status {status}"
+
+    @staticmethod
+    def test_new_node():
+        # Assert none IM instance.
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+                labels={"foo": "foo"},
+            ),
+        }
+        instance = make_autoscaler_instance(im_instance=None)
+        assert SchedulingNode.new(instance, node_type_configs) is None
+
+        # A running ray node
+        instance = make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 0},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+                dynamic_labels={"foo": "bar"},
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
+            ),
+        )
+        node = SchedulingNode.new(instance, node_type_configs)
+        assert node is not None
+        assert node.node_type == "type_1"
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+        assert node.ray_node_id == "r1"
+        assert node.im_instance_id == "1"
+        assert node.available_resources == {"CPU": 0}
+        assert node.total_resources == {"CPU": 1}
+        assert node.labels == {"foo": "bar"}
+
+        # A outdated node.
+        instance = make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="type_no_longer_exists",
+                status=Instance.REQUESTED,
+                instance_id="1",
+            ),
+        )
+        node = SchedulingNode.new(instance, node_type_configs)
+        assert node is not None
+        assert node.node_type == "type_no_longer_exists"
+        assert node.status == SchedulingNodeStatus.TO_TERMINATE
+        assert node.termination_request is not None
+        assert node.termination_request.cause == TerminationRequest.Cause.OUTDATED
+
+        # A pending ray node
+        instance = make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.REQUESTED,
+                instance_id="1",
+            )
+        )
+        node = SchedulingNode.new(instance, node_type_configs)
+        assert node is not None
+        assert node.node_type == "type_1"
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+        assert node.available_resources == {"CPU": 1}
+        assert node.total_resources == {"CPU": 1}
+        assert node.labels == {"foo": "foo"}
+
+
 def test_min_worker_nodes():
     scheduler = ResourceDemandScheduler()
     node_type_configs = {
@@ -104,15 +216,25 @@ def test_min_worker_nodes():
     request = sched_request(
         node_type_configs=node_type_configs,
         instances=[
-            make_autoscaler_instance(ray_node=NodeState(ray_node_type_name="type_1")),
-            make_autoscaler_instance(ray_node=NodeState(ray_node_type_name="type_1")),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_1", status=Instance.RAY_RUNNING
+                ),
+                ray_node=NodeState(ray_node_type_name="type_1"),
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_1", status=Instance.RAY_RUNNING
+                ),
+                ray_node=NodeState(ray_node_type_name="type_1"),
+            ),
         ],
     )
 
     expected_to_launch = {"type_3": 2}
     reply = scheduler.schedule(request)
     actual_to_launch, _ = _launch_and_terminate(reply)
-    assert sorted(actual_to_launch) == sorted(expected_to_launch)
+    assert actual_to_launch == expected_to_launch
 
     # With existing instances pending.
     request = sched_request(
@@ -136,7 +258,7 @@ def test_min_worker_nodes():
     expected_to_launch = {"type_3": 2}
     reply = scheduler.schedule(request)
     actual_to_launch, _ = _launch_and_terminate(reply)
-    assert sorted(actual_to_launch) == sorted(expected_to_launch)
+    assert actual_to_launch == expected_to_launch
 
 
 def test_max_workers_per_type():
@@ -171,10 +293,13 @@ def test_max_workers_per_type():
                 ray_node_type_name="type_1",
                 available_resources={"CPU": 1},
                 total_resources={"CPU": 1},
-                node_id=b"1",
+                node_id=b"r1",
             ),
             im_instance=Instance(
-                instance_type="type_1", status=Instance.RAY_RUNNING, instance_id="1"
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
             ),
         ),
         make_autoscaler_instance(
@@ -182,10 +307,13 @@ def test_max_workers_per_type():
                 ray_node_type_name="type_1",
                 available_resources={"CPU": 0.5},
                 total_resources={"CPU": 1},
-                node_id=b"2",
+                node_id=b"r2",
             ),
             im_instance=Instance(
-                instance_type="type_1", status=Instance.RAY_RUNNING, instance_id="2"
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="2",
+                node_id="r2",
             ),
         ),
     ]
@@ -225,7 +353,7 @@ def test_max_workers_per_type():
             # Lower resource util.
             (
                 "1",
-                "1",
+                "r1",
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
             ),
         ]
@@ -271,11 +399,14 @@ def test_max_num_nodes():
                 ray_node_type_name="type_1",
                 available_resources={"CPU": 1},
                 total_resources={"CPU": 1},
-                node_id=b"1",
+                node_id=b"r1",
                 idle_duration_ms=10,
             ),
             im_instance=Instance(
-                instance_type="type_1", status=Instance.RAY_RUNNING, instance_id="1"
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
             ),
         ),
         make_autoscaler_instance(
@@ -283,10 +414,13 @@ def test_max_num_nodes():
                 ray_node_type_name="type_2",
                 available_resources={"CPU": 0.5},
                 total_resources={"CPU": 1},
-                node_id=b"2",
+                node_id=b"r2",
             ),
             im_instance=Instance(
-                instance_type="type_2", status=Instance.RAY_RUNNING, instance_id="2"
+                instance_type="type_2",
+                status=Instance.RAY_RUNNING,
+                instance_id="2",
+                node_id="r2",
             ),
         ),
         make_autoscaler_instance(
@@ -294,10 +428,13 @@ def test_max_num_nodes():
                 ray_node_type_name="type_2",
                 available_resources={"CPU": 0.0},
                 total_resources={"CPU": 1},
-                node_id=b"3",
+                node_id=b"r3",
             ),
             im_instance=Instance(
-                instance_type="type_2", status=Instance.RAY_RUNNING, instance_id="3"
+                instance_type="type_2",
+                status=Instance.RAY_RUNNING,
+                instance_id="3",
+                node_id="r3",
             ),
         ),
     ]
@@ -337,7 +474,7 @@ def test_max_num_nodes():
     assert sorted(actual_to_terminate) == sorted(
         [
             ("0", "", TerminationRequest.Cause.MAX_NUM_NODES),  # non-ray running
-            ("1", "1", TerminationRequest.Cause.MAX_NUM_NODES),  # idle
+            ("1", "r1", TerminationRequest.Cause.MAX_NUM_NODES),  # idle
         ]
     )
 
@@ -352,8 +489,8 @@ def test_max_num_nodes():
     assert sorted(actual_to_terminate) == sorted(
         [
             ("0", "", TerminationRequest.Cause.MAX_NUM_NODES),  # non-ray running
-            ("1", "1", TerminationRequest.Cause.MAX_NUM_NODES),  # idle
-            ("2", "2", TerminationRequest.Cause.MAX_NUM_NODES),  # less resource util
+            ("1", "r1", TerminationRequest.Cause.MAX_NUM_NODES),  # idle
+            ("2", "r2", TerminationRequest.Cause.MAX_NUM_NODES),  # less resource util
         ]
     )
 
@@ -383,8 +520,8 @@ def test_max_num_nodes():
     assert sorted(actual_to_terminate) == sorted(
         [
             ("0", "", TerminationRequest.Cause.MAX_NUM_NODES),  # non-ray running
-            ("2", "2", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),  # type-2
-            ("3", "3", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),  # type-2
+            ("2", "r2", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),  # type-2
+            ("3", "r3", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),  # type-2
         ]
     )
 
@@ -428,6 +565,13 @@ def test_single_resources():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 1},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="1",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -447,6 +591,13 @@ def test_single_resources():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 0.9},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="1",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -506,6 +657,13 @@ def test_implicit_resources():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 1},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="1",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -538,6 +696,13 @@ def test_max_worker_num_enforce_with_resource_requests():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 1},
                     total_resources={"CPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="1",
+                    node_id="r1",
                 ),
             ),
         ],
@@ -625,6 +790,13 @@ def test_multi_requests_fittable():
                     ray_node_type_name="type_1",
                     available_resources={"CPU": 0, "GPU": 1},
                     total_resources={"CPU": 1, "GPU": 1},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="1",
+                    node_id="r1",
                 ),
             ),
         ],

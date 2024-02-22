@@ -19,6 +19,7 @@ from ray.serve._private.utils import (
     generate_request_id,
     get_current_actor_id,
     get_random_string,
+    inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
 from ray.util import metrics
@@ -204,6 +205,12 @@ class _DeploymentHandleBase:
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
+        if stream is True and inside_ray_client_context():
+            raise RuntimeError(
+                "Streaming DeploymentHandles are not currently supported when "
+                "connected to a remote Ray cluster using Ray Client."
+            )
+
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
