@@ -1909,6 +1909,7 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_workers: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
+        custom_async_evaluation_function: Optional[Callable] = NotProvided,
         always_attach_evaluation_results: Optional[bool] = NotProvided,
         enable_async_evaluation: Optional[bool] = NotProvided,
         # Deprecated args.
@@ -1978,8 +1979,8 @@ class AlgorithmConfig(_Config):
                 metrics: dict. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
-                In case the new `EnvRunner API` is used and
-                `enable_async_evaluation=True` customize the asynchronous evaluation
+            custom_async_evaluation_function: In case the new `EnvRunner API` is used 
+                and `enable_async_evaluation=True` customize the asynchronous evaluation
                 method. This must be a function of signature (algo: Algorithm,
                 eval_workers: WorkerSet, weights_ref: ObjectRef, weights_seq_no: int)
                 -> metrics: dict. See the `Algorithm._evaluate_async_with_env_runner()`
@@ -2045,6 +2046,8 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
+        if custom_async_evaluation_function is not NotProvided:
+            self.custom_async_evaluation_function = custom_async_evaluation_function
         if always_attach_evaluation_results is not NotProvided:
             self.always_attach_evaluation_results = always_attach_evaluation_results
         if enable_async_evaluation is not NotProvided:
@@ -3963,7 +3966,7 @@ class AlgorithmConfig(_Config):
 
         # Check, if we have indeed a function.
         if not isfunction(func):
-            raise ValueError("`custom_async_evaluation_function must be a function.")
+            raise ValueError("`custom_async_evaluation_function` must be a function.")
         # Check, if the signature is correct, i.e. three arguments:
         #   eval_workers, weights_ref, weights_seq_no
         func_signature = signature(func)
@@ -3980,7 +3983,7 @@ class AlgorithmConfig(_Config):
             raise ValueError(
                 "`custom_async_evaluation_func` expects a callable that "
                 "evaluates asynchronous, i.e. it uses "
-                "`eval_workers.foreach_worker_async()`"
+                "`eval_workers.foreach_worker_async()`"                
             )
 
     @staticmethod
