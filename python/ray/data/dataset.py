@@ -3641,7 +3641,7 @@ class Dataset:
         Args:
             prefetch_batches: The number of batches to prefetch ahead of the current
                 batch during the scan.
-            prefetch_blocks: The number of blocks to prefetch ahead of the
+            prefetch_blocks: [Deprecated] The number of blocks to prefetch ahead of the
                 current block during the scan.
 
         Returns:
