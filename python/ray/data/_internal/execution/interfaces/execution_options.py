@@ -37,6 +37,14 @@ class ExecutionResources:
         """Returns True if all resources are zero."""
         return self.cpu == 0.0 and self.gpu == 0.0 and self.object_store_memory == 0
 
+    def non_negative(self) -> bool:
+        """Returns True if all resources are non-negative."""
+        return (
+            (self.cpu is None or self.cpu >= 0) and
+            (self.gpu is None or self.gpu >= 0) and
+            (self.object_store_memory is None or self.object_store_memory >= 0)
+        )
+
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:

@@ -388,20 +388,22 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Allocate the remaining shared resources to each operator.
         for i, op in enumerate(reversed(eligible_ops)):
             # By default, divide the remaining shared resources equally.
-            shared_divided = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
-            self._op_budgets[op] = self._op_budgets[op].add(shared_divided)
+            op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
             # But if the op's budget is less than `incremental_resource_usage`,
             # it will be useless. So we'll let the downstream operator
             # borrow some resources from the upstream operator, if remaining_shared
             # is still enough.
             to_borrow = (
                 op.incremental_resource_usage()
-                .subtract(self._op_budgets[op])
+                .subtract(self._op_budgets[op].add(op_shared))
                 .max(ExecutionResources.zero())
             )
-            if not to_borrow.is_zero() and to_borrow.satisfies_limit(remaining_shared):
-                self._op_budgets[op] = self._op_budgets[op].add(to_borrow)
-            remaining_shared = remaining_shared.subtract(self._op_budgets[op])
+            if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(remaining_shared):
+                op_shared = op_shared.add(to_borrow)
+            remaining_shared = remaining_shared.subtract(op_shared)
+            assert remaining_shared.non_negative(), (remaining_shared, op, op_shared, to_borrow)
+            self._op_budgets[op] = self._op_budgets[op].add(op_shared)
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_budgets[op].gpu = float("inf")
+
