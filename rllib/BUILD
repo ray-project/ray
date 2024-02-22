@@ -2751,7 +2751,7 @@ py_test(
 
 py_test(
     name = "examples/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
-    main = "examples/self_play_with_open_spiel.py",
+    main = "examples/self_play_league_based_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_league_based_with_open_spiel.py"],
