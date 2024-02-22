@@ -10,6 +10,8 @@ GPU=""
 BASE_IMAGE="ubuntu:focal"
 WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 PYTHON_VERSION="3.7.16"
+DOCKERFILE="Dockerfile"
+REDHAT=""
 
 
 while [[ $# -gt 0 ]]
@@ -24,6 +26,11 @@ case $key in
     # Override for the base image.
     shift
     BASE_IMAGE=$1
+    ;;
+    --redhat)
+    REDHAT="-redhat"
+    WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+    DOCKERFILE="Dockerfile.redhat"
     ;;
     --no-cache-build)
     NO_CACHE="--no-cache"
@@ -59,6 +66,11 @@ esac
 shift
 done
 
+# Handling for Redhat + GPU case
+if [ "$GPU" == "-gpu" ] && [ "$REDHAT" == "-redhat" ] ; then
+    BASE_IMAGE="nvidia/cuda:11.2.0-cudnn8-devel-ubi8"
+fi
+
 WHEEL_DIR=$(mktemp -d)
 wget --quiet "$WHEEL_URL" -P "$WHEEL_DIR"
 WHEEL="$WHEEL_DIR/$(basename "$WHEEL_DIR"/*.whl)"
@@ -67,10 +79,10 @@ for IMAGE in "base-deps" "ray-deps" "ray"
 do
     cp "$WHEEL" "docker/$IMAGE/$(basename "$WHEEL")"
     if [ "$OUTPUT_SHA" ]; then
-        IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -q -t "rayproject/$IMAGE:nightly$GPU" "docker/$IMAGE")
+        IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -q -t "rayproject/$IMAGE:nightly$REDHAT$GPU" -f "docker/$IMAGE/$DOCKERFILE" "docker/$IMAGE")
         echo "rayproject/$IMAGE:nightly$GPU SHA:$IMAGE_SHA"
     else
-        docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t "rayproject/$IMAGE:nightly$GPU" "docker/$IMAGE"
+        docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t "rayproject/$IMAGE:nightly$REDHAT$GPU" -f "docker/$IMAGE/$DOCKERFILE" "docker/$IMAGE"
     fi
     rm "docker/$IMAGE/$(basename "$WHEEL")"
 done 
