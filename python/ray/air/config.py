@@ -620,7 +620,7 @@ class RunConfig:
     """
 
     name: Optional[str] = None
-    storage_path: Optional[str] = None
+    storage_path: str = Path("~/ray_results").expanduser().as_posix()
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     failure_config: Optional[FailureConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
