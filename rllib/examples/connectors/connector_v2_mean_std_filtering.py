@@ -85,15 +85,15 @@ if __name__ == "__main__":
                 **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
             ),
         )
-        .evaluation(
-            evaluation_num_workers=1,
-            evaluation_parallel_to_training=True,
-            enable_async_evaluation=True,
-            evaluation_interval=1,
-            evaluation_duration=10,
-            evaluation_duration_unit="episodes",
-            evaluation_config={"explore": False},
-        )
+        # .evaluation(
+        #    evaluation_num_workers=1,
+        #    evaluation_parallel_to_training=True,
+        #    enable_async_evaluation=True,
+        #    evaluation_interval=1,
+        #    evaluation_duration=10,
+        #    evaluation_duration_unit="episodes",
+        #    evaluation_config={"explore": False},
+        # )
     )
 
     # Add a simple multi-agent setup.
