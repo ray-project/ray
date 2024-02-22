@@ -49,7 +49,7 @@ _clean_up() {
 }
 
 TMP_DIR="$(mktemp -d "$HOME/tmp.XXXXXXXXXX")"
-cd "$TMP_DIR"
+cd "$TMP_DIR" || exit 1
 trap _clean_up EXIT
 download_wheels
 twine upload --repository-url https://test.pypi.org/legacy/ *.whl -u __token__ -p "$TEST_PYPI_TOKEN"
