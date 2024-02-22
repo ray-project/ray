@@ -178,7 +178,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-appo.yaml"],
+    data = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -329,7 +329,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/multi-agent-cartpole-impala.yaml"],
+    data = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--dir=tuned_examples/impala"]
 )
 
@@ -2728,7 +2728,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 py_test(
@@ -2737,61 +2737,25 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_ppo_w_rlm_torch",
+    name = "examples/self_play_with_open_spiel_connect_4_ppo_torch_envrunner",
     main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
+    tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3", "--enable-new-api-stack"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
 )
 
 py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_ppo_w_rlm_tf2",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf2", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3", "--enable-new-api-stack"]
-)
-
-py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_appo_w_rlm_torch",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--enable-new-api-stack", "--framework=torch", "--algo=APPO", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--as-test", "--min-league-size=4"]
-)
-
-py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_appo_w_rlm_tf2",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples", "rlm"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--enable-new-api-stack", "--framework=tf2", "--algo=APPO", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--as-test", "--min-league-size=4"]
-)
-
-py_test(
-    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
+    name = "examples/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
     main = "examples/self_play_league_based_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-)
-
-py_test(
-    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
-    main = "examples/self_play_league_based_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=8"]
 )
 
 py_test(
