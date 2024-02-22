@@ -391,6 +391,8 @@ class PhysicalOperator(Operator):
 
         For example, an operator that launches a task per input could return
         ExecutionResources(cpu=1) as its incremental usage.
+        Args:
+            consider_autoscaling: Whether to consider the possibility of autoscaling.
         """
         return ExecutionResources()
 
