@@ -269,11 +269,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         super().__init__(resource_manager)
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
-        # Per-op reserved resources.
+        # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Memory reserved for the outputs of each operator. This includes the operator's
+        # Memory reserved for the outputs of each operator, including the operator's
         # internal and external output buffers and next operator's input buffers, but
-        # doesn't include the pending task outputs.
+        # not including the pending task outputs.
         # Note, if we don't reserve memory for outputs, all the budget may be used by
         # by the pending task outputs. Then we'll have no budget to pull the outputs
         # from the running tasks.
@@ -325,7 +325,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._reserved_for_op_outputs[op] = max(
                 default_reserved.object_store_memory // 2, 1
             )
-            # Adjust the reserved resources in some special cases.
+            # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
             min_reserved = op.incremental_resource_usage(consider_autoscaling=False)
             # 2. To ensure that all GPUs are utilized, reserve enough object store memory
@@ -335,11 +335,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 and op.base_resource_usage().gpu > 0
             ):
                 min_reserved.object_store_memory *= op._autoscaling_policy.min_workers
+            # Also include `reserved_for_op_outputs`.
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
-
+            # Total reserved resources for the operator.
             op_total_reserved = default_reserved.max(min_reserved)
             self._total_shared = self._total_shared.subtract(op_total_reserved)
-            self._op_reserved[op] = op_total_reserved.object_store_memory
+            self._op_reserved[op] = op_total_reserved
             self._op_reserved[op].object_store_memory -= self._reserved_for_op_outputs[op]
         self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
