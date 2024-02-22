@@ -8,6 +8,7 @@ from dateutil import parser
 from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+SHA_LENGTH = 6
 
 
 class DockerHubRateLimitException(Exception):
@@ -65,7 +66,7 @@ def get_docker_hub_auth_token(username: str, password: str) -> Optional[str]:
     return response.json().get("token", None)
 
 
-def _get_git_log(n_days: int = 30):
+def _get_git_log(n_days: int = 30) -> str:
     return subprocess.check_output(
         [
             "git",
@@ -79,24 +80,24 @@ def _get_git_log(n_days: int = 30):
 
 def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
     """
-    Get list of recent commit SHAs (short version, first 6 char) on ray master branch.
+    Get list of recent commit SHAs (short version) on ray master branch.
 
     Args:
         n_days: Number of days to go back in git log.
 
     Returns:
-        List of recent commit SHAs (6 char).
+        List of recent commit SHAs (short version).
     """
     commit_shas = _get_git_log(n_days=n_days)
     short_commit_shas = [
-        commit_sha[:6] for commit_sha in commit_shas.split("\n") if commit_sha
+        commit_sha[:SHA_LENGTH] for commit_sha in commit_shas.split("\n") if commit_sha
     ]
     return short_commit_shas
 
 
 def get_config_docker_oci(tag: str, namespace: str, repository: str):
     """Get Docker image config from tag using OCI API."""
-    token = get_docker_auth_token(namespace=namespace, repository=repository)
+    token = get_docker_auth_token(namespace, repository)
 
     # Pull image manifest to get config digest
     headers = {
@@ -164,9 +165,8 @@ def delete_tag(tag: str, docker_hub_token: str) -> bool:
     if response.status_code != 204:
         logger.info(f"Failed to delete {tag}, status code: {response.json()}")
         return False
-    else:
-        logger.info(f"Deleted tag {tag}")
-        return True
+    logger.info(f"Deleted tag {tag}")
+    return True
 
 
 def query_tags_from_docker_hub(
@@ -174,7 +174,7 @@ def query_tags_from_docker_hub(
     namespace: str,
     repository: str,
     docker_hub_token: str,
-    num_tags: Optional[int] = 1000,
+    num_tags: Optional[int] = None,
 ) -> List[str]:
     """
     Query tags from Docker Hub repository with filter.
@@ -241,7 +241,7 @@ def query_tags_from_docker_with_oci(namespace: str, repository: str) -> List[str
     Returns:
         List of tags from Docker Registry in format namespace/repository:tag.
     """
-    token = get_docker_auth_token(namespace=namespace, repository=repository)
+    token = get_docker_auth_token(namespace, repository)
     headers = {
         "Authorization": f"Bearer {token}",
     }
