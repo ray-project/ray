@@ -327,8 +327,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             # Adjust the reserved resources in some special cases.
             # 1. Make sure the reserved resources are at least to allow one task.
-            # TODO: do not consider autoscaling.
-            min_reserved = op.incremental_resource_usage()
+            min_reserved = op.incremental_resource_usage(consider_autoscaling=False)
             # 2. To ensure that all GPUs are utilized, reserve enough object store memory
             # to launch one task for each worker.
             if (
