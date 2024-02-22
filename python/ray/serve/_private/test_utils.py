@@ -332,6 +332,8 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         await asyncio.sleep(100000)
     except asyncio.CancelledError:
+        # Clear the context var to avoid Ray recursively cancelling this method call.
+        ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
 
 
