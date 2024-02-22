@@ -234,7 +234,7 @@ class DataIterator(abc.ABC):
         iter_batch_args = {
             "batch_size": None,
             "batch_format": None,
-            "prefatch_batches": prefetch_batches,
+            "prefetch_blocks": prefetch_batches,
         }
 
         if prefetch_blocks > 0:
