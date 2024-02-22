@@ -6,7 +6,6 @@ import torch
 
 import ray
 from ray.anyscale.data import AudioDatasource
-from ray.data.datasource import FileExtensionFilter
 from benchmark import Benchmark, BenchmarkMetric
 import whisper
 
@@ -44,7 +43,7 @@ def run_benchmark(args):
             AudioDatasource(
                 paths=DATA_URI,
                 include_paths=True,
-                partition_filter=FileExtensionFilter("flac"),
+                file_extensions=["flac"],
             )
         )
         .map(preprocess)
