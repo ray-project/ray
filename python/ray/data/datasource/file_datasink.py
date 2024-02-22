@@ -149,27 +149,25 @@ class RowBasedFileDatasink(_FileDatasink):
         .. testcode::
 
             import io
-            import numpy as np
+            from typing import Any, Dict
+
+            import pyarrow
             from PIL import Image
-            from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-            from ray.data.datasource import FileBasedDatasource
 
-            class ImageDatasource(FileBasedDatasource):
-                def __init__(self, paths):
-                    super().__init__(
-                        paths,
-                        file_extensions=["png", "jpg", "jpeg", "bmp", "gif", "tiff"],
-                    )
+            from ray.data.datasource import RowBasedFileDatasink
 
-                def _read_stream(self, f, path):
-                    data = f.readall()
-                    image = Image.open(io.BytesIO(data))
 
-                    builder = DelegatingBlockBuilder()
-                    array = np.array(image)
-                    item = {"image": array}
-                    builder.add(item)
-                    yield builder.build()
+            class ImageDatasink(RowBasedFileDatasink):
+                def __init__(self, path: str, *, column: str, file_format: str = "png"):
+                    super().__init__(path, file_format=file_format)
+                    self._file_format = file_format
+                    self._column = column
+
+                def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
+                    image = Image.fromarray(row[self._column])
+                    buffer = io.BytesIO()
+                    image.save(buffer, format=self._file_format)
+                    file.write(buffer.getvalue())
     """  # noqa: E501
 
     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
