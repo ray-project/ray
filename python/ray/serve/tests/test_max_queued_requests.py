@@ -35,7 +35,7 @@ def test_handle_backpressure(serve_instance):
     second_response = handle.remote("hi-2")
     for _ in range(10):
         with pytest.raises(BackPressureError):
-            handle.remote().result("hi-err")
+            handle.remote().result()
 
     # Send the signal; the first request will be unblocked and the second should
     # subsequently get scheduled and executed.
