@@ -1044,11 +1044,10 @@ class Dataset:
         """  # noqa: E501
 
         if num_blocks is not None:
-            warnings.warn(
+            raise DeprecationWarning(
                 "`num_blocks` parameter is deprecated in Ray 2.9. random_shuffle() "
                 "does not support to change the number of output blocks. Use "
                 "repartition() instead.",  # noqa: E501
-                DeprecationWarning,
             )
         plan = self._plan.copy()
         op = RandomShuffle(
