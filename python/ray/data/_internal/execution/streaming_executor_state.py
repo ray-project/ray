@@ -662,9 +662,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,
-        object_store_memory=inc.object_store_memory
-        if DataContext.get_current().use_runtime_metrics_scheduling
-        else None,
+        object_store_memory=0,
     )
 
     # Under global limits; always allow.
@@ -681,24 +679,9 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
     downstream_memory = resource_manager.get_downstream_object_store_memory(op)
-    if (
-        DataContext.get_current().use_runtime_metrics_scheduling
-        and inc.object_store_memory
-    ):
-        downstream_memory += inc.object_store_memory
     downstream_limit = global_limits.scale(resource_manager.get_downstream_fraction(op))
     downstream_memory_ok = ExecutionResources(
         object_store_memory=downstream_memory
     ).satisfies_limit(downstream_limit)
-
-    # If completing a task decreases the overall object store memory usage, allow it
-    # even if we're over the global limit.
-    if (
-        DataContext.get_current().use_runtime_metrics_scheduling
-        and global_ok_sans_memory
-        and op.metrics.average_bytes_change_per_task is not None
-        and op.metrics.average_bytes_change_per_task <= 0
-    ):
-        return True
 
     return global_ok_sans_memory and downstream_memory_ok
