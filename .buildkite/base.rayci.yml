@@ -7,7 +7,6 @@ steps:
     label: "wanda: oss-ci-base_test-py{{matrix}}"
     wanda: ci/docker/base.test.wanda.yaml
     matrix:
-      - "3.8"
       - "3.10"
       - "3.11"
     env:
@@ -21,7 +20,6 @@ steps:
     label: "wanda: oss-ci-base_build-py{{matrix}}"
     wanda: ci/docker/base.build.wanda.yaml
     matrix:
-      - "3.8"
       - "3.10"
       - "3.11"
     env:
@@ -45,7 +43,6 @@ steps:
     label: "wanda: oss-ci-base_ml-py{{matrix}}"
     wanda: ci/docker/base.ml.wanda.yaml
     matrix:
-      - "3.8"
       - "3.10"
     env:
       PYTHON: "{{matrix}}"
@@ -58,7 +55,6 @@ steps:
     label: "wanda: oss-ci-base_gpu-py{{matrix}}"
     wanda: ci/docker/base.gpu.wanda.yaml
     matrix:
-      - "3.8"
       - "3.10"
     env:
       PYTHON: "{{matrix}}"
