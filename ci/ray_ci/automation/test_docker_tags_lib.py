@@ -1,7 +1,5 @@
 from unittest import mock
 import sys
-import os
-import json
 from datetime import datetime, timezone
 import pytest
 
@@ -12,7 +10,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     delete_tag,
     list_recent_commit_short_shas,
     query_tags_from_docker_hub,
-    query_tags_from_docker_with_crane,
+    query_tags_from_docker_with_oci,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -69,13 +67,13 @@ def test_get_docker_auth_token_failure(mock_requests):
 
 @mock.patch("requests.post")
 def test_get_docker_hub_auth_token(mock_requests):
-    os.environ["DOCKER_HUB_USERNAME"] = "test_username"
-    os.environ["DOCKER_HUB_PASSWORD"] = "test_password"
     mock_requests.return_value = mock.Mock(
         status_code=200, json=mock.MagicMock(return_value={"token": "test_token"})
     )
 
-    token = get_docker_hub_auth_token()
+    token = get_docker_hub_auth_token(
+        username="test_username", password="test_password"
+    )
 
     assert mock_requests.call_count == 1
     assert mock_requests.call_args[0][0] == "https://hub.docker.com/v2/users/login"
@@ -89,14 +87,12 @@ def test_get_docker_hub_auth_token(mock_requests):
 
 @mock.patch("requests.post")
 def test_get_docker_hub_auth_token_failure(mock_requests):
-    os.environ["DOCKER_HUB_USERNAME"] = "test_username"
-    os.environ["DOCKER_HUB_PASSWORD"] = "test_password"
     mock_requests.return_value = mock.Mock(
         status_code=400, json=mock.MagicMock(return_value={"error": "test_error"})
     )
 
     with pytest.raises(AuthTokenException, match="Docker Hub. Error code: 400"):
-        get_docker_hub_auth_token()
+        get_docker_hub_auth_token(username="test_username", password="test_password")
 
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._get_git_log")
@@ -128,17 +124,23 @@ def test_get_image_creation_time(mock_config_docker_oci):
     }
     created_time = get_image_creation_time(tag="test_namespace/test_repo:test_tag")
 
-    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
+    mock_config_docker_oci.assert_called_once_with(
+        tag="test_tag", namespace="test_namespace", repository="test_repo"
+    )
     assert created_time == datetime(2024, 1, 26, 23, 0, tzinfo=timezone.utc)
 
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
 def test_get_image_creation_time_failure_unknown(mock_config_docker_oci):
-    mock_config_docker_oci.side_effect = RetrieveImageConfigException("Failed to retrieve image config.")
+    mock_config_docker_oci.side_effect = RetrieveImageConfigException(
+        "Failed to retrieve image config."
+    )
 
     with pytest.raises(RetrieveImageConfigException):
         get_image_creation_time(tag="test_namespace/test_repo:test_tag")
-    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
+    mock_config_docker_oci.assert_called_once_with(
+        tag="test_tag", namespace="test_namespace", repository="test_repo"
+    )
 
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
@@ -146,19 +148,21 @@ def test_get_image_creation_time_failure_no_create_time(mock_config_docker_oci):
     mock_config_docker_oci.return_value = {"architecture": "amd64", "variant": "v1"}
     with pytest.raises(RetrieveImageConfigException):
         get_image_creation_time(tag="test_namespace/test_repo:test_tag")
-    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
+    mock_config_docker_oci.assert_called_once_with(
+        tag="test_tag", namespace="test_namespace", repository="test_repo"
+    )
 
 
 @mock.patch("requests.delete")
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_hub_auth_token")
-def test_delete_tag(mock_get_token, mock_requests):
+def test_delete_tag(mock_requests):
     namespace = "test_namespace"
     repository = "test_repository"
     tag = "test_tag"
-    mock_get_token.return_value = "test_token"
     mock_requests.return_value = mock.Mock(status_code=204)
 
-    deleted = delete_tag(f"{namespace}/{repository}:{tag}")
+    deleted = delete_tag(
+        tag=f"{namespace}/{repository}:{tag}", docker_hub_token="test_token"
+    )
     mock_requests.assert_called_once()
     assert (
         mock_requests.call_args[0][0]
@@ -171,15 +175,15 @@ def test_delete_tag(mock_get_token, mock_requests):
 
 
 @mock.patch("requests.delete")
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_hub_auth_token")
-def test_delete_tag_failure(mock_get_token, mock_requests):
+def test_delete_tag_failure(mock_requests):
     namespace = "test_namespace"
     repository = "test_repository"
     tag = "test_tag"
-    mock_get_token.return_value = "test_token"
     mock_requests.return_value = mock.Mock(status_code=400)
 
-    deleted = delete_tag(f"{namespace}/{repository}:{tag}")
+    deleted = delete_tag(
+        tag=f"{namespace}/{repository}:{tag}", docker_hub_token="test_token"
+    )
     mock_requests.assert_called_once()
     assert (
         mock_requests.call_args[0][0]
@@ -192,16 +196,14 @@ def test_delete_tag_failure(mock_get_token, mock_requests):
 
 
 @mock.patch("requests.delete")
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_hub_auth_token")
-def test_delete_tag_failure_rate_limit_exceeded(mock_get_token, mock_requests):
+def test_delete_tag_failure_rate_limit_exceeded(mock_requests):
     namespace = "test_namespace"
     repository = "test_repository"
     tag = "test_tag"
-    mock_get_token.return_value = "test_token"
     mock_requests.return_value = mock.Mock(status_code=429)
 
     with pytest.raises(DockerHubRateLimitException):
-        delete_tag(f"{namespace}/{repository}:{tag}")
+        delete_tag(tag=f"{namespace}/{repository}:{tag}", docker_hub_token="test_token")
     mock_requests.assert_called_once()
     assert (
         mock_requests.call_args[0][0]
@@ -246,11 +248,7 @@ def _make_docker_hub_response(
     ],
 )
 @mock.patch("requests.get")
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_hub_auth_token")
-def test_query_tags_from_docker_hub(
-    mock_get_token, mock_requests, filter_func, tags, expected_tags
-):
-    mock_get_token.return_value = "test_token"
+def test_query_tags_from_docker_hub(mock_requests, filter_func, tags, expected_tags):
     mock_requests.side_effect = [
         _make_docker_hub_response(
             tags[i], i + 1, "test_namespace", "test_repo", len(tags)
@@ -261,6 +259,7 @@ def test_query_tags_from_docker_hub(
         filter_func=filter_func,
         namespace="test_namespace",
         repository="test_repo",
+        docker_hub_token="test_token",
     )
     expected_tags = sorted([f"test_namespace/test_repo:{t}" for t in expected_tags])
 
@@ -280,11 +279,9 @@ def test_query_tags_from_docker_hub(
     ],
 )
 @mock.patch("requests.get")
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_hub_auth_token")
 def test_query_tags_from_docker_hub_failure(
-    mock_get_token, mock_requests, filter_func, tags, expected_tags
+    mock_requests, filter_func, tags, expected_tags
 ):
-    mock_get_token.return_value = "test_token"
     mock_requests.side_effect = [
         _make_docker_hub_response(tags[0], 1, "test_namespace", "test_repo", len(tags)),
         mock.Mock(
@@ -298,7 +295,7 @@ def test_query_tags_from_docker_hub_failure(
         filter_func=filter_func,
         namespace="test_namespace",
         repository="test_repo",
-        num_tags=100,
+        docker_hub_token="test_token",
     )
     expected_tags = sorted([f"test_namespace/test_repo:{t}" for t in expected_tags[:1]])
 
@@ -307,15 +304,19 @@ def test_query_tags_from_docker_hub_failure(
 
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_auth_token")
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_ls")
-def test_query_tags_from_docker_with_crane(mock_call_crane_ls, mock_get_token):
+@mock.patch("requests.get")
+def test_query_tags_from_docker_with_oci(mock_requests, mock_get_token):
     mock_get_token.return_value = "test_token"
-    mock_call_crane_ls.return_value = "test_tag1\ntest_tag2\ntest_tag3"
-
-    tags = query_tags_from_docker_with_crane("test_namespace", "test_repo")
-    mock_call_crane_ls.assert_called_once_with(
-        namespace="test_namespace", repository="test_repo"
+    mock_requests.return_value = mock.Mock(
+        status_code=200,
+        json=mock.MagicMock(
+            return_value={
+                "tags": ["test_tag1", "test_tag2", "test_tag3"],
+            }
+        ),
     )
+
+    tags = query_tags_from_docker_with_oci("test_namespace", "test_repo")
     assert tags == [
         "test_namespace/test_repo:test_tag1",
         "test_namespace/test_repo:test_tag2",
@@ -324,16 +325,20 @@ def test_query_tags_from_docker_with_crane(mock_call_crane_ls, mock_get_token):
 
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_auth_token")
-@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_ls")
-def test_query_tags_from_docker_with_crane_failure(mock_call_crane_ls, mock_get_token):
+@mock.patch("requests.get")
+def test_query_tags_from_docker_with_oci_failure(mock_requests, mock_get_token):
     mock_get_token.return_value = "test_token"
-    mock_call_crane_ls.return_value = "Error: Failed to list tags."
-
-    with pytest.raises(Exception, match="Failed to list tags."):
-        query_tags_from_docker_with_crane("test_namespace", "test_repo")
-    mock_call_crane_ls.assert_called_once_with(
-        namespace="test_namespace", repository="test_repo"
+    mock_requests.return_value = mock.Mock(
+        status_code=401,
+        json=mock.MagicMock(
+            return_value={
+                "Error": "Unauthorized",
+            }
+        ),
     )
+
+    with pytest.raises(Exception, match="Failed to query tags"):
+        query_tags_from_docker_with_oci("test_namespace", "test_repo")
 
 
 if __name__ == "__main__":

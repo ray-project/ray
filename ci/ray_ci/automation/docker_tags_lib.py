@@ -38,16 +38,6 @@ class AuthTokenException(Exception):
 
 
 def get_docker_auth_token(namespace: str, repository: str) -> Optional[str]:
-    """
-    Retrieve Docker Registry token.
-
-    Args:
-        namespace: Docker namespace
-        repository: Docker repository
-
-    Returns:
-        Auth token for Docker.
-    """
     service, scope = (
         "registry.docker.io",
         f"repository:{namespace}/{repository}:pull",
@@ -60,12 +50,8 @@ def get_docker_auth_token(namespace: str, repository: str) -> Optional[str]:
     return token
 
 
-def get_docker_hub_auth_token():
-    """
-    Retrieve Docker Hub auth token.
-    """
-    username = os.environ["DOCKER_HUB_USERNAME"]
-    password = os.environ["DOCKER_HUB_PASSWORD"]
+def get_docker_hub_auth_token(username: str, password: str) -> Optional[str]:
+    """Retrieve Docker Hub auth token."""
 
     url = "https://hub.docker.com/v2/users/login"
     json_body = {
@@ -107,6 +93,7 @@ def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
     ]
     return short_commit_shas
 
+
 def get_config_docker_oci(tag: str, namespace: str, repository: str):
     """Get Docker image config from tag using OCI API."""
     token = get_docker_auth_token(namespace=namespace, repository=repository)
@@ -114,19 +101,21 @@ def get_config_docker_oci(tag: str, namespace: str, repository: str):
     # Pull image manifest to get config digest
     headers = {
         "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.docker.distribution.manifest.v2+json"
+        "Accept": "application/vnd.docker.distribution.manifest.v2+json",
     }
-    image_manifest_url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/manifests/{tag}"
+    image_manifest_url = (
+        f"https://registry-1.docker.io/v2/{namespace}/{repository}/manifests/{tag}"
+    )
     response = requests.get(image_manifest_url, headers=headers)
     if response.status_code != 200:
         raise RetrieveImageConfigException("image manifest.")
     config_blob_digest = response.json()["config"]["digest"]
 
     # Pull image config
-    config_blob_url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/blobs/{config_blob_digest}"
+    config_blob_url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/blobs/{config_blob_digest}"  # noqa E501
     config_headers = {
         "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.docker.container.image.v1+json"
+        "Accept": "application/vnd.docker.container.image.v1+json",
     }
     response = requests.get(config_blob_url, headers=config_headers)
     if response.status_code != 200:
@@ -152,18 +141,18 @@ def get_image_creation_time(tag: str) -> datetime:
     return parser.isoparse(config["created"])
 
 
-def delete_tag(tag: str) -> bool:
+def delete_tag(tag: str, docker_hub_token: str) -> bool:
     """
     Delete tag from Docker Hub repo.
 
     Args:
         tag: Docker tag name
+        docker_hub_token: Docker Hub auth token
     Returns:
         True if tag was deleted successfully, False otherwise.
     """
-    token = get_docker_hub_auth_token()
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {docker_hub_token}",
     }
     namespace, repo_tag = tag.split("/")
     repository, tag_name = repo_tag.split(":")
@@ -184,6 +173,7 @@ def query_tags_from_docker_hub(
     filter_func: Callable[[str], bool],
     namespace: str,
     repository: str,
+    docker_hub_token: str,
     num_tags: Optional[int] = 1000,
 ) -> List[str]:
     """
@@ -204,7 +194,7 @@ def query_tags_from_docker_hub(
     """
     filtered_tags = []
     headers = {
-        "Authorization": f"Bearer {get_docker_hub_auth_token()}",
+        "Authorization": f"Bearer {docker_hub_token}",
     }
 
     page_count = 1
@@ -240,23 +230,9 @@ def query_tags_from_docker_hub(
     return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
 
-def _call_crane_ls(namespace: str, repository: str):
-    try:
-        return subprocess.check_output(
-            [
-                "crane",
-                "ls",
-                f"{namespace}/{repository}",
-            ],
-            text=True,
-        )
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.output}"
-
-
-def query_tags_from_docker_with_crane(namespace: str, repository: str) -> List[str]:
+def query_tags_from_docker_with_oci(namespace: str, repository: str) -> List[str]:
     """
-    Query all repo tags from Docker using Crane.
+    Query all repo tags from Docker using OCI API.
 
     Args:
         namespace: Docker namespace
@@ -265,8 +241,13 @@ def query_tags_from_docker_with_crane(namespace: str, repository: str) -> List[s
     Returns:
         List of tags from Docker Registry in format namespace/repository:tag.
     """
-    get_docker_auth_token(namespace=namespace, repository=repository)
-    result = _call_crane_ls(namespace=namespace, repository=repository)
-    if "Error" in result:
-        raise Exception(f"Failed to query tags from Docker Registry: {result}")
-    return [f"{namespace}/{repository}:{t}" for t in result.split("\n")]
+    token = get_docker_auth_token(namespace=namespace, repository=repository)
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/tags/list"
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"Failed to query tags from Docker: {response.json()}")
+
+    return [f"{namespace}/{repository}:{t}" for t in response.json()["tags"]]
