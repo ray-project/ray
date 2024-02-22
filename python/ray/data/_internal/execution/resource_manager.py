@@ -53,11 +53,9 @@ class ResourceManager:
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
         # Object store memory usage of the pending task outputs.
         self._mem_pending_task_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
-        # Object store memory usage of the internal and external output buffers.
-        self._mem_output_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
-        # Object store memory usage of the input buffers of the output dependency
-        # operators.
-        self._mem_next_op_input_buffers: Dict[PhysicalOperator, int] = defaultdict(int)
+        # Object store memory usage of the internal/external output buffers, and
+        # the output buffers of the output dependency operators.
+        self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
         # Whether to print debug information.
         self._debug = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
 
@@ -97,8 +95,7 @@ class ResourceManager:
             )
 
         self._mem_pending_task_outputs[op] = pending_task_outputs
-        self._mem_output_buffers[op] = output_buffers
-        self._mem_next_op_input_buffers[op] = next_op_input_buffers
+        self._mem_op_outputs[op] = output_buffers + next_op_input_buffers
 
         return pending_task_outputs + output_buffers + next_op_input_buffers
 
@@ -190,10 +187,14 @@ class ResourceManager:
         usage_str += f", objects: {self._op_usages[op].object_store_memory_str()}"
         if self._debug:
             usage_str += (
-                f" (PendingTaskOutputs: {memory_string(self._mem_pending_task_outputs[op])}, "  # noqa
-                f"OutBuffers: {memory_string(self._mem_output_buffers[op])}, "
-                f"NextOpInBuffers: {memory_string(self._mem_next_op_input_buffers[op])})"  # noqa
+                f" (task_pending: {memory_string(self._mem_pending_task_outputs[op])}, "  # noqa
+                f"op_outputs: {memory_string(self._mem_op_outputs[op])})"
             )
+            if (
+                self.op_resource_allocator_enabled()
+                and op in self._op_resource_allocator._op_budgets
+            ):
+                usage_str += f", budget: {self._op_resource_allocator._op_budgets[op]}"
         return usage_str
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
@@ -355,10 +356,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
-        outputs_usage = (
-            self._resource_manager._mem_output_buffers[op]
-            + self._resource_manager._mem_next_op_input_buffers[op]
-        )
+        outputs_usage = self._resource_manager._mem_op_outputs[op]
         outputs_remaining_reserved = max(
             self._reserved_for_op_outputs[op] - outputs_usage, 0
         )
