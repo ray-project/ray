@@ -18,7 +18,7 @@ def generate_write_fn(
     datasink_or_legacy_datasource: Union[Datasink, Datasource], **write_args
 ) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
     # If the write op succeeds, the resulting Dataset is a list of
-    # WriteResult (one element per write task). Otherwise, an error will
+    # arbitrary objects (one object per write task). Otherwise, an error will
     # be raised. The Datasource can handle execution outcomes with the
     # on_write_complete() and on_write_failed().
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
@@ -29,7 +29,8 @@ def generate_write_fn(
                 blocks, ctx, **write_args
             )
 
-        # NOTE: `WriteResult` isn't a valid block type, so we need to wrap it up.
+        # NOTE: Write tasks can return anything, so we need to wrap it in a valid block
+        # type.
         import pandas as pd
 
         block = pd.DataFrame({"write_result": [write_result]})

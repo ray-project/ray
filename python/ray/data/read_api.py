@@ -1,6 +1,7 @@
 import collections
 import logging
 import os
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -2757,6 +2758,12 @@ def _get_datasource_or_legacy_reader(
     DataContext._set_current(ctx)
 
     if ds.should_create_reader:
+        warnings.warn(
+            "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
+            "`Reader`, implement `Datasource.get_read_tasks` and "
+            "`Datasource.estimate_inmemory_data_size`.",
+            DeprecationWarning,
+        )
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
     else:
         datasource_or_legacy_reader = ds

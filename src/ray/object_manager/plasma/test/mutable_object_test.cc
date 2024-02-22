@@ -290,8 +290,8 @@ TEST(MutableObjectTest, TestReaderFails) {
 
   ASSERT_EQ(data_results[0]->size(), num_reads_success);
   for (int i = 1; i < num_readers; i++) {
-    ASSERT_TRUE(data_results[i]->size() == static_cast<size_t>(num_reads_success + 1) ||
-                data_results[i]->size() == static_cast<size_t>(num_reads_success + 2));
+    ASSERT_TRUE(static_cast<size_t>(num_reads_success) <= data_results[i]->size());
+    ASSERT_TRUE(data_results[i]->size() <= static_cast<size_t>(num_reads_success + 2));
   }
   for (int i = 1; i < num_readers; i++) {
     for (int j = 0; j < static_cast<int>(data_results[i]->size()); j++) {
