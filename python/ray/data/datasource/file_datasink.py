@@ -156,7 +156,6 @@ class RowBasedFileDatasink(_FileDatasink):
 
             from ray.data.datasource import RowBasedFileDatasink
 
-
             class ImageDatasink(RowBasedFileDatasink):
                 def __init__(self, path: str, *, column: str, file_format: str = "png"):
                     super().__init__(path, file_format=file_format)
