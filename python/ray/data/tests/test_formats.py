@@ -1,5 +1,5 @@
 import os
-from typing import Iterable, List
+from typing import Any, Iterable, List
 
 import pandas as pd
 import pyarrow as pa
@@ -13,13 +13,12 @@ import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import Datasource, DummyOutputDatasource, WriteResult
+from ray.data.datasource import Datasink, DummyOutputDatasink
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
-from ray.types import ObjectRef
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -145,10 +144,10 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-def test_write_datasource(ray_start_regular_shared):
-    output = DummyOutputDatasource()
+def test_write_datasink(ray_start_regular_shared):
+    output = DummyOutputDatasink()
     ds = ray.data.range(10, parallelism=2)
-    ds.write_datasource(output)
+    ds.write_datasink(output)
     assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
@@ -156,7 +155,7 @@ def test_write_datasource(ray_start_regular_shared):
     output.enabled = False
     ds = ray.data.range(10, parallelism=2)
     with pytest.raises(ValueError):
-        ds.write_datasource(output, ray_remote_args={"max_retries": 0})
+        ds.write_datasink(output, ray_remote_args={"max_retries": 0})
     assert output.num_ok == 1
     assert output.num_failed == 1
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
@@ -206,7 +205,7 @@ def test_from_torch(shutdown_only, tmp_path):
     assert actual_data == expected_data
 
 
-class NodeLoggerOutputDatasource(Datasource):
+class NodeLoggerOutputDatasink(Datasink):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
     def __init__(self):
@@ -236,8 +235,7 @@ class NodeLoggerOutputDatasource(Datasource):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-        **write_args,
-    ) -> WriteResult:
+    ) -> Any:
         data_sink = self.data_sink
 
         def write(b):
@@ -250,17 +248,15 @@ class NodeLoggerOutputDatasource(Datasource):
         ray.get(tasks)
         return "ok"
 
-    def on_write_complete(self, write_results: List[WriteResult]) -> None:
+    def on_write_complete(self, write_results: List[Any]) -> None:
         assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
-    def on_write_failed(
-        self, write_results: List[ObjectRef[WriteResult]], error: Exception
-    ) -> None:
+    def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1
 
 
-def test_write_datasource_ray_remote_args(ray_start_cluster):
+def test_write_datasink_ray_remote_args(ray_start_cluster):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
@@ -277,10 +273,10 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
 
-    output = NodeLoggerOutputDatasource()
+    output = NodeLoggerOutputDatasink()
     ds = ray.data.range(100, parallelism=10)
     # Pin write tasks to node with "bar" resource.
-    ds.write_datasource(output, ray_remote_args={"resources": {"bar": 1}})
+    ds.write_datasink(output, ray_remote_args={"resources": {"bar": 1}})
     assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 100
