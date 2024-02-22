@@ -100,12 +100,6 @@ def test_storage_path_inputs():
     StorageContext(storage_path=Path(path), experiment_dir_name=exp_name)
 
 
-def test_no_syncing_needed(local_path):
-    """Tests that we don't create a syncer if no syncing is needed."""
-    storage = StorageContext(storage_path=local_path, experiment_dir_name="test_dir")
-    assert storage.syncer is None
-
-
 def test_storage_validation_marker(storage: StorageContext):
     # A marker should have been created at initialization
     storage._check_validation_file()

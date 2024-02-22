@@ -557,7 +557,7 @@ class StorageContext:
         depending on the `sync_period` + `sync_artifacts_on_checkpoint`
         settings of `SyncConfig`.
 
-        `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
+        `(local_fs, trial_working_dir) -> (storage_filesystem, trial_fs_path)`
 
         Args:
             force: If True, wait for a previous sync to finish, launch a new one,
@@ -567,9 +567,9 @@ class StorageContext:
         if not self.sync_config.sync_artifacts:
             return
 
-        # Skip if we don't need to sync (e.g., storage_path == storage_local_path, and
-        # all trial artifacts are already in the right place)
-        if not self.syncer:
+        # Skip if there are no artifacts to sync
+        is_empty = not any(os.scandir(self.trial_working_directory))
+        if is_empty:
             return
 
         if force:
