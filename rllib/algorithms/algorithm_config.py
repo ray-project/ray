@@ -890,7 +890,6 @@ class AlgorithmConfig(_Config):
         return pipeline
 
     def build_module_to_env_connector(self, env):
-
         from ray.rllib.connectors.module_to_env import (
             DefaultModuleToEnv,
             ModuleToEnvPipeline,
@@ -1860,6 +1859,8 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    # TODO (sven): Deprecate this method. Move `explore` setting into `rollouts()`.
+    #  `exploration_config` should no longer be used on the new API stack.
     def exploration(
         self,
         *,
@@ -2295,7 +2296,7 @@ class AlgorithmConfig(_Config):
 
         if policy_mapping_fn is not NotProvided:
             # Create `policy_mapping_fn` from a config dict.
-            # Helpful is users would like to specify custom callable classes in
+            # Helpful if users would like to specify custom callable classes in
             # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
@@ -3766,7 +3767,11 @@ class AlgorithmConfig(_Config):
         # new API stack.
         if self.uses_new_env_runners and self.callbacks_class is not DefaultCallbacks:
             default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
-            user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            try:
+                user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            # In case user has setup a `partial` instead of an actual Callbacks class.
+            except AttributeError:
+                user_src = default_src
             if default_src != user_src:
                 raise ValueError(
                     "When using the new API stack with EnvRunners, you cannot override "
