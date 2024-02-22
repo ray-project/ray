@@ -3623,7 +3623,9 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+    def iter_rows(
+        self, *, prefetch_batches: int = 0, prefetch_blocks: int = 0
+    ) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
         Examples:
@@ -3637,13 +3639,17 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
+            prefetch_batches: The number of batches to prefetch ahead of the current
+                batch during the scan.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
 
         Returns:
             An iterable over the rows in this dataset.
         """
-        return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
+        return self.iterator().iter_rows(
+            prefetch_batches=prefetch_batches, prefetch_blocks=prefetch_blocks
+        )
 
     @ConsumptionAPI
     def iter_batches(
