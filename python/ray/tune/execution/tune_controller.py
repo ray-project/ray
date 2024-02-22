@@ -316,7 +316,7 @@ class TuneController:
     def experiment_state_path(self) -> str:
         """Returns the local experiment checkpoint path."""
         return Path(
-            self._storage.experiment_local_path, self.experiment_state_file_name
+            self._storage.experiment_local_staging_path, self.experiment_state_file_name
         ).as_posix()
 
     @property
@@ -346,7 +346,7 @@ class TuneController:
         - the searcher state
         - the callback states
         """
-        experiment_dir = self._storage.experiment_local_path
+        experiment_dir = self._storage.experiment_local_staging_path
 
         # Get state from trial executor and runner
         runner_state = {
@@ -383,7 +383,7 @@ class TuneController:
         and the callback states. It will then parse the trial states
         and return them as a list of Trial objects.
         """
-        experiment_dir = self._storage.experiment_local_path
+        experiment_dir = self._storage.experiment_local_staging_path
 
         # Find newest state file
         newest_state_path = _find_newest_experiment_checkpoint(experiment_dir)

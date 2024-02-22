@@ -154,7 +154,7 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        experiment_local_path = self._storage.experiment_local_path
+        experiment_local_path = self._storage.experiment_local_staging_path
         if not experiment_local_path:
             return
 
@@ -198,7 +198,7 @@ class _ExperimentCheckpointManager:
         # But for now, this is needed to upload driver artifacts that live in the
         # trial directory.
         exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
-        experiment_local_path = self._storage.experiment_local_path
+        experiment_local_path = self._storage.experiment_local_staging_path
         experiment_fs_path = self._storage.experiment_fs_path
 
         if force:
@@ -300,13 +300,15 @@ class _ExperimentCheckpointManager:
         ]
         for relpath in matches:
             fs_path = Path(self._storage.experiment_fs_path, relpath).as_posix()
-            local_path = Path(self._storage.experiment_local_path, relpath).as_posix()
+            local_path = Path(
+                self._storage.experiment_local_staging_path, relpath
+            ).as_posix()
             _download_from_fs_path(fs=fs, fs_path=fs_path, local_path=local_path)
         logger.debug(
             f"Copied {matches} from:\n(fs, path) = "
             f"({self._storage.storage_filesystem.type_name}, "
             f"{self._storage.experiment_fs_path})\n"
-            f"-> {self._storage.experiment_local_path}"
+            f"-> {self._storage.experiment_local_staging_path}"
         )
 
     def resume(self) -> bool:
@@ -320,7 +322,7 @@ class _ExperimentCheckpointManager:
         Returns:
             can_restore: Whether the experiment can be restored.
         """
-        experiment_local_path = self._storage.experiment_local_path
+        experiment_local_path = self._storage.experiment_local_staging_path
         experiment_fs_path = self._storage.experiment_fs_path
 
         syncer = self._storage.syncer

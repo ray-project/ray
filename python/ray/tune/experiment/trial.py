@@ -536,7 +536,7 @@ class Trial:
 
     @property
     def local_experiment_path(self) -> str:
-        return self.storage.experiment_local_path
+        return self.storage.experiment_local_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")
