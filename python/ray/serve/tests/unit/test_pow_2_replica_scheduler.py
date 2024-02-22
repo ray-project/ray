@@ -105,7 +105,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
     def send_request(
         self, pr: PendingRequest
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
         raise NotImplementedError()
 
 

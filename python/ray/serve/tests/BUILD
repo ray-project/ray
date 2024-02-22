@@ -190,13 +190,29 @@ py_test(
 # TODO(edoakes): remove this after it's on by default.
 py_test_module_list(
   name_suffix="_with_queue_len_cache_enabled",
-  env={"RAY_SERVE_ENABLE_QUEUE_LEN_CACHE": "1"},
+  env={"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "1"},
   files = [
     "test_autoscaling_policy.py",
     "test_handle.py",
     "test_handle_api.py",
     "test_handle_streaming.py",
     "test_multiplex.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
+)
+
+# Test old stop-fully-then-start behavior.
+# TODO(zcin): remove this after the old behavior is completely removed
+py_test_module_list(
+  name_suffix="_with_stop_fully_then_start_behavior",
+  env={"RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS": "0"},
+  files = [
+    "test_controller_recovery.py",
+    "test_deploy.py",
+    "test_max_replicas_per_node.py",
   ],
   size = "medium",
   tags = ["exclusive", "no_windows", "team:serve"],

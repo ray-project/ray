@@ -178,18 +178,42 @@ class OpRuntimeMetrics:
 
         If an estimate isn't available, this property returns ``None``.
         """
+        per_task_output = self.obj_store_mem_max_pending_output_per_task
+        if per_task_output is None:
+            return None
+
+        # Ray Data launches multiple tasks per actor, but only one task runs at a
+        # time per actor. So, the number of actually running tasks is capped by the
+        # number of active actors.
+        from ray.data._internal.execution.operators.actor_pool_map_operator import (
+            ActorPoolMapOperator,
+        )
+
+        num_tasks_running = self.num_tasks_running
+        if isinstance(self._op, ActorPoolMapOperator):
+            num_tasks_running = min(
+                num_tasks_running, self._op._actor_pool.num_active_actors()
+            )
+
+        return num_tasks_running * per_task_output
+
+    @property
+    def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
+        """Estimated size in bytes of output blocks in a task's generator buffer."""
         context = ray.data.DataContext.get_current()
         if context._max_num_blocks_in_streaming_gen_buffer is None:
             return None
 
-        estimated_bytes_per_output = (
+        bytes_per_output = (
             self.average_bytes_per_output or context.target_max_block_size
         )
-        return (
-            self.num_tasks_running
-            * estimated_bytes_per_output
-            * context._max_num_blocks_in_streaming_gen_buffer
-        )
+
+        num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
+        if self.average_num_outputs_per_task is not None:
+            num_pending_outputs = min(
+                num_pending_outputs, self.average_num_outputs_per_task
+            )
+        return bytes_per_output * num_pending_outputs
 
     @property
     def average_bytes_inputs_per_task(self) -> Optional[float]:
