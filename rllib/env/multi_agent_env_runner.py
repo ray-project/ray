@@ -372,7 +372,9 @@ class MultiAgentEnvRunner(EnvRunner):
             self._episode.validate()
             self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
             # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(self._episode.finalize())
+            ongoing_episodes_to_return.append(
+                self._episode.finalize(drop_zero_len_single_agent_episodes=True)
+            )
 
         # Continue collecting into the cut Episode chunk.
         self._episode = ongoing_episode_continuation
@@ -545,17 +547,29 @@ class MultiAgentEnvRunner(EnvRunner):
             assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
+            module_rewards = defaultdict(
+                float,
+                {
+                    (sa_eps.agent_id, sa_eps.module_id): sa_eps.get_return()
+                    for sa_eps in eps.agent_episodes.values()
+                },
+            )
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                     episode_length += len(eps2)
                     episode_reward += eps2.get_return()
+                    for sa_eps in eps2.agent_episodes.values():
+                        module_rewards[
+                            (sa_eps.agent_id, sa_eps.module_id)
+                        ] += eps2.get_return()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             metrics.append(
                 RolloutMetrics(
                     episode_length=episode_length,
                     episode_reward=episode_reward,
+                    agent_rewards=dict(module_rewards),
                 )
             )
 
@@ -591,8 +605,10 @@ class MultiAgentEnvRunner(EnvRunner):
             # Set `global_vars` (timestep) as well.
             worker.set_weights(weights, {"timestep": 42})
         """
-
-        self.module.set_state(weights)
+        # Only update the weigths, if this is the first synchronization or
+        # if the weights of this `EnvRunner` lacks behind the actual ones.
+        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+            self.module.set_state(weights)
 
     def get_weights(self, modules=None) -> Dict[ModuleID, ModelWeights]:
         """Returns the weights of our multi-agent `RLModule`.

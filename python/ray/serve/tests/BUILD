@@ -186,16 +186,18 @@ py_test(
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
-# Tests enabling queue len caching feature flag.
-# TODO(edoakes): remove this after it's on by default.
+# Tests disabling queue len caching feature flag.
+# TODO(edoakes): remove this after the FF is removed.
 py_test_module_list(
-  name_suffix="_with_queue_len_cache_enabled",
-  env={"RAY_SERVE_ENABLE_QUEUE_LEN_CACHE": "1"},
+  name_suffix="_with_queue_len_cache_disabled",
+  env={"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
   files = [
     "test_autoscaling_policy.py",
+    "test_cancellation.py",
     "test_handle.py",
     "test_handle_api.py",
     "test_handle_streaming.py",
+    "test_request_timeout.py",
     "test_multiplex.py",
   ],
   size = "medium",
