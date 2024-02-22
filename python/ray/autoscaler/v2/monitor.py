@@ -185,6 +185,9 @@ class AutoscalerMonitor:
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
     def run(self):
+        # FIXME:
+        # Sleep for now to wait til head node is ready
+        time.sleep(1)
         try:
             self._run()
         except Exception:

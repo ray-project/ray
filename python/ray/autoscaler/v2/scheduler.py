@@ -212,6 +212,7 @@ class SchedulingNode:
             node_config,
             SchedulingNodeStatus.SCHEDULABLE,
             instance.im_instance.instance_id,
+            instance.im_instance.node_kind,
         )
 
     @staticmethod
@@ -257,6 +258,7 @@ class SchedulingNode:
         node_config: NodeTypeConfig,
         status: SchedulingNodeStatus,
         im_instance_id: Optional[str] = None,
+        node_kind: NodeKind = NodeKind.WORKER,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -265,6 +267,7 @@ class SchedulingNode:
             node_config: The node config.
             status: The status of the node.
             im_instance_id: The instance id of the im instance.
+            node_kind: The node kind.
         """
         return SchedulingNode(
             node_type=node_config.name,
@@ -274,6 +277,7 @@ class SchedulingNode:
             labels=dict(node_config.labels),
             status=status,
             im_instance_id=im_instance_id,
+            node_kind=node_kind,
         )
 
     def __post_init__(self):
@@ -519,6 +523,7 @@ class SchedulingNode:
     def __repr__(self) -> str:
         return (
             "SchedulingNode(node_type={node_type}, "
+            "node_kind={node_kind}, "
             "instance_id={instance_id},"
             "ray_node_id={ray_node_id},"
             "idle_duration_ms={idle_duration_ms},"
@@ -532,6 +537,7 @@ class SchedulingNode:
             "sched_constraints={sched_constraints})"
         ).format(
             node_type=self.node_type,
+            node_kind=self.node_kind,
             instance_id=self.im_instance_id,
             ray_node_id=self.ray_node_id,
             idle_duration_ms=self.idle_duration_ms,

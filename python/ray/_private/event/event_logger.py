@@ -162,7 +162,6 @@ def parse_event(event_str: str) -> Optional[Event]:
     try:
         return Parse(event_str, Event())
     except Exception:
-        global_logger.exception(f"Failed to parse event: {event_str}")
         return None
 
 
