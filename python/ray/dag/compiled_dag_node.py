@@ -479,6 +479,9 @@ class CompiledDAG:
         """Teardown and cancel all worker tasks for this DAG."""
         self._monitor.teardown()
 
+    def __del__(self):
+        self.teardown()
+
 
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
