@@ -113,8 +113,6 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
-        # Deprecated.
-        prefetch_blocks: int = 0,
     ) -> Iterable[DataBatch]:
         """Return a batched iterable over the dataset.
 
@@ -152,14 +150,6 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over record batches.
         """
-
-        if prefetch_blocks > 0:
-            raise DeprecationWarning(
-                "`prefetch_blocks` arg is deprecated in Ray 2.4. Use "
-                "the `prefetch_batches` arg instead to specify the amount of "
-                "prefetching in terms of batches instead of blocks."
-            )
-
         batch_format = _apply_batch_format(batch_format)
 
         def _create_iterator() -> Iterator[DataBatch]:
@@ -261,8 +251,6 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        # Deprecated.
-        prefetch_blocks: int = 0,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
@@ -389,7 +377,6 @@ class DataIterator(abc.ABC):
 
         return self.iter_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
@@ -407,8 +394,6 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        # Deprecated.
-        prefetch_blocks: int = 0,
     ) -> Iterable["TensorFlowTensorBatchType"]:
         """Return a batched iterable of TensorFlow Tensors over the dataset.
 
@@ -464,7 +449,6 @@ class DataIterator(abc.ABC):
 
         batch_iterable = self.iter_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
@@ -497,8 +481,6 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
-        # Deprecated.
-        prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -632,7 +614,6 @@ class DataIterator(abc.ABC):
             for batch in self.iter_batches(
                 batch_size=batch_size,
                 batch_format="pandas",
-                prefetch_blocks=prefetch_blocks,
                 prefetch_batches=prefetch_batches,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
@@ -687,8 +668,6 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        # Deprecated.
-        prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -828,7 +807,6 @@ class DataIterator(abc.ABC):
         def generator():
             for batch in self.iter_batches(
                 prefetch_batches=prefetch_batches,
-                prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
