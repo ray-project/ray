@@ -1,9 +1,11 @@
 import os
+import uuid
 from pathlib import Path
 
 import pyarrow.fs
 import pytest
 
+import ray
 import ray.cloudpickle as ray_pickle
 from ray.train import Checkpoint, SyncConfig
 from ray.train._internal.storage import (
@@ -23,7 +25,7 @@ def storage(request, tmp_path) -> StorageContext:
     ):
         yield StorageContext(
             storage_path=storage_path,
-            experiment_dir_name="exp_name",
+            experiment_dir_name=f"storage_type={storage_type}-{uuid.uuid4().hex}",
             storage_filesystem=storage_filesystem,
             trial_dir_name="trial_name",
             sync_config=SyncConfig(
@@ -37,6 +39,14 @@ def local_path(tmp_path, monkeypatch):
     local_dir = str(tmp_path / "ray_results")
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", local_dir)
     yield local_dir
+
+
+@pytest.fixture(autouse=True, scope="module")
+def ray_init():
+    # NOTE: This is needed to set the `/tmp/ray/session_*` directory.
+    ray.init()
+    yield
+    ray.shutdown()
 
 
 def test_custom_fs_validation(tmp_path):
@@ -156,9 +166,9 @@ def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
 
 def test_persist_artifacts(storage: StorageContext):
     """Tests typical `StorageContext.persist_artifacts(force=True/False)` usage."""
-    trial_local_path = Path(storage.trial_local_staging_path)
-    trial_local_path.mkdir(parents=True)
-    trial_local_path.joinpath("1.txt").touch()
+    trial_working_dir = Path(storage.trial_working_directory)
+    trial_working_dir.mkdir(parents=True)
+    trial_working_dir.joinpath("1.txt").touch()
 
     storage.persist_artifacts()
 
@@ -175,7 +185,7 @@ def test_persist_artifacts(storage: StorageContext):
         _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path)
     ) == ["1.txt"]
 
-    trial_local_path.joinpath("2.txt").touch()
+    trial_working_dir.joinpath("2.txt").touch()
 
     # A new sync should not be triggered because sync_period is 1000 seconds
     storage.persist_artifacts()
