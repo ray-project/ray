@@ -802,6 +802,9 @@ def _code_reduce(obj):
     # of the specific type from types, for example:
     # >>> from types import CodeType
     # >>> help(CodeType)
+    #HACK: prepend pickled functions co_filename with "<ray remote> " to allow remote
+    # debugger to disambiguate between local-loaded functions vs pickled functions.
+    co_filename = "<ray remote> " + obj.co_filename
     if hasattr(obj, "co_exceptiontable"):
         # Python 3.11 and later: there are some new attributes
         # related to the enhanced exceptions.
@@ -816,7 +819,7 @@ def _code_reduce(obj):
             obj.co_consts,
             obj.co_names,
             obj.co_varnames,
-            obj.co_filename,
+            co_filename,
             obj.co_name,
             obj.co_qualname,
             obj.co_firstlineno,
@@ -839,7 +842,7 @@ def _code_reduce(obj):
             obj.co_consts,
             obj.co_names,
             obj.co_varnames,
-            obj.co_filename,
+            co_filename,
             obj.co_name,
             obj.co_firstlineno,
             obj.co_linetable,
@@ -860,7 +863,7 @@ def _code_reduce(obj):
             obj.co_code,
             obj.co_consts,
             obj.co_varnames,
-            obj.co_filename,
+            co_filename,
             obj.co_name,
             obj.co_firstlineno,
             obj.co_lnotab,
@@ -884,7 +887,7 @@ def _code_reduce(obj):
             obj.co_consts,
             obj.co_names,
             obj.co_varnames,
-            obj.co_filename,
+            co_filename,
             obj.co_name,
             obj.co_firstlineno,
             obj.co_lnotab,
