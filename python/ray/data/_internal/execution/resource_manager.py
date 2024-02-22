@@ -184,17 +184,16 @@ class ResourceManager:
     def get_op_usage_str(self, op: PhysicalOperator) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
-        usage_str = f"[cpu: {self._op_usages[op].cpu:.1f}"
+        usage_str = f"cpu: {self._op_usages[op].cpu:.1f}"
         if self._op_usages[op].gpu:
             usage_str += f", gpu: {self._op_usages[op].gpu:.1f}"
         usage_str += f", objects: {self._op_usages[op].object_store_memory_str()}"
         if self._debug:
             usage_str += (
-                f" (PendingTaskOutputs: {memory_string(self._mem_pending_task_outputs[op])}, "
+                f" (PendingTaskOutputs: {memory_string(self._mem_pending_task_outputs[op])}, "  # noqa
                 f"OutBuffers: {memory_string(self._mem_output_buffers[op])}, "
-                f"NextOpInBuffers: {memory_string(self._mem_next_op_input_buffers[op])})"
+                f"NextOpInBuffers: {memory_string(self._mem_next_op_input_buffers[op])})"  # noqa
             )
-        usage_str += "]"
         return usage_str
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
@@ -328,7 +327,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
             min_reserved = op.incremental_resource_usage(consider_autoscaling=False)
-            # 2. To ensure that all GPUs are utilized, reserve enough object store memory
+            # 2. To ensure that all GPUs are utilized, reserve enough resource budget
             # to launch one task for each worker.
             if (
                 isinstance(op, ActorPoolMapOperator)
@@ -341,7 +340,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_total_reserved = default_reserved.max(min_reserved)
             self._total_shared = self._total_shared.subtract(op_total_reserved)
             self._op_reserved[op] = op_total_reserved
-            self._op_reserved[op].object_store_memory -= self._reserved_for_op_outputs[op]
+            self._op_reserved[op].object_store_memory -= self._reserved_for_op_outputs[
+                op
+            ]
         self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:

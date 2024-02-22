@@ -88,7 +88,6 @@ def test_streaming_backpressure_e2e(restore_data_context):
             return {"id": np.random.randn(1, 20, 1024, 1024)}
 
     ctx = ray.init(object_store_memory=4e9)
-    data_context = ray.data.DataContext.get_current()
     ds = ray.data.range_tensor(20, shape=(3, 1024, 1024), parallelism=20)
 
     pipe = ds.map_batches(

@@ -33,9 +33,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
-from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -245,7 +243,7 @@ class OpState:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
-        desc += f", " + resource_manager.get_op_usage_str(self.op)
+        desc += f", [{resource_manager.get_op_usage_str(self.op)}]"
         suffix = self.op.progress_str()
         if suffix:
             desc += f", {suffix}"
