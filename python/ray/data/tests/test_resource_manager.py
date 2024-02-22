@@ -258,7 +258,7 @@ class TestReservationOpResourceAllocator:
         )
 
         assert resource_manager.op_resource_allocator_enabled()
-        op_resource_limiter = resource_manager._op_resource_alloator
+        op_resource_limiter = resource_manager._op_resource_allocator
         assert isinstance(op_resource_limiter, ReservationOpResourceAllocator)
 
         # Test initial state when no resources are used.
@@ -348,7 +348,7 @@ class TestReservationOpResourceAllocator:
         )
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
-        op_resource_limiter = resource_manager._op_resource_alloator
+        op_resource_limiter = resource_manager._op_resource_allocator
         assert isinstance(op_resource_limiter, ReservationOpResourceAllocator)
 
         op_resource_limiter.update_usages()
@@ -378,7 +378,7 @@ class TestReservationOpResourceAllocator:
         )
 
         assert resource_manager.op_resource_allocator_enabled()
-        op_resource_allocator = resource_manager._op_resource_alloator
+        op_resource_allocator = resource_manager._op_resource_allocator
         assert isinstance(op_resource_allocator, ReservationOpResourceAllocator)
 
         op_resource_allocator.update_usages()

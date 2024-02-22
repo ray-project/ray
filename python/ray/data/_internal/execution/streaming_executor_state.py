@@ -636,7 +636,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
         return True
 
     if resource_manager.op_resource_allocator_enabled():
-        return resource_manager._op_resource_alloator.can_submit_new_task(op)
+        return resource_manager.op_resource_allocator.can_submit_new_task(op)
 
     global_usage = resource_manager.get_global_usage()
     global_limits = resource_manager.get_global_limits()

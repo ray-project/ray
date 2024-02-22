@@ -37,7 +37,7 @@ class ExecutionResources:
         """Returns True if all resources are zero."""
         return self.cpu == 0.0 and self.gpu == 0.0 and self.object_store_memory == 0
 
-    def non_negative(self) -> bool:
+    def is_non_negative(self) -> bool:
         """Returns True if all resources are non-negative."""
         return (
             (self.cpu is None or self.cpu >= 0) and

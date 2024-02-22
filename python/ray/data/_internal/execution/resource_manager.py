@@ -64,7 +64,7 @@ class ResourceManager:
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
 
-        self._op_resource_alloator: Optional["OpResourceAllocator"] = None
+        self._op_resource_allocator: Optional["OpResourceAllocator"] = None
         ctx = DataContext.get_current()
 
         if ctx.op_resource_reservation_enabled:
@@ -74,7 +74,7 @@ class ResourceManager:
                     should_enable = False
                     break
             if should_enable:
-                self._op_resource_alloator = ReservationOpResourceAllocator(
+                self._op_resource_allocator = ReservationOpResourceAllocator(
                     self, ctx.op_resource_reservation_ratio
                 )
 
@@ -132,8 +132,8 @@ class ResourceManager:
                 op
             ] = self._global_usage.object_store_memory
 
-        if self._op_resource_alloator is not None:
-            self._op_resource_alloator.update_usages()
+        if self._op_resource_allocator is not None:
+            self._op_resource_allocator.update_usages()
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
@@ -207,13 +207,13 @@ class ResourceManager:
 
     def op_resource_allocator_enabled(self) -> bool:
         """Return whether OpResourceAllocator is enabled."""
-        return self._op_resource_alloator is not None
+        return self._op_resource_allocator is not None
 
     @property
     def op_resource_allocator(self) -> "OpResourceAllocator":
         """Return the OpResourceAllocator."""
-        assert self._op_resource_alloator is not None
-        return self._op_resource_alloator
+        assert self._op_resource_allocator is not None
+        return self._op_resource_allocator
 
 
 class OpResourceAllocator(ABC):
@@ -358,10 +358,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._resource_manager._mem_output_buffers[op]
             + self._resource_manager._mem_next_op_input_buffers[op]
         )
-        outputs_reamining_reserved = max(
+        outputs_remaining_reserved = max(
             self._reserved_for_op_outputs[op] - outputs_usage, 0
         )
-        return self._op_budgets[op].object_store_memory + outputs_reamining_reserved
+        return self._op_budgets[op].object_store_memory + outputs_remaining_reserved
 
     def update_usages(self):
         eligible_ops = self._get_eligible_ops()
@@ -413,7 +413,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             ):
                 op_shared = op_shared.add(to_borrow)
             remaining_shared = remaining_shared.subtract(op_shared)
-            assert remaining_shared.non_negative(), (
+            assert remaining_shared.is_non_negative(), (
                 remaining_shared,
                 op,
                 op_shared,
