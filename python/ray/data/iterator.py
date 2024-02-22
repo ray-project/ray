@@ -234,9 +234,8 @@ class DataIterator(abc.ABC):
         iter_batch_args = {
             "batch_size": None,
             "batch_format": None,
-            "prefetch_blocks": prefetch_batches,
+            "prefetch_batches": prefetch_batches,
         }
-
         if prefetch_blocks > 0:
             warnings.warn(
                 "`prefetch_blocks` is deprecated in Ray 2.10. Use "
