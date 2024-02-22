@@ -27,14 +27,14 @@ boto3==1.26.76
 botocore==1.29.165
 Brotli @ file:///tmp/abs_ecyw11_7ze/croots/recipe/brotli-split_1659616059936/work
 cachetools==5.3.2
-certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1700303426725/work/certifi
+certifi==2023.11.17
 cffi @ file:///croot/cffi_1700254295673/work
 charset-normalizer==3.3.2
 click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///croot/conda_1706737954207/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1707843821892/work
 conda-content-trust @ file:///croot/conda-content-trust_1693490622020/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
@@ -85,7 +85,7 @@ msrest==0.7.1
 msrestazure==0.6.4
 multidict==6.0.4
 networkx==3.1
-numpy==1.26.3
+numpy==1.26.4
 nvidia-ml-py==12.535.133
 oauthlib==3.2.2
 opencensus==0.11.3
@@ -127,10 +127,10 @@ python-dotenv==1.0.0
 pytz==2022.7.1
 PyWavelets==1.4.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-2.9.2-cp39-cp39-manylinux2014_x86_64.whl#sha256=5c9a675257c9d384efdfc238d12d59793ab340bf218904ca7995e9b0503f1edb
-ray-cpp==2.9.2
+ray @ file:///home/ray/ray-2.9.3-cp39-cp39-manylinux2014_x86_64.whl#sha256=7c6c5a2cce2f28ee2471914e4038a6f69545828ab917ff39eb6592649a2eddd7
+ray-cpp==2.9.3
 redis==3.5.3
-requests @ file:///croot/requests_1690400202158/work
+requests @ file:///croot/requests_1707355572290/work
 requests-oauthlib==1.3.1
 rich==12.6.0
 rsa==4.7.2
@@ -150,7 +150,7 @@ tqdm @ file:///croot/tqdm_1679561862951/work
 typer==0.9.0
 typing_extensions==4.8.0
 uritemplate==3.0.1
-urllib3 @ file:///croot/urllib3_1698257533958/work
+urllib3==1.26.18
 uvicorn==0.22.0
 uvloop==0.19.0
 virtualenv==20.21.0

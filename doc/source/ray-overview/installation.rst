@@ -523,13 +523,13 @@ Docker images for Python 3.9.
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: 2.9.2 (`fce7a36 <https://github.com/ray-project/ray/commit/fce7a361807580953364e2da964f9498f3123bf9>`_)
+        Ray version: 2.9.3 (`62655e1 <https://github.com/ray-project/ray/commit/62655e11ed76509b78654b60be67bc59f8f3460a>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. tab-item:: ray-ml (Python 3.9)
         :sync: ray-ml (Python 3.9)
 
-        Ray version: 2.9.2 (`fce7a36 <https://github.com/ray-project/ray/commit/fce7a361807580953364e2da964f9498f3123bf9>`_)
+        Ray version: 2.9.3 (`62655e1 <https://github.com/ray-project/ray/commit/62655e11ed76509b78654b60be67bc59f8f3460a>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt
