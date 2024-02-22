@@ -746,7 +746,6 @@ ray_cc_library(
         ],
         exclude = [
             "src/ray/core_worker/**/*_test.cc",
-            "src/ray/core_worker/mock_worker.cc",
         ],
     ),
     hdrs = glob([
@@ -772,53 +771,6 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@nlohmann_json",
-    ],
-)
-
-ray_cc_library(
-    name = "mock_worker_lib",
-    srcs = ["src/ray/core_worker/test/mock_worker.cc"],
-    hdrs = glob([
-        "src/ray/core_worker/test/*.h",
-    ]),
-    deps = [
-        ":core_worker_lib",
-    ],
-)
-
-ray_cc_binary(
-    name = "mock_worker",
-    deps = [
-        ":mock_worker_lib",
-    ],
-)
-
-ray_cc_test(
-    name = "core_worker_test",
-    size = "small",
-    srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
-    args = [
-        "$(location raylet)",
-        "$(location mock_worker)",
-        "$(location gcs_server)",
-        "$(location redis-cli)",
-        "$(location redis-server)",
-    ],
-    data = [
-        "//:gcs_server",
-        "//:mock_worker",
-        "//:raylet",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = ["team:core", "no_windows", "manual"],
-    deps = [
-        ":core_worker_lib",
-        ":gcs",
-        "//src/ray/protobuf:runtime_env_common_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1247,6 +1199,20 @@ ray_cc_test(
         "src/ray/object_manager/plasma/test/object_store_test.cc",
     ],
     tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "mutable_object_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/mutable_object_test.cc",
+    ],
+    tags = ["team:core", "no_windows"],
     deps = [
         ":plasma_store_server_lib",
         "@com_google_absl//absl/random",

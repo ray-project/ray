@@ -127,9 +127,6 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
-# Key used to idenfity given json represents a serialized RayServeHandle
-SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
-
 # The time in seconds that the Serve client waits before rechecking deployment state
 CLIENT_POLLING_INTERVAL_S: float = 1
 
@@ -198,11 +195,6 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
-
-# Feature flag to enable new handle API.
-RAY_SERVE_ENABLE_NEW_HANDLE_API = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
-)
 
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
@@ -301,4 +293,22 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
 # Feature flag to always run a proxy on the head node even if it has no replicas.
 RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = (
     os.environ.get("RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1") == "1"
+)
+
+
+# Default is 2GiB, the max for a signed int.
+RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
+    os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
+)
+
+# Serve's gRPC server options.
+SERVE_GRPC_OPTIONS = [
+    ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
+]
+
+# Feature flag to eagerly start replacement replicas. This means new
+# replicas will start before waiting for old replicas to fully stop.
+RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
+    os.environ.get("RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS", "1") == "1"
 )

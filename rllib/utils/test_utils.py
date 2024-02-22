@@ -195,6 +195,11 @@ def add_rllib_example_script_args(
         "script will throw an exception at the end.",
     )
 
+    # Learner scaling options.
+    # Old API stack: config.num_gpus.
+    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner_worker=1).
+    parser.add_argument("--num-gpus", type=int, default=0)
+
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
@@ -1137,6 +1142,7 @@ def run_learning_tests_from_yaml(
 def run_rllib_example_script_experiment(
     config: "AlgorithmConfig",
     args: argparse.Namespace,
+    stop: Optional[Dict] = None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1156,7 +1162,7 @@ def run_rllib_example_script_experiment(
     """
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    stop = {
+    stop = stop or {
         "training_iteration": args.stop_iters,
         "episode_reward_mean": args.stop_reward,
         "timesteps_total": args.stop_timesteps,

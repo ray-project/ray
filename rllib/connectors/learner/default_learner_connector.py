@@ -57,13 +57,12 @@ class DefaultLearnerConnector(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # If episodes are provided, extract the essential data from them, but only if
-        # respective keys are not present yet in `data`.
         if not episodes:
             return data
 
+        # If episodes are provided, extract the essential data from them, but only if
+        # respective keys are not present yet in `data`.
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
-
         if is_multi_agent:
             # TODO (sven): Support multi-agent cases, in which user defined learner
             #  connector pieces before this (default) one here.
@@ -89,13 +88,12 @@ class DefaultLearnerConnector(ConnectorV2):
             if SampleBatch.OBS in data and not is_multi_agent:
                 sa_data[SampleBatch.OBS] = data.pop(SampleBatch.OBS)
 
-            state_in = None
-            T = sa_module.config.model_config_dict.get("max_seq_len")
-
             # RLModule is stateful and STATE_IN is not found in `data` (user's custom
             # connectors have not provided this information yet) -> Perform separate
             # handling of STATE_OUT/STATE_IN keys:
+            state_in = None
             if sa_module.is_stateful() and STATE_IN not in sa_data:
+                T = sa_module.config.model_config_dict.get("max_seq_len")
                 if T is None:
                     raise ValueError(
                         "You are using a stateful RLModule and are not providing "

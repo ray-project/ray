@@ -16,7 +16,7 @@ from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
 
 
@@ -156,7 +156,7 @@ def test_replica_startup_status_transitions(ray_cluster):
         async def __init__(self):
             await signal.wait.remote()
 
-    serve.run(E.bind(), _blocking=False)
+    serve._run(E.bind(), _blocking=False)
 
     def get_replicas(replica_state):
         controller = client._controller
@@ -310,7 +310,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     @serve.deployment(num_replicas=1, ray_actor_options={"num_cpus": 0})
     class Outer:
-        def __init__(self, inner_handle: RayServeHandle):
+        def __init__(self, inner_handle: DeploymentHandle):
             self._h = inner_handle.options(_prefer_local_routing=True)
 
         def get_node_id(self) -> str:

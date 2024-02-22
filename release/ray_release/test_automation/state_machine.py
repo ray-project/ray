@@ -38,7 +38,6 @@ class TestStateMachine(abc.ABC):
     ...
     """
 
-    ray_user = None
     ray_repo = None
     ray_buildkite = None
 
@@ -61,12 +60,6 @@ class TestStateMachine(abc.ABC):
         return Github(get_secret_token(AWS_SECRET_GITHUB))
 
     @classmethod
-    def get_ray_user(cls):
-        if not cls.ray_user:
-            cls.ray_user = cls.get_github().get_user()
-        return cls.ray_user
-
-    @classmethod
     def get_ray_repo(cls):
         cls._init_ray_repo()
         return cls.ray_repo
@@ -80,10 +73,10 @@ class TestStateMachine(abc.ABC):
 
     @classmethod
     def get_release_blockers(cls) -> List[github.Issue.Issue]:
-        user = cls.get_ray_user()
-        blocker_label = cls.get_ray_repo().get_label(WEEKLY_RELEASE_BLOCKER_TAG)
+        repo = cls.get_ray_repo()
+        blocker_label = repo.get_label(WEEKLY_RELEASE_BLOCKER_TAG)
 
-        return user.get_issues(state="open", labels=[blocker_label])
+        return repo.get_issues(state="open", labels=[blocker_label])
 
     @classmethod
     def get_issue_owner(cls, issue: github.Issue.Issue) -> str:
