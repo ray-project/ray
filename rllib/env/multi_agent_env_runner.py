@@ -605,8 +605,10 @@ class MultiAgentEnvRunner(EnvRunner):
             # Set `global_vars` (timestep) as well.
             worker.set_weights(weights, {"timestep": 42})
         """
-
-        self.module.set_state(weights)
+        # Only update the weigths, if this is the first synchronization or
+        # if the weights of this `EnvRunner` lacks behind the actual ones.
+        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+            self.module.set_state(weights)
 
     def get_weights(self, modules=None) -> Dict[ModuleID, ModelWeights]:
         """Returns the weights of our multi-agent `RLModule`.
