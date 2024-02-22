@@ -1,5 +1,5 @@
 # Use the latest Ray master as base.
-FROM rayproject/ray:nightly-py310
+FROM rayproject/ray:nightly-py38
 # Invalidate the cache so that fresh code is pulled in the next step.
 ARG BUILD_DATE
 # Retrieve your development code.
