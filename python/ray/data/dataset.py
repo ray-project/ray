@@ -3661,8 +3661,6 @@ class Dataset:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
-        # Deprecated.
-        prefetch_blocks: int = 0,
     ) -> Iterable[DataBatch]:
         """Return an iterable over batches of data.
 
@@ -3714,7 +3712,6 @@ class Dataset:
         batch_format = _apply_batch_format(batch_format)
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
@@ -3735,8 +3732,6 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
 
@@ -3822,7 +3817,6 @@ class Dataset:
         """  # noqa: E501
         return self.iterator().iter_torch_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
             device=device,
@@ -3842,8 +3836,6 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> Iterable[TensorFlowTensorBatchType]:
         """Return an iterable over batches of data represented as TensorFlow tensors.
 
@@ -3909,7 +3901,6 @@ class Dataset:
         """  # noqa: E501
         return self.iterator().iter_tf_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
             drop_last=drop_last,
@@ -3936,8 +3927,6 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
         """Return a
         `Torch IterableDataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset>`_
@@ -4037,7 +4026,6 @@ class Dataset:
             label_column_dtype=label_column_dtype,
             feature_column_dtypes=feature_column_dtypes,
             batch_size=batch_size,
-            prefetch_blocks=prefetch_blocks,
             prefetch_batches=prefetch_batches,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
@@ -4059,8 +4047,6 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
         """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
         over this :class:`~ray.data.Dataset`.
@@ -4165,7 +4151,6 @@ class Dataset:
             feature_columns=feature_columns,
             label_columns=label_columns,
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             drop_last=drop_last,
             batch_size=batch_size,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
