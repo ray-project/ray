@@ -434,13 +434,18 @@ def test_query_tags_from_docker_with_oci_failure(mock_requests, mock_get_token):
         query_tags_from_docker_with_oci("test_namespace", "test_repo")
 
 
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_hub_auth_token")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.query_tags_from_docker_hub")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._write_to_file")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.copy_tag_to_aws_ecr")
-def test_backup_release_tags(mock_copy_tag, mock_write, mock_query_tags):
+def test_backup_release_tags(
+    mock_copy_tag, mock_write, mock_query_tags, mock_get_token
+):
     namespace = "test_namespace"
     repository = "test_repository"
     aws_ecr_repo = "test_aws_ecr_repo"
+
+    mock_get_token.return_value = "test_token"
     mock_query_tags.return_value = [
         f"{namespace}/{repository}:2.0.{i}" for i in range(10)
     ]
@@ -449,11 +454,14 @@ def test_backup_release_tags(mock_copy_tag, mock_write, mock_query_tags):
         namespace=namespace,
         repository=repository,
         aws_ecr_repo=aws_ecr_repo,
+        docker_username="test_username",
+        docker_password="test_password",
     )
 
     assert mock_query_tags.call_count == 1
     assert mock_query_tags.call_args.kwargs["namespace"] == namespace
     assert mock_query_tags.call_args.kwargs["repository"] == repository
+    assert mock_query_tags.call_args.kwargs["docker_hub_token"] == "test_token"
     assert mock_query_tags.call_args.kwargs["filter_func"].__name__ == "<lambda>"
     assert (
         mock_query_tags.call_args.kwargs["filter_func"].__code__.co_varnames[0] == "t"

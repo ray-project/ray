@@ -327,6 +327,8 @@ def backup_release_tags(
     namespace: str,
     repository: str,
     aws_ecr_repo: str,
+    docker_username: str,
+    docker_password: str,
     release_versions: Optional[List[str]] = None,
 ) -> None:
     """
@@ -335,10 +337,12 @@ def backup_release_tags(
         release_versions: List of release versions to backup
         aws_ecr_repo: AWS ECR repository
     """
+    docker_hub_token = get_docker_hub_auth_token(docker_username, docker_password)
     docker_hub_tags = query_tags_from_docker_hub(
         filter_func=lambda t: _is_release_tag(t, release_versions),
         namespace=namespace,
         repository=repository,
+        docker_hub_token=docker_hub_token,
     )
     _write_to_file("release_tags.txt", docker_hub_tags)
     for t in docker_hub_tags:
