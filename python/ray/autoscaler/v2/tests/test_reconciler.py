@@ -1071,6 +1071,27 @@ class TestReconciler:
 
     @staticmethod
     @pytest.mark.parametrize(
+        "status,expected_running",
+        [(Instance.RAY_RUNNING, True), (Instance.ALLOCATED, False)],
+        ids=["ray_running", "allocated"],
+    )
+    def test_is_head_node_running(status, expected_running, setup):
+        instance_manager, instance_storage, subscriber = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=status,
+                cloud_instance_id="c-1",
+                node_kind=NodeKind.HEAD,
+            ),
+        ]
+
+        TestReconciler._add_instances(instance_storage, instances)
+        assert Reconciler._is_head_node_running(instance_manager) is expected_running
+
+    @staticmethod
+    @pytest.mark.parametrize(
         "need_ray_stop",
         [True, False],
         ids=["need_ray_stop", "no_ray_stop"],
@@ -1084,16 +1105,29 @@ class TestReconciler:
 
         im_instances = [
             create_instance(
-                "i-1", status=Instance.RAY_RUNNING, cloud_instance_id="c-1"
+                "head",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-0",
+                ray_node_id=binary_to_hex(b"r-0"),
+                node_kind=NodeKind.HEAD,
+            ),
+            create_instance(
+                "i-1",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-1",
+                ray_node_id=binary_to_hex(b"r-1"),
+                node_kind=NodeKind.WORKER,
             ),  # To be reconciled.
         ]
         TestReconciler._add_instances(instance_storage, im_instances)
 
         ray_nodes = [
+            NodeState(node_id=b"r-0", status=NodeStatus.RUNNING, instance_id="c-1"),
             NodeState(node_id=b"r-1", status=NodeStatus.RUNNING, instance_id="c-1"),
         ]
 
         cloud_instances = {
+            "c-0": CloudInstance("c-0", "head", "", True, NodeKind.HEAD),
             "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
         }
 
@@ -1136,9 +1170,11 @@ class TestReconciler:
 
         instances, _ = instance_storage.get_instances()
 
-        assert len(instances) == 3
+        assert len(instances) == 3 + 1  # for head node
         for id, instance in instances.items():
-            if id == "i-1":
+            if id == "head":
+                assert instance.status == Instance.RAY_RUNNING
+            elif id == "i-1":
                 assert (
                     instance.status == Instance.RAY_STOP_REQUESTED
                     if need_ray_stop
@@ -1255,6 +1291,13 @@ class TestReconciler:
 
         instances = [
             create_instance(
+                "head",
+                status=Instance.RAY_RUNNING,
+                cloud_instance_id="c-0",
+                ray_node_id=binary_to_hex(b"r-0"),
+                node_kind=NodeKind.HEAD,
+            ),
+            create_instance(
                 "i-1",
                 status=Instance.ALLOCATED,
                 instance_type="type-1",
@@ -1313,6 +1356,7 @@ class TestReconciler:
         ]
 
         cloud_instances = {
+            "c-0": CloudInstance("c-0", "head", "", True, NodeKind.HEAD),
             "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
             "c-5": CloudInstance("c-5", "type-5", "", True, NodeKind.WORKER),
         }

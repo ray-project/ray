@@ -195,6 +195,52 @@ class TestSchedulingNode:
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "foo"}
 
+    @staticmethod
+    def test_new_head_node():
+        # An allocated head node.
+        node_type_configs = {
+            "head": NodeTypeConfig(
+                name="head",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=1,
+            ),
+        }
+        instance = make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_kind=NodeKind.HEAD,
+            )
+        )
+        node = SchedulingNode.new(instance, node_type_configs)
+        assert node is not None
+        # It's important to check if the node is a head node
+        assert node.node_kind == NodeKind.HEAD
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+
+        # An running head node.
+        instance = make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="head",
+                available_resources={"CPU": 0},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="head",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
+                node_kind=NodeKind.HEAD,
+            ),
+        )
+        node = SchedulingNode.new(instance, node_type_configs)
+        assert node is not None
+        assert node.node_kind == NodeKind.HEAD
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+
 
 def test_min_worker_nodes():
     scheduler = ResourceDemandScheduler()

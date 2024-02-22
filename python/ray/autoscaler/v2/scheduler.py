@@ -201,6 +201,7 @@ class SchedulingNode:
             node_config,
             SchedulingNodeStatus.SCHEDULABLE,
             instance.im_instance.instance_id,
+            node_kind=instance.im_instance.node_kind,
         )
 
     @staticmethod
@@ -246,6 +247,7 @@ class SchedulingNode:
         node_config: NodeTypeConfig,
         status: SchedulingNodeStatus,
         im_instance_id: Optional[str] = None,
+        node_kind: NodeKind = NodeKind.WORKER,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -263,6 +265,7 @@ class SchedulingNode:
             labels=dict(node_config.labels),
             status=status,
             im_instance_id=im_instance_id,
+            node_kind=node_kind,
         )
 
     def __post_init__(self):

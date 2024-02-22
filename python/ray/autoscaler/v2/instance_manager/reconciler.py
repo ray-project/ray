@@ -426,13 +426,15 @@ class Reconciler:
             _logger=_logger or logger,
         )
 
-        Reconciler._scale_cluster(
-            autoscaling_state=autoscaling_state,
-            instance_manager=instance_manager,
-            ray_state=ray_cluster_resource_state,
-            scheduler=scheduler,
-            autoscaling_config=autoscaling_config,
-        )
+        if Reconciler._is_head_node_running(instance_manager):
+            # We shouldn't be scaling the cluster until the head node is ready.
+            Reconciler._scale_cluster(
+                autoscaling_state=autoscaling_state,
+                instance_manager=instance_manager,
+                ray_state=ray_cluster_resource_state,
+                scheduler=scheduler,
+                autoscaling_config=autoscaling_config,
+            )
 
         Reconciler._handle_instances_launch(
             instance_manager=instance_manager, autoscaling_config=autoscaling_config
@@ -1201,6 +1203,29 @@ class Reconciler:
                 )
 
     @staticmethod
+    def _is_head_node_running(instance_manager: InstanceManager) -> bool:
+        """
+        Check if the head node is running and ready.
+
+        If we scale up the cluster before head node is running,
+        it would cause issues when launching the worker nodes.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+
+        Returns:
+            True if the head node is running and ready, False otherwise.
+        """
+
+        im_instances, _ = Reconciler._get_im_instances(instance_manager)
+
+        for instance in im_instances:
+            if instance.node_kind == NodeKind.HEAD:
+                if instance.status == IMInstance.RAY_RUNNING:
+                    return True
+        return False
+
+    @staticmethod
     def _scale_cluster(
         autoscaling_state: AutoscalingState,
         instance_manager: InstanceManager,
@@ -1369,6 +1394,10 @@ class Reconciler:
         updates = {}
         for instance in im_instances:
             if instance.status != IMInstance.ALLOCATED:
+                continue
+
+            if instance.node_kind == NodeKind.HEAD:
+                # Skip head node.
                 continue
 
             cloud_instance = non_terminated_cloud_instances.get(
