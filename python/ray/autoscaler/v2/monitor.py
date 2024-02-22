@@ -11,12 +11,11 @@ import traceback
 from collections import Counter
 from dataclasses import asdict
 from typing import Any, Callable, Dict, Optional, Union
-from python.ray.autoscaler.v2.autoscaler import Autoscaler
-from python.ray.autoscaler.v2.instance_manager.config import (
+from ray.autoscaler.v2.autoscaler import Autoscaler
+from ray.autoscaler.v2.instance_manager.config import (
     FileConfigReader,
-    InMemoryConfigReader,
 )
-from python.ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 import ray
@@ -114,7 +113,7 @@ class AutoscalerMonitor:
                 kwargs = {"addr": "127.0.0.1"} if head_node_ip == "127.0.0.1" else {}
                 prometheus_client.start_http_server(
                     port=AUTOSCALER_METRIC_PORT,
-                    registry=self.prom_metrics.registry,
+                    registry=prom_metrics.registry,
                     **kwargs,
                 )
             except Exception:
@@ -177,7 +176,7 @@ class AutoscalerMonitor:
             autoscaling_state = self.autoscaler.update_autoscaling_state()
             if autoscaling_state:
                 # report autoscaling state
-                self._report_autoscaling_state(autoscaling_state)
+                self._report_autoscaling_state(self.gcs_client, autoscaling_state)
             else:
                 logger.warning("No autoscaling state to report.")
 

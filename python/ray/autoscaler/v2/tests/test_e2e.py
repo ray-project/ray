@@ -20,7 +20,8 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
     return False
 
 
-def test_autoscaler_no_churn():
+@pytest.mark.parametrize("autoscaler_v2", [False], ids=["v1"])
+def test_autoscaler_no_churn(autoscaler_v2):
     num_cpus_per_node = 4
     expected_nodes = 6
     cluster = AutoscalingCluster(
@@ -33,6 +34,7 @@ def test_autoscaler_no_churn():
                 "max_workers": 2 * expected_nodes,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     driver_script = f"""
