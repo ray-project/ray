@@ -2,9 +2,7 @@ import time
 import uuid
 from typing import Dict, List, Optional, Set
 
-from google.protobuf.json_format import MessageToDict
-
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
+from ray.core.generated.instance_manager_pb2 import Instance
 
 
 class InstanceUtil:
