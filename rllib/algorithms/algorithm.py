@@ -88,6 +88,7 @@ from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_AGENT_STEPS_TRAINED,
@@ -1678,14 +1679,13 @@ class Algorithm(Trainable, AlgorithmBase):
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             # TODO (Avnish): Implement this on learner_group.get_weights().
-            # TODO (Kourosh): figure out how we are going to sync MARLModule
-            # weights to MARLModule weights under the policy_map objects?
             from_worker_or_trainer = None
             if self.config._enable_new_api_stack:
                 from_worker_or_trainer = self.learner_group
+
             self.workers.sync_weights(
                 from_worker_or_learner_group=from_worker_or_trainer,
-                policies=list(train_results.keys()),
+                policies=set(train_results.keys()) - {ALL_MODULES},
                 global_vars=global_vars,
             )
 
