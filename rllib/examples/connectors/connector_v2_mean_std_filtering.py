@@ -1,5 +1,3 @@
-import functools
-
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
