@@ -209,6 +209,7 @@ class TestDeploymentSchema:
             "num_replicas": 2,
             "route_prefix": "/shallow",
             "max_concurrent_queries": 32,
+            "max_queued_requests": 12,
             "user_config": {"threshold": 0.2, "pattern": "rainbow"},
             "autoscaling_config": None,
             "graceful_shutdown_wait_loop_s": 17,
@@ -265,6 +266,40 @@ class TestDeploymentSchema:
             with pytest.raises(ValidationError):
                 DeploymentSchema.parse_obj(deployment_schema)
             deployment_schema[field] = None
+
+    def test_validate_max_queued_requests(self):
+        # Ensure ValidationError is raised when max_queued_requests is not -1 or > 1.
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["max_queued_requests"] = -1
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 1
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 100
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = "hi"
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 1.5
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 0
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = -2
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = -100
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
 
     def test_route_prefix(self):
         # Ensure that route_prefix is validated
