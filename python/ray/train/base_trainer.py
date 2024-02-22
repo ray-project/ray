@@ -21,7 +21,11 @@ from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train import Checkpoint
 from ray.train._internal.session import _get_session
-from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
+from ray.train._internal.storage import (
+    StorageContext,
+    _exists_at_fs_path,
+    get_fs_and_path,
+)
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 
@@ -569,7 +573,7 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune import ResumeConfig, TuneError
-        from ray.tune.tuner import Tuner, TunerInternal
+        from ray.tune.tuner import Tuner
 
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
@@ -594,16 +598,18 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_local_path, _ = TunerInternal.setup_create_experiment_checkpoint_dir(
-            trainable, self.run_config
+        fs, fs_path = get_fs_and_path(
+            self.run_config.storage_path, self.run_config.storage_filesystem
         )
-
-        experiment_local_path = Path(experiment_local_path)
-        self._save(experiment_local_path)
+        experiment_dir_name = (
+            self.run_config.name or StorageContext.get_experiment_dir_name(trainable)
+        )
+        experiment_path = Path(fs_path, experiment_dir_name).as_posix()
+        self._save(fs, experiment_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
-            path=str(experiment_local_path),
+            path=str(experiment_path),
         )
 
         try:
@@ -627,7 +633,7 @@ class BaseTrainer(abc.ABC):
             ) from result.error
         return result
 
-    def _save(self, experiment_path: Union[str, Path]):
+    def _save(self, fs: pyarrow.fs.FileSystem, experiment_path: Union[str, Path]):
         """Saves the current trainer's class along with the `param_dict` of
         parameters passed to this trainer's constructor.
 
@@ -656,9 +662,8 @@ class BaseTrainer(abc.ABC):
 
         cls_and_param_dict = (self.__class__, param_dict)
 
-        experiment_path = Path(experiment_path)
-        with open(experiment_path / _TRAINER_PKL, "wb") as fp:
-            pickle.dump(cls_and_param_dict, fp)
+        with fs.open_output_stream(Path(experiment_path, _TRAINER_PKL).as_posix()) as f:
+            f.write(pickle.dumps(cls_and_param_dict))
 
     def _extract_fields_for_tuner_param_space(self) -> Dict:
         """Extracts fields to be included in `Tuner.param_space`.
@@ -735,10 +740,10 @@ class BaseTrainer(abc.ABC):
                 merged_scaling_config = self._merged_config.get("scaling_config")
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config[
-                    "scaling_config"
-                ] = self._reconcile_scaling_config_with_trial_resources(
-                    merged_scaling_config
+                self._merged_config["scaling_config"] = (
+                    self._reconcile_scaling_config_with_trial_resources(
+                        merged_scaling_config
+                    )
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext
