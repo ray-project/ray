@@ -546,7 +546,7 @@ class Trial:
 
     @property
     def local_path(self) -> Optional[str]:
-        return self.storage.trial_local_path
+        return self.storage.trial_local_staging_path
 
     @property
     def path(self) -> Optional[str]:

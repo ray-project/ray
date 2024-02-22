@@ -575,12 +575,12 @@ class StorageContext:
         if force:
             self.syncer.wait()
             self.syncer.sync_up(
-                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+                local_dir=self.trial_local_staging_path, remote_dir=self.trial_fs_path
             )
             self.syncer.wait()
         else:
             self.syncer.sync_up_if_needed(
-                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+                local_dir=self.trial_local_staging_path, remote_dir=self.trial_fs_path
             )
 
     @property

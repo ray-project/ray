@@ -162,7 +162,7 @@ def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
 
 def test_persist_artifacts(storage: StorageContext):
     """Tests typical `StorageContext.persist_artifacts(force=True/False)` usage."""
-    trial_local_path = Path(storage.trial_local_path)
+    trial_local_path = Path(storage.trial_local_staging_path)
     trial_local_path.mkdir(parents=True)
     trial_local_path.joinpath("1.txt").touch()
 
