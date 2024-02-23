@@ -72,7 +72,7 @@ click==8.1.7
 cloudpickle==2.2.0
 cma==3.2.2
 cmaes==0.10.0
-cmake==3.28.1
+cmake==3.28.3
 colorama==0.4.6
 coloredlogs==15.0.1
 colorful==0.5.5
@@ -80,7 +80,7 @@ colorlog==6.7.0
 comet-ml==3.31.9
 comm==0.2.0
 commonmark==0.9.1
-conda @ file:///croot/conda_1706737954207/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1707843821892/work
 conda-content-trust @ file:///croot/conda-content-trust_1693490622020/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
@@ -120,7 +120,7 @@ exceptiongroup==1.2.0
 executing==2.0.1
 fairscale==0.4.6
 Farama-Notifications==0.0.4
-fastapi==0.108.0
+fastapi==0.109.2
 fasteners==0.19
 fastjsonschema==2.19.0
 filelock==3.13.1
@@ -216,7 +216,7 @@ lazy_loader==0.3
 libclang==16.0.6
 libmambapy @ file:///croot/mamba-split_1704219408234/work/libmambapy
 lightgbm==3.3.5
-lightgbm-ray==0.1.9
+lightgbm-ray @ git+https://github.com/ray-project/lightgbm_ray.git@4c4d3413f86db769bddb6d08e2480a04bc75d712
 linear-operator==0.4.0
 lit==17.0.6
 locket==1.0.0
@@ -295,7 +295,7 @@ pettingzoo==1.23.1
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==9.2.0
-pip-tools==7.3.0
+pip-tools==7.4.0
 pkginfo==1.9.6
 platformdirs==3.11.0
 plotly==5.18.0
@@ -353,13 +353,13 @@ PyWavelets==1.4.1
 PyYAML==6.0.1
 pyzmq==24.0.1
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6a3c1815e5c35b33107c5143120c612d56c10c2f9772460ade68d5133165e8d3
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=89863b22d2324d7460cdb912125c3f6de9226535a9a6f14afcc7932839527bac
 raydp==1.7.0b20231020.dev0
 recsim==0.2.4
 redis==3.5.3
 referencing==0.33.0
 regex==2023.10.3
-requests @ file:///croot/requests_1690400202158/work
+requests @ file:///croot/requests_1707355572290/work
 requests-oauthlib==1.3.1
 requests-toolbelt==1.0.0
 responses==0.13.4
@@ -368,7 +368,7 @@ retry-decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rich==12.6.0
-rpds-py==0.17.1
+rpds-py==0.18.0
 rsa==4.7.2
 ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
 ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
@@ -397,7 +397,7 @@ soupsieve==2.5
 SQLAlchemy==1.4.17
 sqlparse==0.4.4
 stack-data==0.6.3
-starlette==0.29.0
+starlette==0.36.3
 statsmodels==0.14.0
 SuperSuit==3.8.0
 sympy==1.12
@@ -448,10 +448,10 @@ typeguard==2.13.3
 typer==0.9.0
 types-python-dateutil==2.8.19.14
 typing_extensions==4.8.0
-tzdata==2023.4
+tzdata==2024.1
 uri-template==1.3.0
 uritemplate==3.0.1
-urllib3 @ file:///croot/urllib3_1698257533958/work
+urllib3==1.26.18
 uvicorn==0.22.0
 uvloop==0.19.0
 virtualenv==20.21.0
@@ -467,7 +467,7 @@ widgetsnbextension==3.6.6
 wrapt==1.16.0
 wurlitzer==3.0.3
 xgboost==1.7.6
-xgboost-ray==0.1.18
+xgboost-ray @ git+https://github.com/ray-project/xgboost_ray.git@5a840af05d487171883dadbfdd37b138b607bed8
 xmltodict==0.13.0
 xxhash==3.4.1
 y-py==0.6.2
