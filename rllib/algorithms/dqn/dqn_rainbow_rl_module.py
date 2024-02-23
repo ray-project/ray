@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Any, Dict, Type, Union
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
+from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -100,7 +101,28 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return
+        return [SampleBatch.ACTIONS]
+
+    @override(RLModule)
+    def output_specs_inference(self) -> SpecType:
+        return [SampleBatch.ACTIONS]
+
+    @override(RLModule)
+    def output_specs_train(self) -> SpecType:
+        return [
+            QF_PREDS,
+            QF_TARGET_NEXT_PREDS,
+            *(
+                [
+                    ATOMS,
+                    QF_LOGITS,
+                    QF_TARGET_NEXT_PROBS,
+                ]
+                # We add these keys only when learning a distribution.
+                if self.num_atoms > 1
+                else []
+            ),
+        ]
 
     @abstractmethod
     @OverrideToImplementCustomLogic

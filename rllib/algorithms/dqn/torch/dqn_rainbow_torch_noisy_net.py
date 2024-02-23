@@ -48,7 +48,7 @@ class TorchNoisyMLPEncoder(TorchModel, Encoder):
             ),
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
-            # Note, this is the only additional parameter in reagrd to a regular MLP.
+            # Note, this is the only additional parameter in regard to a regular MLP.
             std_init=config.std_init,
         )
 
@@ -104,7 +104,7 @@ class TorchNoisyMLPHead(TorchModel):
             ),
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
-            # Note, this is the only additional parameter in reagrd to a regular MLP.
+            # Note, this is the only additional parameter in regard to a regular MLP.
             std_init=config.std_init,
         )
 
