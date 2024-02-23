@@ -231,7 +231,7 @@ class BaseTrainer(abc.ABC):
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
-        self.run_config = run_config if run_config is not None else RunConfig()
+        self.run_config = copy.copy(run_config) or RunConfig()
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
         self.starting_checkpoint = resume_from_checkpoint
@@ -579,6 +579,14 @@ class BaseTrainer(abc.ABC):
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
 
+        storage_path = self.run_config.storage_path or _get_defaults_results_dir()
+        fs, fs_path = get_fs_and_path(storage_path, self.run_config.storage_filesystem)
+        self.run_config.storage_path = fs_path
+        self.run_config.storage_filesystem = fs
+        self.run_config.name = (
+            self.run_config.name or StorageContext.get_experiment_dir_name(trainable)
+        )
+
         if self._restore_path:
             tuner = Tuner.restore(
                 path=self._restore_path,
@@ -600,12 +608,7 @@ class BaseTrainer(abc.ABC):
             )
 
         # TODO(justinvyu): [local_dir] Make storage_path non-optional and remove this.
-        storage_path = self.run_config.storage_path or _get_defaults_results_dir()
-        fs, fs_path = get_fs_and_path(storage_path, self.run_config.storage_filesystem)
-        experiment_dir_name = (
-            self.run_config.name or StorageContext.get_experiment_dir_name(trainable)
-        )
-        experiment_path = Path(fs_path, experiment_dir_name).as_posix()
+        experiment_path = Path(fs_path, self.run_config.name).as_posix()
         self._save(fs, experiment_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
