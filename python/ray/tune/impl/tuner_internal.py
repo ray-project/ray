@@ -140,7 +140,8 @@ class TunerInternal:
         storage_path = self._run_config.storage_path or _get_defaults_results_dir()
         fs, fs_path = get_fs_and_path(storage_path, self._run_config.storage_filesystem)
         self._experiment_dir_name = (
-            run_config.name or StorageContext.get_experiment_dir_name(trainable)
+            run_config.name
+            or StorageContext.get_experiment_dir_name(self.converted_trainable)
         )
         experiment_path = Path(fs_path, self._experiment_dir_name).as_posix()
 
