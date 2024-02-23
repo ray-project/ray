@@ -3,7 +3,7 @@
 
 # __basic_start__
 import ray
-from ray import tune
+from ray import train, tune
 from ray.tune import Tuner
 from ray.train.xgboost import XGBoostTrainer
 
@@ -17,6 +17,7 @@ trainer = XGBoostTrainer(
         "max_depth": 4,
     },
     datasets={"train": dataset},
+    scaling_config=train.ScalingConfig(num_workers=2),
 )
 
 # Create Tuner
