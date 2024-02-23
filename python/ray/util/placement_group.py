@@ -8,9 +8,9 @@ from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+import ray._private.ray_constants as ray_constants
 
 bundle_reservation_check = None
-BUNDLE_RESOURCE_LABEL = "bundle"
 
 VALID_PLACEMENT_GROUP_STRATEGIES = {
     "PACK",
@@ -404,7 +404,7 @@ def _valid_resource_shape(resources, bundle_specs):
         for resource, requested_val in resources.items():
             # Skip "bundle" resource as it is automatically added
             # to all nodes with bundles by the placement group.
-            if resource == BUNDLE_RESOURCE_LABEL:
+            if resource == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
             if bundle.get(resource, 0) < requested_val:
                 fit_in_bundle = False
