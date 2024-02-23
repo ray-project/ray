@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from typing import Dict, List, Optional
 
@@ -12,10 +13,12 @@ from ray.core.generated.autoscaler_pb2 import (
 )
 from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
 
+logger = logging.getLogger(__name__)
+
 
 class AutoscalerEventLogger:
     def __init__(self, logger: EventLoggerAdapter):
-        self._logger = logger
+        self._base_event_logger = logger
 
     def log_cluster_scheduling_update(
         self,
@@ -42,10 +45,9 @@ class AutoscalerEventLogger:
                 log_str += f"{count} node(s) of type {instance_type}"
                 if idx < len(launch_type_count) - 1:
                     log_str += ", "
-                else:
-                    log_str += "."
 
-            self._logger.info(f"{log_str}.")
+            self._base_event_logger.info(f"{log_str}.")
+            logger.info(f"{log_str}.")
 
         # Log any terminate events.
         if terminate_requests:
@@ -66,7 +68,8 @@ class AutoscalerEventLogger:
                 if idx < len(termination_by_causes) - 1:
                     log_str += ", "
 
-            self._logger.info(f"{log_str}.")
+            self._base_event_logger.info(f"{log_str}.")
+            logger.info(f"{log_str}.")
 
         # Cluster shape changes.
         if launch_requests or terminate_requests:
@@ -89,10 +92,15 @@ class AutoscalerEventLogger:
                 ]
             )
 
-            self._logger.info(
+            self._base_event_logger.info(
                 f"Resized to {num_cpus} CPUs, {num_gpus} GPUs, {num_tpus} TPUs."
             )
-            self._logger.debug(f"Current cluster shape: {dict(cluster_shape)}.")
+            logger.info(
+                f"Resized to {num_cpus} CPUs, {num_gpus} GPUs, {num_tpus} TPUs."
+            )
+            self._base_event_logger.debug(
+                f"Current cluster shape: {dict(cluster_shape)}."
+            )
 
         # Log any infeasible requests.
         if infeasible_requests:
@@ -104,7 +112,7 @@ class AutoscalerEventLogger:
                 if idx < len(requests_by_count) - 1:
                     log_str += ", "
 
-            self._logger.warning(log_str)
+            self._base_event_logger.warning(log_str)
 
         if infeasible_gang_requests:
             # Log for each placement group requests.
@@ -126,7 +134,8 @@ class AutoscalerEventLogger:
                     if idx < len(requests_by_count) - 1:
                         log_str += ", "
 
-                self._logger.warning(log_str)
+                self._base_event_logger.warning(log_str)
+                logger.warning(log_str)
 
         if infeasible_constraints:
             # We actually only have 1.
@@ -142,4 +151,5 @@ class AutoscalerEventLogger:
                     if i < len(infeasible_constraint.min_bundles) - 1:
                         log_str += ", "
 
-                self._logger.warning(log_str)
+                self._base_event_logger.warning(log_str)
+                logger.warning(log_str)
