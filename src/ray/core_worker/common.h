@@ -195,7 +195,7 @@ struct PlacementGroupCreationOptions {
         is_detached(is_detached),
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
         soft_target_node_id(soft_target_node_id) {
-    RAY_CHECK(!soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
+    RAY_CHECK(soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
 
@@ -209,9 +209,10 @@ struct PlacementGroupCreationOptions {
   const bool is_detached = false;
   /// The maximum fraction of CPU cores this placement group can take up on each node.
   const double max_cpu_fraction_per_node;
-  /// Binary id of the target node where bundles should be placed
+  /// ID of the target node where bundles should be placed
   /// iff the target node has enough available resources.
   /// Otherwise, the bundles can be placed elsewhere.
+  // This only applies to STRICT_PACK pg.
   const NodeID soft_target_node_id;
 };
 

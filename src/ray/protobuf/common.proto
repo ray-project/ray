@@ -564,6 +564,10 @@ message PlacementGroupSpec {
   bool is_detached = 9;
   // The maximum fraction of CPU cores that this placement group can use on each node.
   double max_cpu_fraction_per_node = 10;
+  // Binary ID of the target node where bundles should be placed
+  // iff the target node has enough available resources.
+  // Otherwise, the bundles can be placed elsewhere.
+  // This only applies to STRICT_PACK pg.
   string soft_target_node_id = 11;
 }
 

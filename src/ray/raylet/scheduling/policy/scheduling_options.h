@@ -184,6 +184,9 @@ struct SchedulingOptions {
   // can be scheduled on this node. This is only used for bundle scheduling policies
   // (bundle pack, spread).
   double max_cpu_fraction_per_node;
+  // ID of the target node where bundles should be placed
+  // iff the target node has enough available resources.
+  // Otherwise, the bundles can be placed elsewhere.
   // This is only used by PG STRICT_PACK scheduling.
   NodeID bundle_strict_pack_soft_target_node_id;
   std::shared_ptr<SchedulingContext> scheduling_context;

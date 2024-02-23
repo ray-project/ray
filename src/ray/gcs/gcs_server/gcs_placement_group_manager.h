@@ -160,6 +160,8 @@ class GcsPlacementGroup {
   /// Returns the maximum CPU fraction per node for this placement group.
   double GetMaxCpuFractionPerNode() const;
 
+  /// Return the target node ID where bundles of this placement group should be placed.
+  /// Only works for STRICT_PACK placement group.
   NodeID GetSoftTargetNodeID() const;
 
   const rpc::PlacementGroupStats &GetStats() const;

@@ -177,9 +177,9 @@ def placement_group(
             placement group scheduling. Note: This feature is experimental and is not
             recommended for use with autoscaling clusters (scale-up will not trigger
             properly).
-        _soft_target_node_id: (Experimental, Private) Soft hint where bundles of
+        _soft_target_node_id: (Private, Experimental) Soft hint where bundles of
             this placement group should be placed.
-            The target node is specified by it's hex id.
+            The target node is specified by it's hex ID.
             If the target node has no available resources,
             bundles can be placed elsewhere.
             This currently only works with STRICT_PACK pg.
