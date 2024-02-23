@@ -424,16 +424,15 @@ class StorageContext:
 
         # If no remote path is set, try to get Ray Storage URI
         ray_storage_uri: Optional[str] = _get_storage_uri()
-        if ray_storage_uri and storage_path is None:
+        if ray_storage_uri is not None:
             logger.info(
                 "Using configured Ray Storage URI as the `storage_path`: "
                 f"{ray_storage_uri}"
             )
+            storage_path = ray_storage_uri
 
-        # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        storage_path = storage_path or ray_storage_uri or _get_defaults_results_dir()
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
