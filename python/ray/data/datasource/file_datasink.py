@@ -1,5 +1,4 @@
 import posixpath
-import warnings
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
@@ -60,14 +59,13 @@ class _FileDatasink(Datasink):
             open_stream_args = {}
 
         if block_path_provider is not None:
-            warnings.warn(
+            raise DeprecationWarning(
                 "`block_path_provider` has been deprecated in favor of "
                 "`filename_provider`. For more information, see "
                 "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
-                DeprecationWarning,
             )
 
-        if filename_provider is None and block_path_provider is None:
+        if filename_provider is None:
             filename_provider = _DefaultFilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
             )
@@ -180,16 +178,9 @@ class RowBasedFileDatasink(_FileDatasink):
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
-            if self.filename_provider is not None:
-                filename = self.filename_provider.get_filename_for_row(
-                    row, ctx.task_idx, block_index, row_index
-                )
-            else:
-                # TODO: Remove this code path once we remove `BlockWritePathProvider`.
-                filename = (
-                    f"{self.dataset_uuid}_{ctx.task_idx:06}_{block_index:06}_"
-                    f"{row_index:06}.{self.file_format}"
-                )
+            filename = self.filename_provider.get_filename_for_row(
+                row, ctx.task_idx, block_index, row_index
+            )
             write_path = posixpath.join(self.path, filename)
 
             def write_row_to_path():
@@ -242,21 +233,10 @@ class BlockBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
-        if self.filename_provider is not None:
-            filename = self.filename_provider.get_filename_for_block(
-                block, ctx.task_idx, block_index
-            )
-            write_path = posixpath.join(self.path, filename)
-        else:
-            # TODO: Remove this code path once we remove `BlockWritePathProvider`.
-            write_path = self.block_path_provider(
-                self.path,
-                filesystem=self.filesystem,
-                dataset_uuid=self.dataset_uuid,
-                task_index=ctx.task_idx,
-                block_index=block_index,
-                file_format=self.file_format,
-            )
+        filename = self.filename_provider.get_filename_for_block(
+            block, ctx.task_idx, block_index
+        )
+        write_path = posixpath.join(self.path, filename)
 
         def write_block_to_path():
             with self.open_output_stream(write_path) as file:

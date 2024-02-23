@@ -1,6 +1,5 @@
 import copy
 import io
-import os
 import math
 import logging
 from pathlib import Path
@@ -129,12 +128,6 @@ class TunerInternal:
         self._resume_config = None
         self._is_restored = False
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
-        (
-            self._local_experiment_dir,
-            self._experiment_dir_name,
-        ) = self.setup_create_experiment_checkpoint_dir(
-            self.converted_trainable, self._run_config
-        )
         self._experiment_analysis = None
 
         # This needs to happen before `tune.run()` is kicked in.
@@ -143,9 +136,17 @@ class TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        experiment_checkpoint_path = Path(self._local_experiment_dir, _TUNER_PKL)
-        with open(experiment_checkpoint_path, "wb") as fp:
-            pickle.dump(self.__getstate__(), fp)
+        # TODO(justinvyu): [local_dir] Make storage_path non-optional and remove this.
+        storage_path = self._run_config.storage_path or _get_defaults_results_dir()
+        fs, fs_path = get_fs_and_path(storage_path, self._run_config.storage_filesystem)
+        self._experiment_dir_name = (
+            run_config.name or StorageContext.get_experiment_dir_name(trainable)
+        )
+        experiment_path = Path(fs_path, self._experiment_dir_name).as_posix()
+
+        fs.create_dir(experiment_path)
+        with fs.open_output_stream(Path(experiment_path, _TUNER_PKL).as_posix()) as f:
+            f.write(pickle.dumps(self.__getstate__()))
 
     def get_run_config(self) -> RunConfig:
         return self._run_config
@@ -347,15 +348,8 @@ class TunerInternal:
         # experiment directory.
         # Ex: ~/ray_results/exp_name -> ~/ray_results, exp_name
         # Ex: s3://bucket/exp_name -> s3://bucket, exp_name
-        self._run_config.name = path_or_uri_obj.name
+        self._run_config.name = self._experiment_dir_name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
-
-        (
-            self._local_experiment_dir,
-            self._experiment_dir_name,
-        ) = self.setup_create_experiment_checkpoint_dir(
-            self.converted_trainable, self._run_config
-        )
 
         # Load the experiment results at the point where it left off.
         try:
@@ -426,34 +420,9 @@ class TunerInternal:
             return
         self._param_space["scaling_config"] = scaling_config.__dict__.copy()
 
-    @classmethod
-    def setup_create_experiment_checkpoint_dir(
-        cls, trainable: TrainableType, run_config: Optional[RunConfig]
-    ) -> Tuple[str, str]:
-        """Sets up and creates the local experiment checkpoint dir.
-        This is so that the `tuner.pkl` file gets stored in the same directory
-        and gets synced with other experiment results.
-
-        Returns:
-            Tuple: (experiment_path, experiment_dir_name)
-        """
-        # TODO(justinvyu): Move this logic into StorageContext somehow
-        experiment_dir_name = run_config.name or StorageContext.get_experiment_dir_name(
-            trainable
-        )
-        storage_local_path = _get_defaults_results_dir()
-        experiment_path = (
-            Path(storage_local_path).joinpath(experiment_dir_name).as_posix()
-        )
-
-        os.makedirs(experiment_path, exist_ok=True)
-        return experiment_path, experiment_dir_name
-
     # This has to be done through a function signature (@property won't do).
     def get_experiment_checkpoint_dir(self) -> str:
-        # TODO(justinvyu): This is used to populate an error message.
-        # This should point to the storage path experiment dir instead.
-        return self._local_experiment_dir
+        return Path(self._run_config.storage_path, self._experiment_dir_name).as_posix()
 
     @property
     def trainable(self) -> TrainableTypeOrTrainer:

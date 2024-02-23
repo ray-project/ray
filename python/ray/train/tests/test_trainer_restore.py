@@ -3,6 +3,7 @@ from functools import partial
 from pathlib import Path
 from typing import Dict, List
 
+import pyarrow.fs
 import pytest
 
 import ray
@@ -222,7 +223,7 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="datasets_respecify_test", local_dir=tmpdir),
     )
-    trainer._save(tmpdir)
+    trainer._save(pyarrow.fs.LocalFileSystem(), tmpdir)
 
     # Restore should complain, if all the datasets don't get passed in again
     with pytest.raises(ValueError):
@@ -248,7 +249,7 @@ def test_restore_with_different_trainer(tmpdir):
         scaling_config=ScalingConfig(num_workers=1),
         run_config=RunConfig(name="restore_with_diff_trainer"),
     )
-    trainer._save(tmpdir)
+    trainer._save(pyarrow.fs.LocalFileSystem(), tmpdir)
 
     def attempt_restore(trainer_cls, should_warn: bool, should_raise: bool):
         def check_for_raise():
@@ -301,7 +302,7 @@ def test_trainer_can_restore_utility(tmp_path):
         scaling_config=ScalingConfig(num_workers=1),
     )
     (tmp_path / name).mkdir(exist_ok=True)
-    trainer._save(tmp_path / name)
+    trainer._save(pyarrow.fs.LocalFileSystem(), tmp_path / name)
 
     assert DataParallelTrainer.can_restore(path)
 
