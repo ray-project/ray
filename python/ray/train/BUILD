@@ -401,7 +401,7 @@ py_test(
     name = "test_torch_lightning_train",
     size = "large",
     srcs = ["tests/test_torch_lightning_train.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
 )
 

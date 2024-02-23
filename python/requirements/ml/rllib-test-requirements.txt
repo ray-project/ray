@@ -28,7 +28,7 @@ kaggle_environments==1.7.11
 mlagents_envs==0.28.0
 
 # For tests on minigrid.
-minigrid==2.1.1
+minigrid
 # For tests on RecSim and Kaggle envs.
 # Explicitly depends on `tensorflow` and doesn't accept `tensorflow-macos`
 recsim==0.2.4; (sys_platform != 'darwin' or platform_machine != 'arm64')
@@ -36,8 +36,8 @@ recsim==0.2.4; (sys_platform != 'darwin' or platform_machine != 'arm64')
 dopamine-rl==4.0.5; (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow_estimator
 # DeepMind's OpenSpiel
-open-spiel==1.2
+open-spiel==1.4
 
 # Requires libtorrent which is unavailable for arm64
 autorom[accept-rom-license]; platform_machine != "arm64"
-h5py==3.7.0
+h5py==3.10.0
