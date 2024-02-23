@@ -144,6 +144,8 @@ class TunerInternal:
             experiment_dir_name=self._run_config.name,
             storage_filesystem=self._run_config.storage_filesystem,
         )
+        # TODO(justinvyu): Temporary fix for `get_experiment_checkpoint_dir`
+        self._experiment_fs_path = storage.experiment_fs_path
 
         fs = storage.storage_filesystem
         fs.create_dir(storage.experiment_fs_path)
@@ -355,6 +357,9 @@ class TunerInternal:
         self._run_config.name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
 
+        # TODO(justinvyu): Temporary fix for `get_experiment_checkpoint_dir`
+        self._experiment_fs_path = path_or_uri
+
         # Load the experiment results at the point where it left off.
         try:
             self._experiment_analysis = ExperimentAnalysis(
@@ -426,7 +431,7 @@ class TunerInternal:
 
     # This has to be done through a function signature (@property won't do).
     def get_experiment_checkpoint_dir(self) -> str:
-        return Path(self._run_config.storage_path, self._run_config.name).as_posix()
+        return self._experiment_fs_path
 
     @property
     def trainable(self) -> TrainableTypeOrTrainer:
