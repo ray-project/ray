@@ -7,6 +7,8 @@ from ci.ray_ci.automation.docker_tags_lib import (
     _get_docker_auth_token,
     _get_docker_hub_auth_token,
     _get_image_creation_time,
+    backup_release_tags,
+    copy_tag_to_aws_ecr,
     delete_tag,
     _list_recent_commit_short_shas,
     query_tags_from_docker_hub,
@@ -62,8 +64,9 @@ def test_get_docker_auth_token_failure(mock_requests):
         status_code=400, json=mock.MagicMock(return_value={"error": "test_error"})
     )
 
-    with pytest.raises(AuthTokenException, match="Docker Registry. Error code: 400"):
-        get_docker_registry_auth_token(namespace, repository)
+    with pytest.raises(AuthTokenException, match="Docker. Error code: 400"):
+        _get_docker_auth_token(namespace, repository)
+
 
 @mock.patch("requests.post")
 def test_get_docker_hub_auth_token(mock_requests):
@@ -92,7 +95,8 @@ def test_get_docker_hub_auth_token_failure(mock_requests):
     )
 
     with pytest.raises(AuthTokenException, match="Docker Hub. Error code: 400"):
-        get_docker_hub_auth_token()
+        _get_docker_hub_auth_token(username="test_username", password="test_password")
+
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._get_git_log")
 def test_list_recent_commit_short_shas(mock_git_log):
@@ -146,8 +150,9 @@ def test_get_image_creation_time_failure_unknown(mock_config_docker_oci):
 def test_get_image_creation_time_failure_no_create_time(mock_config_docker_oci):
     mock_config_docker_oci.return_value = {"architecture": "amd64", "variant": "v1"}
     with pytest.raises(RetrieveImageConfigException):
-        get_image_creation_time(tag="test_tag")
-    mock_crane_config.assert_called_once_with(tag="test_tag")
+        _get_image_creation_time(tag="test_namespace/test_repo:test_tag")
+    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
+
 
 @mock.patch("requests.delete")
 def test_delete_tag(mock_requests):
@@ -386,7 +391,7 @@ def test_query_tags_from_docker_with_oci_failure(mock_requests, mock_get_token):
         query_tags_from_docker_with_oci("test_namespace", "test_repo")
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_hub_auth_token")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._get_docker_hub_auth_token")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.query_tags_from_docker_hub")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._write_to_file")
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.copy_tag_to_aws_ecr")
