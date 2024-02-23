@@ -1,8 +1,10 @@
+from ray.train.xgboost._xgboost_utils import RayTrainReportCallback
 from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 from ray.train.xgboost.xgboost_predictor import XGBoostPredictor
 from ray.train.xgboost.xgboost_trainer import XGBoostTrainer
 
 __all__ = [
+    "RayTrainReportCallback",
     "XGBoostCheckpoint",
     "XGBoostPredictor",
     "XGBoostTrainer",
