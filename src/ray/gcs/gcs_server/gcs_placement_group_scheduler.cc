@@ -466,8 +466,11 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
   case rpc::PlacementStrategy::SPREAD:
     return SchedulingOptions::BundleSpread(max_cpu_fraction_per_node);
   case rpc::PlacementStrategy::STRICT_PACK:
-    return SchedulingOptions::BundleStrictPack(max_cpu_fraction_per_node,
-                                               soft_target_node_id);
+    return SchedulingOptions::BundleStrictPack(
+        max_cpu_fraction_per_node,
+        soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
+                                    : scheduling::NodeID(soft_target_node_id.Binary()));
+
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
         max_cpu_fraction_per_node, CreateSchedulingContext(placement_group_id));

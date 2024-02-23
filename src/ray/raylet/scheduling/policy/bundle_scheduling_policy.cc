@@ -444,14 +444,14 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   std::pair<scheduling::NodeID, const Node *> best_node(scheduling::NodeID::Nil(),
                                                         nullptr);
   if (!options.bundle_strict_pack_soft_target_node_id.IsNil()) {
-    scheduling::NodeID target_node_id =
-        scheduling::NodeID(options.bundle_strict_pack_soft_target_node_id.Binary());
-    if (candidate_nodes.contains(target_node_id)) {
-      best_node = GetBestNode(aggregated_resource_request,
-                              absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
-                                  {target_node_id, candidate_nodes[target_node_id]}},
-                              options,
-                              available_cpus_before_bundle_scheduling);
+    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id)) {
+      best_node = GetBestNode(
+          aggregated_resource_request,
+          absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
+              {options.bundle_strict_pack_soft_target_node_id,
+               candidate_nodes[options.bundle_strict_pack_soft_target_node_id]}},
+          options,
+          available_cpus_before_bundle_scheduling);
     }
   }
 

@@ -694,7 +694,7 @@ message PlacementGroupTableData {
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
-  string soft_target_node_id = 14;
+  bytes soft_target_node_id = 14;
   // The time that the placement group was created at.
   int64 placement_group_creation_timestamp_ms = 15;
   // The time that the last bundle of a placement group is committed at,

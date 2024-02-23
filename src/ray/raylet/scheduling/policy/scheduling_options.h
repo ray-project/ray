@@ -147,8 +147,9 @@ struct SchedulingOptions {
   }
 
   // construct option for strict pack scheduling policy.
-  static SchedulingOptions BundleStrictPack(double max_cpu_fraction_per_node = 1.0,
-                                            NodeID soft_target_node_id = NodeID::Nil()) {
+  static SchedulingOptions BundleStrictPack(
+      double max_cpu_fraction_per_node = 1.0,
+      scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil()) {
     SchedulingOptions scheduling_options =
         SchedulingOptions(SchedulingType::BUNDLE_STRICT_PACK,
                           /*spread_threshold*/ 0,
@@ -188,7 +189,7 @@ struct SchedulingOptions {
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.
   // This is only used by PG STRICT_PACK scheduling.
-  NodeID bundle_strict_pack_soft_target_node_id;
+  scheduling::NodeID bundle_strict_pack_soft_target_node_id = scheduling::NodeID::Nil();
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
