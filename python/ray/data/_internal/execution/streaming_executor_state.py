@@ -357,7 +357,6 @@ def build_streaming_topology(
 def process_completed_tasks(
     topology: Topology,
     resource_manager: ResourceManager,
-    backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
 ) -> int:
     """Process any newly completed tasks. To update operator

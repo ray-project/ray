@@ -127,7 +127,9 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    process_completed_tasks(topo, [], 0)
+    resource_manager = MagicMock()
+    resource_manager.op_resource_allocator_enabled = MagicMock(return_value=False)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
@@ -138,7 +140,7 @@ def test_process_completed_tasks():
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_completed = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
@@ -152,7 +154,7 @@ def test_process_completed_tasks():
     o1.mark_execution_completed = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -170,7 +172,7 @@ def test_process_completed_tasks():
 
     o3.mark_execution_completed()
     o2.mark_execution_completed = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     o2.mark_execution_completed.assert_called_once()
 
