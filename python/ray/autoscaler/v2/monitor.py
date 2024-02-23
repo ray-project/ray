@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import time
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -20,7 +20,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-from ray.autoscaler.v2.instance_manager.config import FileConfigReader
+from ray.autoscaler.v2.instance_manager.config import FileConfigReader, IConfigReader
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
@@ -48,7 +48,7 @@ class AutoscalerMonitor:
     def __init__(
         self,
         gcs_address: str,
-        autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
+        config_reader: IConfigReader,
         log_dir: str = None,
         monitor_ip: str = None,
     ):
@@ -67,7 +67,6 @@ class AutoscalerMonitor:
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
 
-        self.autoscaling_config = autoscaling_config
         self.autoscaler = None
         if log_dir:
             try:
@@ -107,10 +106,6 @@ class AutoscalerMonitor:
             logger.warning(
                 "`prometheus_client` not found, so metrics will not be exported."
             )
-
-        config_reader = FileConfigReader(
-            config_file=autoscaling_config, skip_content_hash=True
-        )
 
         self.autoscaler = Autoscaler(
             session_name=self._session_name,
@@ -168,9 +163,6 @@ class AutoscalerMonitor:
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
     def run(self):
-        # FIXME:
-        # Sleep for now to wait til head node is ready
-        time.sleep(1)
         try:
             self._run()
         except Exception:
@@ -271,7 +263,9 @@ if __name__ == "__main__":
         exit(0)
 
     autoscaling_config = os.path.expanduser(args.autoscaling_config)
-    logger.info(f"Starting monitor using ray installation: {ray.__file__}")
+    logger.info(
+        f"Starting autoscaler v2 monitor using ray installation: {ray.__file__}"
+    )
     logger.info(f"Ray version: {ray.__version__}")
     logger.info(f"Ray commit: {ray.__commit__}")
     logger.info(f"AutoscalerMonitor started with command: {sys.argv}")
@@ -280,9 +274,13 @@ if __name__ == "__main__":
     if bootstrap_address is None:
         raise ValueError("--gcs-address must be set!")
 
+    config_reader = FileConfigReader(
+        config_file=autoscaling_config, skip_content_hash=True
+    )
+
     monitor = AutoscalerMonitor(
         bootstrap_address,
-        autoscaling_config,
+        config_reader,
         log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,
     )
