@@ -63,17 +63,6 @@ def dummy_context_manager(*args, **kwargs):
     yield "dummy value"
 
 
-@pytest.fixture(autouse=True)
-def disable_driver_artifact_sync():
-    # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
-    from ray.tune import execution
-
-    execution.experiment_state._DRIVER_SYNC_EXCLUDE_PATTERNS = [
-        "*/checkpoint_*",
-        "*/artifact-*.txt",
-    ]
-
-
 @pytest.fixture(autouse=True, scope="module")
 def ray_start_4_cpus():
     # Make sure to set the env var before calling ray.init()
@@ -617,16 +606,10 @@ def test_trainer(
         )
         result = restored_trainer.fit()
 
-        with monkeypatch.context() as m:
-            # This is so that the `resume_from_checkpoint` run doesn't mess up the
-            # assertions later for the `storage_path=None` case.
-            m.setenv(
-                "RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "resume_from_checkpoint")
-            )
-            _resume_from_checkpoint(
-                result.checkpoint,
-                expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
-            )
+        _resume_from_checkpoint(
+            result.checkpoint,
+            expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
+        )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
