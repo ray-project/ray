@@ -5405,32 +5405,6 @@
 # Dataset tests
 ###############
 
-- name: inference
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: manual
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: inference.yaml
-
-  run:
-    timeout: 600
-    script: python inference.py
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: inference_gce.yaml
-
 - name: parquet_metadata_resolution
   group: data-tests
   working_dir: nightly_tests/dataset

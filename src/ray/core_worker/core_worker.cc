@@ -2237,7 +2237,7 @@ Status CoreWorker::CreatePlacementGroup(
       if (resource.first == kBundle_ResourceLabel) {
         std::ostringstream stream;
         stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
-               << "allowed to be used in placement groupd ";
+               << "allowed to be used in placement group. ";
         return Status::Invalid(stream.str());
       }
     }
