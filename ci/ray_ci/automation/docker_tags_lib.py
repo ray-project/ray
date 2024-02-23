@@ -240,6 +240,8 @@ def _is_release_tag(
 ) -> bool:
     """
     Check if tag is a release tag & is in the list of release versions.
+    Tag input format should be just the tag name, without namespace/repository.
+    Tag input can be in any format queried from Docker Hub: "x.y.z-...", "a1s2d3-..."
     Args:
         tag: Docker tag name
         release_versions: List of release versions.
@@ -248,21 +250,22 @@ def _is_release_tag(
         True if tag is a release tag and is in the list of release versions.
             False otherwise.
     """
-    variables = tag.split(".")
-    if len(variables) != 3 and "post1" not in tag:
+    versions = tag.split(".")
+    if len(versions) != 3 and "post1" not in tag:
         return False
-    if not variables[0].isnumeric() or not variables[1].isnumeric():
+    # Parse variables into major, minor, patch version
+    major, minor, patch = versions[0], versions[1], versions[2]
+    extra = versions[3] if len(versions) > 3 else None
+    if not major.isnumeric() or not minor.isnumeric():
         return False
-    if (
-        not variables[2].isnumeric()
-        and "rc" not in variables[2]
-        and "-" not in variables[2]
-    ):
+    if not patch.isnumeric() and "rc" not in patch and "-" not in patch:
         return False
 
-    if "-" in variables[2]:
-        variables[2] = variables[2].split("-")[0]
-    release_version = ".".join(variables)
+    if "-" in patch:
+        patch = patch.split("-")[0]
+    release_version = ".".join([major, minor, patch])
+    if extra:
+        release_version += f".{extra}"
     if release_versions and release_version not in release_versions:
         return False
 
