@@ -479,7 +479,6 @@ class TuneController:
         all ongoing trials.
         """
         trials = self.restore_from_dir()
-        print("\n", [t.status for t in trials], "\n")
 
         # Set trial statuses according to the resume configuration
         for trial in sorted(

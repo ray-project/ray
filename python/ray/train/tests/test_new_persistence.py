@@ -5,6 +5,7 @@ import re
 import shutil
 import tempfile
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -109,8 +110,8 @@ def _resolve_storage_type(
 def _get_local_inspect_dir(
     root_local_path: Path,
     storage_path: str,
-    storage_local_path: Path,
     storage_filesystem: Optional[pyarrow.fs.FileSystem],
+    storage_local_path: Path = None,
 ) -> Tuple[Path, str]:
     """Downloads the storage path -> local dir for inspecting contents.
 
@@ -407,13 +408,12 @@ def _assert_storage_contents(
 
 
 @pytest.mark.parametrize("trainable", [train_fn, ClassTrainable])
-@pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
+@pytest.mark.parametrize("storage_path_type", ["nfs", "cloud", "custom_fs"])
 @pytest.mark.parametrize(
     "checkpoint_config",
     [train.CheckpointConfig(), train.CheckpointConfig(num_to_keep=2)],
 )
 def test_tuner(
-    monkeypatch,
     tmp_path,
     trainable,
     storage_path_type,
@@ -447,16 +447,21 @@ def test_tuner(
     └── train_fn_a2b9e_00001_1_...
         └── ...                     <- Same as above
     """
-    # Set the cache dir to some temp directory
-    LOCAL_CACHE_DIR = tmp_path / "ray_results"
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
-
-    exp_name = "simple_persistence_test"
+    exp_name = f"tuner_persistence_test-{uuid.uuid4().hex}"
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
     ):
+        run_config = train.RunConfig(
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+            name=exp_name,
+            verbose=0,
+            failure_config=train.FailureConfig(max_failures=1),
+            checkpoint_config=checkpoint_config,
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        )
         tuner = tune.Tuner(
             trainable,
             param_space={
@@ -466,26 +471,15 @@ def test_tuner(
                 "save_checkpoint_as_dict": tune.grid_search([True, False]),
                 "tmp_path": tmp_path,
             },
-            run_config=train.RunConfig(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                name=exp_name,
-                verbose=0,
-                failure_config=train.FailureConfig(max_failures=1),
-                checkpoint_config=checkpoint_config,
-                sync_config=train.SyncConfig(sync_artifacts=True),
-            ),
+            run_config=run_config,
             # 2 samples (from the grid search). Run 1 at at time to test actor reuse
             tune_config=tune.TuneConfig(num_samples=1, max_concurrent_trials=1),
         )
         result_grid = tuner.fit()
         assert result_grid.errors
 
-        if storage_path:
-            shutil.rmtree(LOCAL_CACHE_DIR, ignore_errors=True)
-
         restored_tuner = tune.Tuner.restore(
-            path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
+            path=str(URI(run_config.storage_path) / exp_name),
             trainable=trainable,
             storage_filesystem=storage_filesystem,
             resume_errored=True,
@@ -495,8 +489,7 @@ def test_tuner(
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
-            storage_path=storage_path,
-            storage_local_path=LOCAL_CACHE_DIR,
+            storage_path=run_config.storage_path,
             storage_filesystem=storage_filesystem,
         )
 
@@ -523,7 +516,7 @@ def test_tuner(
     )
 
 
-@pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
+@pytest.mark.parametrize("storage_path_type", ["nfs", "cloud", "custom_fs"])
 @pytest.mark.parametrize(
     "checkpoint_config",
     [
@@ -536,7 +529,7 @@ def test_tuner(
     ],
 )
 def test_trainer(
-    tmp_path, monkeypatch, storage_path_type, checkpoint_config: train.CheckpointConfig
+    tmp_path, storage_path_type, checkpoint_config: train.CheckpointConfig
 ):
     """Same end-to-end test as `test_tuner`, but also includes a
     `DataParallelTrainer(resume_from_checkpoint)` test at the end.
@@ -566,15 +559,22 @@ def test_trainer(
         ├── artifact-rank=1-iter=1.txt
         └── ...
     """
-    LOCAL_CACHE_DIR = tmp_path / "ray_results"
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
-    exp_name = "trainer_new_persistence"
+    exp_name = f"trainer_persistence_test-{uuid.uuid4().hex}"
     no_checkpoint_ranks = [0]
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
     ):
+        run_config = train.RunConfig(
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+            name=exp_name,
+            verbose=0,
+            checkpoint_config=checkpoint_config,
+            failure_config=train.FailureConfig(max_failures=1),
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        )
         trainer = DataParallelTrainer(
             train_fn,
             train_loop_config={
@@ -585,15 +585,7 @@ def test_trainer(
                 "no_checkpoint_ranks": no_checkpoint_ranks,
             },
             scaling_config=train.ScalingConfig(num_workers=TestConstants.NUM_WORKERS),
-            run_config=train.RunConfig(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                name=exp_name,
-                verbose=0,
-                checkpoint_config=checkpoint_config,
-                failure_config=train.FailureConfig(max_failures=1),
-                sync_config=train.SyncConfig(sync_artifacts=True),
-            ),
+            run_config=run_config,
         )
         print("\nStarting initial run.\n")
         with pytest.raises(TrainingFailedError):
@@ -601,7 +593,7 @@ def test_trainer(
 
         print("\nStarting manually restored run.\n")
         restored_trainer = DataParallelTrainer.restore(
-            path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
+            path=str(URI(run_config.storage_path) / exp_name),
             storage_filesystem=storage_filesystem,
         )
         result = restored_trainer.fit()
@@ -613,8 +605,7 @@ def test_trainer(
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
-            storage_path=storage_path,
-            storage_local_path=LOCAL_CACHE_DIR,
+            storage_path=run_config.storage_path,
             storage_filesystem=storage_filesystem,
         )
 
