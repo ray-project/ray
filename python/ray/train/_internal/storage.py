@@ -436,9 +436,7 @@ class StorageContext:
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
-        self.sync_config = (
-            dataclasses.replace(sync_config) if sync_config else SyncConfig()
-        )
+        self.sync_config = sync_config or SyncConfig()
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             storage_path, storage_filesystem
