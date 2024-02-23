@@ -130,19 +130,26 @@ class LearnerGroup:
         # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
+
+            # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
+            #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+            #  to issues with placement group fragmentation. See
+            #  https://github.com/ray-project/ray/issues/35409 for more details.
+            num_cpus_per_worker = (
+                self.config.num_cpus_per_learner_worker
+                if not self.config.num_gpus_per_learner_worker
+                else 0
+            )
+            num_gpus_per_worker = self.config.num_gpus_per_learner_worker
+            resources_per_worker = {
+                "CPU": num_cpus_per_worker,
+                "GPU": num_gpus_per_worker,
+            }
+
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=self.config.num_learner_workers,
-                # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
-                #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
-                #  to issues with placement group fragmentation. See
-                #  https://github.com/ray-project/ray/issues/35409 for more details.
-                num_cpus_per_worker=(
-                    self.config.num_cpus_per_learner_worker
-                    if not self.config.num_gpus_per_learner_worker
-                    else 0
-                ),
-                num_gpus_per_worker=self.config.num_gpus_per_learner_worker,
+                resources_per_worker=resources_per_worker,
                 max_retries=0,
             )
             backend_executor.start(
