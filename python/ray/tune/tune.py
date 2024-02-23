@@ -511,9 +511,6 @@ def run(
     remote_run_kwargs.pop("_remote")
 
     if _entrypoint == AirEntrypoint.TRAINER:
-        import ipdb
-
-        ipdb.set_trace()
         error_message_map = {
             "entrypoint": "<FrameworkTrainer>(...)",
             "search_space_arg": "param_space",
