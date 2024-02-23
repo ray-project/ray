@@ -1,12 +1,13 @@
 # coding: utf-8
 import os
 import sys
+import tempfile
 
 import pytest  # noqa
 
 from ray._private.test_utils import get_test_config_path
 from ray.autoscaler import AUTOSCALER_DIR_PATH
-from ray.autoscaler.v2.instance_manager.config import FileConfigReader
+from ray.autoscaler.v2.instance_manager.config import FileConfigReader, Provider
 
 
 @pytest.mark.parametrize(
@@ -146,6 +147,36 @@ def test_node_type_configs():
     assert node_type_configs["worker_nodes1"].min_worker_nodes == 1
     assert node_type_configs["worker_nodes1"].resources == {"CPU": 2}
     assert node_type_configs["worker_nodes1"].labels == {"foo": "bar"}
+
+
+def test_read_config():
+    # Make a temp config file from aws/defaults.yaml
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+        # Write "aws/defaults.yaml" to the temp file
+        with open(
+            os.path.join(AUTOSCALER_DIR_PATH, "aws/defaults.yaml"), "r"
+        ) as default_file:
+            f.write(default_file.read())
+
+    config_reader = FileConfigReader(f.name)
+
+    # Check that the config is read correctly
+    assert config_reader.get_autoscaling_config().provider == Provider.AWS
+
+    # Now override the file with a different provider
+    with open(f.name, "w") as f:
+        # Replace the file with "gcp/defaults.yaml"
+        with open(
+            os.path.join(AUTOSCALER_DIR_PATH, "gcp/defaults.yaml"), "r"
+        ) as default_file:
+            f.write(default_file.read())
+
+    # Still the same.
+    assert config_reader.get_autoscaling_config().provider == Provider.AWS
+
+    # Reload
+    config_reader.read_from_source()
+    assert config_reader.get_autoscaling_config().provider == Provider.GCP
 
 
 if __name__ == "__main__":

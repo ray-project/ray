@@ -182,6 +182,9 @@ class Autoscaler:
 
             ray_cluster_resource_state = self._get_cluster_resource_state()
 
+            # Refresh the config from the source
+            self._config_reader.read_from_source()
+
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
