@@ -1658,8 +1658,8 @@ class FlakyCSVDatasink(_CSVDatasink):
 
 
 def test_datasource(ray_start_regular):
-    source = ray.data.datasource.RandomIntRowDatasource()
-    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
+    assert len(ray.data.read_datasource(source).take()) == 10
     source = ray.data.datasource.RangeDatasource(n=10)
     assert extract_values(
         "value",
