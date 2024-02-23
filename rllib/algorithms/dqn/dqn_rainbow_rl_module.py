@@ -64,7 +64,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if self.is_dueling:
             self.vf_target.trainable = False
 
-        # Define the action distribution for sampling the eexploit action
+        # Define the action distribution for sampling the exploit action
         # during exploration.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
@@ -114,9 +114,10 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             batch: The batch recevied in the forward pass.
 
         Results:
-            A dictionary containing the Q-value predictions and in case of
-            distributional Q-leanring the support atoms ("atoms"), the
-            Q-logits ("qf_logits"), and the probabilities ("qf_probs").
+            A dictionary containing the Q-value predictions ("qf_preds")
+            and in case of distributional Q-learning in addition to the Q-value
+            predictions ("qf_preds") the support atoms ("atoms"), the Q-logits
+            ("qf_logits"), and the probabilities ("qf_probs").
         """
 
     @abstractmethod
@@ -131,9 +132,10 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             batch: The batch recevied in the forward pass.
 
         Results:
-            A dictionary containing the target Q-value predictions and in
-            case of distributional Q-leanring the support atoms ("atoms"),
-            the  Q-logits ("qf_logits"), and the probabilities ("qf_probs").
+            A dictionary containing the target Q-value predictions ("qf_preds")
+            and in case of distributional Q-learning in addition to the target
+            Q-value predictions ("qf_preds") the support atoms ("atoms"), the target
+            Q-logits  ("qf_logits"), and the probabilities ("qf_probs").
         """
 
     @abstractmethod
@@ -163,10 +165,10 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         encoder: Encoder,
         head: Union[Model, Dict[str, Model]],
     ) -> Dict[str, TensorType]:
-        """ "Computes Q-values.
+        """Computes Q-values.
 
         This is a helper function that takes care of all different cases,
-        i.e. if use a dueling architecture or not and if we use istributional
+        i.e. if we use a dueling architecture or not and if we use distributional
         Q-learning or not.
 
         Args:
@@ -179,7 +181,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
         Returns:
             In case of expectation learning the Q-value predictions ("qf_preds")
-            and in case of distributional Q-learning the atoms ("atoms"), the
-            Q-value predictions ("qf_preds"), the Q-logits ("qf_logits") and
-            the probabilities for the support atoms ("qf_probs").
+            and in case of distributional Q-learning in addition to the predictions
+            the atoms ("atoms"), the Q-value predictions ("qf_preds"), the Q-logits
+            ("qf_logits") and the probabilities for the support atoms ("qf_probs").
         """

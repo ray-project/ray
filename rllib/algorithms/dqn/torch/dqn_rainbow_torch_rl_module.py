@@ -127,9 +127,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             batch: The batch recevied in the forward pass.
 
         Results:
-            A dictionary containing the Q-value predictions and in case of
-            distributional Q-leanring the support atoms ("atoms"), the
-            Q-logits ("qf_logits"), and the probabilities ("qf_probs").
+            A dictionary containing the Q-value predictions ("qf_preds")
+            and in case of distributional Q-learning in addition to the Q-value
+            predictions ("qf_preds") the support atoms ("atoms"), the Q-logits
+            ("qf_logits"), and the probabilities ("qf_probs").
         """
         # If we have a dueling architecture we have to add the value stream.
         return self._qf_forward_helper(
@@ -149,9 +150,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             batch: The batch recevied in the forward pass.
 
         Results:
-            A dictionary containing the target Q-value predictions and in
-            case of distributional Q-leanring the support atoms ("atoms"),
-            the  Q-logits ("qf_logits"), and the probabilities ("qf_probs").
+            A dictionary containing the target Q-value predictions ("qf_preds")
+            and in case of distributional Q-learning in addition to the target
+            Q-value predictions ("qf_preds") the support atoms ("atoms"), the target
+            Q-logits  ("qf_logits"), and the probabilities ("qf_probs").
         """
         # If we have a dueling architecture we have to add the value stream.
         return self._qf_forward_helper(
@@ -230,7 +232,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         """Computes Q-values.
 
         This is a helper function that takes care of all different cases,
-        i.e. if use a dueling architecture or not and if we use istributional
+        i.e. if we use a dueling architecture or not and if we use distributional
         Q-learning or not.
 
         Args:
@@ -243,9 +245,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         Returns:
             In case of expectation learning the Q-value predictions ("qf_preds")
-            and in case of distributional Q-learning the atoms ("atoms"), the
-            Q-value predictions ("qf_preds"), the Q-logits ("qf_logits") and
-            the probabilities for the support atoms ("qf_probs").
+            and in case of distributional Q-learning in addition to the predictions
+            the atoms ("atoms"), the Q-value predictions ("qf_preds"), the Q-logits
+            ("qf_logits") and the probabilities for the support atoms ("qf_probs").
         """
         output = {}
 

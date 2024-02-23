@@ -22,16 +22,15 @@ class NoisyLinear(nn.Linear):
 
 
     Args:
-        in_features: input features dimension
-        out_features: out features dimension
-        bias: if ``True``, a bias term will be added to the
-            matrix multiplication: Ax + b. Defaults to ``True``
-        device: device of the layer.
-            Defaults to ``"cpu"``
-        dtype: dtype of the parameters.
-            Defaults to ``None`` (default pytorch dtype)
-        std_init: initial value of the Gaussian standard
-            deviation before optimization. Defaults to ``0.1``
+        in_features: Input features dimension.
+        out_features: Out features dimension.
+        bias: If `True`, a bias term will be added to the matrix
+            multiplication: `Ax + b`. Defaults to `True`.
+        device: Device of the layer. Defaults to `"cpu"`.
+        dtype: `dtype` of the parameters. Defaults to `None` (default `torch`
+            `dtype`).
+        std_init: Initial value of the Gaussian standard deviation before
+            optimization. Defaults to `0.1`.
 
     """
 

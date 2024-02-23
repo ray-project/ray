@@ -48,6 +48,7 @@ class TorchNoisyMLPEncoder(TorchModel, Encoder):
             ),
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
+            # Note, this is the only additional parameter in reagrd to a regular MLP.
             std_init=config.std_init,
         )
 
@@ -103,6 +104,7 @@ class TorchNoisyMLPHead(TorchModel):
             ),
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
+            # Note, this is the only additional parameter in reagrd to a regular MLP.
             std_init=config.std_init,
         )
 
@@ -151,7 +153,7 @@ class TorchNoisyMLP(nn.Module):
         output_weights_initializer_config: Optional[Dict] = None,
         output_bias_initializer: Optional[Union[str, Callable]] = None,
         output_bias_initializer_config: Optional[Dict] = None,
-        std_init: Optional[float] = None,
+        std_init: Optional[float] = 0.1,
     ):
         """Initialize a TorchMLP object.
 
@@ -200,6 +202,8 @@ class TorchNoisyMLP(nn.Module):
                 in-place initializers, i.e. ending with an underscore "_" are allowed.
             output_layer_bias_initializer_config: Configuration to pass into the
                 initializer defined in `output_layer_bias_initializer`.
+            std_init: Initial value of the Gaussian standard deviation before
+                optimization. Defaults to `0.1`.
         """
         super().__init__()
         assert input_dim > 0
