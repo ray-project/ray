@@ -417,7 +417,7 @@ class PPO(Algorithm):
             # TODO (simon): Implement multi-agent.
             episodes = synchronous_parallel_sample(
                 worker_set=self.workers,
-                concat=True,
+                uses_new_env_runners=self.config.uses_new_env_runners,
             )
 
             # TODO (sven): single- vs multi-agent.
