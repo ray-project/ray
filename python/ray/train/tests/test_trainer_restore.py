@@ -188,23 +188,24 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     assert tmp_path / exp_name in Path(result.path).parents
 
 
+@pytest.mark.parametrize("name", [None, "restore_from_uri"])
 def test_restore_from_uri_s3(
-    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri
+    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri, name
 ):
     """Restoration from S3 should work."""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     trainer = DataParallelTrainer(
         train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="restore_from_uri", storage_path=mock_s3_bucket_uri),
+        run_config=RunConfig(name=name, storage_path=mock_s3_bucket_uri),
     )
-    trainer.fit()
+    result = trainer.fit()
+
+    if name is None:
+        name = Path(result.path).parent.name
 
     # Restore from S3
-    assert DataParallelTrainer.can_restore(
-        str(URI(mock_s3_bucket_uri) / "restore_from_uri")
-    )
-    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / "restore_from_uri"))
+    assert DataParallelTrainer.can_restore(str(URI(mock_s3_bucket_uri) / name))
+    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / name))
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
