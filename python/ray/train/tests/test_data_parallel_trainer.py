@@ -408,17 +408,20 @@ def test_colocate_trainer_and_rank0_worker(
                 )
                 self._propagate_results(training_results)
 
-    trainer = CustomDataParallelTrainer(
-        train_func,
-        scaling_config=ScalingConfig(
-            num_workers=num_workers,
-            use_gpu=use_gpu,
-            trainer_resources=trainer_resources,
-            resources_per_worker=resources_per_worker,
-            placement_strategy=placement_strategy,
-        ),
+    scale_config = ScalingConfig(
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        trainer_resources=trainer_resources,
+        resources_per_worker=resources_per_worker,
+        placement_strategy=placement_strategy,
     )
-    trainer.fit()
+
+    if scale_config.total_resouces:
+        trainer = CustomDataParallelTrainer(
+            train_func,
+            scaling_config=scale_config,
+        )
+        trainer.fit()
 
 
 if __name__ == "__main__":

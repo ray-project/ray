@@ -239,7 +239,7 @@ def test_preemption_handling(
     """Integration test for node preemption handling in Ray Train/Tune.
     Even though `max_failures=0`, preemption errors should still be retried."""
     cluster, nodes, node_ids = cluster_setup
-    # node 1 = coordinator & worker, node 2 = worker
+    # node 1 = coordinator and worker, node 2 = worker
     coordinator_node, worker_node = nodes
     coordinator_node_id, worker_node_id = node_ids
 
