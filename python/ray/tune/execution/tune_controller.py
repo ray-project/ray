@@ -2,7 +2,6 @@ import copy
 import json
 import time
 import traceback
-import uuid
 import warnings
 from collections import defaultdict, deque
 from datetime import datetime
@@ -108,9 +107,9 @@ class TuneController:
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
         # Resources <-> Trial
-        self._resources_to_pending_trials: Dict[
-            ResourceRequest, Set[Trial]
-        ] = defaultdict(set)
+        self._resources_to_pending_trials: Dict[ResourceRequest, Set[Trial]] = (
+            defaultdict(set)
+        )
 
         # Keep track of actor states
         self._pending_trials: Set[Trial] = set()
@@ -214,7 +213,6 @@ class TuneController:
         self._stopper = stopper or NoopStopper()
 
         self._start_time = time.time()
-        self._last_checkpoint_time = -float("inf")
 
         self._session_str = datetime.fromtimestamp(self._start_time).strftime(
             "%Y-%m-%d_%H-%M-%S"
@@ -338,7 +336,7 @@ class TuneController:
         return _experiment_checkpoint_exists(directory)
 
     def save_to_dir(self):
-        """Save TuneController state to the local experiment directory.
+        """Save TuneController state to the local staging experiment directory.
 
         This includes:
         - trial states
@@ -346,8 +344,6 @@ class TuneController:
         - the searcher state
         - the callback states
         """
-        experiment_dir = self._storage.experiment_local_staging_path
-
         # Get state from trial executor and runner
         runner_state = {
             # Trials
@@ -355,26 +351,24 @@ class TuneController:
             # Experiment data
             "runner_data": self.__getstate__(),
             # Metadata
-            "stats": {
-                "start_time": self._start_time,
-                "timestamp": self._last_checkpoint_time,
-            },
+            "stats": {"start_time": self._start_time},
         }
-
-        tmp_file_name = Path(
-            experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
+        experiment_state_fs_path = Path(
+            self._storage.experiment_fs_path, self.experiment_state_file_name
         ).as_posix()
 
-        with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
+        with self._storage.storage_filesystem.open_output_stream(
+            experiment_state_fs_path
+        ) as f:
+            f.write(json.dumps(runner_state, cls=TuneFunctionEncoder).encode("utf-8"))
 
-        os.replace(
-            tmp_file_name,
-            Path(experiment_dir, self.experiment_state_file_name).as_posix(),
+        experiment_local_staging_path = self._storage.experiment_local_staging_path
+        self._search_alg.save_to_dir(
+            experiment_local_staging_path, session_str=self._session_str
         )
-
-        self._search_alg.save_to_dir(experiment_dir, session_str=self._session_str)
-        self._callbacks.save_to_dir(experiment_dir, session_str=self._session_str)
+        self._callbacks.save_to_dir(
+            experiment_local_staging_path, session_str=self._session_str
+        )
 
     def restore_from_dir(self) -> List[Trial]:
         """Restore TrialRunner state from local experiment directory.
@@ -485,6 +479,7 @@ class TuneController:
         all ongoing trials.
         """
         trials = self.restore_from_dir()
+        print("\n", [t.status for t in trials], "\n")
 
         # Set trial statuses according to the resume configuration
         for trial in sorted(

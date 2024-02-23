@@ -175,7 +175,7 @@ class _ExperimentCheckpointManager:
         with out_of_band_serialize_dataset():
             save_fn()
 
-        # Sync to cloud
+        # Kick off periodic sync experiment staging directory to cloud
         self.sync_up(force=force, wait=wait)
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
