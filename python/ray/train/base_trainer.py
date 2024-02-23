@@ -26,7 +26,6 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
-from ray.train.constants import _get_defaults_results_dir
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 
@@ -579,12 +578,13 @@ class BaseTrainer(abc.ABC):
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
 
-        storage_path = self.run_config.storage_path or _get_defaults_results_dir()
-        fs, fs_path = get_fs_and_path(storage_path, self.run_config.storage_filesystem)
-        self.run_config.storage_path = fs_path
-        self.run_config.storage_filesystem = fs
         self.run_config.name = (
             self.run_config.name or StorageContext.get_experiment_dir_name(trainable)
+        )
+        storage = StorageContext(
+            storage_path=self.run_config.storage_path,
+            experiment_dir_name=self.run_config.name,
+            storage_filesystem=self.run_config.storage_filesystem,
         )
 
         if self._restore_path:
@@ -607,13 +607,11 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        # TODO(justinvyu): [local_dir] Make storage_path non-optional and remove this.
-        experiment_path = Path(fs_path, self.run_config.name).as_posix()
-        self._save(fs, experiment_path)
+        self._save(storage.storage_filesystem, storage.experiment_fs_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
-            path=str(experiment_path),
+            path=str(storage.experiment_fs_path),
         )
 
         try:
@@ -666,6 +664,7 @@ class BaseTrainer(abc.ABC):
 
         cls_and_param_dict = (self.__class__, param_dict)
 
+        fs.create_dir(experiment_path)
         with fs.open_output_stream(Path(experiment_path, _TRAINER_PKL).as_posix()) as f:
             f.write(pickle.dumps(cls_and_param_dict))
 

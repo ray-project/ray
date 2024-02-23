@@ -60,3 +60,26 @@ py_binary(
         ":update_version_lib",
     ],
 )
+
+py_library(
+    name = "docker_tags_lib",
+    srcs = ["docker_tags_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_test(
+    name = "test_docker_tags_lib",
+    size = "small",
+    srcs = ["test_docker_tags_lib.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":docker_tags_lib",
+    ],
+)
