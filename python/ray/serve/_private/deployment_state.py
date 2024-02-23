@@ -1377,7 +1377,9 @@ class DeploymentState:
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
             replica.get_running_replica_info(self._cluster_node_info_cache)
-            for replica in self._replicas.get([ReplicaState.RUNNING])
+            for replica in self._replicas.get(
+                [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+            )
         ]
 
     def get_active_node_ids(self) -> Set[str]:
@@ -1391,6 +1393,9 @@ class DeploymentState:
             ReplicaState.UPDATING,
             ReplicaState.RECOVERING,
             ReplicaState.RUNNING,
+            # NOTE(zcin): We still want a proxy to run on a draining
+            # node before all the replicas are migrated.
+            ReplicaState.PENDING_MIGRATION,
         ]
         return {
             replica.actor_node_id
@@ -1629,7 +1634,9 @@ class DeploymentState:
         """
 
         total_requests = 0
-        running_replicas = self._replicas.get([ReplicaState.RUNNING])
+        running_replicas = self._replicas.get(
+            [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+        )
 
         if (
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
@@ -1745,7 +1752,11 @@ class DeploymentState:
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
-            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
+            states=[
+                ReplicaState.STARTING,
+                ReplicaState.PENDING_MIGRATION,
+                ReplicaState.RUNNING,
+            ],
         )
         replicas_changed = False
         code_version_changes = 0
@@ -1781,7 +1792,7 @@ class DeploymentState:
                     f"{replica.replica_tag}, deployment_name: {self.deployment_name}, "
                     f"app_name: {self.app_name}"
                 )
-            # We don't allow going from STARTING to UPDATING.
+            # We don't allow going from STARTING, PENDING_MIGRATION to UPDATING.
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
@@ -1821,7 +1832,11 @@ class DeploymentState:
         # terminate them and start new version replicas instead.
         old_running_replicas = self._replicas.count(
             exclude_version=self._target_state.version,
-            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING],
+            states=[
+                ReplicaState.STARTING,
+                ReplicaState.UPDATING,
+                ReplicaState.RUNNING,
+            ],
         )
         old_stopping_replicas = self._replicas.count(
             exclude_version=self._target_state.version, states=[ReplicaState.STOPPING]
@@ -2133,9 +2148,11 @@ class DeploymentState:
         transition happened.
         """
 
-        for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
+        for replica in self._replicas.pop(
+            states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+        ):
             if replica.check_health():
-                self._replicas.add(ReplicaState.RUNNING, replica)
+                self._replicas.add(replica.actor_details.state, replica)
                 self.health_check_gauge.set(
                     1,
                     tags={
@@ -2247,21 +2264,96 @@ class DeploymentState:
                 if replica.replica_tag in self.replica_average_ongoing_requests:
                     del self.replica_average_ongoing_requests[replica.replica_tag]
 
-    def _stop_replicas_on_draining_nodes(self):
-        draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
+    def _choose_pending_migration_replicas_to_stop(
+        self,
+        replicas: List[DeploymentReplica],
+        deadlines: Dict[str, int],
+        min_replicas_to_stop: int,
+    ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
+        """Returns a partition of replicas to stop and to keep.
+
+        Args:
+            replicas: The current list of replicas pending migration.
+            deadlines: The current draining node deadlines.
+            min_replicas_to_stop: The minimum number of replicas to stop.
+        """
+        to_stop = list()
+        remaining = list()
+
+        # Stop replicas whose deadline is up
+        for replica in replicas:
+            curr_timestamp_ms = time.time() * 1000
+            timeout_ms = replica._actor.graceful_shutdown_timeout_s * 1000
+            if (
+                replica.actor_node_id in deadlines
+                and curr_timestamp_ms >= deadlines[replica.actor_node_id] - timeout_ms
+            ):
+                to_stop.append(replica)
+            else:
+                remaining.append(replica)
+
+        # Stop excess PENDING_MIGRATION replicas when new "replacement"
+        # replicas have transitioned to RUNNING. The replicas with the
+        # earliest deadlines should be chosen greedily.
+        def order(deadline: int):
+            if deadline:
+                return deadline
+            else:
+                return float("inf")
+
+        # remaining.sort(key=lambda r: order(deadlines[r.actor_node_id]))
+        remaining.sort(key=lambda r: deadlines[r.actor_node_id])
+        num_excess = min_replicas_to_stop - len(to_stop)
+
+        if num_excess > 0:
+            to_stop.extend(remaining[:num_excess])
+            remaining = remaining[num_excess:]
+
+        return to_stop, remaining
+
+    def _migrate_replicas_on_draining_nodes(self):
+        draining_node_deadlines = self._cluster_node_info_cache.get_draining_nodes()
         for replica in self._replicas.pop(
-            states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
+            states=[ReplicaState.UPDATING, ReplicaState.RUNNING, ReplicaState.STARTING]
         ):
-            if replica.actor_node_id in draining_nodes:
-                state = replica._actor_details.state
-                logger.info(
-                    f"Stopping replica {replica.replica_tag} (currently {state}) "
-                    f"of deployment '{self.deployment_name}' in application "
-                    f"'{self.app_name}' on draining node {replica.actor_node_id}."
-                )
-                self._stop_replica(replica, graceful_stop=True)
+            if replica.actor_node_id in draining_node_deadlines:
+                # For RUNNING replicas, migrate them safely by starting
+                # a replacement replica first.
+                if replica.actor_details.state == ReplicaState.RUNNING:
+                    self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+                # For replicas that are STARTING or UPDATING, might as
+                # well terminate them immediately to allow replacement
+                # replicas to start. Otherwise we need to wait for them
+                # to transition to RUNNING before starting migration.
+                else:
+                    self._stop_replica(replica, graceful_stop=True)
             else:
                 self._replicas.add(replica.actor_details.state, replica)
+
+        num_running = self._replicas.count(states=[ReplicaState.RUNNING])
+        num_draining = self._replicas.count(states=[ReplicaState.PENDING_MIGRATION])
+        num_pending_migration_replicas_to_stop = (
+            num_running + num_draining - self._target_state.target_num_replicas
+        )
+
+        (
+            replicas_to_stop,
+            replicas_to_keep,
+        ) = self._choose_pending_migration_replicas_to_stop(
+            self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]),
+            draining_node_deadlines,
+            num_pending_migration_replicas_to_stop,
+        )
+        for replica in replicas_to_stop:
+            logger.info(
+                f"Stopping replica {replica.replica_tag} "
+                f"of deployment '{self.deployment_name}' in application "
+                f"'{self.app_name}' on draining node {replica.actor_node_id}."
+            )
+            self._stop_replica(replica, graceful_stop=True)
+
+        for replica in replicas_to_keep:
+            self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
 
     def update(self) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
@@ -2283,7 +2375,7 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             self._check_and_update_replicas()
 
-            self._stop_replicas_on_draining_nodes()
+            self._migrate_replicas_on_draining_nodes()
 
             upscale, downscale = self._scale_deployment_replicas()
 

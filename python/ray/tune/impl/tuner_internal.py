@@ -101,7 +101,7 @@ class TunerInternal:
             )
 
         self._tune_config = tune_config or TuneConfig()
-        self._run_config = run_config or RunConfig()
+        self._run_config = copy.copy(run_config) or RunConfig()
         self._entrypoint = _entrypoint
 
         # Restore from Tuner checkpoint.
@@ -139,10 +139,11 @@ class TunerInternal:
         # TODO(justinvyu): [local_dir] Make storage_path non-optional and remove this.
         storage_path = self._run_config.storage_path or _get_defaults_results_dir()
         fs, fs_path = get_fs_and_path(storage_path, self._run_config.storage_filesystem)
-        self._experiment_dir_name = (
-            run_config.name or StorageContext.get_experiment_dir_name(trainable)
+        self._run_config.name = (
+            self._run_config.name
+            or StorageContext.get_experiment_dir_name(self.converted_trainable)
         )
-        experiment_path = Path(fs_path, self._experiment_dir_name).as_posix()
+        experiment_path = Path(fs_path, self._run_config.name).as_posix()
 
         fs.create_dir(experiment_path)
         with fs.open_output_stream(Path(experiment_path, _TUNER_PKL).as_posix()) as f:
@@ -348,7 +349,7 @@ class TunerInternal:
         # experiment directory.
         # Ex: ~/ray_results/exp_name -> ~/ray_results, exp_name
         # Ex: s3://bucket/exp_name -> s3://bucket, exp_name
-        self._run_config.name = self._experiment_dir_name = path_or_uri_obj.name
+        self._run_config.name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
 
         # Load the experiment results at the point where it left off.
@@ -422,7 +423,7 @@ class TunerInternal:
 
     # This has to be done through a function signature (@property won't do).
     def get_experiment_checkpoint_dir(self) -> str:
-        return Path(self._run_config.storage_path, self._experiment_dir_name).as_posix()
+        return Path(self._run_config.storage_path, self._run_config.name).as_posix()
 
     @property
     def trainable(self) -> TrainableTypeOrTrainer:
@@ -552,7 +553,7 @@ class TunerInternal:
         return dict(
             storage_path=self._run_config.storage_path,
             storage_filesystem=self._run_config.storage_filesystem,
-            name=self._experiment_dir_name,
+            name=self._run_config.name,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
