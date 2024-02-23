@@ -378,7 +378,8 @@ class DQNConfig(SimpleQConfig):
             )
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported! "
+                "Use `config.framework('torch')` instead."
             )
 
     @override(AlgorithmConfig)
@@ -391,7 +392,8 @@ class DQNConfig(SimpleQConfig):
             return DQNRainbowTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported! "
+                "Use `config.framework('torch')` instead."
             )
 
 
