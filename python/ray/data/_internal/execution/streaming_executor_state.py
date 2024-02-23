@@ -559,8 +559,8 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Run metadata-only operators first. After that, equally penalize outqueue length
-    # and num bundles processing for backpressure.
+    # Run metadata-only operators first. After that, choose the operator with the least
+    # memory usage.
     return min(
         ops,
         key=lambda op: (
