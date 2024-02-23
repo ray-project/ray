@@ -22,7 +22,7 @@ class ConnectorPipelineV2(ConnectorV2):
     def observation_space(self):
         return (
             self.connectors[-1].observation_space
-            if len(self.connectors) > 0
+            if len(self) > 0
             else self.input_observation_space
         )
 
@@ -30,14 +30,14 @@ class ConnectorPipelineV2(ConnectorV2):
     def action_space(self):
         return (
             self.connectors[-1].action_space
-            if len(self.connectors) > 0
+            if len(self) > 0
             else self.input_action_space
         )
 
     def __init__(
         self,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
+        input_observation_space: gym.Space = None,
+        input_action_space: gym.Space = None,
         *,
         connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
@@ -45,9 +45,19 @@ class ConnectorPipelineV2(ConnectorV2):
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
         self.connectors = connectors or []
+        if len(self) > 0:
+            if input_observation_space is None:
+                self.input_observation_space = self.connectors[
+                    0
+                ].input_observation_space
+            if input_action_space is None:
+                self.input_action_space = self.connectors[0].input_action_space
         self._fix_input_output_types()
 
         self.timers = defaultdict(_Timer)
+
+    def __len__(self):
+        return len(self.connectors)
 
     @override(ConnectorV2)
     def __call__(
@@ -280,15 +290,19 @@ class ConnectorPipelineV2(ConnectorV2):
             )
 
     def _fix_input_output_types(self):
-        if len(self.connectors) > 0:
+        if len(self) > 0:
             # Fix each connector's input_observation- and input_action space in
             # the pipeline.
-            self.input_observation_space = self.connectors[0].input_observation_space
-            self.input_action_space = self.connectors[0].input_action_space
+            if self.input_observation_space is None:
+                self.input_observation_space = self.connectors[
+                    0
+                ].input_observation_space
+            if self.input_action_space is None:
+                self.input_action_space = self.connectors[0].input_action_space
             obs_space = self.input_observation_space
             act_space = self.input_action_space
             for con in self.connectors:
                 con.input_observation_space = obs_space
-                obs_space = con.observation_space
                 con.input_action_space = act_space
+                obs_space = con.observation_space
                 act_space = con.action_space

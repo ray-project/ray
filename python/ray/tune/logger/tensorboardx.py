@@ -72,6 +72,24 @@ class TBXLogger(Logger):
             ):
                 valid_result[full_attr] = value
 
+                # Must be a single image.
+                if isinstance(value, np.ndarray) and value.ndim == 3:
+                    self._file_writer.add_image(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
+
+                # Must be a batch of images.
+                if isinstance(value, np.ndarray) and value.ndim == 4:
+                    self._file_writer.add_images(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
+
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
                     self._file_writer.add_video(
@@ -213,6 +231,24 @@ class TBXLoggerCallback(LoggerCallback):
                 isinstance(value, np.ndarray) and value.size > 0
             ):
                 valid_result[full_attr] = value
+
+                # Must be a single image.
+                if isinstance(value, np.ndarray) and value.ndim == 3:
+                    self._trial_writer[trial].add_image(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
+
+                # Must be a batch of images.
+                if isinstance(value, np.ndarray) and value.ndim == 4:
+                    self._trial_writer[trial].add_images(
+                        full_attr,
+                        value,
+                        global_step=step,
+                    )
+                    continue
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:

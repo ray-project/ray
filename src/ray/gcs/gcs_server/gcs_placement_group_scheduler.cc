@@ -109,7 +109,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
   AcquireBundleResources(bundle_locations);
 
-  // Covert to a set of bundle specifications grouped by the node.
+  // Convert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       node_to_bundles;
   for (size_t i = 0; i < selected_nodes.size(); ++i) {

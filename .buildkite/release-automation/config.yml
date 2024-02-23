@@ -11,6 +11,8 @@ runner_queues:
   medium-arm64: runner_queue_arm64_medium_pr
   macos: macos
   macos-arm64: macos-pr-arm64
+builder_priority: 5
+runner_priority: 5
 buildkite_dirs:
   - .buildkite/release-automation
 env:
