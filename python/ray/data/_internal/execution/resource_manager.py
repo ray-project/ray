@@ -278,6 +278,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # by the pending task outputs. Then we'll have no budget to pull the outputs
         # from the running tasks.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
+        # Whether the minimum resources are reserved for each operator.
+        # This is used to avoid edge cases where the entire resource limits are not
+        # enough to run one task of each op..
+        self._reserved_min_resource: Dict[PhysicalOperator, bool] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator.
@@ -316,7 +320,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
         # operator.
         default_reserved = global_limits.scale(
-            self._reservation_ratio / len(eligible_ops)
+            self._reservation_ratio / (len(eligible_ops))
         )
         for op in eligible_ops:
             # Reserve at least half of the default reserved resources for the outputs.
@@ -339,12 +343,24 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
             # Total reserved resources for the operator.
             op_total_reserved = default_reserved.max(min_reserved)
-            self._total_shared = self._total_shared.subtract(op_total_reserved)
-            self._op_reserved[op] = op_total_reserved
-            self._op_reserved[op].object_store_memory -= self._reserved_for_op_outputs[
-                op
-            ]
-        self._total_shared = self._total_shared.max(ExecutionResources.zero())
+            if op_total_reserved.satisfies_limit(self._total_shared):
+                self._reserved_min_resource[op] = True
+                self._total_shared = self._total_shared.subtract(op_total_reserved)
+                self._op_reserved[op] = op_total_reserved
+                self._op_reserved[
+                    op
+                ].object_store_memory -= self._reserved_for_op_outputs[op]
+            else:
+                # If the remaining resources are not enough to reserve the minimum
+                # resources for this operator, we don't reserve any resources for it.
+                self._reserved_min_resource[op] = False
+                self._op_reserved[op] = ExecutionResources.zero()
+                self._reserved_for_op_outputs[op] = 1
+                self._total_shared = self._total_shared.subtract(
+                    ExecutionResources(0, 0, 1)
+                )
+
+            self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         if op not in self._op_budgets:
@@ -360,6 +376,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         outputs_remaining_reserved = max(
             self._reserved_for_op_outputs[op] - outputs_usage, 0
         )
+        if any(
+            not self._reserved_min_resource[next_op]
+            for next_op in op.output_dependencies
+        ):
+            # If any of the downstream operators haven't reserved the minimum
+            # resources to run at least one task, we should allow reading at least
+            # 1 byte. So that this operator can finish at least one task and yield
+            # resources to the downstream operators.
+            outputs_remaining_reserved = max(outputs_remaining_reserved, 1)
         return self._op_budgets[op].object_store_memory + outputs_remaining_reserved
 
     def update_usages(self):
