@@ -11,13 +11,6 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
 
 
-def _write_to_file(file_path: str, content: List[str]) -> None:
-    file_path = os.path.join(bazel_workspace_dir, file_path)
-    logger.info(f"Writing to {file_path}......")
-    with open(file_path, "w") as f:
-        f.write("\n".join(content))
-
-
 class DockerHubRateLimitException(Exception):
     """
     Exception for Docker Hub rate limit exceeded.
@@ -155,6 +148,90 @@ def delete_tag(tag: str, docker_hub_token: str) -> bool:
         return False
     logger.info(f"Deleted tag {tag}")
     return True
+
+
+def query_tags_from_docker_hub(
+    filter_func: Callable[[str], bool],
+    namespace: str,
+    repository: str,
+    docker_hub_token: str,
+    num_tags: Optional[int] = None,
+) -> List[str]:
+    """
+    Query tags from Docker Hub repository with filter.
+    If Docker Hub API returns an error, the function will:
+        - Stop querying
+        - Return the current list of tags.
+
+    Args:
+        filter_func: Function to return whether tag should be included.
+        namespace: Docker namespace
+        repository: Docker repository
+        num_tags: Max number of tags to query
+
+    Returns:
+        Sorted list of tags from Docker Hub repository
+        with format namespace/repository:tag.
+    """
+    filtered_tags = []
+    headers = {
+        "Authorization": f"Bearer {docker_hub_token}",
+    }
+
+    page_count = 1
+    while page_count:
+        logger.info(f"Querying page {page_count}")
+        url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count}&page_size=100"  # noqa E501
+
+        response = requests.get(url, headers=headers)
+        response_json = response.json()
+
+        # Stop querying if Docker Hub API returns an error
+        if response.status_code != 200:
+            logger.info(f"Failed to query tags from Docker Hub: Error: {response_json}")
+            return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
+
+        result = response_json["results"]
+        tags = [tag["name"] for tag in result]
+        filtered_tags_page = list(filter(filter_func, tags))  # Filter tags
+
+        # Add enough tags to not exceed num_tags if num_tags is specified
+        if num_tags:
+            if len(filtered_tags) + len(filtered_tags_page) > num_tags:
+                filtered_tags.extend(
+                    filtered_tags_page[: num_tags - len(filtered_tags)]
+                )
+                break
+        filtered_tags.extend(filtered_tags_page)
+
+        logger.info(f"Tag count: {len(filtered_tags)}")
+        if not response_json["next"]:
+            break
+        page_count += 1
+    return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
+
+
+def query_tags_from_docker_with_oci(namespace: str, repository: str) -> List[str]:
+    """
+    Query all repo tags from Docker using OCI API.
+
+    Args:
+        namespace: Docker namespace
+        repository: Docker repository
+
+    Returns:
+        List of tags from Docker Registry in format namespace/repository:tag.
+    """
+    token = _get_docker_auth_token(namespace, repository)
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/tags/list"
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"Failed to query tags from Docker: {response.json()}")
+
+    return [f"{namespace}/{repository}:{t}" for t in response.json()["tags"]]
 
 
 def _is_release_tag(
@@ -337,7 +414,7 @@ def backup_release_tags(
         release_versions: List of release versions to backup
         aws_ecr_repo: AWS ECR repository
     """
-    docker_hub_token = get_docker_hub_auth_token(docker_username, docker_password)
+    docker_hub_token = _get_docker_hub_auth_token(docker_username, docker_password)
     docker_hub_tags = query_tags_from_docker_hub(
         filter_func=lambda t: _is_release_tag(t, release_versions),
         namespace=namespace,
@@ -347,3 +424,10 @@ def backup_release_tags(
     _write_to_file("release_tags.txt", docker_hub_tags)
     for t in docker_hub_tags:
         copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
+
+
+def _write_to_file(file_path: str, content: List[str]) -> None:
+    file_path = os.path.join(bazel_workspace_dir, file_path)
+    logger.info(f"Writing to {file_path}......")
+    with open(file_path, "w") as f:
+        f.write("\n".join(content))
