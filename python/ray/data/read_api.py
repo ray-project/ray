@@ -2554,6 +2554,8 @@ def from_spark(
     else:
         import raydp
 
+        if parallelism == -1:
+            parallelism = None
         return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
