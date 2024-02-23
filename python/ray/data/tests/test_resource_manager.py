@@ -114,12 +114,8 @@ class TestResourceManager:
     def test_update_usage(self):
         """Test calculating op_usage."""
         o1 = InputDataBuffer([])
-        o2 = MapOperator.create(
-            make_map_transformer(lambda block: block), o1
-        )
-        o3 = MapOperator.create(
-            make_map_transformer(lambda block: block), o2
-        )
+        o2 = MapOperator.create(make_map_transformer(lambda block: block), o1)
+        o3 = MapOperator.create(make_map_transformer(lambda block: block), o2)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
         # Mock different metrics that contribute to the resource usage.
@@ -303,6 +299,13 @@ class TestReservationOpResourceAllocator:
         o3 = MapOperator.create(MagicMock(), o2)
         o4 = LimitOperator(1, o3)
 
+        o2.incremental_resource_usage = MagicMock(
+            return_value=ExecutionResources(1, 0, 10)
+        )
+        o3.incremental_resource_usage = MagicMock(
+            return_value=ExecutionResources(1, 0, 10)
+        )
+
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
 
         topo, _ = build_streaming_topology(o4, ExecutionOptions())
@@ -328,18 +331,27 @@ class TestReservationOpResourceAllocator:
         op_resource_allocator.update_usages()
         assert o1 not in op_resource_allocator._op_reserved
         assert o4 not in op_resource_allocator._op_reserved
-        assert op_resource_allocator._op_reserved[o2] == ExecutionResources(4, 0, 250)
-        assert op_resource_allocator._op_reserved[o3] == ExecutionResources(4, 0, 250)
+        assert o1 not in op_resource_allocator._op_budgets
+        assert o4 not in op_resource_allocator._op_budgets
+
+        assert op_resource_allocator._op_reserved[o2] == ExecutionResources(4, 0, 125)
+        assert op_resource_allocator._op_reserved[o3] == ExecutionResources(4, 0, 125)
+        assert op_resource_allocator._reserved_for_op_outputs[o2] == 125
+        assert op_resource_allocator._reserved_for_op_outputs[o3] == 125
+
         assert op_resource_allocator._total_shared == ExecutionResources(8, 0, 500)
 
-        assert op_resource_allocator.get_op_limits(o1) == ExecutionResources.inf()
-        assert op_resource_allocator.get_op_limits(o4) == ExecutionResources.inf()
-        assert op_resource_allocator.get_op_limits(o2) == ExecutionResources(
-            8, float("inf"), 500
+        assert op_resource_allocator._op_budgets[o2] == ExecutionResources(
+            8, float("inf"), 375
         )
-        assert op_resource_allocator.get_op_limits(o3) == ExecutionResources(
-            8, float("inf"), 500
+        assert op_resource_allocator._op_budgets[o3] == ExecutionResources(
+            8, float("inf"), 375
         )
+
+        assert op_resource_allocator.can_submit_new_task(o2)
+        assert op_resource_allocator.can_submit_new_task(o3)
+        assert op_resource_allocator.max_task_output_bytes_to_read(o2) == 500
+        assert op_resource_allocator.max_task_output_bytes_to_read(o3) == 500
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
