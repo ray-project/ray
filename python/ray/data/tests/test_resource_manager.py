@@ -111,42 +111,104 @@ class TestResourceManager:
                 assert resource_manager.get_global_limits() == expected_resource
                 assert ray_cluster_resources.call_count == 2
 
-    def test_calculating_usage(self):
-        inputs = make_ref_bundles([[x] for x in range(20)])
-        o1 = InputDataBuffer(inputs)
+    def test_update_usage(self):
+        """Test calculating op_usage."""
+        o1 = InputDataBuffer([])
         o2 = MapOperator.create(
-            make_map_transformer(lambda block: [b * -1 for b in block]), o1
+            make_map_transformer(lambda block: block), o1
         )
         o3 = MapOperator.create(
-            make_map_transformer(lambda block: [b * 2 for b in block]), o2
+            make_map_transformer(lambda block: block), o2
         )
-        o2.current_processor_usage = MagicMock(
-            return_value=ExecutionResources(cpu=5, gpu=0)
-        )
-        o2.metrics.obj_store_mem_internal_outqueue = 500
-        o3.current_processor_usage = MagicMock(
-            return_value=ExecutionResources(cpu=10, gpu=0)
-        )
-        o3.metrics.obj_store_mem_internal_outqueue = 1000
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
-        inputs[0].size_bytes = MagicMock(return_value=200)
-        topo[o2].add_output(inputs[0])
+
+        # Mock different metrics that contribute to the resource usage.
+        mock_cpu = {
+            o1: 0,
+            o2: 5,
+            o3: 8,
+        }
+        mock_pending_task_outputs = {
+            o1: 0,
+            o2: 100,
+            o3: 200,
+        }
+        mock_internal_outqueue = {
+            o1: 0,
+            o2: 300,
+            o3: 400,
+        }
+        mock_external_outqueue_sizes = {
+            o1: 100,
+            o2: 500,
+            o3: 600,
+        }
+        mock_internal_inqueue = {
+            o1: 0,
+            o2: 700,
+            o3: 800,
+        }
+        mock_pending_task_inputs = {
+            o1: 0,
+            o2: 900,
+            o3: 1000,
+        }
+
+        for op in [o1, o2, o3]:
+            op.current_processor_usage = MagicMock(
+                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+            )
+            op._metrics = MagicMock(
+                obj_store_mem_pending_task_outputs=mock_pending_task_outputs[op],
+                obj_store_mem_internal_outqueue=mock_internal_outqueue[op],
+                obj_store_mem_internal_inqueue=mock_internal_inqueue[op],
+                obj_store_mem_pending_task_inputs=mock_pending_task_inputs[op],
+            )
+            ref_bundle = MagicMock(
+                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op])
+            )
+            topo[op].add_output(ref_bundle)
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
-        assert resource_manager.get_global_usage() == ExecutionResources(15, 0, 1700)
 
-        assert resource_manager.get_op_usage(o1) == ExecutionResources(0, 0, 0)
-        assert resource_manager.get_op_usage(o2) == ExecutionResources(5, 0, 700)
-        assert resource_manager.get_op_usage(o3) == ExecutionResources(10, 0, 1000)
+        global_cpu = 0
+        global_mem = 0
+        for op in [o1, o2, o3]:
+            if op == o1:
+                # Resource usage of InputDataBuffer doesn't count.
+                expected_mem = 0
+            else:
+                expected_mem = (
+                    mock_pending_task_outputs[op]
+                    + mock_internal_outqueue[op]
+                    + mock_external_outqueue_sizes[op]
+                )
+                for next_op in op.output_dependencies:
+                    expected_mem += (
+                        +mock_internal_inqueue[next_op]
+                        + mock_pending_task_inputs[next_op]
+                    )
+            op_usage = resource_manager.get_op_usage(op)
+            assert op_usage.cpu == mock_cpu[op]
+            assert op_usage.gpu == 0
+            assert op_usage.object_store_memory == expected_mem
+            if op != o1:
+                assert (
+                    resource_manager._mem_pending_task_outputs[op]
+                    == mock_pending_task_outputs[op]
+                )
+                assert (
+                    resource_manager._mem_op_outputs[op]
+                    == expected_mem - mock_pending_task_outputs[op]
+                )
+            global_cpu += mock_cpu[op]
+            global_mem += expected_mem
 
-        assert resource_manager.get_downstream_fraction(o1) == 1.0
-        assert resource_manager.get_downstream_fraction(o2) == 1.0
-        assert resource_manager.get_downstream_fraction(o3) == 0.5
-
-        assert resource_manager.get_downstream_object_store_memory(o1) == 1700
-        assert resource_manager.get_downstream_object_store_memory(o2) == 1700
-        assert resource_manager.get_downstream_object_store_memory(o3) == 1000
+        assert resource_manager.get_global_usage() == ExecutionResources(
+            global_cpu, 0, global_mem
+        )
 
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
