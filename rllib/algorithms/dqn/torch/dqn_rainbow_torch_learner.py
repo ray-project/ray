@@ -60,15 +60,16 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
 
         # Use double Q learning.
         if self.config.double_q:
-            # Then we evaluate the target Q-function at the best action over
-            # the online Q-function.
+            # Then we evaluate the target Q-function at the best action (greedy action)
+            # over the online Q-function.
             batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
             qf_next_outs = self.module.qf(batch_next)
             # Mark the best online Q-value of the next state.
             q_next_best_idx = (
                 torch.argmax(qf_next_outs[QF_PREDS], dim=1).unsqueeze(dim=-1).long()
             )
-            # Get the Q-value of the target network at maximum of the online network.
+            # Get the Q-value of the target network at maximum of the online network
+            # (bootstrap action).
             q_next_best = torch.nan_to_num(
                 torch.gather(q_target_next, dim=1, index=q_next_best_idx),
                 neginf=0.0,
@@ -125,14 +126,14 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # TODO (simon): Enable computing on GPU.
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
             # TODO (simon): Check, if we need to unsqueeze here.
-            r_tau = (
+            r_tau = torch.clamp(
                 batch[SampleBatch.REWARDS]
-                + self.config.gamma**self.config.n_step
+                + self.config.gamma ** batch["n_steps"]
                 * (1.0 - batch[SampleBatch.TERMINATEDS].float())
-                * z
+                * z,
+                self.config.v_min,
+                self.config.v_max,
             )
-            # Clip the Q-values.
-            r_tau = torch.clamp(r_tau, self.config.v_min, self.config.v_max)
             b = (r_tau - self.config.v_min) / (
                 (self.config.v_max - self.config.v_min)
                 / float(self.config.num_atoms - 1.0)
@@ -156,9 +157,9 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # We do not want to propagate through the distributional targets.
             m = (ml_delta + mu_delta).detach()
 
-            # Rainbow paper claims that using this form of cross-entropy loss for
-            # priority is robust and insensitive to 'prioritized_replay_alpha'.
-            # TODO (simon): Check this claim and get the exact location in the paper.
+            # The Rainbow paper claims to use the KL-divergence loss. This is identical
+            # to using the cross-entropy (differs only by entropy which is constant)
+            # when optimizing by the gradient (the gradient is identical).
             td_error = nn.CrossEntropyLoss(reduction="none")(q_logits_selected, m)
             # Compute the weighted loss (importance sampling weights).
             total_loss = torch.mean(batch["weights"] * td_error)
@@ -169,12 +170,11 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             ) * q_next_best
 
             # Compute the RHS of the Bellman equation.
-            # TODO (simon): Implement randomized n-step sampling.
             # Detach this node from the computation graph as we do not want to
             # backpropagate through the target network when optimizing the Q loss.
             q_selected_target = (
                 batch[SampleBatch.REWARDS]
-                + self.config.gamma**self.config.n_step * q_next_best_masked
+                + self.config.gamma ** batch["n_steps"] * q_next_best_masked
             ).detach()
 
             # Compute the TD error.
@@ -212,16 +212,6 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
     def _update_module_target_networks(
         self, module_id: ModuleID, config: DQNConfig
     ) -> None:
-        """Updates the target Q network(s) of a module.
-
-        Applies Polyak averaging for the update.
-
-        Args:
-            module_id: The ID of the module for which target networks
-                should be updated.
-            config: `AlgorithmConfig` holding hyperparameters needed
-                for the updates.
-        """
         module = self.module[module_id]
 
         # Note, we have pairs of encoder and head networks.

@@ -33,7 +33,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
     """Implements `torch`-specific SAC loss logic on top of `SACLearner`
 
     This ' Learner' class implements the loss in its
-    `self.compute_loss_for_module()` method.
+    `self.compute_loss_for_module()` method. In addition it updates
+    target networks in its inherited method `_update_module_target_networks`.
     """
 
     # TODO (simon): Set different learning rates for optimizers.
@@ -316,16 +317,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
     def _update_module_target_networks(
         self, module_id: ModuleID, config: SACConfig
     ) -> None:
-        """Updates the target Q network(s) of a module.
-
-        Applies Polyak averaging for the update.
-
-        Args:
-            module_id: The ID of the module for which target networks
-                should be updated.
-            config: `AlgorithmConfig` holding hyperparameters needed
-                for the updates.
-        """
         module = self.module[module_id]
 
         # Note, we have pairs of encoder and head networks.

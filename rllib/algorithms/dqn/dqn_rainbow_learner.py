@@ -34,12 +34,7 @@ class DQNRainbowLearner(Learner):
         last_update: int,
         **kwargs
     ) -> Dict[str, Any]:
-        """Updates the target Q Networks.
-
-        Args:
-            module_id: Module ID of the module to be updated.
-
-        """
+        """Updates the target Q Networks."""
         results = super().additional_update_for_module(
             module_id=module_id,
             config=config,
