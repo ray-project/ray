@@ -118,7 +118,7 @@ class ResourceRequestSource(Enum):
     The source of the resource request.
     """
 
-    # The resource request is from the resource requests, e.g. ray tasks/actors,
+    # The resource request is from demand, e.g. ray tasks/actors,
     # placement groups, etc.
     PENDING_DEMAND = "PENDING_DEMAND"
     # The resource request is from the cluster resource constraints, i.e.
@@ -388,11 +388,10 @@ class SchedulingNode:
             A utilization score for this node.
         """
 
-        # Compute the number of resource types being scheduled.
         sched_requests = self.sched_requests[resource_request_source]
         available_resources = self.available_resources[resource_request_source]
 
-        # Number of matching resource types.
+        # Compute the number of resource types being scheduled.
         num_matching_resource_types = 0
         sched_resource_types = set()
         for req in sched_requests:
@@ -443,12 +442,8 @@ class SchedulingNode:
         self, request: ResourceRequest, resource_request_source: ResourceRequestSource
     ) -> bool:
         """
-        Try to schedule one resource request on this node.
-        - If the resource request is from a cluster constraint, the request will be
-        tracked from the  `available_resources_for_constraints`.
-
-        - If the resource request is not a constraint, the request will be tracked
-        from node's actual `available_resources`.
+        Try to schedule one resource request on this node. The request could be from
+        various sources, specified by `resource_request_source`.
 
         Args:
             request: The resource request to be scheduled.
@@ -1382,8 +1377,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         ctx: "ResourceDemandScheduler.ScheduleContext",
     ) -> None:
         """
-        Enforce the idle termination for the nodes that are not needed by the resource
-        constraints and idle for too long.
+        Enforce the idle termination for the nodes that are not needed by the cluster
+        resource constraints and idle for too long.
 
         Args:
             ctx: The schedule context.
@@ -1413,8 +1408,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # Skip it.
                 if node.idle_duration_ms > ctx.get_idle_timeout_s() * s_to_ms:
                     logger.debug(
-                        "Node {}(idle for {} secs) is needed by the constraints, "
-                        "skip idle termination.".format(
+                        "Node {}(idle for {} secs) is needed by the cluster resource "
+                        "constraints, skip idle termination.".format(
                             node.ray_node_id, node.idle_duration_ms / s_to_ms
                         )
                     )
@@ -1431,7 +1426,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
-                id=str(time.time_ns()),
+                id=str(uuid.uuid4()),
                 instance_id=node.im_instance_id,
                 ray_node_id=node.ray_node_id,
                 cause=TerminationRequest.Cause.IDLE,
