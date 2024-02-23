@@ -1267,9 +1267,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             nodes: The node candidates to be scheduled on. The nodes will be updated
                 after the scheduling attempt, i.e. the node that is scheduled will be
                 removed from the list.
-            resource_request_source: Whether the requests are constraints, True
-                if the requests are constraints, False if it's the actual
-                pending resource requests.
+            resource_request_source: The source of the resource request, i.e.
+                pending demands from ray actors/tasks or cluster resource constraints.
 
         Returns:
             best_node: The best node to schedule the requests.
