@@ -129,7 +129,7 @@ def test_write_preserves_user_directory(num_rows, tmp_path, ray_start_regular_sh
     path = os.path.join(tmp_path, "test")
     os.mkdir(path)  # User-created directory
 
-    ds.write_datasource(MockFileDatasink(path=path))
+    ds.write_datasink(MockFileDatasink(path=path))
 
     assert os.path.isdir(path)
 
@@ -142,7 +142,7 @@ def test_write_creates_dir(tmp_path, ray_start_regular_shared):
     ds = ray.data.range(1)
     path = os.path.join(tmp_path, "test")
 
-    ds.write_datasource(MockFileDatasink(path=path, try_create_dir=True))
+    ds.write_datasink(MockFileDatasink(path=path, try_create_dir=True))
 
     assert os.path.isdir(path)
 

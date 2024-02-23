@@ -6,11 +6,7 @@ from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import (
-    ModuleID,
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -94,12 +90,12 @@ class MultiAgentEnvRunner(EnvRunner):
         # required in the learning step.
         self._cached_to_module = None
 
-        self._make_module()
+        # Construct the RLModule.
+        self.module = self._make_module()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
-        # This should be the default.
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
         self._shared_data = None
@@ -197,9 +193,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episode = MultiAgentEpisode(
-                agent_to_module_mapping_fn=self.config.policy_mapping_fn
-            )
+            self._episode = self._new_episode()
             self._make_on_episode_callback("on_episode_created")
 
             # Reset the environment.
@@ -339,9 +333,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 self._make_on_episode_callback("on_episode_end")
 
                 # Create a new episode instance.
-                self._episode = MultiAgentEpisode(
-                    agent_to_module_mapping_fn=self.config.policy_mapping_fn
-                )
+                self._episode = self._new_episode()
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
@@ -380,7 +372,9 @@ class MultiAgentEnvRunner(EnvRunner):
             self._episode.validate()
             self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
             # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(self._episode.finalize())
+            ongoing_episodes_to_return.append(
+                self._episode.finalize(drop_zero_len_single_agent_episodes=True)
+            )
 
         # Continue collecting into the cut Episode chunk.
         self._episode = ongoing_episode_continuation
@@ -410,9 +404,7 @@ class MultiAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
-        _episode = MultiAgentEpisode(
-            agent_to_module_mapping_fn=self.config.policy_mapping_fn
-        )
+        _episode = self._new_episode()
         self._make_on_episode_callback("on_episode_created", _episode)
         shared_data = {
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
@@ -530,9 +522,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     break
 
                 # Create a new episode instance.
-                _episode = MultiAgentEpisode(
-                    agent_to_module_mapping_fn=self.config.policy_mapping_fn
-                )
+                _episode = self._new_episode()
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
@@ -557,17 +547,29 @@ class MultiAgentEnvRunner(EnvRunner):
             assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
+            module_rewards = defaultdict(
+                float,
+                {
+                    (sa_eps.agent_id, sa_eps.module_id): sa_eps.get_return()
+                    for sa_eps in eps.agent_episodes.values()
+                },
+            )
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                     episode_length += len(eps2)
                     episode_reward += eps2.get_return()
+                    for sa_eps in eps2.agent_episodes.values():
+                        module_rewards[
+                            (sa_eps.agent_id, sa_eps.module_id)
+                        ] += eps2.get_return()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             metrics.append(
                 RolloutMetrics(
                     episode_length=episode_length,
                     episode_reward=episode_reward,
+                    agent_rewards=dict(module_rewards),
                 )
             )
 
@@ -603,8 +605,10 @@ class MultiAgentEnvRunner(EnvRunner):
             # Set `global_vars` (timestep) as well.
             worker.set_weights(weights, {"timestep": 42})
         """
-
-        self.module.set_state(weights)
+        # Only update the weigths, if this is the first synchronization or
+        # if the weights of this `EnvRunner` lacks behind the actual ones.
+        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+            self.module.set_state(weights)
 
     def get_weights(self, modules=None) -> Dict[ModuleID, ModelWeights]:
         """Returns the weights of our multi-agent `RLModule`.
@@ -657,11 +661,18 @@ class MultiAgentEnvRunner(EnvRunner):
             )
 
             # Build the module from its spec.
-            self.module: MultiAgentRLModule = ma_rlm_spec.build()
+            return ma_rlm_spec.build()
 
         # This error could be thrown, when only random actions are used.
         except NotImplementedError:
-            self.module = None
+            return None
+
+    def _new_episode(self):
+        return MultiAgentEpisode(
+            observation_space=self.env.observation_space,
+            action_space=self.env.action_space,
+            agent_to_module_mapping_fn=self.config.policy_mapping_fn,
+        )
 
     def _make_on_episode_callback(self, which: str, episode=None):
         episode = episode if episode is not None else self._episode
