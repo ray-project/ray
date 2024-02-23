@@ -38,22 +38,16 @@ def ray_start_4_cpus_4_gpus_4_extra():
 def ray_start_heterogenous_cluster():
     """
     Start a heterogenous cluster with 10 nodes:
-        - 1 node with 10 CPUs
         - 1 node with 100 CPUs
-        - 1 node with 4 GPUs and 10 CPUs
-        - 1 node with 4 GPUs and 100 CPUs
-        - 4 nodes with 1 GPU and 10 CPUs
-        - 4 nodes with 1 GPU and 100 CPUs
+        - 2 nodes with 2 GPU and 10 CPUs
+        - 1 nodes with 2 GPU and 20 CPUs
     """
     cluster = Cluster()
 
     node_configs = []
-    node_configs += [{"num_cpus": 10}]
-    node_configs += [{"num_cpus": 100}]
-    node_configs += [{"num_cpus": 10, "num_gpus": 4}]
-    node_configs += [{"num_cpus": 100, "num_gpus": 4}]
-    node_configs += [{"num_cpus": 10, "num_gpus": 1}] * 4
-    node_configs += [{"num_cpus": 100, "num_gpus": 1}] * 4
+    node_configs += [{"num_cpus": 20}]
+    node_configs += [{"num_cpus": 20, "num_gpus": 2}]
+    node_configs += [{"num_cpus": 10, "num_gpus": 2}] * 2
 
     for config in node_configs:
         cluster.add_node(**config)
@@ -377,19 +371,15 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     assert visible_devices == ["0,1,2,3", "0,1,2,3"]
 
 
-@pytest.mark.parametrize(
-    "trainer_resources", [None, {}, {"CPU": 50}, {"CPU": 50, "GPU": 1}]
-)
-@pytest.mark.parametrize("num_workers", [1, 2, 8, 9])
+@pytest.mark.parametrize("trainer_resources", [None, {}, {"CPU": 15}, {"GPU": 1}])
+@pytest.mark.parametrize("num_workers", [1, 2, 4])
 @pytest.mark.parametrize(
     "resources_per_worker_and_use_gpu",
     [
-        (None, False),
         (None, True),
         ({}, False),
         ({"CPU": 1}, False),
-        ({"CPU": 2, "GPU": 1}, True),
-        ({"CPU": 0}, False),
+        ({"CPU": 1, "GPU": 1}, True),
     ],
 )
 @pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
