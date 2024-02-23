@@ -15,9 +15,9 @@ class ClientMmapTableEntry {
 
   ~ClientMmapTableEntry();
 
-  uint8_t *pointer() { return reinterpret_cast<uint8_t *>(pointer_); }
+  uint8_t *pointer() const { return reinterpret_cast<uint8_t *>(pointer_); }
 
-  MEMFD_TYPE fd() { return fd_; }
+  MEMFD_TYPE fd() const { return fd_; }
 
  private:
   /// The associated file descriptor on the client.

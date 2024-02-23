@@ -1,17 +1,22 @@
 import functools
+import math
 import time
 import unittest
 from collections import defaultdict
-from contextlib import contextmanager
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 import ray
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
     ConcurrencyCapBackpressurePolicy,
     StreamingOutputBackpressurePolicy,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
 )
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.data.tests.conftest import (
@@ -41,94 +46,43 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         data_context = ray.data.DataContext.get_current()
         data_context.remove_config(ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY)
 
-    @contextmanager
-    def _patch_config(self, init_cap, cap_multiply_threshold, cap_multiplier):
-        data_context = ray.data.DataContext.get_current()
-        data_context.set_config(
-            ConcurrencyCapBackpressurePolicy.INIT_CAP_CONFIG_KEY,
-            init_cap,
-        )
-        data_context.set_config(
-            ConcurrencyCapBackpressurePolicy.CAP_MULTIPLY_THRESHOLD_CONFIG_KEY,
-            cap_multiply_threshold,
-        )
-        data_context.set_config(
-            ConcurrencyCapBackpressurePolicy.CAP_MULTIPLIER_CONFIG_KEY,
-            cap_multiplier,
-        )
-        yield
-        data_context.remove_config(ConcurrencyCapBackpressurePolicy.INIT_CAP_CONFIG_KEY)
-        data_context.remove_config(
-            ConcurrencyCapBackpressurePolicy.CAP_MULTIPLY_THRESHOLD_CONFIG_KEY
-        )
-        data_context.remove_config(
-            ConcurrencyCapBackpressurePolicy.CAP_MULTIPLIER_CONFIG_KEY
-        )
-
     def test_basic(self):
-        op = MagicMock()
-        op.metrics = MagicMock(
-            num_tasks_running=0,
-            num_tasks_finished=0,
+        concurrency = 16
+        input_op = InputDataBuffer(input_data=[MagicMock()])
+        map_op_no_concurrency = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            input_op=input_op,
+            target_max_block_size=None,
         )
-        topology = {op: MagicMock()}
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            input_op=map_op_no_concurrency,
+            target_max_block_size=None,
+            concurrency=concurrency,
+        )
+        map_op.metrics.num_tasks_running = 0
+        map_op.metrics.num_tasks_finished = 0
+        topology = {
+            map_op: MagicMock(),
+            input_op: MagicMock(),
+            map_op_no_concurrency: MagicMock(),
+        }
 
-        init_cap = 4
-        cap_multiply_threshold = 0.5
-        cap_multiplier = 2.0
+        policy = ConcurrencyCapBackpressurePolicy(topology)
 
-        with self._patch_config(init_cap, cap_multiply_threshold, cap_multiplier):
-            policy = ConcurrencyCapBackpressurePolicy(topology)
+        self.assertEqual(policy._concurrency_caps[map_op], concurrency)
+        self.assertTrue(math.isinf(policy._concurrency_caps[input_op]))
+        self.assertTrue(math.isinf(policy._concurrency_caps[map_op_no_concurrency]))
 
-        self.assertEqual(policy._concurrency_caps[op], 4)
         # Gradually increase num_tasks_running to the cap.
-        for i in range(1, init_cap + 1):
-            self.assertTrue(policy.can_add_input(op))
-            op.metrics.num_tasks_running = i
+        for i in range(1, concurrency + 1):
+            self.assertTrue(policy.can_add_input(map_op))
+            map_op.metrics.num_tasks_running = i
         # Now num_tasks_running reaches the cap, so can_add_input should return False.
-        self.assertFalse(policy.can_add_input(op))
+        self.assertFalse(policy.can_add_input(map_op))
 
-        # If we increase num_task_finished to the threshold (4 * 0.5 = 2),
-        # it should trigger the cap to increase.
-        op.metrics.num_tasks_finished = init_cap * cap_multiply_threshold
-        self.assertEqual(policy.can_add_input(op), True)
-        self.assertEqual(policy._concurrency_caps[op], init_cap * cap_multiplier)
-
-        # Now the cap is 8 (4 * 2).
-        # If we increase num_tasks_finished directly to the next-level's threshold
-        # (8 * 2 * 0.5 = 8), it should trigger the cap to increase twice.
-        op.metrics.num_tasks_finished = (
-            policy._concurrency_caps[op] * cap_multiplier * cap_multiply_threshold
-        )
-        op.metrics.num_tasks_running = 0
-        self.assertEqual(policy.can_add_input(op), True)
-        self.assertEqual(policy._concurrency_caps[op], init_cap * cap_multiplier**3)
-
-    def test_config(self):
-        topology = {}
-        # Test good config.
-        with self._patch_config(10, 0.3, 1.5):
-            policy = ConcurrencyCapBackpressurePolicy(topology)
-            self.assertEqual(policy._init_cap, 10)
-            self.assertEqual(policy._cap_multiply_threshold, 0.3)
-            self.assertEqual(policy._cap_multiplier, 1.5)
-
-        with self._patch_config(10, 0.3, 1):
-            policy = ConcurrencyCapBackpressurePolicy(topology)
-            self.assertEqual(policy._init_cap, 10)
-            self.assertEqual(policy._cap_multiply_threshold, 0.3)
-            self.assertEqual(policy._cap_multiplier, 1)
-
-        # Test bad configs.
-        with self._patch_config(-1, 0.3, 1.5):
-            with self.assertRaises(AssertionError):
-                policy = ConcurrencyCapBackpressurePolicy(topology)
-        with self._patch_config(10, 1.1, 1.5):
-            with self.assertRaises(AssertionError):
-                policy = ConcurrencyCapBackpressurePolicy(topology)
-        with self._patch_config(10, 0.3, 0.5):
-            with self.assertRaises(AssertionError):
-                policy = ConcurrencyCapBackpressurePolicy(topology)
+        map_op.metrics.num_tasks_running = concurrency / 2
+        self.assertEqual(policy.can_add_input(map_op), True)
 
     def _create_record_time_actor(self):
         @ray.remote(num_cpus=0)
@@ -171,8 +125,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         N = self.__class__._cluster_cpus
         ds = ray.data.range(N, parallelism=N)
         # Use different `num_cpus` to make sure they don't fuse.
-        ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1)
-        ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1)
+        ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1, concurrency=1)
+        ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1, concurrency=1)
         res = ds.take_all()
         self.assertEqual(len(res), N)
 
@@ -183,24 +137,6 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         start1, end1 = ray.get(actor.get_start_and_end_time_for_op.remote(1))
         start2, end2 = ray.get(actor.get_start_and_end_time_for_op.remote(2))
         assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
-
-    def test_e2e_no_ramping_up(self):
-        """Test setting the multiplier to 1.0, which means no ramping up of the
-        concurrency cap."""
-        with self._patch_config(1, 1, 1):
-            actor = self._create_record_time_actor()
-            map_func1 = self._get_map_func(actor, 1)
-            N = self.__class__._cluster_cpus
-            ds = ray.data.range(N, parallelism=N)
-            ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1)
-            res = ds.take_all()
-            self.assertEqual(len(res), N)
-
-            start, end = ray.get(
-                actor.get_start_and_end_time_for_all_tasks_of_op.remote(1)
-            )
-            for i in range(len(start) - 1):
-                assert start[i] < end[i] < start[i + 1], (i, start, end)
 
 
 class TestStreamOutputBackpressurePolicy(unittest.TestCase):
@@ -217,10 +153,16 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         cls._num_blocks = 5
         cls._block_size = 100 * 1024 * 1024
         policy_cls = StreamingOutputBackpressurePolicy
+        cls._max_blocks_in_op_output_queue = 1
+        cls._max_blocks_in_generator_buffer = 1
         cls._configs = {
             ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [policy_cls],
-            policy_cls.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: 1,
-            policy_cls.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY: 1,
+            policy_cls.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: (
+                cls._max_blocks_in_op_output_queue
+            ),
+            policy_cls.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY: (
+                cls._max_blocks_in_generator_buffer
+            ),
         }
         for k, v in cls._configs.items():
             data_context.set_config(k, v)
@@ -233,6 +175,88 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             data_context.remove_config(k)
         data_context.execution_options.preserve_order = False
         ray.shutdown()
+
+    def _create_mock_op_and_op_state(
+        self,
+        name,
+        outqueue_num_blocks=0,
+        num_active_tasks=0,
+        num_task_outputs_generated=0,
+    ):
+        op = MagicMock()
+        op.__str__.return_value = f"Op({name})"
+        op.num_active_tasks.return_value = num_active_tasks
+        op.metrics.num_task_outputs_generated = num_task_outputs_generated
+
+        state = MagicMock()
+        state.__str__.return_value = f"OpState({name})"
+        state.outqueue_num_blocks.return_value = outqueue_num_blocks
+
+        state.op = op
+        return op, state
+
+    def test_policy_basic(self):
+        """Basic unit test for the policy without real execution."""
+        up_op, up_state = self._create_mock_op_and_op_state("up")
+        down_op, down_state = self._create_mock_op_and_op_state("down")
+        topology = {}
+        topology[up_op] = up_state
+        topology[down_op] = down_state
+
+        policy = StreamingOutputBackpressurePolicy(topology)
+        assert (
+            policy._max_num_blocks_in_op_output_queue
+            == self._max_blocks_in_op_output_queue
+        )
+        data_context = ray.data.DataContext.get_current()
+        assert (
+            data_context._max_num_blocks_in_streaming_gen_buffer
+            == self._max_blocks_in_generator_buffer
+        )
+
+        # Buffers are empty, both ops can read up to the max.
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        assert res == {
+            up_state: self._max_blocks_in_op_output_queue,
+            down_state: self._max_blocks_in_op_output_queue,
+        }
+
+        # up_op's buffer is full, but down_up has no active tasks.
+        # We'll still allow up_op to read 1 block.
+        up_state.outqueue_num_blocks.return_value = self._max_blocks_in_op_output_queue
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        assert res == {
+            up_state: 1,
+            down_state: self._max_blocks_in_op_output_queue,
+        }
+
+        # down_op now has 1 active task. So we won't allow up_op to read any more.
+        down_op.num_active_tasks.return_value = 1
+        res = policy.calculate_max_blocks_to_read_per_op(topology)
+        assert res == {
+            up_state: 0,
+            down_state: self._max_blocks_in_op_output_queue,
+        }
+
+        # After `MAX_OUTPUT_IDLE_SECONDS` of no outputs from down_up,
+        # we'll allow up_op to read 1 block again.
+        with patch.object(
+            StreamingOutputBackpressurePolicy, "MAX_OUTPUT_IDLE_SECONDS", 0.1
+        ):
+            time.sleep(0.11)
+            res = policy.calculate_max_blocks_to_read_per_op(topology)
+            assert res == {
+                up_state: 1,
+                down_state: self._max_blocks_in_op_output_queue,
+            }
+
+            # down_up now has outputs, so we won't allow up_op to read any more.
+            down_op.metrics.num_task_outputs_generated = 1
+            res = policy.calculate_max_blocks_to_read_per_op(topology)
+            assert res == {
+                up_state: 0,
+                down_state: self._max_blocks_in_op_output_queue,
+            }
 
     def _run_dataset(self, producer_num_cpus, consumer_num_cpus):
         # Create a dataset with 2 operators:
@@ -255,10 +279,10 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
         def consumer(batch):
             assert len(batch["id"]) == 1
-            time.sleep(0.1)
             print("Consuming block", batch["id"][0])
-            del batch["data"]
             batch["consumer_timestamp"] = [time.time()]
+            time.sleep(0.1)
+            del batch["data"]
             return batch
 
         ds = ray.data.range(1, parallelism=1).materialize()
@@ -272,25 +296,36 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             [row["consumer_timestamp"] for row in res],
         )
 
-    def test_basic_backpressure(self):
-        producer_timestamps, consumer_timestamps = self._run_dataset(
-            producer_num_cpus=1, consumer_num_cpus=2
-        )
-        # We can buffer at most 2 blocks.
-        # Thus the producer should be backpressured after producing 2 blocks.
-        # Note, although block 2 is backpressured, but producer_timestamps[2] has
-        # been generated before the backpressure. Thus we assert
-        # producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3].
-        assert (
-            producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3]
-        ), (producer_timestamps, consumer_timestamps)
-
     def test_no_deadlock(self):
         # The producer needs all 5 CPUs, and the consumer has no CPU to run.
         # In this case, we shouldn't backpressure the producer and let it run
         # until it finishes.
         producer_timestamps, consumer_timestamps = self._run_dataset(
             producer_num_cpus=5, consumer_num_cpus=1
+        )
+        assert producer_timestamps[-1] < consumer_timestamps[0], (
+            producer_timestamps,
+            consumer_timestamps,
+        )
+
+    def test_no_deadlock_for_resource_contention(self):
+        """Test no deadlock in case of resource contention from
+        non-Data code."""
+        # Create a non-Data actor that uses 4 CPUs, only 1 CPU
+        # is left for Data. Currently Data StreamExecutor still
+        # incorrectly assumes it has all the 5 CPUs.
+        # Check that we don't deadlock in this case.
+
+        @ray.remote(num_cpus=4)
+        class DummyActor:
+            def foo(self):
+                return None
+
+        dummy_actor = DummyActor.remote()
+        ray.get(dummy_actor.foo.remote())
+
+        producer_timestamps, consumer_timestamps = self._run_dataset(
+            producer_num_cpus=1, consumer_num_cpus=0.9
         )
         assert producer_timestamps[-1] < consumer_timestamps[0], (
             producer_timestamps,
@@ -304,9 +339,7 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
     # The dataset will have 200MB * 25% = 50MB memory budget.
     #
     # Each produce task generates 10 blocks, each of which has 10MB data.
-    #
-    # Without any backpressure, the producer tasks will output at most
-    # 10 * 10 * 10MB = 1000MB data.
+    # In total, there will be 10 * 10 * 10MB = 1000MB intermediate data.
     #
     # With StreamingOutputBackpressurePolicy and the following configuration,
     # the executor will still schedule 10 produce tasks, but only the first task is
@@ -314,7 +347,7 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
     # (10 + 9 * 1 + 1) * 10MB = 200MB, where
     # - 10 is the number of blocks in the first task.
     # - 9 * 1 is the number of blocks pending at the streaming generator level of
-    #   the other 15 tasks.
+    #   the other 9 tasks.
     # - 1 is the number of blocks pending at the output queue.
 
     NUM_CPUS = 10
@@ -329,9 +362,13 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
         + (NUM_CPUS - 1) * STREMING_GEN_BUFFER_SIZE
         + OP_OUTPUT_QUEUE_SIZE
     ) * BLOCK_SIZE
+    # Set the object store memory to be slightly larger than the pending data
+    # size because object store spilling is triggered at 80% capacity.
+    object_store_memory = max_pending_block_bytes / 0.8 + BLOCK_SIZE
     print(f"max_pending_block_bytes: {max_pending_block_bytes/1024/1024}MB")
+    print(f"object_store_memory: {object_store_memory/1024/1024}MB")
 
-    ray.init(num_cpus=NUM_CPUS, object_store_memory=200 * 1024 * 1024)
+    ray.init(num_cpus=NUM_CPUS, object_store_memory=object_store_memory)
 
     def produce(batch):
         print("Produce task started", batch["id"])
@@ -383,13 +420,10 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
         last_snapshot = assert_core_execution_metrics_equals(
             CoreExecutionMetrics(
                 object_store_stats={
-                    "spilled_bytes_total": lambda x: x
-                    <= 1.5 * max_created_bytes_per_consumption,
-                    "restored_bytes_total": lambda x: x
-                    <= 1.5 * max_created_bytes_per_consumption,
+                    "spilled_bytes_total": 0,
+                    "restored_bytes_total": 0,
                     "cumulative_created_plasma_bytes": lambda x: x
                     <= 1.5 * max_created_bytes_per_consumption,
-                    "cumulative_created_plasma_objects": lambda _: True,
                 },
             ),
             last_snapshot,
@@ -398,7 +432,5 @@ def test_large_e2e_backpressure(shutdown_only, restore_data_context):  # noqa: F
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

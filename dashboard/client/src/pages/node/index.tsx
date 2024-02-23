@@ -85,13 +85,14 @@ const columns = [
     helpInfo: (
       <Typography>
         Usage of each GPU device. If no GPU usage is detected, here are the
-        potential root causes: <br />
-        1. library gpustsat is not installed. Install gpustat and try again.
-        <br /> 2. non-GPU Ray image is used on this node. Switch to a GPU Ray
-        image and try again. <br />
-        3. AMD GPUs are being used. AMD GPUs are not currently supported by
-        gpustat module. <br />
-        4. gpustat module raises an exception.
+        potential root causes:
+        <br />
+        1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
+        try again. <br />
+        2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are not
+        currently supported.
+        <br />
+        3. pynvml module raises an exception.
       </Typography>
     ),
   },
@@ -277,6 +278,7 @@ const Nodes = () => {
               label="State"
               onChange={(value) => changeFilter("state", value.trim())}
               options={["ALIVE", "DEAD"]}
+              showAllOption={true}
             />
           </Grid>
           <Grid item>
@@ -300,6 +302,7 @@ const Nodes = () => {
                 ["disk./.used", "Used Disk"],
               ]}
               onChange={(val) => setSortKey(val)}
+              showAllOption={true}
             />
           </Grid>
           <Grid item>

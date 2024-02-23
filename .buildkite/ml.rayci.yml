@@ -2,11 +2,11 @@ group: ml tests
 steps:
   # builds
   - name: minbuild-ml
-    label: "wanda: minbuild-ml-py38"
+    label: "wanda: minbuild-ml-py39"
     wanda: ci/docker/min.build.wanda.yaml
     depends_on: oss-ci-base_build
     env:
-      PYTHON_VERSION: "3.8"
+      PYTHON_VERSION: "3.9"
       EXTRA_DEPENDENCY: ml
 
   - name: mlbuild
@@ -16,6 +16,16 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
       IMAGE_TO: mlbuild
       RAYCI_IS_GPU_BUILD: "false"
+
+  - name: mlbuild-multipy
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_ml-multipy
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py{{matrix}}
+      IMAGE_TO: mlbuild-py{{matrix}}
+      RAYCI_IS_GPU_BUILD: "false"
+    matrix:
+      - "3.8"
 
   - name: mllightning2gpubuild
     wanda: ci/docker/mllightning2gpu.build.wanda.yaml
@@ -29,6 +39,16 @@ steps:
       IMAGE_TO: mlgpubuild
       RAYCI_IS_GPU_BUILD: "true"
 
+  - name: mlgpubuild-multipy
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_gpu-multipy
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
+      IMAGE_TO: mlgpubuild-py{{matrix}}
+      RAYCI_IS_GPU_BUILD: "true"
+    matrix:
+      - "3.8"
+
   # tests
   - label: ":train: ml: train tests"
     tags: train
@@ -39,6 +59,21 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials 
     depends_on: [ "mlbuild", "forge" ]
+
+  - label: ":train: ml: train python {{matrix.python}} tests ({{matrix.worker_id}})"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
+    tags: train
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+        --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
+        --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials 
+        --python-version {{matrix.python}}
+    depends_on: [ "mlbuild-multipy", "forge" ]
+    matrix:
+      setup:
+        python: ["3.8"]
+        worker_id: ["0", "1"]
 
   - label: ":train: ml: train gpu tests"
     tags: 
@@ -52,6 +87,24 @@ steps:
         --build-name mlgpubuild
         --only-tags gpu,gpu_only
     depends_on: [ "mlgpubuild", "forge" ]
+
+  - label: ":train: ml: train gpu python {{matrix.python}} tests ({{matrix.worker_id}})"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
+        --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 2
+        --build-name mlgpubuild-py{{matrix.python}}
+        --only-tags gpu,gpu_only
+        --python-version {{matrix.python}}
+    depends_on: [ "mlgpubuild-multipy", "forge" ]
+    matrix:
+      setup:
+        python: ["3.8"]
+        worker_id: ["0", "1"]
 
   - label: ":train: ml: train authentication tests"
     tags:
@@ -78,6 +131,18 @@ steps:
         --except-tags soft_imports,gpu_only,rllib,multinode
     depends_on: [ "mlbuild", "forge" ]
 
+  - label: ":train: ml: tune python {{matrix}} tests"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
+    tags: tune
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --parallelism-per-worker 3
+        --except-tags soft_imports,gpu_only,rllib,multinode
+        --python-version {{matrix}}
+    depends_on: [ "mlbuild-multipy", "forge" ]
+    matrix: ["3.8"]
+
   - label: ":train: ml: tune new output tests"
     tags: tune
     instance_type: large
@@ -86,7 +151,7 @@ steps:
         --parallelism-per-worker 3
         --except-tags soft_imports,gpu_only,rllib,multinode
         --test-env=AIR_VERBOSITY=1
-    depends_on: mlbuild
+    depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: tune soft import tests"
     tags: tune
@@ -95,7 +160,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --only-tags soft_imports 
         --build-name oss-ci-base_build
-    depends_on: oss-ci-base_build
+    depends_on: [ "oss-ci-base_build", "forge" ]
 
   - label: ":train: ml: air tests"
     tags: ml
@@ -109,6 +174,23 @@ steps:
         --only-tags ray_air
         --skip-ray-installation
     depends_on: [ "mlbuild", "forge" ]
+
+  - label: ":train: ml: air python {{matrix}} tests"
+    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
+    tags: ml
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml 
+        --parallelism-per-worker 3
+        --except-tags gpu
+        --python-version {{matrix}}
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml 
+        --parallelism-per-worker 3
+        --only-tags ray_air
+        --python-version {{matrix}}
+        --skip-ray-installation
+    depends_on: [ "mlbuild-multipy", "forge" ]
+    matrix: ["3.8"]
 
   - label: ":train: ml: train+tune tests"
     tags: train
@@ -159,7 +241,7 @@ steps:
       - python ./ci/env/check_minimal_install.py
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 2
-        --build-name minbuild-ml-py3.8
+        --build-name minbuild-ml-py3.9
         --only-tags minimal
     depends_on: [ "minbuild-ml", "forge" ]
 
@@ -167,13 +249,13 @@ steps:
     tags: tune
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.8
-        --platform cpu --image-type ray --canonical-tag multinode-py38
-      - python ./ci/build/build-multinode-image.py rayproject/ray:multinode-py38 rayproject/ray:multinode-py38
+      - bazel run //ci/ray_ci:build_in_docker -- docker
+        --platform cpu --image-type ray --canonical-tag multinode
+      - python ./ci/build/build-multinode-image.py rayproject/ray:multinode rayproject/ray:multinode
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
         --only-tags multinode
         --test-env=RAY_HAS_SSH=1
-        --test-env=RAY_DOCKER_IMAGE=rayproject/ray:multinode-py38
+        --test-env=RAY_DOCKER_IMAGE=rayproject/ray:multinode
         --test-env=RAY_TEMPDIR="/ray-mount"
         --test-env=RAY_HOSTDIR="$${RAYCI_CHECKOUT_DIR}"
         --test-env=RAY_TESTHOST="rayci.localhost"
@@ -212,6 +294,23 @@ steps:
         --build-name mllightning2gpubuild
         --only-tags ptl_v2
     depends_on: [ "mllightning2gpubuild", "forge" ]
+
+  - label: ":train: ml: :windows: tests"
+    if: pipeline.id == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("RAYCI_CONTINUOUS_BUILD") == "1"
+    tags:
+      - train
+    job_env: WINDOWS
+    mount_windows_artifacts: true
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train:test_windows ml
+        --build-name windowsbuild
+        --operating-system windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
+    depends_on: windowsbuild
 
   - label: ":train: ml: flaky tests"
     tags: 
@@ -254,11 +353,3 @@ steps:
         --only-tags gpu,gpu_only
     depends_on: [ "mlgpubuild", "forge" ]
     soft_fail: true
-
-  - label: ":windows: train tests"
-    tags:
-      - train
-    job_env: WINDOWS
-    instance_type: windows
-    commands:
-      - bash /c/workdir/.buildkite/windows_ci.sh test_train_windows

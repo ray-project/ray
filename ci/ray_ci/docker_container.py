@@ -1,8 +1,8 @@
 import os
 from typing import List
 
-from ci.ray_ci.container import Container
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE
+from ci.ray_ci.linux_container import LinuxContainer
+from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 
 
 PLATFORM = [
@@ -14,10 +14,9 @@ PLATFORM = [
     "cu12.1.1",
 ]
 GPU_PLATFORM = "cu11.8.0"
-DEFAULT_PYTHON_VERSION = "3.8"
 
 
-class DockerContainer(Container):
+class DockerContainer(LinuxContainer):
     """
     Container for building and publishing ray docker images
     """
@@ -73,7 +72,7 @@ class DockerContainer(Container):
         return self.canonical_tag if self.canonical_tag else self._get_image_tags()[0]
 
     def get_python_version_tag(self) -> str:
-        return f"-py{self.python_version.replace('.', '')}"  # 3.8 -> py38
+        return f"-py{self.python_version.replace('.', '')}"  # 3.x -> py3x
 
     def get_platform_tag(self) -> str:
         if self.platform == "cpu":

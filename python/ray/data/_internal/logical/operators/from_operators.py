@@ -20,7 +20,7 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadata],
     ):
-        super().__init__(self.__class__.__name__, [])
+        super().__init__(self.__class__.__name__, [], len(input_blocks))
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
             len(input_metadata),

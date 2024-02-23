@@ -66,9 +66,6 @@ class WorkerInterface {
   virtual void SetAssignedPort(int port) = 0;
   virtual void AssignTaskId(const TaskID &task_id) = 0;
   virtual const TaskID &GetAssignedTaskId() const = 0;
-  virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
-  virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
-  virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
@@ -173,9 +170,6 @@ class Worker : public WorkerInterface {
   void SetAssignedPort(int port);
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
-  bool AddBlockedTaskId(const TaskID &task_id);
-  bool RemoveBlockedTaskId(const TaskID &task_id);
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
   const JobID &GetAssignedJobId() const;
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
@@ -285,7 +279,6 @@ class Worker : public WorkerInterface {
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
-  std::unordered_set<TaskID> blocked_task_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;

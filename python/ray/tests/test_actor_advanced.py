@@ -21,11 +21,6 @@ from ray._private.test_utils import (
 from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
     # Make sure that regular remote functions are not scheduled on actors.

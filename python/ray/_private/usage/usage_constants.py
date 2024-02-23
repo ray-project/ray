@@ -44,7 +44,9 @@ USAGE_STATS_CONFIRMATION_MESSAGE = (
     "This prompt will auto-proceed in 10 seconds to avoid blocking cluster startup."
 )
 
-LIBRARY_USAGE_PREFIX = "library_usage_"
+LIBRARY_USAGE_SET_NAME = "library_usage_"
+
+HARDWARE_USAGE_SET_NAME = "hardware_usage_"
 
 # Keep in-sync with the same constants defined in usage_stats_client.h
 EXTRA_USAGE_TAG_PREFIX = "extra_usage_tag_"

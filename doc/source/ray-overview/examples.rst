@@ -55,7 +55,7 @@ Ray Examples
     :class-container: gallery-container container pb-3
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data-processing generative-ai huggingface inference large-language-models monitoring natural-language-processing pytorch serving tracking training tuning
+        :class-item: gallery-item generative-ai huggingface inference large-language-models monitoring natural-language-processing pytorch serving tracking training tuning
         :link: https://madewithml.com/#course
 
         Self-paced course on taking your ML applications to production
@@ -86,7 +86,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item large-language-models generative-ai
-        :link: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
+        :link: https://archive.vn/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
 
         How OpenAI Uses Ray to Train Tools like ChatGPT
 
@@ -111,14 +111,14 @@ Ray Examples
         Get started with Ray Train from an existing PyTorch codebase
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
+        :class-item: gallery-item
         :link: /train/examples/lightgbm/lightgbm_example
         :link-type: doc
 
         Distributed training with LightGBM
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item training
+        :class-item: gallery-item
         :link: /train/examples/xgboost/xgboost_example
         :link-type: doc
 
@@ -130,13 +130,6 @@ Ray Examples
         :link-type: doc
 
         How to use Ray Data to do batch prediction with the Hugging Face Transformers GPT-J model
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving large-language-models generative-ai
-        :link: /ray-air/examples/gptj_serving
-        :link-type: doc
-
-        How to use Ray Serve to do online serving with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision training generative-ai
@@ -153,14 +146,14 @@ Ray Examples
         Fine-tune dolly-v2-7b with Ray Train, PyTorch Lightning and FSDP
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch computer-vision
+        :class-item: gallery-item pytorch computer-vision training
         :link: /train/examples/pytorch/torch_detection
         :link-type: doc
 
         Torch Object Detection Example with Ray Train
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch
+        :class-item: gallery-item pytorch computer-vision data inference
         :link: /data/examples/pytorch_resnet_batch_prediction
         :link-type: doc
 
@@ -179,13 +172,6 @@ Ray Examples
         :link-type: doc
 
         Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item computer-vision pytorch inference
-        :link: /data/examples/pytorch_resnet_batch_prediction
-        :link-type: doc
-
-        Image Classification Batch Inference with PyTorch ResNet18
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision inference huggingface
@@ -207,13 +193,6 @@ Ray Examples
         :link-type: doc
 
         Batching tutorial for Ray Serve
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning serving
-        :link: /serve/tutorials/rllib
-        :link-type: doc
-
-        Serving RLlib Models with Ray Serve
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving
@@ -249,6 +228,13 @@ Ray Examples
         :link-type: doc
 
         Serving a Bert Model on AWS NeuronCore
+        
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item serving inference aws-neuron-core
+        :link: /serve/tutorials/aws-neuron-core-inference-stable-diffusion
+        :link-type: doc
+
+        Serving a Stable Diffusion Model on AWS NeuronCore    
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision serving
@@ -270,13 +256,13 @@ Ray Examples
         Streaming distributed execution across CPUs and GPUs
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item large-language-models natural-language-processing data-processing inference generative-ai
+        :class-item: gallery-item large-language-models natural-language-processing inference generative-ai
         :link: https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding
 
         Using Ray Data to parallelize LangChain inference
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item data-processing inference
+        :class-item: gallery-item inference
         :link: /data/batch_inference
         :link-type: doc
 
@@ -288,26 +274,6 @@ Ray Examples
 
         Training One Million ML Models in Record Time with Ray
 
-    .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item training
-        :link: https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core
-
-        Many Models Batch Training at Scale with Ray Core
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
-        :link: /ray-core/examples/batch_training
-        :link-type: doc
-
-        Batch Training with Ray Core
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing training
-        :link: /data/examples/batch_training
-        :link-type: doc
-
-        Batch Training with Ray Data
-
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item tuning
         :link: /tune/tutorials/tune-run
@@ -315,14 +281,7 @@ Ray Examples
 
         Tune Basic Parallel Experiments
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training tuning
-        :link: /tune/examples/batch_tuning
-        :link-type: doc
-
-        Batch Training and Tuning using Ray Tune
-
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=3t26ucTy0Rs
 
@@ -386,12 +345,19 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
+        :link: /tune/examples/nevergrad_example
+        :link-type: doc
+
+        How To Use Tune With Nevergrad
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tuning
         :link: /tune/examples/optuna_example
         :link-type: doc
 
         How To Use Tune With Optuna
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item tuning serving
         :link: https://www.youtube.com/watch?v=UtH-CMpmxvI
 
@@ -430,7 +396,7 @@ Ray Examples
 
         How to distribute hyperparameter tuning with Ray Tune
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=KgYZtlbFYXE
 
@@ -504,18 +470,11 @@ Ray Examples
 
         More Tune use cases on the Blog
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item pytorch
         :link: https://www.youtube.com/watch?v=e-A93QftCfc
 
         Ray Train, PyTorch, TorchX, and distributed deep learning
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item
-        :link: /train/train
-        :link-type: doc
-
-        Getting Started with Ray Train
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training huggingface natural-language-processing
@@ -523,6 +482,19 @@ Ray Examples
         :link-type: doc
 
         Fine-tune a 🤗 Transformers model on GLUE benchmark
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training huggingface natural-language-processing
+        :link: /train/examples/transformers/transformers_torch_trainer_basic
+        :link-type: doc
+
+        Fine-tune a Text Classifier with Hugging Face Transformers
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training huggingface large-language-models natural-language-processing
+        :link: https://github.com/ray-project/ray/blob/master/doc/source/templates/04_finetuning_llms_with_deepspeed/
+
+        Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch training train computer-vision
@@ -553,18 +525,11 @@ Ray Examples
         End-to-end PyTorch Lightning Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing training natural-language-processing
+        :class-item: gallery-item training natural-language-processing
         :link: lightning_advanced_example
         :link-type: ref
 
         Fine-tune a PyTorch Lightning Text Classifier with Ray Data
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tensorflow tuning
-        :link: tune_train_tf_example
-        :link-type: ref
-
-        End-to-end Example for Tuning a TensorFlow Model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch tuning
@@ -640,66 +605,6 @@ Ray Examples
         Example of how to setup an RLlib algorithm against a locally running Unity3D editor
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/env_rendering_and_recording.py
-
-        Rendering and recording of an environment
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/coin_game_env.py
-
-        Coin game example with RLlib
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py
-
-        Example for how to use a DMLab environment (Watermaze)
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py
-
-        RecSym environment example (for recommender systems) using the SlateQ algorithm
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py
-
-        Example demonstrating how to use the SUMO simulator in connection with RLlib.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/vizdoom_with_attention_net.py
-
-        VizDoom example script using RLlib's auto-attention wrapper
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py
-
-        Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py
-
-        Attention Net (GTrXL) learning the "repeat-after-me" environment
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/lstm_auto_wrapping.py
-
-        Example showing how to use the auto-LSTM wrapper for your default- and custom models in RLlib.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib pytorch tensorflow
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py
-
-        Example of using a custom Keras- or PyTorch RNN model.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py
 
@@ -707,21 +612,9 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/models/batch_norm_model.py
 
         Example of adding batch norm layers to a custom model.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py
-
-        Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_fast_model.py
-
-        Example of a "fast" Model learning only one parameter for tf and torch.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
@@ -731,13 +624,13 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/trajectory_view_api.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/models/trajectory_view_utilizing_models.py
 
         An example on how a model can use the trajectory view API to specify its own input.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/models/mobilenet_v2_with_lstm_models.py
 
         Implementations of `MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
 
@@ -748,7 +641,7 @@ Ray Examples
         Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib training
+        :class-item: gallery-item reinforcement-learning rllib
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py
 
         Example of how to use Tune's support for custom training functions to implement custom training workflows.
@@ -770,24 +663,6 @@ Ray Examples
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py
 
         Example of how to output custom training metrics to TensorBoard.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib tensorflow
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
-
-        How to setup a custom TFPolicy.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib pytorch
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py
-
-        How to setup a custom TorchPolicy.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py
-
-        Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
@@ -818,13 +693,6 @@ Ray Examples
         :link: https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py
 
         Example showing how to run an offline RL training job using a historic-data json file.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib serving
-        :link: serve-rllib-tutorial
-        :link-type: ref
-
-        Example of using Ray Serve to serve RLlib models with HTTP and JSON interface
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib serving
@@ -924,18 +792,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/iterated_prisoners_dilemma_env.py
-
-        Example of an iterated prisoner's dilemma environment solved by RLlib.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/partial_gpus.py
-
-        Example of how to setup fractional GPUs for learning (driver) and environment rollouts (remote workers).
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/nested_action_spaces.py
 
         Learning in arbitrarily nested action spaces.
@@ -945,12 +801,6 @@ Ray Examples
         :link: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
 
         Example of how to handle variable-length or parametric action spaces
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item reinforcement-learning rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_observation_filters.py
-
-        How to filter raw observations coming from the environment for further processing by the Agent's model(s).
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item reinforcement-learning rllib
@@ -1043,13 +893,13 @@ Ray Examples
         Working with custom Keras models in RLlib
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item reinforcement-learning training
+        :class-item: gallery-item reinforcement-learning
         :link: /rllib/rllib-training
         :link-type: doc
 
         Getting Started with RLlib
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item rl
         :link: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
 
@@ -1061,8 +911,8 @@ Ray Examples
 
         The Magic of Merlin - Shopify's New ML Platform
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item training
+    .. grid-item-card:: :bdg-warning:`Talk`
+        :class-item: gallery-item
         :link: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
 
         Large Scale Deep Learning Training and Tuning with Ray
@@ -1073,7 +923,7 @@ Ray Examples
 
         Griffin: How Instacart’s ML Platform Tripled in a year
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=B5v9B5VSI7Q
 
@@ -1085,7 +935,7 @@ Ray Examples
 
         Building a ML Platform with Kubeflow and Ray on GKE
 
-    .. grid-item-card:: :bdg-warning:`Video`
+    .. grid-item-card:: :bdg-warning:`Talk`
         :class-item: gallery-item
         :link: https://www.youtube.com/watch?v=_L0lsShbKaY
 
@@ -1123,34 +973,6 @@ Ray Examples
 
         Speed up your web crawler by parallelizing it with Ray
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item huggingface computer-vision data inference
-        :link: /data/examples/huggingface_vit_batch_prediction
-        :link-type: doc
-
-        Image Classification Batch Inference with Huggingface Vision Transformer
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item pytorch computer-vision data inference
-        :link: /data/examples/pytorch_resnet_batch_prediction
-        :link-type: doc
-
-        Image Classification Batch Inference with PyTorch ResNet152
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item pytorch computer-vision data inference
-        :link: /data/examples/batch_inference_object_detection
-        :link-type: doc
-
-        Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing training
-        :link: /data/examples/batch_training
-        :link-type: doc
-
-        Many Model Training with Ray Data
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core inference
         :link: /ray-core/examples/batch_prediction
@@ -1171,13 +993,6 @@ Ray Examples
         :link-type: doc
 
         Simple Parallel Model Selection
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item core training
-        :link: /ray-core/examples/plot_example-lm
-        :link-type: doc
-
-        Fault-Tolerant Fairseq Training
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core rl
@@ -1206,20 +1021,6 @@ Ray Examples
         :link-type: doc
 
         Running a Simple MapReduce Example with Ray Core
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item core pytorch
-        :link: train_benchmark
-        :link-type: ref
-
-        Benchmark example for the PyTorch data transfer auto pipeline
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item tune
-        :link: /tune/examples/tune-sklearn
-        :link-type: doc
-
-        How To Use Tune's Scikit-Learn Adapters?
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tune
@@ -1301,7 +1102,7 @@ Ray Examples
         Logging Tune Runs to Comet ML.
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item serve
+        :class-item: gallery-item serving
         :link: /serve/tutorials/streaming
         :link-type: doc
 
@@ -1323,10 +1124,10 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training large-language-models pytorch huggingface natural-language-processing
-        :link: deepspeed_example
+        :link: accelerate_example
         :link-type: ref
 
-        Distributed Training with Hugging Face Accelelate and TorchTrainer
+        Distributed Training with Hugging Face Accelerate and TorchTrainer
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item inference huggingface computer-vision

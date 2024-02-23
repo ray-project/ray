@@ -38,7 +38,7 @@ After
 
 from ray.train import Checkpoint
 
-with tempfile.TemporaryDirectory as temp_checkpoint_dir:
+with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
     torch.save(state_dict, os.path.join(temp_checkpoint_dir, 'model.pt'))
     ray.train.report({'metric': 1}, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))"""  # noqa: E501
 

@@ -1,7 +1,8 @@
-from typing import Any, Iterable, List
+from typing import Any, Iterable, List, Optional
 
+import ray
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
 
 
@@ -77,3 +78,67 @@ class Datasink:
     def supports_distributed_writes(self) -> bool:
         """If ``False``, only launch write tasks on the driver's node."""
         return True
+
+    @property
+    def num_rows_per_write(self) -> Optional[int]:
+        """The target number of rows to pass to each :meth:`~Datasink.write` call.
+
+        If ``None``, Ray Data passes a system-chosen number of rows.
+        """
+        return None
+
+
+@DeveloperAPI
+class DummyOutputDatasink(Datasink):
+    """An example implementation of a writable datasource for testing.
+    Examples:
+        >>> import ray
+        >>> from ray.data.datasource import DummyOutputDatasink
+        >>> output = DummyOutputDatasink()
+        >>> ray.data.range(10).write_datasink(output)
+        >>> assert output.num_ok == 1
+    """
+
+    def __init__(self):
+        ctx = ray.data.DataContext.get_current()
+
+        # Setup a dummy actor to send the data. In a real datasource, write
+        # tasks would send data to an external system instead of a Ray actor.
+        @ray.remote(scheduling_strategy=ctx.scheduling_strategy)
+        class DataSink:
+            def __init__(self):
+                self.rows_written = 0
+                self.enabled = True
+
+            def write(self, block: Block) -> str:
+                block = BlockAccessor.for_block(block)
+                self.rows_written += block.num_rows()
+                return "ok"
+
+            def get_rows_written(self):
+                return self.rows_written
+
+        self.data_sink = DataSink.remote()
+        self.num_ok = 0
+        self.num_failed = 0
+        self.enabled = True
+
+    def write(
+        self,
+        blocks: Iterable[Block],
+        ctx: TaskContext,
+    ) -> Any:
+        tasks = []
+        if not self.enabled:
+            raise ValueError("disabled")
+        for b in blocks:
+            tasks.append(self.data_sink.write.remote(b))
+        ray.get(tasks)
+        return "ok"
+
+    def on_write_complete(self, write_results: List[Any]) -> None:
+        assert all(w == "ok" for w in write_results), write_results
+        self.num_ok += 1
+
+    def on_write_failed(self, error: Exception) -> None:
+        self.num_failed += 1

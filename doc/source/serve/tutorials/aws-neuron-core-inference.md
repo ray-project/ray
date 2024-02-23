@@ -1,14 +1,14 @@
 (aws-neuron-core-inference-tutorial)=
 
-# Serving an inference model on AWS NeuronCores using FastAPI (Experimental)
+# Serve an Inference Model on AWS NeuronCores Using FastAPI (Experimental)
 This example compiles a BERT-based model and deploys the traced model on an AWS Inferentia (Inf2) or Tranium (Trn1)
 instance using Ray Serve and FastAPI.
 
 
 :::{note}
-  The setup assumes that the user has followed the
-  [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/setup/torch-neuronx.html#setup-torch-neuronx)
-  setup guide and installed AWS NeuronCore drivers/tools and torch-neuronx based on the instance-type.
+  Before starting this example: 
+  * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/setup/torch-neuronx.html#setup-torch-neuronx)
+  * Install AWS NeuronCore drivers and tools, and torch-neuronx based on the instance-type
 
 :::
 
@@ -26,7 +26,7 @@ Use the following code to compile the model:
 ```
 
 
-For compiling the model, you should see the following logs:
+For compiling the model, you should see the following log messages:
 ```text
 Downloading (…)lve/main/config.json: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1.00k/1.00k [00:00<00:00, 242kB/s]
 Downloading pytorch_model.bin: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 329M/329M [00:01<00:00, 217MB/s]
@@ -44,7 +44,7 @@ Saved Neuron-compiled model ./sentiment_neuron.pt
 
 The traced model should be ready for deployment. Save the following code to a file named aws_neuron_core_inference_serve.py.
 
-Use `serve run aws_neuron_core_inference_serve:entrypoint` to start the serve application.
+Use `serve run aws_neuron_core_inference_serve:entrypoint` to start the Serve application.
 ```{literalinclude} ../doc_code/aws_neuron_core_inference_serve.py
 :language: python
 :start-after: __neuron_serve_code_start__
@@ -52,7 +52,7 @@ Use `serve run aws_neuron_core_inference_serve:entrypoint` to start the serve ap
 ```
 
 
-You should see the following logs for a successful deployment:
+You should see the following log messages when a deployment is successful:
 ```text
 (ServeController pid=43105) INFO 2023-08-23 20:29:32,694 controller 43105 deployment_state.py:1372 - Deploying new version of deployment default_BertBaseModel.
 (ServeController pid=43105) INFO 2023-08-23 20:29:32,695 controller 43105 deployment_state.py:1372 - Deploying new version of deployment default_APIIngress.
@@ -70,7 +70,7 @@ import requests
 response = requests.get(f"http://127.0.0.1:8000/infer?sentence=Ray is super cool")
 print(response.status_code, response.json())
 ```
-The response includes status code and the classifier output
+The response includes a status code and the classifier output:
 
 ```text
 200 joy

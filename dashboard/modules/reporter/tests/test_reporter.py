@@ -356,13 +356,7 @@ def test_report_stats_gpu():
     {'index': 0,
     'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
     'name': 'NVIDIA A10G',
-    'temperature_gpu': 20,
-    'fan_speed': 0,
     'utilization_gpu': 1,
-    'utilization_enc': 0,
-    'utilization_dec': 0,
-    'power_draw': 51,
-    'enforced_power_limit': 300,
     'memory_used': 0,
     'memory_total': 22731,
     'processes': []}
@@ -373,13 +367,7 @@ def test_report_stats_gpu():
             "index": 0,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 0,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 0,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -388,13 +376,7 @@ def test_report_stats_gpu():
             "index": 1,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 1,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 1,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -403,13 +385,7 @@ def test_report_stats_gpu():
             "index": 2,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 2,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 2,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -418,13 +394,7 @@ def test_report_stats_gpu():
         {
             "index": 3,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 3,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
             "processes": [],
@@ -433,13 +403,7 @@ def test_report_stats_gpu():
         {
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
             "name": "NVIDIA A10G",
-            "temperature_gpu": 20,
-            "fan_speed": 0,
             "utilization_gpu": 3,
-            "utilization_enc": 0,
-            "utilization_dec": 0,
-            "power_draw": 51,
-            "enforced_power_limit": 300,
             "memory_used": 3,
             "memory_total": 22731,
             "processes": [],
@@ -801,7 +765,7 @@ def test_reporter_worker_cpu_percent():
 )
 def test_get_task_traceback_running_task(shutdown_only):
     """
-    Verify that we throw an error for a non-running task.
+    Verify that Ray can get the traceback for a running task.
 
     """
     address_info = ray.init()
@@ -837,6 +801,55 @@ def test_get_task_traceback_running_task(shutdown_only):
     wait_for_condition(verify, timeout=20)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+def test_get_memory_profile_running_task(shutdown_only):
+    """
+    Verify that we can get the memory profile for a running task.
+
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    def long_running_task():
+        print("Long-running task began.")
+        time.sleep(1000)
+        print("Long-running task completed.")
+
+    ray.get([f.remote() for _ in range(5)])
+
+    task = long_running_task.remote()
+
+    params = {
+        "task_id": task.task_id().hex(),
+        "attempt_number": 0,
+        "node_id": ray.get_runtime_context().node_id.hex(),
+        "duration": 5,
+    }
+
+    def verify():
+        resp = requests.get(f"{webui_url}/memory_profile", params=params)
+        print(f"resp.text {type(resp.text)}: {resp.text}")
+
+        assert resp.status_code == 200
+        assert "memray" in resp.text
+        return True
+
+    wait_for_condition(verify, timeout=20)
+
+
 TASK = {
     "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
     "attempt_number": 0,
@@ -855,7 +868,7 @@ TASK = {
 )
 def test_get_task_traceback_non_running_task(shutdown_only):
     """
-    Verify that we throw an error for a non-running task.
+    Verify that Ray throws an error for a non-running task.
     """
 
     # The sleep is needed since it seems a previous shutdown could be not yet
@@ -922,6 +935,45 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
             resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
+        return True
+
+    wait_for_condition(verify, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+def test_task_get_memory_profile_missing_params(shutdown_only):
+    """
+    Verify that we throw an error for a non-running task.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get([f.remote() for _ in range(5)])
+
+    missing_node_id_params = {
+        "task_id": TASK["task_id"],
+        "attempt_number": TASK["attempt_number"],
+    }
+
+    # Make sure the API works.
+    def verify():
+        resp = requests.get(
+            f"{webui_url}/memory_profile", params=missing_node_id_params
+        )
+        content = resp.content.decode("utf-8")
+        assert "task's node id is required" in content, content
         return True
 
     wait_for_condition(verify, timeout=10)

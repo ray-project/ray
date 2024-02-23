@@ -52,11 +52,18 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     ),
     help="Global config to use for test execution.",
 )
+@click.option(
+    "--run-per-test",
+    default=1,
+    type=int,
+    help=("The number of time we run test on the same commit"),
+)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
+    run_per_test: int = 1,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -135,14 +142,7 @@ def main(
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule or it's a release branch (i.e.
-    # both the buildkite wheel branch and the test branch started with 'releases/')
     _, buildkite_branch = get_buildkite_repo_branch()
-    report = (
-        bool(int(os.environ.get("REPORT", "0")))
-        or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
-        or buildkite_branch.startswith("releases/")
-    )
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
@@ -151,21 +151,25 @@ def main(
         tests = grouped_tests[group]
         group_steps = []
         for test, smoke_test in tests:
-            step = get_step(
-                test,
-                test_collection_file,
-                report=report,
-                smoke_test=smoke_test,
-                env=env,
-                priority_val=priority.value,
-                global_config=global_config,
-            )
+            for run_id in range(run_per_test):
+                step = get_step(
+                    test,
+                    test_collection_file,
+                    run_id=run_id,
+                    # Always report performance data to databrick. Since the data is
+                    # indexed by branch and commit hash, we can always filter data later
+                    report=True,
+                    smoke_test=smoke_test,
+                    env=env,
+                    priority_val=priority.value,
+                    global_config=global_config,
+                )
 
-            if no_concurrency_limit:
-                step.pop("concurrency", None)
-                step.pop("concurrency_group", None)
+                if no_concurrency_limit:
+                    step.pop("concurrency", None)
+                    step.pop("concurrency_group", None)
 
-            group_steps.append(step)
+                group_steps.append(step)
 
         group_step = {"group": group, "steps": group_steps}
         steps.append(group_step)

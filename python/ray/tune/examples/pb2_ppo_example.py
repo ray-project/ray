@@ -22,7 +22,6 @@ def explore(config):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--max", type=int, default=1000000)
     parser.add_argument("--algo", type=str, default="PPO")
@@ -108,6 +107,7 @@ if __name__ == "__main__":
         scheduler=methods[args.method],
         verbose=1,
         num_samples=args.num_samples,
+        reuse_actors=True,
         stop={args.criteria: args.max},
         config={
             "env": args.env_name,

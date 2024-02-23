@@ -21,7 +21,6 @@ py_test_run_all_subdirectory(
     include = ["**/test*.py"],
     exclude = [
         "client/node_modules/**",
-        "modules/test/**", 
         "modules/job/tests/test_cli_integration.py",
         "modules/job/tests/test_http_job_server.py",
         "modules/node/tests/test_node.py", 
@@ -83,10 +82,19 @@ py_test(
 )
 
 py_test(
+    name = "test_metrics_integration",
+    size = "medium",
+    srcs = ["tests/test_metrics_integration.py"],
+    deps = [":conftest"],
+    tags = ["exclusive", "team:clusters"],
+)
+
+py_test(
     name = "test_state_head",
     size = "small",
     srcs = ["tests/test_state_head.py"],
     tags = ["team:core"],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -94,6 +102,7 @@ py_test(
     size = "large",
     srcs = ["modules/serve/tests/test_serve_dashboard.py"],
     tags = ["team:serve"],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -101,4 +110,5 @@ py_test(
     size = "small",
     srcs = ["modules/data/tests/test_data_head.py"],
     tags = ["team:data"],
+    deps = [":conftest"],
 )

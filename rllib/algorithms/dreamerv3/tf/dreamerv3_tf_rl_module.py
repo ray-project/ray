@@ -7,7 +7,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from typing import Mapping, Any
+from typing import Any, Dict
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3_rl_module import DreamerV3RLModule
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
@@ -30,7 +30,7 @@ class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
     framework: str = "tf2"
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_inference method and return a dict.
         actions, next_state = self.dreamer_model.forward_inference(
             observations=batch[SampleBatch.OBS],
@@ -40,7 +40,7 @@ class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
         return {SampleBatch.ACTIONS: actions, STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_exploration method and return a dict.
         actions, next_state = self.dreamer_model.forward_exploration(
             observations=batch[SampleBatch.OBS],

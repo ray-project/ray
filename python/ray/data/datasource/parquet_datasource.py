@@ -17,7 +17,11 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _check_pyarrow_version, _is_local_scheme
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _is_local_scheme,
+    call_with_retry,
+)
 from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -46,6 +50,19 @@ logger = logging.getLogger(__name__)
 
 FRAGMENTS_PER_META_FETCH = 6
 PARALLELIZE_META_FETCH_THRESHOLD = 24
+
+# The `num_cpus` for each metadata prefetching task.
+# Default to 0.5 instead of 1 because it is cheaper than normal read task.
+NUM_CPUS_FOR_META_FETCH_TASK = 0.5
+
+# The application-level exceptions to retry for metadata prefetching task.
+# Default to retry on access denied and read timeout errors because AWS S3 would throw
+# these transient errors when load is too high.
+RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
+# Maximum number of retries for metadata prefetching task due to transient errors.
+RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
+# Maximum retry back-off interval in seconds for failed metadata prefetching task.
+RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -106,56 +123,6 @@ def _deserialize_fragments(
     serialized_fragments: List[_SerializedFragment],
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     return [p.deserialize() for p in serialized_fragments]
-
-
-# This retry helps when the upstream datasource is not able to handle
-# overloaded read request or failed with some retriable failures.
-# For example when reading data from HA hdfs service, hdfs might
-# lose connection for some unknown reason expecially when
-# simutaneously running many hyper parameter tuning jobs
-# with ray.data parallelism setting at high value like the default 200
-# Such connection failure can be restored with some waiting and retry.
-def _deserialize_fragments_with_retry(
-    serialized_fragments: List[_SerializedFragment],
-) -> List["pyarrow._dataset.ParquetFileFragment"]:
-    min_interval = 0
-    final_exception = None
-    for i in range(FILE_READING_RETRY):
-        try:
-            return _deserialize_fragments(serialized_fragments)
-        except Exception as e:
-            import random
-            import time
-
-            retry_timing = (
-                ""
-                if i == FILE_READING_RETRY - 1
-                else (f"Retry after {min_interval} sec. ")
-            )
-            log_only_show_in_1st_retry = (
-                ""
-                if i
-                else (
-                    f"If earlier read attempt threw certain Exception"
-                    f", it may or may not be an issue depends on these retries "
-                    f"succeed or not. serialized_fragments:{serialized_fragments}"
-                )
-            )
-            logger.exception(
-                f"{i + 1}th attempt to deserialize ParquetFileFragment failed. "
-                f"{retry_timing}"
-                f"{log_only_show_in_1st_retry}"
-            )
-            if not min_interval:
-                # to make retries of different process hit hdfs server
-                # at slightly different time
-                min_interval = 1 + random.random()
-            # exponential backoff at
-            # 1, 2, 4, 8, 16, 32, 64
-            time.sleep(min_interval)
-            min_interval = min_interval * 2
-            final_exception = e
-    raise final_exception
 
 
 @PublicAPI
@@ -268,8 +235,18 @@ class ParquetDatasource(Datasource):
 
         try:
             prefetch_remote_args = {}
+            prefetch_remote_args["num_cpus"] = NUM_CPUS_FOR_META_FETCH_TASK
             if self._local_scheduling:
                 prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+            else:
+                # Use the scheduling strategy ("SPREAD" by default) provided in
+                # `DataContext``, to spread out prefetch tasks in cluster, avoid
+                # AWS S3 throttling error.
+                # Note: this is the same scheduling strategy used by read tasks.
+                prefetch_remote_args[
+                    "scheduling_strategy"
+                ] = DataContext.get_current().scheduling_strategy
+
             self._metadata = (
                 meta_provider.prefetch_file_metadata(
                     pq_ds.fragments, **prefetch_remote_args
@@ -375,11 +352,12 @@ class ParquetDatasource(Datasource):
                 )
             else:
                 default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, to_batches_kwargs, columns, schema = (
+            block_udf, to_batches_kwargs, columns, schema, include_paths = (
                 self._block_udf,
                 self._to_batches_kwargs,
                 self._columns,
                 self._schema,
+                self._include_paths,
             )
             read_tasks.append(
                 ReadTask(
@@ -390,7 +368,7 @@ class ParquetDatasource(Datasource):
                         columns,
                         schema,
                         f,
-                        self._include_paths,
+                        include_paths,
                     ),
                     meta,
                 )
@@ -435,7 +413,11 @@ class ParquetDatasource(Datasource):
             # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
             # same machine to cause OOM issue, as sampling can be memory-intensive.
             futures.append(
-                sample_fragment.options(scheduling_strategy=scheduling).remote(
+                sample_fragment.options(
+                    scheduling_strategy=scheduling,
+                    # Retry in case of transient errors during sampling.
+                    retry_exceptions=[OSError],
+                ).remote(
                     self._to_batches_kwargs,
                     self._columns,
                     self._schema,
@@ -517,14 +499,66 @@ def _read_fragments(
                     yield table
 
 
+def _deserialize_fragments_with_retry(fragments):
+    # The deserialization retry helps when the upstream datasource is not able to
+    # handle overloaded read request or failed with some retriable failures.
+    # For example when reading data from HA hdfs service, hdfs might
+    # lose connection for some unknown reason expecially when
+    # simutaneously running many hyper parameter tuning jobs
+    # with ray.data parallelism setting at high value like the default 200
+    # Such connection failure can be restored with some waiting and retry.
+    return call_with_retry(
+        lambda: _deserialize_fragments(fragments),
+        description="deserialize fragments",
+        max_attempts=FILE_READING_RETRY,
+    )
+
+
 def _fetch_metadata_serialization_wrapper(
     fragments: List[_SerializedFragment],
+    retry_match: Optional[List[str]],
+    retry_max_attempts: int,
+    retry_max_interval: int,
 ) -> List["pyarrow.parquet.FileMetaData"]:
-    fragments: List[
-        "pyarrow._dataset.ParquetFileFragment"
-    ] = _deserialize_fragments_with_retry(fragments)
-
-    return _fetch_metadata(fragments)
+    deserialized_fragments = _deserialize_fragments_with_retry(fragments)
+    try:
+        metadata = call_with_retry(
+            lambda: _fetch_metadata(deserialized_fragments),
+            description="fetch metdata",
+            match=retry_match,
+            max_attempts=retry_max_attempts,
+            max_backoff_s=retry_max_interval,
+        )
+    except OSError as e:
+        raise RuntimeError(
+            f"Exceeded maximum number of attempts ({retry_max_attempts}) to retry "
+            "metadata fetching task. Metadata fetching tasks can fail due to transient "
+            "errors like rate limiting.\n"
+            "\n"
+            "To increase the maximum number of attempts, configure "
+            "`RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK`. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
+            "```\n"
+            "To increase the maximum retry backoff interval, configure "
+            "`RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK`. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
+            "```\n"
+            "If the error continues to occur, you can also try decresasing the "
+            "concurency of metadata fetching tasks by setting "
+            "`NUM_CPUS_FOR_META_FETCH_TASK` to a larger value. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n"  # noqa: E501
+            "```\n"
+            "To change which exceptions to retry on, set "
+            "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
+            "example:\n"
+            "```\n"
+            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'  # noqa: E501
+            "```"
+        ) from e
+    return metadata
 
 
 def _fetch_metadata(

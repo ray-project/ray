@@ -265,10 +265,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node The selected node at which a worker is to be leased.
   /// \param status Status of the reply of `RequestWorkerLeaseRequest`.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
-  void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
-                              std::shared_ptr<rpc::GcsNodeInfo> node,
-                              const Status &status,
-                              const rpc::RequestWorkerLeaseReply &reply);
+  virtual void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
+                                      std::shared_ptr<rpc::GcsNodeInfo> node,
+                                      const Status &status,
+                                      const rpc::RequestWorkerLeaseReply &reply);
 
   /// Retry leasing a worker from the specified node for the specified actor.
   /// Make it a virtual method so that the io_context_ could be mocked out.

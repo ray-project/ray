@@ -76,9 +76,7 @@ public class Serve {
             .orElse(Integer.valueOf(System.getProperty(RayServeConfig.PROXY_HTTP_PORT, "8000")));
     PyActorHandle controllerAvatar =
         Ray.actor(
-                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
-                Constants.SERVE_CONTROLLER_NAME,
-                httpPort)
+                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"), httpPort)
             .setName(Constants.SERVE_CONTROLLER_NAME + "_AVATAR")
             .setLifetime(ActorLifetime.DETACHED)
             .setMaxRestarts(-1)
@@ -114,8 +112,7 @@ public class Serve {
       }
     }
 
-    ServeControllerClient client =
-        new ServeControllerClient(controller, Constants.SERVE_CONTROLLER_NAME);
+    ServeControllerClient client = new ServeControllerClient(controller);
     setGlobalClient(client);
     LOGGER.info("Started Serve in namespace {}", Constants.SERVE_NAMESPACE);
     return client;
@@ -160,20 +157,17 @@ public class Serve {
    *
    * @param deploymentName deployment name
    * @param replicaTag replica tag
-   * @param controllerName the controller actor's name
    * @param servableObject the servable object of the specified replica.
    * @param config
    */
   public static void setInternalReplicaContext(
       String deploymentName,
       String replicaTag,
-      String controllerName,
       Object servableObject,
       Map<String, String> config,
       String appName) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(
-            deploymentName, replicaTag, controllerName, servableObject, config, appName);
+        new ReplicaContext(deploymentName, replicaTag, servableObject, config, appName);
   }
 
   /**
@@ -262,14 +256,8 @@ public class Serve {
       init();
     }
 
-    // When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to ensure that the correct
-    // instance is connected to.
-    String controllerName =
-        INTERNAL_REPLICA_CONTEXT != null
-            ? INTERNAL_REPLICA_CONTEXT.getInternalControllerName()
-            : Constants.SERVE_CONTROLLER_NAME;
-
-    Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
+    Optional<BaseActorHandle> optional =
+        Ray.getActor(Constants.SERVE_CONTROLLER_NAME, Constants.SERVE_NAMESPACE);
     Preconditions.checkState(
         optional.isPresent(),
         MessageFormatter.format(
@@ -277,10 +265,10 @@ public class Serve {
                 + "Please call `serve.start() to start one."));
     LOGGER.info(
         "Got controller handle with name `{}` in namespace `{}`.",
-        controllerName,
+        Constants.SERVE_CONTROLLER_NAME,
         Constants.SERVE_NAMESPACE);
 
-    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName);
+    ServeControllerClient client = new ServeControllerClient(optional.get());
 
     setGlobalClient(client);
     return client;

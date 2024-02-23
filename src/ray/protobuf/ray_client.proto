@@ -380,6 +380,7 @@ message ConnectionInfoResponse {
   // The Python version (e.g., "3.7.2").
   string python_version = 4;
   // The protocol version of the server (e.g., "2020-02-01").
+  // DEPRECATED. Not used anywhere. Will remove.
   string protocol_version = 5;
 }
 

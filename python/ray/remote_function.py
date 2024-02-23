@@ -18,8 +18,8 @@ from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
+    ObjectRefGenerator,
     PythonFunctionDescriptor,
-    StreamingObjectRefGenerator,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -448,7 +448,7 @@ class RemoteFunction:
                 # that is for the generator task.
                 assert len(object_refs) == 1
                 generator_ref = object_refs[0]
-                return StreamingObjectRefGenerator(generator_ref, worker)
+                return ObjectRefGenerator(generator_ref, worker)
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:

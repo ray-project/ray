@@ -41,7 +41,6 @@ py_test_module_list(
     "test_autoscaling_policy.py",
     "test_actor_cancel.py",
     "test_dashboard_profiler.py",
-    "test_gcs_fault_tolerance.py",
     "test_gcs_utils.py",
     "test_metrics_agent.py",
     "test_metrics_head.py",
@@ -49,19 +48,28 @@ py_test_module_list(
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
     "test_gcs_pubsub.py",
-    "test_global_gc.py",
     "test_grpc_client_credentials.py",
-    "test_job.py",
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
-    "test_memstat.py",
     "test_node_label_scheduling_strategy.py",
     "test_protobuf_compatibility.py"
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_gcs_fault_tolerance.py",
+    "test_global_gc.py",
+    "test_job.py",
+    "test_memstat.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -87,7 +95,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client_builder.py",
-    "test_client_init.py",
     "test_client_proxy.py",
     "test_client_compat.py",
     "test_client_multi.py",
@@ -97,6 +104,15 @@ py_test_module_list(
   ],
   size = "medium",
   tags = ["exclusive", "client_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_client_init.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "client_tests", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -126,6 +142,7 @@ py_test_module_list(
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
     "accelerators/test_intel_gpu.py",
+    "accelerators/test_amd_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -152,7 +169,6 @@ py_test_module_list(
     "test_ray_init.py",
     "test_ray_init_2.py",
     "test_ray_shutdown.py",
-    "test_resource_demand_scheduler.py",
     "test_resource_metrics.py",
     "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
@@ -165,14 +181,11 @@ py_test_module_list(
     "test_shuffle.py",
     "test_state_api_log.py",
     "test_state_api_summary.py",
-    "test_stress.py",
-    "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
-    "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_namespace.py",
     "test_scheduling.py",
@@ -189,6 +202,18 @@ py_test_module_list(
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_object_manager.py",
+    "test_resource_demand_scheduler.py",
+    "test_stress.py",
+    "test_stress_sharded.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -250,6 +275,7 @@ py_test_module_list(
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
+    "test_channel.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_cross_language.py",
@@ -290,10 +316,16 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
     "test_gcs_ha_e2e_2.py",
-    "test_memory_pressure.py",
   ],
   size = "medium",
-  tags = ["exclusive", "team:core", "xcommit"],
+  tags = ["exclusive", "ha_integration", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = ["test_memory_pressure.py"],
+  size = "medium",
+  tags = ["exclusive", "mem_pressure", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -302,22 +334,35 @@ py_test_module_list(
     "test_autoscaler_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(
   files = [
     "test_autoscaler.py",
-    "test_batch_node_provider_unit.py",
-    "test_batch_node_provider_integration.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_cli_logger.py",
     "test_client_metadata.py",
     "test_client_terminate.py",
-    "test_command_runner.py",
     "test_coordinator_server.py",
     "test_monitor.py",
     "test_node_provider_availability_tracker.py",
@@ -330,11 +375,22 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test_module_list(
+  files = [
+    "test_command_runner.py",
+    "test_batch_node_provider_unit.py",
+    "test_batch_node_provider_integration.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test(
   name = "test_autoscaler_yaml",
   size = "small",
   srcs = ["test_autoscaler_yaml.py"],
-  tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = [
     "additional_property.yaml",
@@ -360,10 +416,10 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_retry.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
-    "test_actor_advanced.py",
     "test_multi_node.py",
     "test_threaded_actor.py",
     "test_generators.py",
@@ -390,19 +446,36 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test_module_list(
+  files = [
+    "test_actor_advanced.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "large_size_python_tests_shard_0", "no_windows", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test(
   name = "test_cli",
   srcs = ["test_cli.py"],
   data = glob(["test_cli_patterns/*.txt", "test_cli_patterns/*.yaml"]),
   size = "large",
-  tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
+  tags = ["exclusive", "large_size_python_tests_shard_0", "no_windows", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_out_of_disk_space.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "tmpfs", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(
   files = [
     "test_tqdm.py",
-    "test_out_of_disk_space.py",
     "test_failure_4.py",
     "test_iter.py",
     "test_object_spilling.py",
@@ -412,12 +485,20 @@ py_test_module_list(
     "test_plasma_unlimited.py",
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
-    "test_multi_node_3.py",
     "test_multiprocessing.py",
     "test_reference_counting.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_multi_node_3.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "large_size_python_tests_shard_1", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -477,13 +558,21 @@ py_test(
     deps = ["//:ray_lib", ":conftest"]
 )
 
+py_test(
+    name = "test_runtime_env_container",
+    size = "large",
+    srcs = ["test_runtime_env_container.py"],
+    tags = ["exclusive", "team:core", "container"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
 py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = ["aws/test_autoscaler_aws.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -507,7 +596,7 @@ py_test(
     name = "test_gcp_tpu_command_runner",
     size = "small",
     srcs = ["gcp/test_gcp_tpu_command_runner.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -515,7 +604,15 @@ py_test(
     name = "vsphere/test_vsphere_node_provider",
     size = "small",
     srcs = ["vsphere/test_vsphere_node_provider.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "vsphere/test_vsphere_sdk_provider",
+    size = "small",
+    srcs = ["vsphere/test_vsphere_sdk_provider.py"],
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -535,7 +632,7 @@ py_test(
   name = "test_tracing",
   size = "medium",
   srcs = ["test_tracing.py"],
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serve"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "no_windows", "team:serve"],
   deps = ["//:ray_lib", ":conftest"]
 )
 
@@ -563,7 +660,7 @@ py_test(
     name = "kuberay/test_autoscaling_e2e",
     size = "large",
     srcs = ["kuberay/test_autoscaling_e2e.py"],
-    tags = ["exclusive", "kuberay_operator", "team:serverless"],
+    tags = ["exclusive", "no_windows", "team:kuberay"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -641,7 +738,7 @@ py_test_module_list(
     "spark/test_utils.py",
     "spark/test_databricks_hook.py",
   ],
-  size = "large",
+  size = "enormous",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [

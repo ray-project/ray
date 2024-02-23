@@ -23,7 +23,11 @@ from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template impor
 )
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+from ray.dashboard.consts import (
+    AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
+    METRICS_INPUT_ROOT,
+    PROMETHEUS_CONFIG_INPUT_PATH,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -33,16 +37,12 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
-METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 METRICS_RECORD_INTERVAL_S = 5
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 DEFAULT_PROMETHEUS_NAME = "Prometheus"
 PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
-PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
-    METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
-)
 PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
@@ -309,6 +309,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         if os.path.exists(prometheus_config_output_path):
             os.remove(prometheus_config_output_path)
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
+        # Currently Ray directly copies this file without modifying it at runtime.
+        # If Ray ever modifies this file at runtime, please ensure start_prometheus
+        # in install_and_start_prometheus.py is updated to reload the config file.
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)

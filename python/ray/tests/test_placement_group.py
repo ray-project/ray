@@ -32,7 +32,8 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         def v(self):
             return 10
 
-    # bundle is placement group reserved resources and can't be used in bundles
+    # kBundle_ResourceLabel is placement group reserved resources and
+    # can't be used in bundles
     with pytest.raises(Exception):
         ray.util.placement_group(bundles=[{"bundle": 1}])
     # This test is to test the case that even there all resource in the
@@ -47,6 +48,15 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         ).remote()
         ray.get(a.v.remote())
         ray.get(pg.ready())
+
+        with pytest.raises(ValueError):
+            a = Actor.options(
+                resources={"bundle": 1},
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg
+                ),
+            ).remote()
+            ray.get(a.v.remote())
 
         placement_group_assert_no_leak([pg])
 

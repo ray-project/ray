@@ -60,6 +60,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
 def get_step(
     test: Test,
     test_collection_file: List[str] = None,
+    run_id: int = 1,
     report: bool = False,
     smoke_test: bool = False,
     env: Optional[Dict] = None,
@@ -91,7 +92,7 @@ def get_step(
     env_dict.update(env)
 
     step["env"].update(env_dict)
-    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.8"
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -129,7 +130,7 @@ def get_step(
     full_label += test["name"]
     if smoke_test:
         full_label += " [smoke test] "
-    full_label += f" ({label})"
+    full_label += f" ({label}) ({run_id})"
 
     step["label"] = full_label
 

@@ -10,10 +10,8 @@ if TYPE_CHECKING:
 
 # Default enabled backpressure policies and its config key.
 # Use `DataContext.set_config` to config it.
-# TODO(hchen): Enable ConcurrencyCapBackpressurePolicy by default.
-ENABLED_BACKPRESSURE_POLICIES = [
-    StreamingOutputBackpressurePolicy,
-]
+# TODO(hchen): Enable StreamingOutputBackpressurePolicy by default.
+ENABLED_BACKPRESSURE_POLICIES = [ConcurrencyCapBackpressurePolicy]
 ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
 
 

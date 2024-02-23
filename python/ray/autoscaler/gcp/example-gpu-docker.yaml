@@ -64,7 +64,7 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu113
+                  sourceImage: projects/ml-images/global/images/c0-deeplearning-common-cu121-v20231209-debian-11
             # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
               - acceleratorType: nvidia-tesla-t4
@@ -98,7 +98,7 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu113
+                  sourceImage: projects/ml-images/global/images/c0-deeplearning-common-cu121-v20231209-debian-11
             # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
               - acceleratorType: nvidia-tesla-t4

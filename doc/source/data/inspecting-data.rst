@@ -175,14 +175,14 @@ To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Datas
 .. testoutput::
     :options: +MOCK
 
-    Stage 1 ReadCSV->Map(<lambda>)->Map(pause): 1/1 blocks executed in 0.23s
+    Operator 1 ReadCSV->SplitBlocks(4): 1 tasks executed, 4 blocks produced in 0.22s
     * Remote wall time: 222.1ms min, 222.1ms max, 222.1ms mean, 222.1ms total
     * Remote cpu time: 15.6ms min, 15.6ms max, 15.6ms mean, 15.6ms total
     * Peak heap memory usage (MiB): 157953.12 min, 157953.12 max, 157953 mean
     * Output num rows: 150 min, 150 max, 150 mean, 150 total
     * Output size bytes: 6000 min, 6000 max, 6000 mean, 6000 total
     * Tasks per node: 1 min, 1 max, 1 mean; 1 nodes used
-    * Extra metrics: {'obj_store_mem_alloc': 6000, 'obj_store_mem_freed': 5761, 'obj_store_mem_peak': 6000}
+    * Extra metrics: {'obj_store_mem_freed': 5761}
 
     Dataset iterator time breakdown:
     * Total time user code is blocked: 5.68ms

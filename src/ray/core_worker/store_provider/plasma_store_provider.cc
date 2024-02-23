@@ -113,7 +113,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data,
-                                             bool created_by_worker) {
+                                             bool created_by_worker,
+                                             bool is_mutable) {
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   if (!created_by_worker) {
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
@@ -121,6 +122,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   Status status =
       store_client_.CreateAndSpillIfNeeded(object_id,
                                            owner_address,
+                                           is_mutable,
                                            data_size,
                                            metadata ? metadata->Data() : nullptr,
                                            metadata ? metadata->Size() : 0,
@@ -166,17 +168,12 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     const std::vector<ObjectID> &batch_ids,
     int64_t timeout_ms,
     bool fetch_only,
-    bool in_direct_call,
     const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(
-      raylet_client_->FetchOrReconstruct(batch_ids,
-                                         owner_addresses,
-                                         fetch_only,
-                                         /*mark_worker_blocked*/ !in_direct_call,
-                                         task_id));
+  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
+      batch_ids, owner_addresses, fetch_only, task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_.Get(batch_ids,
@@ -248,6 +245,11 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
   return Status::OK();
 }
 
+Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object) {
+  return store_client_.GetExperimentalMutableObject(object_id, mutable_object);
+}
+
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
@@ -281,14 +283,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (int64_t i = start; i < batch_size && i < total_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
     }
-    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
-                                                 batch_ids,
-                                                 /*timeout_ms=*/0,
-                                                 /*fetch_only=*/true,
-                                                 ctx.CurrentTaskIsDirectCall(),
-                                                 ctx.GetCurrentTaskID(),
-                                                 results,
-                                                 got_exception));
+    RAY_RETURN_NOT_OK(
+        FetchAndGetFromPlasmaStore(remaining,
+                                   batch_ids,
+                                   /*timeout_ms=*/0,
+                                   // Mutable objects must be local before ray.get.
+                                   /*fetch_only=*/true,
+                                   ctx.GetCurrentTaskID(),
+                                   results,
+                                   got_exception));
   }
 
   // If all objects were fetched already, return. Note that we always need to
@@ -322,16 +325,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     size_t previous_size = remaining.size();
-    // This is a separate IPC from the FetchAndGet in direct call mode.
-    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          /*release_resources_during_plasma_fetch=*/false));
-    }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
                                                  batch_timeout,
                                                  /*fetch_only=*/false,
-                                                 ctx.CurrentTaskIsDirectCall(),
                                                  ctx.GetCurrentTaskID(),
                                                  results,
                                                  got_exception));
@@ -392,20 +389,13 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       should_break = remaining_timeout <= 0;
     }
 
-    // This is a separate IPC from the Wait in direct call mode.
-    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          /*release_resources_during_plasma_fetch=*/false));
-    }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(
-        raylet_client_->Wait(id_vector,
-                             owner_addresses,
-                             num_objects,
-                             call_timeout,
-                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
-                             ctx.GetCurrentTaskID(),
-                             &result_pair));
+    RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector,
+                                           owner_addresses,
+                                           num_objects,
+                                           call_timeout,
+                                           ctx.GetCurrentTaskID(),
+                                           &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

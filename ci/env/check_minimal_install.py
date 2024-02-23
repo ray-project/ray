@@ -18,7 +18,6 @@ DEFAULT_BLACKLIST = [
     "aiohttp_cors",
     "colorful",
     "py-spy",
-    "gpustat",
     "opencensus",
     "smart_open",
     "virtualenv",

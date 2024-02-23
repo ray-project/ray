@@ -1,5 +1,5 @@
 import abc
-from typing import Any, List, Mapping, Type, Union
+from typing import Any, Dict, List, Type, Union
 
 from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.specs.typing import SpecType
@@ -56,7 +56,7 @@ class BCRLModule(RLModule, abc.ABC):
         return self.output_specs_exploration()
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """BC forward pass during inference.
 
         See the `BCTorchRLModule._forward_exploration` method for
@@ -65,7 +65,7 @@ class BCRLModule(RLModule, abc.ABC):
         return self._forward_exploration(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """BC forward pass during exploration.
 
         Besides the action distribution this method also returns a possible
@@ -90,7 +90,7 @@ class BCRLModule(RLModule, abc.ABC):
         return output
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_train(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """BC forward pass during training.
 
         See the `BCTorchRLModule._forward_exploration` method for

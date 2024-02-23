@@ -49,7 +49,7 @@ CLEANABLE_SUBDIRS = [
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set e.g. in our conda
+# replaced with junctions in Windows. This variable is set e.g. in our conda-forge
 # feedstock.
 is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
@@ -227,11 +227,7 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
-    if sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1"
-    else:
-        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
-        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
+    pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
         "data": [
             numpy_dep,
@@ -247,13 +243,12 @@ if setup_spec.type == SetupType.RAY:
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0",  # for windows
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
             "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
             "smart_open",
-            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
+            "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -267,7 +262,6 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "starlette",
             "fastapi",
-            "aiorwlock",
             "watchfiles",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
@@ -561,13 +555,17 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if not is_automated_build:
-        bazel_precmd_flags = []
     if is_automated_build:
-        root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
-        )
-        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+        src_dir = os.environ.get("SRC_DIR", False) or os.getcwd()
+        src_dir = os.path.abspath(src_dir)
+        if is_native_windows_or_msys():
+            drive = os.path.splitdrive(src_dir)[0] + "\\"
+            root_dir = os.path.join(drive, "bazel-root")
+            out_dir = os.path.join(drive, "b-o")
+            bazel_flags.append("--enable_runfiles=false")
+        else:
+            root_dir = os.path.join(src_dir, "..", "bazel-root")
+            out_dir = os.path.join(src_dir, "..", "b-o")
 
         for d in (root_dir, out_dir):
             if not os.path.exists(d):
@@ -577,9 +575,8 @@ def build(build_python, build_java, build_cpp):
             "--output_user_root=" + root_dir,
             "--output_base=" + out_dir,
         ]
-
-        if is_native_windows_or_msys():
-            bazel_flags.append("--enable_runfiles=false")
+    else:
+        bazel_precmd_flags = []
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []

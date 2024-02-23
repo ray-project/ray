@@ -6,7 +6,7 @@
 import ray
 import time
 
-@ray.remote(num_returns="streaming")
+@ray.remote
 def task():
     for i in range(5):
         time.sleep(5)
@@ -32,7 +32,7 @@ for ref in gen:
 # __streaming_generator_execute_end__
 
 # __streaming_generator_exception_start__
-@ray.remote(num_returns="streaming")
+@ray.remote
 def task():
     for i in range(5):
         time.sleep(1)
@@ -72,15 +72,15 @@ class ThreadedActor:
             yield i
 
 actor = Actor.remote()
-for ref in actor.f.options(num_returns="streaming").remote():
+for ref in actor.f.remote():
     print(ray.get(ref))
 
 actor = AsyncActor.remote()
-for ref in actor.f.options(num_returns="streaming").remote():
+for ref in actor.f.remote():
     print(ray.get(ref))
 
 actor = ThreadedActor.remote()
-for ref in actor.f.options(num_returns="streaming").remote():
+for ref in actor.f.remote():
     print(ray.get(ref))
 
 # __streaming_generator_actor_model_end__
@@ -88,7 +88,7 @@ for ref in actor.f.options(num_returns="streaming").remote():
 # __streaming_generator_asyncio_start__
 import asyncio
 
-@ray.remote(num_returns="streaming")
+@ray.remote
 def task():
     for i in range(5):
         time.sleep(1)
@@ -104,7 +104,7 @@ asyncio.run(main())
 # __streaming_generator_asyncio_end__
 
 # __streaming_generator_gc_start__
-@ray.remote(num_returns="streaming")
+@ray.remote
 def task():
     for i in range(5):
         time.sleep(1)
@@ -119,7 +119,7 @@ del gen
 # __streaming_generator_concurrency_asyncio_start__
 import asyncio
 
-@ray.remote(num_returns="streaming")
+@ray.remote
 def task():
     for i in range(5):
         time.sleep(1)
@@ -139,7 +139,7 @@ asyncio.run(main())
 # __streaming_generator_concurrency_asyncio_end__
 
 # __streaming_generator_wait_simple_start__
-@ray.remote(num_returns="streaming")
+@ray.remote
 def task():
     for i in range(5):
         time.sleep(5)
@@ -173,9 +173,9 @@ assert len(unready) == 1
 # __streaming_generator_wait_simple_end__
 
 # __streaming_generator_wait_complex_start__
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 
-@ray.remote(num_returns="streaming")
+@ray.remote
 def generator_task():
     for i in range(5):
         time.sleep(5)
@@ -195,7 +195,7 @@ result = []
 while unready:
     ready, unready = ray.wait(unready)
     for r in ready:
-        if isinstance(r, StreamingObjectRefGenerator):
+        if isinstance(r, ObjectRefGenerator):
             try:
                 ref = next(r)
                 result.append(ray.get(ref))

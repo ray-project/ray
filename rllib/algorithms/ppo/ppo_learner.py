@@ -1,39 +1,26 @@
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
-from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.utils.annotations import override
+from ray.rllib.algorithms.ppo.ppo import (
+    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
+    PPOConfig,
+)
+from ray.rllib.core.learner.learner import Learner
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
+from ray.rllib.utils.postprocessing.episodes import (
+    add_one_ts_to_episodes_and_truncate,
+    remove_last_ts_from_data,
+    remove_last_ts_from_episodes_and_restore_truncateds,
+)
+from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.schedules.scheduler import Scheduler
-
-
-LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
-LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY = "vf_explained_var"
-LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
-LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
-LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
-
-
-@dataclass
-class PPOLearnerHyperparameters(LearnerHyperparameters):
-    """Hyperparameters for the PPOLearner sub-classes (framework specific).
-
-    These should never be set directly by the user. Instead, use the PPOConfig
-    class to configure your algorithm.
-    See `ray.rllib.algorithms.ppo.ppo::PPOConfig::training()` for more details on the
-    individual properties.
-    """
-
-    use_kl_loss: bool = None
-    kl_coeff: float = None
-    kl_target: float = None
-    use_critic: bool = None
-    clip_param: float = None
-    vf_clip_param: float = None
-    entropy_coeff: float = None
-    entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None
-    vf_loss_coeff: float = None
+from ray.rllib.utils.typing import EpisodeType, ModuleID, TensorType
 
 
 class PPOLearner(Learner):
@@ -47,7 +34,7 @@ class PPOLearner(Learner):
         ] = LambdaDefaultDict(
             lambda module_id: Scheduler(
                 fixed_value_or_schedule=(
-                    self.hps.get_hps_for_module(module_id).entropy_coeff
+                    self.config.get_config_for_module(module_id).entropy_coeff
                 ),
                 framework=self.framework,
                 device=self._device,
@@ -60,28 +47,132 @@ class PPOLearner(Learner):
         # `self.additional_update_for_module()`.
         self.curr_kl_coeffs_per_module: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
-                self.hps.get_hps_for_module(module_id).kl_coeff
+                self.config.get_config_for_module(module_id).kl_coeff
             )
         )
 
     @override(Learner)
+    def _preprocess_train_data(
+        self,
+        *,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
+        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
+
+        if not episodes:
+            raise ValueError(
+                "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
+                "to work with! Otherwise, GAE/advantage computation can't be performed."
+            )
+        batch = batch or {}
+
+        sa_episodes_list = list(
+            self._learner_connector.single_agent_episode_iterator(
+                episodes, agents_that_stepped_only=False
+            )
+        )
+        # Make all episodes one ts longer in order to just have a single batch
+        # (and distributed forward pass) for both vf predictions AND the bootstrap
+        # vf computations.
+        orig_truncateds_of_sa_episodes = add_one_ts_to_episodes_and_truncate(
+            sa_episodes_list
+        )
+
+        # Call the learner connector (on the artificially elongated episodes)
+        # in order to get the batch to pass through the module for vf (and
+        # bootstrapped vf) computations.
+        batch_for_vf = self._learner_connector(
+            rl_module=self.module,
+            data={},
+            episodes=episodes,
+        )
+        # Perform the value model's forward pass.
+        vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
+
+        for module_id, module_vf_preds in vf_preds.items():
+            # Collect new (single-agent) episode lengths.
+            if is_multi_agent:
+                episode_lens_plus_1 = [
+                    len(sa_eps)
+                    for ma_eps in episodes
+                    for sa_eps in ma_eps.agent_episodes.values()
+                    if sa_eps.module_id == module_id
+                ]
+            else:
+                episode_lens_plus_1 = [len(eps) for eps in episodes]
+
+            batch[module_id] = {}
+
+            # Remove all zero-padding again, if applicable for the upcoming
+            # GAE computations.
+            module_vf_preds = unpad_data_if_necessary(
+                episode_lens_plus_1, module_vf_preds
+            )
+            # Compute value targets.
+            module_value_targets = compute_value_targets(
+                values=module_vf_preds,
+                rewards=unpad_data_if_necessary(
+                    episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.REWARDS]
+                ),
+                terminateds=unpad_data_if_necessary(
+                    episode_lens_plus_1,
+                    batch_for_vf[module_id][SampleBatch.TERMINATEDS],
+                ),
+                truncateds=unpad_data_if_necessary(
+                    episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.TRUNCATEDS]
+                ),
+                gamma=self.config.gamma,
+                lambda_=self.config.lambda_,
+            )
+
+            # Remove the extra timesteps again from vf_preds and value targets. Now that
+            # the GAE computation is done, we don't need this last timestep anymore in
+            # any of our data.
+            (
+                batch[module_id][SampleBatch.VF_PREDS],
+                batch[module_id][Postprocessing.VALUE_TARGETS],
+            ) = remove_last_ts_from_data(
+                episode_lens_plus_1,
+                module_vf_preds,
+                module_value_targets,
+            )
+            module_advantages = (
+                batch[module_id][Postprocessing.VALUE_TARGETS]
+                - batch[module_id][SampleBatch.VF_PREDS]
+            )
+            # Standardize advantages (used for more stable and better weighted
+            # policy gradient computations).
+            batch[module_id][Postprocessing.ADVANTAGES] = (
+                module_advantages - module_advantages.mean()
+            ) / max(1e-4, module_advantages.std())
+
+        # Remove the extra (artificial) timesteps again at the end of all episodes.
+        remove_last_ts_from_episodes_and_restore_truncateds(
+            sa_episodes_list,
+            orig_truncateds_of_sa_episodes,
+        )
+
+        return batch, episodes
+
+    @override(Learner)
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
-        self.curr_kl_coeffs_per_module.pop(module_id)
-        self.entropy_coeff_schedulers_per_module.pop(module_id)
+        self.entropy_coeff_schedulers_per_module.pop(module_id, None)
+        self.curr_kl_coeffs_per_module.pop(module_id, None)
 
     @override(Learner)
     def additional_update_for_module(
         self,
         *,
         module_id: ModuleID,
-        hps: PPOLearnerHyperparameters,
+        config: "PPOConfig",
         timestep: int,
         sampled_kl_values: dict,
     ) -> Dict[str, Any]:
         results = super().additional_update_for_module(
             module_id=module_id,
-            hps=hps,
+            config=config,
             timestep=timestep,
             sampled_kl_values=sampled_kl_values,
         )
@@ -93,3 +184,30 @@ class PPOLearner(Learner):
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
         return results
+
+    @OverrideToImplementCustomLogic
+    def _compute_values(
+        self,
+        batch_for_vf: Union[MultiAgentBatch, NestedDict],
+    ) -> Union[TensorType, Dict[str, Any]]:
+        """Computes the value function predictions for the module being optimized.
+
+        This method must be overridden by multiagent-specific algorithm learners to
+        specify the specific value computation logic. If the algorithm is single agent
+        (or independent multi-agent), there should be no need to override this method.
+
+        Args:
+            batch_for_vf: The multi-agent batch to be used for value function
+                predictions.
+
+        Returns:
+            A dictionary mapping module IDs to individual value function prediction
+            tensors.
+        """
+        return {
+            module_id: self.module[module_id]._compute_values(
+                module_batch, self._device
+            )
+            for module_id, module_batch in batch_for_vf.policy_batches.items()
+            if self.should_module_be_updated(module_id, module_batch)
+        }

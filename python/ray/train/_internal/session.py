@@ -118,7 +118,7 @@ class _TrainSession:
         local_world_size: int,
         world_size: int,
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Dataset] = None,
+        dataset_shard: Optional[Dict[str, Dataset]] = None,
         metadata: Dict[str, Any] = None,
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,
@@ -168,6 +168,13 @@ class _TrainSession:
         self.local_ip = self.get_current_ip()
 
         self.accelerator = None
+        self._state = {}
+
+    def get_state(self, key: str) -> Any:
+        return self._state.get(key)
+
+    def set_state(self, key: str, value: Any):
+        self._state[key] = value
 
     def get_current_ip(self):
         self.local_ip = ray.util.get_node_ip_address()
@@ -210,6 +217,7 @@ class _TrainSession:
         self.loaded_checkpoint = loaded_checkpoint
 
         # Reset state
+        self._state = {}
         self.ignore_report = False
         self.training_started = False
         self._first_report = True
@@ -228,11 +236,10 @@ class _TrainSession:
         """Ignore all future ``session.report()`` calls."""
         self.ignore_report = True
 
-    def finish(self, timeout: Optional[float] = None):
+    def finish(self, timeout: Optional[float] = None) -> Optional[Any]:
         """Finishes the training thread.
 
-        Either returns the output from training or raises any Exception from
-        training.
+        Raises any Exception from training.
         """
         # Set the stop event for the training thread to gracefully exit.
         self.stop_event.set()
@@ -244,11 +251,13 @@ class _TrainSession:
         self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
-        # This will raise any errors that occur during training, including
-        # SystemError
-        func_output = self.training_thread.join(timeout=timeout)
-        # If training finished successfully, then return results.
-        return func_output
+        # This will raise any errors that occur during training, including SystemError
+        # This returns the result of the training function.
+        output = None
+        if self.training_started:
+            output = self.training_thread.join(timeout=timeout)
+
+        return output
 
     def get_next(self) -> Optional[_TrainingResult]:
         """Gets the next ``_TrainingResult`` from the result queue.
@@ -653,16 +662,39 @@ def _warn_session_misuse(default_value: Any = None):
 def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     """Report metrics and optionally save a checkpoint.
 
-    Each invocation of this method will automatically increment the underlying
-    ``training_iteration`` number. The physical meaning of this "iteration" is
-    defined by user depending on how often they call ``report``.
-    It does not necessarily map to one epoch.
-
-    This method acts as a synchronous barrier for all distributed training workers.
-    All workers must call `ray.train.report` the same number of times.
-
     If a checkpoint is provided, it will be
     :ref:`persisted to storage <persistent-storage-guide>`.
+
+    If this is called in multiple distributed training workers:
+
+    - Only the metrics reported by the rank 0 worker will be tracked by Ray Train.
+      See :ref:`the metrics logging guide <train-monitoring-and-logging>`.
+    - A checkpoint will be registered as long as one or more workers reports
+      checkpoint that is not None.
+      See the :ref:`checkpointing guide <train-dl-saving-checkpoints>`.
+    - Checkpoints from multiple workers will be merged into one directory
+      in persistent storage.
+      See :ref:`the distributed checkpointing guide <train-distributed-checkpointing>`.
+
+    .. note::
+
+        Each invocation of this method will automatically increment the underlying
+        ``training_iteration`` number. The physical meaning of this "iteration" is
+        defined by user depending on how often they call ``report``.
+        It does not necessarily map to one epoch.
+
+    .. warning::
+
+        All workers must call `ray.train.report` the same number of times
+        so that Ray Train can properly synchronize the training state across
+        workers. Otherwise, your training will hang.
+
+    .. warning::
+
+        This method does NOT act as a barrier for distributed training workers.
+        Workers will upload their checkpoint, then continue training immediately.
+        If you need to synchronize workers, you can use a framework-native barrier
+        such as `torch.distributed.barrier()`.
 
     Example:
 
@@ -690,9 +722,15 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
                     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                        # Save the checkpoint...
+                       # torch.save(...)
 
                         checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-                        train.report(metrics, checkpoint=checkpoint)
+
+                        # Example: Only the rank 0 worker uploads the checkpoint.
+                        if ray.train.get_context().get_world_rank() == 0:
+                            train.report(metrics, checkpoint=checkpoint)
+                        else:
+                            train.report(metrics, checkpoint=None)
 
             trainer = TorchTrainer(
                 train_func, scaling_config=train.ScalingConfig(num_workers=2)

@@ -25,3 +25,4 @@ show you how achieve several tasks.
     performance-tips
     preprocessors
     monitoring-your-workload
+    custom-datasource-example

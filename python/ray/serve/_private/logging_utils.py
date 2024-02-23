@@ -52,7 +52,7 @@ class ServeJSONFormatter(logging.Formatter):
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
         }
-        if component_type and component_type == ServeComponentType.DEPLOYMENT:
+        if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
             self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
         else:
@@ -81,10 +81,10 @@ class ServeJSONFormatter(logging.Formatter):
                 SERVE_LOG_APPLICATION
             ]
 
-        if SERVE_LOG_MESSAGE in record.__dict__:
-            record_format[SERVE_LOG_MESSAGE] = (
-                SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE] % record.__dict__
-            )
+        message_formatter = logging.Formatter(
+            SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
+        )
+        record_format[SERVE_LOG_MESSAGE] = message_formatter.format(record)
 
         if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
             if not isinstance(record.__dict__[SERVE_LOG_EXTRA_FIELDS], dict):
@@ -136,8 +136,6 @@ class ServeFormatter(logging.Formatter):
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
         if SERVE_LOG_ROUTE in record.__dict__:
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE])
-        if SERVE_LOG_APPLICATION in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_APPLICATION])
         record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
         record_format += " ".join(record_formats_attrs)
 
@@ -191,6 +189,8 @@ def configure_component_logger(
     component_id: str,
     logging_config: LoggingConfig,
     component_type: Optional[ServeComponentType] = None,
+    max_bytes: Optional[int] = None,
+    backup_count: Optional[int] = None,
 ):
     """Configure a logger to be used by a Serve component.
 
@@ -230,8 +230,10 @@ def configure_component_logger(
         logs_dir = get_serve_logs_dir()
     os.makedirs(logs_dir, exist_ok=True)
 
-    max_bytes = ray._private.worker._global_node.max_bytes
-    backup_count = ray._private.worker._global_node.backup_count
+    if max_bytes is None:
+        max_bytes = ray._private.worker._global_node.max_bytes
+    if backup_count is None:
+        backup_count = ray._private.worker._global_node.backup_count
 
     log_file_name = get_component_log_file_name(
         component_name=component_name,
@@ -395,7 +397,7 @@ def get_component_log_file_name(
     component_log_file_name = component_name
     if component_type is not None:
         component_log_file_name = f"{component_type}_{component_name}"
-        if component_type != ServeComponentType.DEPLOYMENT:
+        if component_type != ServeComponentType.REPLICA:
             component_name = f"{component_type}_{component_name}"
     log_file_name = LOG_FILE_FMT.format(
         component_name=component_log_file_name,

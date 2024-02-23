@@ -17,6 +17,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
     TypeVar,
     Union,
 )
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
@@ -77,7 +78,7 @@ def _check_pyarrow_version():
 
         version = _get_pyarrow_version()
         if version is not None:
-            from pkg_resources._vendor.packaging.version import parse as parse_version
+            from packaging.version import parse as parse_version
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
@@ -504,37 +505,107 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     return splits
 
 
-def validate_compute(
+def get_compute_strategy(
     fn: "UserDefinedFunction",
-    compute: Optional[Union[str, "ComputeStrategy"]],
     fn_constructor_args: Optional[Iterable[Any]] = None,
-) -> None:
+    compute: Optional[Union[str, "ComputeStrategy"]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+) -> "ComputeStrategy":
+    """Get `ComputeStrategy` based on the function or class, and concurrency
+    information.
+
+    Args:
+        fn: The function or generator to apply to a record batch, or a class type
+            that can be instantiated to create such a callable.
+        fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+        compute: Either "tasks" (default) to use Ray Tasks or an
+                :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
+        concurrency: The number of Ray workers to use concurrently.
+
+    Returns:
+       The `ComputeStrategy` for execution.
+    """
     # Lazily import these objects to avoid circular imports.
     from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
     from ray.data.block import CallableClass
 
-    if isinstance(fn, CallableClass) and (
-        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
-    ):
-        raise ValueError(
-            "``compute`` must be specified when using a CallableClass, and must "
-            f"specify the actor compute strategy, but got: {compute}. "
-            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
-        )
+    if isinstance(fn, CallableClass):
+        is_callable_class = True
+    else:
+        # TODO(chengsu): disallow object that is not a function. For example,
+        # An object instance of class often indicates a bug in user code.
+        is_callable_class = False
+        if fn_constructor_args is not None:
+            raise ValueError(
+                "``fn_constructor_args`` can only be specified if providing a "
+                f"callable class instance for ``fn``, but got: {fn}."
+            )
 
-    if fn_constructor_args is not None:
-        if compute is None or (
-            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+    if compute is not None:
+        # Legacy code path to support `compute` argument.
+        logger.warning(
+            "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
+            "argument ``concurrency`` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/transforming-data.html#"
+            "stateful-transforms."
+        )
+        if is_callable_class and (
+            compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
             raise ValueError(
-                "fn_constructor_args can only be specified if using the actor "
-                f"pool compute strategy, but got: {compute}"
+                "``compute`` must specify an actor compute strategy when using a "
+                f"callable class, but got: {compute}. For example, use "
+                "``compute=ray.data.ActorPoolStrategy(size=n)``."
             )
-        if not isinstance(fn, CallableClass):
+        elif not is_callable_class and (
+            compute == "actors" or isinstance(compute, ActorPoolStrategy)
+        ):
             raise ValueError(
-                "fn_constructor_args can only be specified if providing a "
-                f"CallableClass instance for fn, but got: {fn}"
+                f"``compute`` is specified as the actor compute strategy: {compute}, "
+                f"but ``fn`` is not a callable class: {fn}. Pass a callable class or "
+                "use the default ``compute`` strategy."
             )
+        return compute
+    elif concurrency is not None:
+        if isinstance(concurrency, tuple):
+            if (
+                len(concurrency) == 2
+                and isinstance(concurrency[0], int)
+                and isinstance(concurrency[1], int)
+            ):
+                if is_callable_class:
+                    return ActorPoolStrategy(
+                        min_size=concurrency[0], max_size=concurrency[1]
+                    )
+                else:
+                    raise ValueError(
+                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                        "control maximum number of workers to use."
+                    )
+            else:
+                raise ValueError(
+                    "``concurrency`` is expected to be set as a tuple of "
+                    f"integers, but got: {concurrency}."
+                )
+        elif isinstance(concurrency, int):
+            if is_callable_class:
+                return ActorPoolStrategy(size=concurrency)
+            else:
+                return TaskPoolStrategy(size=concurrency)
+        else:
+            raise ValueError(
+                "``concurrency`` is expected to be set as an integer or a "
+                f"tuple of integers, but got: {concurrency}."
+            )
+    else:
+        if is_callable_class:
+            raise ValueError(
+                "``concurrency`` must be specified when using a callable class. "
+                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
+            )
+        else:
+            return TaskPoolStrategy()
 
 
 def capfirst(s: str):
@@ -872,9 +943,9 @@ def make_async_gen(
 
 def call_with_retry(
     f: Callable[[], Any],
-    match: List[str],
     description: str,
     *,
+    match: Optional[List[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
 ) -> Any:
@@ -882,7 +953,8 @@ def call_with_retry(
 
     Args:
         f: The function to retry.
-        match: A list of strings to match in the exception message.
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
         description: An imperitive description of the function being retried. For
             example, "open the file".
         max_attempts: The maximum number of attempts to retry.
@@ -894,10 +966,12 @@ def call_with_retry(
         try:
             return f()
         except Exception as e:
-            is_retryable = any([pattern in str(e) for pattern in match])
+            is_retryable = match is None or any(
+                [pattern in str(e) for pattern in match]
+            )
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)) * random.random(), max_backoff_s)
+                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )
@@ -911,3 +985,13 @@ def create_dataset_tag(dataset_name: Optional[str], *args):
     for arg in args:
         tag += f"_{arg}"
     return tag
+
+
+def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
+    if num_bytes >= 1e9:
+        num_bytes_str = f"{round(num_bytes / 1e9)}GB"
+    elif num_bytes >= 1e6:
+        num_bytes_str = f"{round(num_bytes / 1e6)}MB"
+    else:
+        num_bytes_str = f"{round(num_bytes / 1e3)}KB"
+    return num_bytes_str
