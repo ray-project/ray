@@ -49,6 +49,15 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         ray.get(a.v.remote())
         ray.get(pg.ready())
 
+        with pytest.raises(ValueError):
+            a = Actor.options(
+                resources={"bundle": 1},
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg
+                ),
+            ).remote()
+            ray.get(a.v.remote())
+
         placement_group_assert_no_leak([pg])
 
 
