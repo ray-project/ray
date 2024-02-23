@@ -27,6 +27,24 @@ describe("MetadataContentField", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the content string if link is undefined", () => {
+    expect.assertions(4);
+
+    render(
+      <MetadataContentField
+        content={{ value: CONTENT_VALUE, link: undefined }}
+        label="test-label"
+      />,
+    );
+
+    expect(screen.getByText(CONTENT_VALUE)).toBeInTheDocument();
+    expect(screen.getByText(CONTENT_VALUE)).not.toHaveAttribute("href");
+    expect(screen.queryByLabelText(COPY_BUTTON_LABEL)).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("metadata-content-for-test-label"),
+    ).toBeInTheDocument();
+  });
+
   it("renders the content string with label", () => {
     expect.assertions(4);
 

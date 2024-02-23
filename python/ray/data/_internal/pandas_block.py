@@ -66,7 +66,7 @@ class PandasRow(TableRow):
                 return None
 
             items = col.iloc[0]
-            if isinstance(items[0], TensorArrayElement):
+            if isinstance(items.iloc[0], TensorArrayElement):
                 # Getting an item in a Pandas tensor column may return
                 # a TensorArrayElement, which we have to convert to an ndarray.
                 return pd.Series(item.to_numpy() for item in items)

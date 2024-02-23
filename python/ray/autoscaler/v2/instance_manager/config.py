@@ -100,7 +100,9 @@ class NodeTypeConfig:
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
-    # The node config's launch config hash.
+    # The node config's launch config hash. It's calculated from the auth
+    # config, and the node's config in the `AutoscalingConfig` for the node
+    # type when launching the node. It's used to detect config changes.
     launch_config_hash: str = ""
 
     def __post_init__(self):
