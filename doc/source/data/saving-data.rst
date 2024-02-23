@@ -131,8 +131,13 @@ To write data to formats other than Parquet, read the
 Changing the number of output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When you call a write method, Ray Data writes your data to one file per :term:`block`.
-To change the number of blocks, call :meth:`~ray.data.Dataset.repartition`.
+When you call a write method, Ray Data writes your data to several files. To control the
+number of output files, configure ``num_rows_per_file``.
+
+.. note::
+
+    ``num_rows_per_file`` is a hint, not a strict limit. Ray Data might write more or 
+    fewer rows to each file.
 
 .. testcode::
 
@@ -140,15 +145,14 @@ To change the number of blocks, call :meth:`~ray.data.Dataset.repartition`.
     import ray
 
     ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-    ds.repartition(2).write_csv("/tmp/two_files/")
+    ds.write_csv("/tmp/few_files/", num_rows_per_file=75)
 
-    print(os.listdir("/tmp/two_files/"))
+    print(os.listdir("/tmp/few_files/"))
 
 .. testoutput::
     :options: +MOCK
 
-    ['26b07dba90824a03bb67f90a1360e104_000003.csv', '26b07dba90824a03bb67f90a1360e104_000002.csv']
-
+    ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']                                                          
 
 Converting Datasets to other Python libraries
 =============================================

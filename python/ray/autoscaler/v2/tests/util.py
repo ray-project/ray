@@ -64,6 +64,7 @@ def create_instance(
     launch_request_id="",
     version=0,
     cloud_instance_id="",
+    ray_node_id="",
 ):
 
     if not status_times:
@@ -80,6 +81,7 @@ def create_instance(
             for status, ts in status_times
         ],
         cloud_instance_id=cloud_instance_id,
+        node_id=ray_node_id,
     )
 
 

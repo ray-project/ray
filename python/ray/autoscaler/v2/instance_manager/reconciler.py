@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
+from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -22,8 +23,9 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
-from ray.autoscaler.v2.scheduler import IResourceScheduler
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
+from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
+from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -162,9 +164,10 @@ class Reconciler:
         cloud_provider: ICloudInstanceProvider,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-        cloud_provider_errors: List[CloudInstanceProviderError],
-        ray_install_errors: List[RayInstallError],
         autoscaling_config: AutoscalingConfig,
+        cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
+        ray_install_errors: Optional[List[RayInstallError]] = None,
+        ray_stop_errors: Optional[List[RayStopError]] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
@@ -189,17 +192,23 @@ class Reconciler:
                 the cloud provider.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
+            ray_stop_errors: The errors from RayStopper.
 
         """
+        cloud_provider_errors = cloud_provider_errors or []
+        ray_install_errors = ray_install_errors or []
+        ray_stop_errors = ray_stop_errors or []
+
+        autoscaling_state = AutoscalingState()
         Reconciler._sync_from(
             instance_manager=instance_manager,
             ray_nodes=ray_cluster_resource_state.node_states,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             cloud_provider_errors=cloud_provider_errors,
             ray_install_errors=ray_install_errors,
+            ray_stop_errors=ray_stop_errors,
         )
 
-        autoscaling_state = AutoscalingState()
         Reconciler._step_next(
             autoscaling_state=autoscaling_state,
             instance_manager=instance_manager,
@@ -219,6 +228,7 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
+        ray_stop_errors: List[RayStopError],
     ):
         """
         Reconcile the instance states of the instance manager from external states like
@@ -254,6 +264,9 @@ class Reconciler:
                 instance to RAY_STOPPED.
             7.  * -> RAY_INSTALL_FAILED:
                 When there's an error from RayInstaller.
+            8. RAY_STOP_REQUESTED -> RAY_RUNNING:
+                When requested to stop ray, but failed to stop/drain the ray node
+                (e.g. idle termination drain rejected by the node).
 
         Args:
             instance_manager: The instance manager to reconcile.
@@ -282,6 +295,8 @@ class Reconciler:
 
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
+        Reconciler._handle_ray_stop_failed(instance_manager, ray_stop_errors, ray_nodes)
+
     @staticmethod
     def _step_next(
         autoscaling_state: AutoscalingState,
@@ -301,11 +316,11 @@ class Reconciler:
             1. Shut down leak cloud instances
                 Leaked cloud instances that are not managed by the instance manager.
             2. Terminating instances with ray stopped or ray install failure.
-            3. Scale up/down the cluster:
-              (* -> RAY_STOPPING)
+            3. Scale down the cluster:
+              (* -> RAY_STOP_REQUESTED/TERMINATING)
                 b. Extra cloud due to max nodes config.
                 c. Cloud instances with outdated configs.
-            4. Create new instances
+            4. Scale up the cluster:
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
                 scaling up.
@@ -333,6 +348,14 @@ class Reconciler:
             instance_manager=instance_manager,
             reconcile_config=autoscaling_config.get_instance_reconcile_config(),
             _logger=_logger or logger,
+        )
+
+        Reconciler._scale_cluster(
+            autoscaling_state=autoscaling_state,
+            instance_manager=instance_manager,
+            ray_state=ray_cluster_resource_state,
+            scheduler=scheduler,
+            autoscaling_config=autoscaling_config,
         )
 
         Reconciler._handle_instances_launch(
@@ -459,6 +482,69 @@ class Reconciler:
             )
         # No update.
         return None
+
+    @staticmethod
+    def _handle_ray_stop_failed(
+        instance_manager: InstanceManager,
+        ray_stop_errors: List[RayStopError],
+        ray_nodes: List[NodeState],
+    ):
+        """
+        The instance requested to stop ray, but failed to stop/drain the ray node.
+        E.g. connection errors, idle termination drain rejected by the node.
+
+        We will transition the instance back to RAY_RUNNING.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            ray_stop_errors: The errors from RayStopper.
+
+        """
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+
+        ray_stop_errors_by_instance_id = {
+            error.im_instance_id: error for error in ray_stop_errors
+        }
+
+        ray_nodes_by_ray_node_id = {binary_to_hex(n.node_id): n for n in ray_nodes}
+
+        ray_stop_requested_instances = {
+            instance.instance_id: instance
+            for instance in instances
+            if instance.status == IMInstance.RAY_STOP_REQUESTED
+        }
+
+        for instance_id, instance in ray_stop_requested_instances.items():
+            stop_error = ray_stop_errors_by_instance_id.get(instance_id)
+            if not stop_error:
+                continue
+
+            assert instance.node_id
+            ray_node = ray_nodes_by_ray_node_id.get(instance.node_id)
+            assert ray_node is not None and ray_node.status in [
+                NodeStatus.RUNNING,
+                NodeStatus.IDLE,
+            ], (
+                "There should be a running ray node for instance with ray stop "
+                "requested failed."
+            )
+
+            updates[instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance_id,
+                new_instance_status=IMInstance.RAY_RUNNING,
+                details="Failed to stop/drain ray.",
+                ray_node_id=instance.node_id,
+            )
+            logger.debug(
+                "Updating {}({}) with {}".format(
+                    instance_id,
+                    IMInstance.InstanceStatus.Name(instance.status),
+                    message_to_dict(updates[instance_id]),
+                )
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _handle_ray_install_failed(
@@ -668,7 +754,7 @@ class Reconciler:
             else:
                 # This should only happen to a ray node that's not managed by us.
                 logger.warning(
-                    f"Ray node {n.node_id.decode()} has no instance id. "
+                    f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
                     "This only happens to a ray node that's not managed by autoscaler. "
                     "If not, please file a bug at https://github.com/ray-project/ray"
                 )
@@ -679,8 +765,8 @@ class Reconciler:
                 # or we haven't discovered the instance yet. There's nothing
                 # much we could do here.
                 logger.info(
-                    f"Ray node {ray_node.node_id.decode()} has no matching instance in "
-                    f"instance manager with cloud instance id={cloud_instance_id}."
+                    f"Ray node {binary_to_hex(ray_node.node_id)} has no matching "
+                    f"instance with cloud instance id={cloud_instance_id}."
                 )
                 continue
 
@@ -695,8 +781,8 @@ class Reconciler:
                     new_instance_status=reconciled_im_status,
                     details="Reconciled from ray node status "
                     f"{NodeStatus.Name(ray_node.status)} "
-                    f"for ray node {ray_node.node_id.decode()}",
-                    ray_node_id=ray_node.node_id.decode(),
+                    f"for ray node {binary_to_hex(ray_node.node_id)}",
+                    ray_node_id=binary_to_hex(ray_node.node_id),
                 )
                 logger.debug(
                     "Updating {}({}) with {}.".format(
@@ -962,6 +1048,20 @@ class Reconciler:
             if update:
                 im_updates[instance.instance_id] = update
 
+        # If we tried to stop ray on the instance, but it doesn't stop after a long
+        # time, we will transition it back to RAY_RUNNING as the stop/drain somehow
+        # failed. If it had succeed, we should have transitioned it to RAY_STOPPING
+        # or RAY_STOPPED.
+        for instance in instances_by_status[IMInstance.RAY_STOP_REQUESTED]:
+            update = Reconciler._handle_stuck_instance(
+                instance,
+                reconcile_config.ray_stop_requested_status_timeout_s,
+                new_status=IMInstance.RAY_RUNNING,
+                ray_node_id=instance.node_id,
+            )
+            if update:
+                im_updates[instance.instance_id] = update
+
         # These statues could be unbounded or transient, and we don't have a timeout
         # mechanism to handle them. We only warn if they are stuck for too long.
         for status in [
@@ -1012,6 +1112,125 @@ class Reconciler:
                         (time.time_ns() - status_time_ns) // 1e9,
                     )
                 )
+
+    @staticmethod
+    def _scale_cluster(
+        autoscaling_state: AutoscalingState,
+        instance_manager: InstanceManager,
+        ray_state: ClusterResourceState,
+        scheduler: IResourceScheduler,
+        autoscaling_config: AutoscalingConfig,
+    ) -> None:
+        """
+        Scale the cluster based on the resource state and the resource scheduler's
+        decision:
+
+        - It launches new instances if needed.
+        - It terminates extra ray nodes if they should be shut down (preemption
+            or idle termination)
+
+        Args:
+            autoscaling_state: The autoscaling state to reconcile.
+            instance_manager: The instance manager to reconcile.
+            ray_state: The ray cluster's resource state.
+            scheduler: The resource scheduler to make scaling decisions.
+            autoscaling_config: The autoscaling config.
+
+        """
+
+        # Get the current instance states.
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+
+        autoscaler_instances = []
+        ray_nodes_by_id = {
+            binary_to_hex(node.node_id): node for node in ray_state.node_states
+        }
+
+        for im_instance in im_instances:
+            ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            autoscaler_instances.append(
+                AutoscalerInstance(
+                    ray_node=ray_node,
+                    im_instance=im_instance,
+                    cloud_instance_id=im_instance.cloud_instance_id
+                    if im_instance.cloud_instance_id
+                    else None,
+                )
+            )
+
+        # TODO(rickyx): We should probably name it as "Planner" or "Scaler"
+        # or "ClusterScaler"
+        sched_request = SchedulingRequest(
+            node_type_configs=autoscaling_config.get_node_type_configs(),
+            max_num_nodes=autoscaling_config.get_max_num_nodes(),
+            resource_requests=ray_state.pending_resource_requests,
+            gang_resource_requests=ray_state.pending_gang_resource_requests,
+            cluster_resource_constraints=ray_state.cluster_resource_constraints,
+            current_instances=autoscaler_instances,
+        )
+
+        # Ask scheduler for updates to the cluster shape.
+        reply = scheduler.schedule(sched_request)
+
+        # Populate the autoscaling state.
+        autoscaling_state.infeasible_resource_requests.extend(
+            reply.infeasible_resource_requests
+        )
+        autoscaling_state.infeasible_gang_resource_requests.extend(
+            reply.infeasible_gang_resource_requests
+        )
+        autoscaling_state.infeasible_cluster_resource_constraints.extend(
+            reply.infeasible_cluster_resource_constraints
+        )
+
+        to_launch = reply.to_launch
+        to_terminate = reply.to_terminate
+        updates = {}
+        # Add terminating instances.
+        for terminate_request in to_terminate:
+            instance_id = terminate_request.instance_id
+            if autoscaling_config.need_ray_stop():
+                # If we would need to stop/drain ray.
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                    termination_request=terminate_request,
+                )
+                logger.info(
+                    "Stopping ray on {} with {}".format(
+                        instance_id, message_to_dict(updates[instance_id])
+                    )
+                )
+            else:
+                # If we would just terminate the cloud instance.
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATING,
+                )
+                logger.info(
+                    "Terminating {} with {}".format(
+                        instance_id,
+                        message_to_dict(updates[instance_id]),
+                    )
+                )
+
+        # Add new instances.
+        for launch_request in to_launch:
+            for _ in range(launch_request.count):
+                instance_id = InstanceUtil.random_instance_id()
+                updates[instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.QUEUED,
+                    instance_type=launch_request.instance_type,
+                )
+
+                logger.info(
+                    "Queueing new instance {} of type {}".format(
+                        instance_id, launch_request.instance_type
+                    )
+                )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _terminate_instances(instance_manager: InstanceManager):
@@ -1151,6 +1370,7 @@ class Reconciler:
         instance: IMInstance,
         timeout_s: int,
         new_status: IMInstance.InstanceStatus,
+        **update_kwargs: Dict,
     ) -> Optional[IMInstanceUpdateEvent]:
         """
         Fail the instance if it's stuck in the status for too long.
@@ -1159,6 +1379,7 @@ class Reconciler:
             instance: The instance to handle.
             timeout_s: The timeout in seconds.
             new_status: The new status to transition to.
+            update_kwargs: The update kwargs for InstanceUpdateEvent
 
         Returns:
             Instance update to the new status: if the instance is stuck in the status
@@ -1175,6 +1396,7 @@ class Reconciler:
             new_instance_status=new_status,
             details=f"Timeout={timeout_s}s at status "
             f"{IMInstance.InstanceStatus.Name(instance.status)}",
+            **update_kwargs,
         )
 
     @staticmethod
