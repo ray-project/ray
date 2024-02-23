@@ -620,7 +620,7 @@ class RunConfig:
     """
 
     name: Optional[str] = None
-    storage_path: str = Path("~/ray_results").expanduser().as_posix()
+    storage_path: Optional[str] = None
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     failure_config: Optional[FailureConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
@@ -637,6 +637,9 @@ class RunConfig:
     def __post_init__(self):
         from ray.train import SyncConfig
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
+
+        if self.storage_path is None:
+            self.storage_path = Path("~/ray_results").expanduser().as_posix()
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
