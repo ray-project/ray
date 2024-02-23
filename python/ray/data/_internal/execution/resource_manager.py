@@ -272,7 +272,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     @dataclass
     class IdleInfo:
-        """Information for detecting idle operators."""
+        """Information for detecting idle operators.
+
+        Note, stalling can happen when there are less resources than Data executor
+        expects. E.g., when some resources are preempted by non-Data code, see
+        `test_no_deadlock_on_resource_contention` as an example.
+
+        This class is used to detect potential stalling and allow the execution
+        to make progress.
+        """
 
         # The interval to detect idle operators.
         # When downstream is idle, we'll allow reading at least one task output
@@ -329,7 +337,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Whether each operator has reserved the minimum resources to run
         # at least one task.
         # This is used to avoid edge cases where the entire resource limits are not
-        # enough to run one task of each op..
+        # enough to run one task of each op.
+        # See `test_no_deadlock_on_small_cluster_resources` as an example.
         self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
 
         self._cached_global_limits = ExecutionResources.zero()
@@ -391,9 +400,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 min_reserved.object_store_memory *= op._autoscaling_policy.min_workers
             # Also include `reserved_for_op_outputs`.
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
-            # Total reserved resources for the operator.
+            # Total resources we want to reserve for this operator.
             op_total_reserved = default_reserved.max(min_reserved)
             if op_total_reserved.satisfies_limit(self._total_shared):
+                # If the remaining resources are enough to reserve `op_total_reserved`,
+                # subtract it from `self._total_shared` and reserve it for this operator.
                 self._reserved_min_resources[op] = True
                 self._total_shared = self._total_shared.subtract(op_total_reserved)
                 self._op_reserved[op] = op_total_reserved
@@ -403,6 +414,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             else:
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we don't reserve any resources for it.
+                # Note, we reserve minimum resources first for the upstream
+                # ops. Downstream ops need to wait for upstream ops to finish
+                # and release resources.
                 self._reserved_min_resources[op] = False
                 self._op_reserved[op] = ExecutionResources.zero()
                 self._reserved_for_op_outputs[op] = 1
