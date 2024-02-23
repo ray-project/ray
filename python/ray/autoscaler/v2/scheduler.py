@@ -1,6 +1,7 @@
 import copy
 import logging
 import time
+import uuid
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -24,7 +25,11 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    LaunchRequest,
+    TerminationRequest,
+)
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -97,13 +102,13 @@ class SchedulingNodeStatus(Enum):
     The status of a scheduling node (`SchedulingNode`)
     """
 
-    # The node is to be launched.
+    # The node is added by the ResourceDemandScheduler.
     TO_LAUNCH = "TO_LAUNCH"
     # The node is pending, i.e. there's already an autoscaler instance being launched
-    PENDING = "PENDING"
-    # The node is running.
-    RUNNING = "RUNNING"
-    # The node is to be terminated.
+    # The node is schedulable. It could be running ray or pending to run ray. Either
+    # Way, it should be able to accept new resource requests/resource constraints.
+    SCHEDULABLE = "SCHEDULABLE"
+    # The node is to be terminated by the ResourceDemandScheduler
     TO_TERMINATE = "TO_TERMINATE"
 
 
@@ -114,7 +119,7 @@ class SchedulingNode:
 
     A scheduling node is expected to be used as:
 
-        node  = SchedulingNode.from_node_config(node_config)
+        node  = SchedulingNode.new(instance, node_configs)
         remaining, score = node.try_schedule(requests)
 
         .... do something with the score ....
@@ -123,9 +128,105 @@ class SchedulingNode:
         One could also extend the scheduling behavior by overriding `try_schedule`
     """
 
-    @classmethod
+    @staticmethod
+    def new(
+        instance: AutoscalerInstance, node_type_configs: Dict[NodeType, NodeTypeConfig]
+    ) -> Optional["SchedulingNode"]:
+        """
+        Create a new scheduling node from an autoscaler instance.
+
+        It creates:
+            - None if the instance is not schedulable by IM.
+            - A schedulable node if the instance is running ray or pending to run ray,
+              so it should be considered in the scheduling process.
+
+        Args:
+            instance: The instance.
+            node_type_configs: The node type configs.
+
+        """
+        if not SchedulingNode.is_schedulable(instance):
+            return None
+
+        if instance.im_instance.status == Instance.RAY_RUNNING:
+            assert instance.ray_node is not None, (
+                "ray node should not be None "
+                f"when the instance is running ray: instance={instance}"
+            )
+            # An running ray node
+            return SchedulingNode(
+                node_type=instance.im_instance.instance_type,
+                total_resources=dict(instance.ray_node.total_resources),
+                # Use ray node's available resources.
+                available_resources=dict(instance.ray_node.available_resources),
+                # Use ray node's dynamic labels.
+                labels=dict(instance.ray_node.dynamic_labels),
+                status=SchedulingNodeStatus.SCHEDULABLE,
+                im_instance_id=instance.im_instance.instance_id,
+                ray_node_id=instance.im_instance.node_id,
+                idle_duration_ms=instance.ray_node.idle_duration_ms,
+            )
+
+        # This is an instance pending to run ray. Initialize a schedulable node
+        # from the node type config.
+        node_config = node_type_configs.get(instance.im_instance.instance_type, None)
+        if node_config is None:
+            # Configs might have been updated, and no more
+            # node_type_configs for this node type. We should terminate it.
+            return SchedulingNode(
+                node_type=instance.im_instance.instance_type,
+                total_resources={},
+                available_resources={},
+                labels={},
+                status=SchedulingNodeStatus.TO_TERMINATE,
+                im_instance_id=instance.im_instance.instance_id,
+                termination_request=TerminationRequest(
+                    id=str(uuid.uuid4()),
+                    instance_id=instance.im_instance.instance_id,
+                    cause=TerminationRequest.Cause.OUTDATED,
+                    instance_type=instance.im_instance.instance_type,
+                ),
+            )
+
+        return SchedulingNode.from_node_config(
+            node_config,
+            SchedulingNodeStatus.SCHEDULABLE,
+            instance.im_instance.instance_id,
+        )
+
+    @staticmethod
+    def is_schedulable(instance: AutoscalerInstance) -> bool:
+        """
+        Check if the instance is schedulable by IM.
+
+        Args:
+            instance: The instance.
+
+        Returns:
+            True if the instance is schedulable by IM.
+        """
+        if instance.im_instance is None:
+            # We will skip any instances that are not yet in IM which
+            # could be
+            #   1. an out-of-band ray node
+            #   2. an cloud instance running ray not yet discovered
+            #      by the IM's Reconciler
+            #   3. an cloud instance already terminated but ray state
+            #      still lagging behind.
+            #
+            # In all of these cases, the instance is not schedulable or
+            # shouldn't be managed by IM, so we don't consider them.
+            return False
+
+        # These are the statuses where there's a running ray node or
+        # could eventually run ray.
+        if InstanceUtil.is_ray_running_reachable(instance.im_instance.status):
+            return True
+
+        return False
+
+    @staticmethod
     def from_node_config(
-        cls,
         node_config: NodeTypeConfig,
         status: SchedulingNodeStatus,
         im_instance_id: Optional[str] = None,
@@ -138,7 +239,7 @@ class SchedulingNode:
             status: The status of the node.
             im_instance_id: The instance id of the im instance.
         """
-        return cls(
+        return SchedulingNode(
             node_type=node_config.name,
             total_resources=dict(node_config.resources),
             available_resources=dict(node_config.resources),
@@ -147,8 +248,13 @@ class SchedulingNode:
             im_instance_id=im_instance_id,
         )
 
+    def __post_init__(self):
+        assert self.node_type, "node_type should be set"
+
     # Node type name.
     node_type: NodeType
+    # Status
+    status: SchedulingNodeStatus
     # Requests committed to be placed on this node.
     sched_requests: List[ResourceRequest] = field(default_factory=list)
     # The node's current resource capacity.
@@ -157,8 +263,6 @@ class SchedulingNode:
     available_resources: Dict[str, float] = field(default_factory=dict)
     # Node's labels, including static or dynamic labels.
     labels: Dict[str, str] = field(default_factory=dict)
-    # Status
-    status: SchedulingNodeStatus = SchedulingNodeStatus.TO_LAUNCH
     # Observability descriptive message for why the node was launched in the
     # first place.
     launch_reason: Optional[str] = None
@@ -398,60 +502,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Initialize the scheduling nodes.
             for instance in req.current_instances:
-                if instance.ray_node is not None:
-                    # This is a running ray node.
-                    nodes.append(
-                        SchedulingNode(
-                            node_type=instance.ray_node.ray_node_type_name,
-                            total_resources=dict(instance.ray_node.total_resources),
-                            available_resources=dict(
-                                instance.ray_node.available_resources
-                            ),
-                            labels=dict(instance.ray_node.dynamic_labels),
-                            status=SchedulingNodeStatus.RUNNING,
-                            im_instance_id=instance.im_instance.instance_id
-                            if instance.im_instance
-                            else None,
-                            ray_node_id=instance.ray_node.node_id.decode("utf-8"),
-                            idle_duration_ms=instance.ray_node.idle_duration_ms,
-                        )
-                    )
-                elif (
-                    instance.im_instance is not None
-                    and InstanceUtil.is_ray_running_reachable(
-                        instance.im_instance.status
-                    )
-                ):
-                    # This is an im instance that's pending to run ray:
-                    # e.g. allocated, or being requested, or ray is installing.
-                    node_config = node_type_configs.get(
-                        instance.im_instance.instance_type, None
-                    )
-
-                    if node_config is None:
-                        # Configs might have been updated, and no more
-                        # node_type_configs for this node type.
-                        logger.info(
-                            "Skipping instance {} since no node config found for "
-                            "{}".format(
-                                instance.im_instance.instance_id,
-                                instance.im_instance.instance_type,
-                            )
-                        )
-                        continue
-                    nodes.append(
-                        SchedulingNode.from_node_config(
-                            node_config,
-                            status=SchedulingNodeStatus.PENDING,
-                            im_instance_id=instance.im_instance.instance_id,
-                        )
-                    )
-                else:
-                    logger.debug(
-                        "Skipping instance {} since it's not pending/running".format(
-                            instance
-                        )
-                    )
+                node = SchedulingNode.new(instance, node_type_configs)
+                if node:
+                    nodes.append(node)
 
             return cls(
                 nodes=nodes,
@@ -549,7 +602,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     LaunchRequest(
                         instance_type=instance_type,
                         count=count,
-                        id=str(time.time_ns()),
+                        id=str(uuid.uuid4()),
                         request_ts_ms=time.time_ns() // 1000,
                     )
                 )
@@ -629,12 +682,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             else:
                 non_terminating_nodes_by_type[node.node_type].append(node)
 
-        terminating_nodes = []
         # Step 1. Enforce the max number of workers for each node type.
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
-            node_config = ctx.get_node_type_configs().get(node_type, None)
-            num_max_nodes_per_type = node_config.max_worker_nodes if node_config else 0
+            node_config = ctx.get_node_type_configs()[node_type]
+            num_max_nodes_per_type = node_config.max_worker_nodes
             num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
 
             if num_extra_nodes <= 0:
@@ -780,10 +832,11 @@ class ResourceDemandScheduler(IResourceScheduler):
         for node in terminated_nodes:
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
-                id=str(time.time_ns()),
+                id=str(uuid.uuid4()),
                 instance_id=node.im_instance_id,
                 ray_node_id=node.ray_node_id,
                 cause=cause,
+                instance_type=node.node_type,
             )
             if cause == TerminationRequest.Cause.MAX_NUM_NODES:
                 node.termination_request.max_num_nodes = max_num_nodes
@@ -808,7 +861,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         Such that nodes sorted earlier will be terminated first.
         """
 
-        running_ray = node.status == SchedulingNodeStatus.RUNNING
+        running_ray = node.ray_node_id is not None
         # Reverse the idle duration such that the nodes with the largest idle duration
         # will be terminated first.
         idle_dur = -1 * node.idle_duration_ms

@@ -1,5 +1,6 @@
 import abc
 import operator
+import time
 from abc import abstractmethod
 from typing import Dict, List, Optional, Tuple
 
@@ -20,8 +21,8 @@ class MockSubscriber:
     def clear(self):
         self.events.clear()
 
-    def events_by_id(self, event_id):
-        return [e for e in self.events if e.instance_id == event_id]
+    def events_by_id(self, instance_id):
+        return [e for e in self.events if e.instance_id == instance_id]
 
 
 def make_autoscaler_instance(
@@ -63,7 +64,12 @@ def create_instance(
     launch_request_id="",
     version=0,
     cloud_instance_id="",
+    ray_node_id="",
 ):
+
+    if not status_times:
+        status_times = [(status, time.time_ns())]
+
     return Instance(
         instance_id=instance_id,
         status=status,
@@ -73,10 +79,9 @@ def create_instance(
         status_history=[
             Instance.StatusHistory(instance_status=status, timestamp_ns=ts)
             for status, ts in status_times
-        ]
-        if status_times
-        else [],
+        ],
         cloud_instance_id=cloud_instance_id,
+        node_id=ray_node_id,
     )
 
 

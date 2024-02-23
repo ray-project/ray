@@ -616,11 +616,12 @@ class SingleAgentEpisode:
         """
 
         self.observations.finalize()
-        self.actions.finalize()
-        self.rewards.finalize()
         self.render_images = np.array(self.render_images, dtype=np.uint8)
-        for k, v in self.extra_model_outputs.items():
-            self.extra_model_outputs[k].finalize()
+        if len(self) > 0:
+            self.actions.finalize()
+            self.rewards.finalize()
+            for k, v in self.extra_model_outputs.items():
+                self.extra_model_outputs[k].finalize()
 
         return self
 

@@ -61,6 +61,7 @@ class InstanceUtil:
             Instance.RAY_INSTALLING,
             Instance.RAY_RUNNING,
             Instance.RAY_STOPPING,
+            Instance.RAY_STOP_REQUESTED,
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
@@ -122,6 +123,35 @@ class InstanceUtil:
         )
 
     @staticmethod
+    def has_timeout(instance: Instance, timeout_s: int) -> bool:
+        """
+        Returns True if the instance has been in the current status for more
+        than the timeout_seconds.
+
+        Args:
+            instance: The instance to check.
+            timeout_seconds: The timeout in seconds.
+
+        Returns:
+            True if the instance has been in the current status for more than
+            the timeout_s seconds.
+        """
+        cur_status = instance.status
+
+        status_times_ns = InstanceUtil.get_status_transition_times_ns(
+            instance, select_instance_status=cur_status
+        )
+        assert len(status_times_ns) >= 1, (
+            f"instance {instance.instance_id} has {len(status_times_ns)} "
+            f"{Instance.InstanceStatus.Name(cur_status)} status"
+        )
+        status_time_ns = sorted(status_times_ns)[-1]
+        if time.time_ns() - status_time_ns <= (timeout_s * 1e9):
+            return False
+
+        return True
+
+    @staticmethod
     def get_valid_transitions() -> Dict[
         "Instance.InstanceStatus", Set["Instance.InstanceStatus"]
     ]:
@@ -181,17 +211,38 @@ class InstanceUtil:
                 # such that a ray running node  wasn't discovered and the RAY_RUNNING
                 # transition was skipped.
                 Instance.RAY_STOPPED,
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
+                Instance.TERMINATING,
                 # cloud instance somehow failed during the installation process.
                 Instance.TERMINATED,
             },
             # Ray process is installed and running on the cloud instance. When in this
             # status, a ray node must be present in the ray cluster.
             Instance.RAY_RUNNING: {
-                # Ray is requested to be stopped to the ray cluster,
+                # Ray is requested to be stopped.
+                Instance.RAY_STOP_REQUESTED,
+                # Ray is stopping (currently draining),
                 # e.g. idle termination.
                 Instance.RAY_STOPPING,
                 # Ray is already stopped, as reported by the ray cluster.
                 Instance.RAY_STOPPED,
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
+                Instance.TERMINATING,
+                # cloud instance somehow failed.
+                Instance.TERMINATED,
+            },
+            # Ray process should be stopped on the cloud instance. The RayStopper
+            # subscriber will listen to this status and stop the ray process.
+            Instance.RAY_STOP_REQUESTED: {
+                # Ray is stopping on the cloud instance.
+                Instance.RAY_STOPPING,
+                # Ray stopped already.
+                Instance.RAY_STOPPED,
+                # Ray stop request failed (e.g. idle node no longer idle),
+                # ray is still running.
+                Instance.RAY_RUNNING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
@@ -202,13 +253,17 @@ class InstanceUtil:
                 # Ray is stopped, and the ray node is present in the dead ray node list
                 # reported by the ray cluster.
                 Instance.RAY_STOPPED,
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
+                Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
             # When in this status, the ray process is stopped, and the ray node is
             # present in the dead ray node list reported by the ray cluster.
             Instance.RAY_STOPPED: {
-                # cloud instance is requested to be stopped.
+                # A cloud instance is being terminated (when the instance itself is no
+                # longer needed, e.g. instance is outdated, autoscaler is scaling down)
                 Instance.TERMINATING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
