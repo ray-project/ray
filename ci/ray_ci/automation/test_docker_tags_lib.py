@@ -151,7 +151,9 @@ def test_get_image_creation_time_failure_no_create_time(mock_config_docker_oci):
     mock_config_docker_oci.return_value = {"architecture": "amd64", "variant": "v1"}
     with pytest.raises(RetrieveImageConfigException):
         _get_image_creation_time(tag="test_namespace/test_repo:test_tag")
-    mock_config_docker_oci.assert_called_once_with(tag="test_tag", namespace="test_namespace", repository="test_repo")
+    mock_config_docker_oci.assert_called_once_with(
+        tag="test_tag", namespace="test_namespace", repository="test_repo"
+    )
 
 
 @mock.patch("requests.delete")
