@@ -373,3 +373,15 @@ table.autosummary tr > td:first-child > p > a > code > span {
   margin: unset;
   max-width: 30vw;
 }
+
+.query-param-ref-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid var(--pst-color-border);
+  border-radius: 8px;
+}
+
+.query-param-ref-wrapper p {
+  margin: 0;
+}
