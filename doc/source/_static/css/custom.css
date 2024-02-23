@@ -385,6 +385,7 @@ table.autosummary tr > td:first-child > p > a > code > span {
 
 .query-param-ref-wrapper p {
   margin: 0;
+}
 
 /* Styles for tables in example pages */
 .table.example-table {

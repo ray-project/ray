@@ -20,6 +20,14 @@ examples:
   - title: Serve an Inference Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
     link: tutorials/aws-neuron-core-inference
+  - title: Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
+    skill_level: intermediate
+    link: tutorials/aws-neuron-core-inference-stable-diffusion
+  - title: Serve a model on Intel Habana Gaudi
+    skill_level: intermediate
+    frameworks: pytorch
+    use_cases: generative ai, large language models
+    link: tutorials/intel-habana-gaudi-inference
   - title: Scale a Gradio App with Ray Serve
     skill_level: intermediate
     link: tutorials/gradio-integration
@@ -29,11 +37,9 @@ examples:
   - title: Serve a Chatbot with Request and Response Streaming
     skill_level: intermediate
     link: tutorials/streaming
-  - title: Serve a model on Intel Habana Gaudi
+  - title: Serving models with Triton Server in Ray Serve
     skill_level: intermediate
-    frameworks: pytorch
-    use_cases: generative ai, large language models
-    link: tutorials/intel-habana-gaudi-inference
+    link: tutorials/triton-server-integration
 
   - title: Serve a Java App
     skill_level: advanced
