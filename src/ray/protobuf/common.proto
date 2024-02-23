@@ -564,6 +564,7 @@ message PlacementGroupSpec {
   bool is_detached = 9;
   // The maximum fraction of CPU cores that this placement group can use on each node.
   double max_cpu_fraction_per_node = 10;
+  string soft_target_node_id = 11;
 }
 
 message ObjectReference {

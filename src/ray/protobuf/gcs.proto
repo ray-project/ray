@@ -690,11 +690,12 @@ message PlacementGroupTableData {
   PlacementGroupStats stats = 12;
   // The maximum fraction of CPU cores that this placement group can use on each node.
   double max_cpu_fraction_per_node = 13;
+  string soft_target_node_id = 14;
   // The time that the placement group was created at.
-  int64 placement_group_creation_timestamp_ms = 14;
+  int64 placement_group_creation_timestamp_ms = 15;
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
-  int64 placement_group_final_bundle_placement_timestamp_ms = 15;
+  int64 placement_group_final_bundle_placement_timestamp_ms = 16;
 }
 
 message JobTableData {

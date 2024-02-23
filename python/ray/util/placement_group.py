@@ -149,6 +149,7 @@ def placement_group(
     name: str = "",
     lifetime: Optional[str] = None,
     _max_cpu_fraction_per_node: float = 1.0,
+    _soft_target_node_id: Optional[str] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -176,6 +177,12 @@ def placement_group(
             placement group scheduling. Note: This feature is experimental and is not
             recommended for use with autoscaling clusters (scale-up will not trigger
             properly).
+        _soft_target_node_id: (Experimental, Private) Soft hint where bundles of
+            this placement group should be placed.
+            The target node is specified by it's hex id.
+            If the target node has no available resources,
+            bundles can be placed elsewhere.
+            This currently only works with STRICT_PACK pg.
 
     Raises:
         ValueError if bundle type is not a list.
@@ -203,6 +210,20 @@ def placement_group(
             "Invalid argument `_max_cpu_fraction_per_node`: "
             f"{_max_cpu_fraction_per_node}. "
             "_max_cpu_fraction_per_node must be a float between 0 and 1. "
+        )
+
+    if _soft_target_node_id and strategy != "STRICT_PACK":
+        raise ValueError(
+            "_soft_target_node_id currently only works "
+            f"with STRICT_PACK but got {strategy}"
+        )
+
+    if (
+        _soft_target_node_id
+        and ray.NodeID.from_hex(_soft_target_node_id) == ray.NodeID.nil()
+    ):
+        raise ValueError(
+            f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
         )
 
     # Validate bundles
@@ -247,6 +268,7 @@ def placement_group(
         strategy,
         detached,
         _max_cpu_fraction_per_node,
+        _soft_target_node_id,
     )
 
     return PlacementGroup(placement_group_id)
