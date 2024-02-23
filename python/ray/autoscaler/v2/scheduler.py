@@ -1185,7 +1185,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
 
             nodes, infeasible = ResourceDemandScheduler._try_schedule(
-                ctx, requests, is_constraint=False
+                ctx, requests, ResourceRequestSource.PENDING_DEMAND
             )
 
             if infeasible:
