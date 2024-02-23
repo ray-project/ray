@@ -547,3 +547,7 @@ def get_capacity_adjusted_num_replicas(
 
 def generate_request_id() -> str:
     return str(uuid.uuid4())
+
+
+def inside_ray_client_context() -> bool:
+    return ray.util.client.ray.is_connected()
