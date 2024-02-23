@@ -107,9 +107,9 @@ class TuneController:
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
         # Resources <-> Trial
-        self._resources_to_pending_trials: Dict[ResourceRequest, Set[Trial]] = (
-            defaultdict(set)
-        )
+        self._resources_to_pending_trials: Dict[
+            ResourceRequest, Set[Trial]
+        ] = defaultdict(set)
 
         # Keep track of actor states
         self._pending_trials: Set[Trial] = set()
