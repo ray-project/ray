@@ -224,7 +224,7 @@ class ResourceManager:
 class OpResourceAllocator(ABC):
     """An interface for dynamic operator resource allocation.
 
-    This interface allows dynamically allocate available resources to each operator,
+    This interface allows dynamically allocating available resources to each operator,
     limiting how many tasks each operator can submit, and how much data each operator
     can read from its running tasks.
     """
@@ -244,8 +244,8 @@ class OpResourceAllocator(ABC):
 
     @abstractmethod
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        """Return the maximum bytes of outputs that can be read from
-        the given operator's running tasks. None means no limit."""
+        """Return the maximum bytes of pending task outputs can be read for
+        the given operator. None means no limit."""
         ...
 
 
@@ -320,14 +320,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # by the pending task outputs. Then we'll have no budget to pull the outputs
         # from the running tasks.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
-        # Whether the minimum resources are reserved for each operator.
-        # This is used to avoid edge cases where the entire resource limits are not
-        # enough to run one task of each op..
-        self._reserved_min_resource: Dict[PhysicalOperator, bool] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator.
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
+        # Whether each operator has reserved the minimum resources to run
+        # at least one task.
+        # This is used to avoid edge cases where the entire resource limits are not
+        # enough to run one task of each op..
+        self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
 
         self._cached_global_limits = ExecutionResources.zero()
         self._cached_num_eligible_ops = 0
@@ -358,7 +359,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
-        self._reserved_min_resource.clear()
+        self._reserved_min_resources.clear()
         self._total_shared = copy.deepcopy(global_limits)
 
         if len(eligible_ops) == 0:
@@ -391,7 +392,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Total reserved resources for the operator.
             op_total_reserved = default_reserved.max(min_reserved)
             if op_total_reserved.satisfies_limit(self._total_shared):
-                self._reserved_min_resource[op] = True
+                self._reserved_min_resources[op] = True
                 self._total_shared = self._total_shared.subtract(op_total_reserved)
                 self._op_reserved[op] = op_total_reserved
                 self._op_reserved[
@@ -400,7 +401,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             else:
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we don't reserve any resources for it.
-                self._reserved_min_resource[op] = False
+                self._reserved_min_resources[op] = False
                 self._op_reserved[op] = ExecutionResources.zero()
                 self._reserved_for_op_outputs[op] = 1
                 self._total_shared = self._total_shared.subtract(
@@ -424,7 +425,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # backpressure by allowing reading at least 1 block. So the current operator
         # can finish at least one task and yield resources to the downstream operators.
         for next_op in op.output_dependencies:
-            if not self._reserved_min_resource[next_op]:
+            if not self._reserved_min_resources[next_op]:
                 # Case 1: the downstream operator hasn't reserved the minimum resources
                 # to run at least one task.
                 return True
