@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 
 import yaml
 
@@ -123,7 +124,10 @@ class AutoscalingConfig:
     """
 
     def __init__(
-        self, configs: Dict[str, Any], skip_content_hash: bool = False
+        self,
+        configs: Dict[str, Any],
+        skip_content_hash: bool = False,
+        skip_update: bool = False,
     ) -> None:
         """
         Args:
@@ -132,7 +136,10 @@ class AutoscalingConfig:
                 Whether to skip file mounts/ray command hash calculation.
         """
         self._sync_continuously = False
-        self.update_configs(configs, skip_content_hash)
+        if skip_update:
+            self._configs = configs
+        else:
+            self.update_configs(configs, skip_content_hash)
 
     def update_configs(self, configs: Dict[str, Any], skip_content_hash: bool) -> None:
         self._configs = prepare_config(configs)
@@ -409,3 +416,21 @@ class FileConfigReader(IConfigReader):
         with open(self._config_file_path) as f:
             config = yaml.safe_load(f.read())
             return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
+
+
+class KubeRayConfigReader(IConfigReader):
+    """A class that reads cluster config from a K8s RayCluster CR."""
+
+    def __init__(self, config_producer: AutoscalingConfigProducer):
+        self._config_producer = config_producer
+
+    def get_autoscaling_config(self) -> AutoscalingConfig:
+        """
+        Reads the configs from the K8s RayCluster CR and returns the autoscaling config.
+
+        This reads from the K8s API server every time to pick up changes.
+
+        Returns:
+            AutoscalingConfig: The autoscaling config.
+        """
+        return AutoscalingConfig(self._config_producer(), skip_update=True)

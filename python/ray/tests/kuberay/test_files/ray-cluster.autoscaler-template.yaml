@@ -43,6 +43,9 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sh","-c","ray stop"]
+          env:
+            - name: RAY_enable_autoscaler_v2
+              value: "1"
           resources:
             limits:
               cpu: "1"

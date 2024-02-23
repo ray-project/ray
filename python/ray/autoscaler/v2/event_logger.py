@@ -39,9 +39,11 @@ class AutoscalerEventLogger:
 
             log_str = "Adding "
             for idx, (instance_type, count) in enumerate(launch_type_count.items()):
-                log_str += f"{count} {instance_type}"
+                log_str += f"{count} node(s) of type {instance_type}"
                 if idx < len(launch_type_count) - 1:
                     log_str += ", "
+                else:
+                    log_str += "."
 
             self._logger.info(f"{log_str}.")
 

@@ -15,6 +15,16 @@ def main():
     """
     ray.autoscaler.sdk.request_resources(num_cpus=2)
 
+    # get gcs address
+    ctx = ray.get_runtime_context()
+
+    for _ in range(15):
+        import time
+
+        print(ray.autoscaler.v2.sdk.get_cluster_status(ctx.gcs_address))
+
+        time.sleep(1)
+
 
 if __name__ == "__main__":
     ray.init("auto")

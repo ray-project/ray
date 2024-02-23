@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, Optional, Union
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.instance_manager.config import (
     FileConfigReader,
+    IConfigReader,
 )
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 
@@ -65,7 +66,7 @@ class AutoscalerMonitor:
     def __init__(
         self,
         gcs_address: str,
-        autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
+        config_reader: IConfigReader,
         log_dir: str = None,
         monitor_ip: str = None,
     ):
@@ -84,8 +85,6 @@ class AutoscalerMonitor:
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
 
-        self.autoscaling_config = autoscaling_config
-        self.autoscaler = None
         if log_dir:
             try:
                 ray_event_logger = get_event_logger(
@@ -124,10 +123,6 @@ class AutoscalerMonitor:
             logger.warning(
                 "`prometheus_client` not found, so metrics will not be exported."
             )
-
-        config_reader = FileConfigReader(
-            config_file=autoscaling_config, skip_content_hash=True
-        )
 
         self.autoscaler = Autoscaler(
             session_name=self._session_name,
@@ -297,9 +292,13 @@ if __name__ == "__main__":
     if bootstrap_address is None:
         raise ValueError("--gcs-address must be set!")
 
+    config_reader = FileConfigReader(
+        config_file=autoscaling_config, skip_content_hash=True
+    )
+
     monitor = AutoscalerMonitor(
         bootstrap_address,
-        autoscaling_config,
+        config_reader,
         log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,
     )

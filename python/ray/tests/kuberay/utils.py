@@ -288,7 +288,11 @@ def kubectl_exec(
     kubectl_exec_command = (
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
-    out = subprocess.check_output(kubectl_exec_command).decode().strip()
+    out = (
+        subprocess.run(kubectl_exec_command, stdout=subprocess.PIPE)
+        .stdout.decode()
+        .strip()
+    )
     # Print for debugging convenience.
     print(out)
     return out

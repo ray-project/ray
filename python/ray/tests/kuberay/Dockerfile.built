@@ -1,0 +1,10 @@
+# FROM rayproject/ray:nightly-py38
+FROM rayproject/autoscaling_e2e_test_image 
+# Retrieve your development code.
+ADD . ray
+# Install symlinks to your modified Python code.
+# RUN pip install -e ray/python/ -v
+RUN pip install "ray[all]" 
+
+RUN python ray/python/ray/setup-dev.py -y
+
