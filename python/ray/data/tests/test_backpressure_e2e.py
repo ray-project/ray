@@ -1,9 +1,10 @@
 import time
-import numpy as np
-import ray
-import pytest
 import unittest
 
+import numpy as np
+import pytest
+
+import ray
 from ray.data.tests.conftest import *  # noqa
 
 
@@ -61,100 +62,102 @@ def test_large_e2e_backpressure_no_spilling(shutdown_only, restore_data_context)
             last_snapshot,
         )
 
-class TestDeadlockPrevention(unittest.TestCase):
-    """Test backpressure can prevent deadlocks in edge cases."""
 
-    @classmethod
-    def setUpClass(cls):
-        cls._cluster_cpus = 5
-        cls._cluster_object_memory = 500 * 1024 * 1024
-        ray.init(
-            num_cpus=cls._cluster_cpus, object_store_memory=cls._cluster_object_memory
-        )
-        data_context = ray.data.DataContext.get_current()
-        cls._num_blocks = 5
-        cls._block_size = 100 * 1024 * 1024
-        data_context.execution_options.preserve_order = True
+def _build_dataset(
+    obj_store_limit,
+    producer_num_cpus,
+    consumer_num_cpus,
+    num_blocks,
+    block_size,
+):
+    # Create a dataset with 2 operators:
+    # - The producer op has only 1 task, which produces `num_blocks` blocks, each
+    #   of which has `block_size` data.
+    # - The consumer op has `num_blocks` tasks, each of which consumes 1 block.
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_max_block_size = block_size
+    ctx.execution_options.resource_limits.object_store_memory = obj_store_limit
 
-    @classmethod
-    def tearDownClass(cls):
-        data_context = ray.data.DataContext.get_current()
-        data_context.execution_options.preserve_order = False
-        ray.shutdown()
+    def producer(batch):
+        for i in range(num_blocks):
+            print("Producing block", i, time.time())
+            yield {
+                "id": [i],
+                "data": [np.zeros(block_size, dtype=np.uint8)],
+            }
 
-    def _run_dataset(self, producer_num_cpus, consumer_num_cpus):
-        # Create a dataset with 2 operators:
-        # - The producer op has only 1 task, which produces 5 blocks, each of which
-        #   has 100MB data.
-        # - The consumer op has 5 slow tasks, each of which consumes 1 block.
-        # Return the timestamps at the producer and consumer tasks for each block.
-        num_blocks = self._num_blocks
-        block_size = self._block_size
-        ray.data.DataContext.get_current().target_max_block_size = block_size
+    def consumer(batch):
+        assert len(batch["id"]) == 1
+        print("Consuming block", batch["id"][0], time.time())
+        time.sleep(0.01)
+        del batch["data"]
+        return batch
 
-        def producer(batch):
-            for i in range(num_blocks):
-                print("Producing block", i)
-                yield {
-                    "id": [i],
-                    "data": [np.zeros(block_size, dtype=np.uint8)],
-                    "producer_timestamp": [time.time()],
-                }
+    ds = ray.data.range(1, parallelism=1).materialize()
+    ds = ds.map_batches(producer, batch_size=None, num_cpus=producer_num_cpus)
+    ds = ds.map_batches(consumer, batch_size=None, num_cpus=consumer_num_cpus)
+    return ds
 
-        def consumer(batch):
-            assert len(batch["id"]) == 1
-            print("Consuming block", batch["id"][0])
-            batch["consumer_timestamp"] = [time.time()]
-            time.sleep(0.1)
-            del batch["data"]
-            return batch
 
-        ds = ray.data.range(1, parallelism=1).materialize()
-        ds = ds.map_batches(producer, batch_size=None, num_cpus=producer_num_cpus)
-        ds = ds.map_batches(consumer, batch_size=None, num_cpus=consumer_num_cpus)
+@pytest.mark.parametrize(
+    "cluster_cpus, cluster_obj_store_mem_mb",
+    [
+        (3, 500),  # CPU not enough
+        (4, 100),  # Object store memory not enough
+        (3, 100),  # Both not enough
+    ],
+)
+def test_no_deadlock_on_small_cluster_resources(
+    cluster_cpus,
+    cluster_obj_store_mem_mb,
+    shutdown_only,
+    restore_data_context,
+):
+    """Test when cluster resources are not enough for launch one task per op,
+    the execution can still proceed without deadlock.
+    """
+    cluster_obj_store_mem_mb *= 1024**2
+    ray.init(num_cpus=cluster_cpus, object_store_memory=cluster_obj_store_mem_mb)
+    num_blocks = 10
+    block_size = 100 * 1024 * 1024
+    ds = _build_dataset(
+        obj_store_limit=cluster_obj_store_mem_mb // 2,
+        producer_num_cpus=3,
+        consumer_num_cpus=1,
+        num_blocks=num_blocks,
+        block_size=block_size,
+    )
+    assert len(ds.take_all()) == num_blocks
 
-        res = ds.take_all()
-        assert [row["id"] for row in res] == list(range(self._num_blocks))
-        return (
-            [row["producer_timestamp"] for row in res],
-            [row["consumer_timestamp"] for row in res],
-        )
 
-    def test_no_deadlock(self):
-        # The producer needs all 5 CPUs, and the consumer has no CPU to run.
-        # In this case, we shouldn't backpressure the producer and let it run
-        # until it finishes.
-        producer_timestamps, consumer_timestamps = self._run_dataset(
-            producer_num_cpus=5, consumer_num_cpus=1
-        )
-        assert producer_timestamps[-1] < consumer_timestamps[0], (
-            producer_timestamps,
-            consumer_timestamps,
-        )
+def test_no_deadlock_on_resource_contention(shutdown_only, restore_data_context):
+    """Test when resources are preempted by non-Data code, the execution can
+    still proceed without deadlock."""
+    cluster_obj_store_mem = 1000 * 1024 * 1024
+    ray.init(num_cpus=5, object_store_memory=cluster_obj_store_mem)
+    # Create a non-Data actor that uses 4 CPUs, only 1 CPU
+    # is left for Data. Currently Data StreamExecutor still
+    # incorrectly assumes it has all the 5 CPUs.
+    # Check that we don't deadlock in this case.
 
-    def test_no_deadlock_for_resource_contention(self):
-        """Test no deadlock in case of resource contention from
-        non-Data code."""
-        # Create a non-Data actor that uses 4 CPUs, only 1 CPU
-        # is left for Data. Currently Data StreamExecutor still
-        # incorrectly assumes it has all the 5 CPUs.
-        # Check that we don't deadlock in this case.
+    @ray.remote(num_cpus=4)
+    class DummyActor:
+        def foo(self):
+            return None
 
-        @ray.remote(num_cpus=4)
-        class DummyActor:
-            def foo(self):
-                return None
+    dummy_actor = DummyActor.remote()
+    ray.get(dummy_actor.foo.remote())
 
-        dummy_actor = DummyActor.remote()
-        ray.get(dummy_actor.foo.remote())
-
-        producer_timestamps, consumer_timestamps = self._run_dataset(
-            producer_num_cpus=1, consumer_num_cpus=0.9
-        )
-        assert producer_timestamps[-1] < consumer_timestamps[0], (
-            producer_timestamps,
-            consumer_timestamps,
-        )
+    num_blocks = 10
+    block_size = 50 * 1024 * 1024
+    ds = _build_dataset(
+        obj_store_limit=cluster_obj_store_mem // 2,
+        producer_num_cpus=1,
+        consumer_num_cpus=0.9,
+        num_blocks=num_blocks,
+        block_size=block_size,
+    )
+    assert len(ds.take_all()) == num_blocks
 
 
 if __name__ == "__main__":

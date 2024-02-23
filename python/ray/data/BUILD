@@ -553,3 +553,11 @@ py_test(
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_backpressure_e2e",
+    size = "medium",
+    srcs = ["tests/test_backpressure_e2e.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
