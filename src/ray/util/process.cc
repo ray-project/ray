@@ -229,12 +229,7 @@ class ProcessFD {
         dup2(parent_lifetime_pipe[0], STDIN_FILENO);
       }
 
-      // This is the spawned process. Any intermediate parent is now dead.
-      pid_t my_pid = getpid();
-      if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvpe(
-            argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
-      }
+      execvpe(argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
     // Parent process case
