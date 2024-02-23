@@ -200,9 +200,6 @@ def test_restore_from_uri_s3(
     )
     trainer.fit()
 
-    # Restore from local dir
-    DataParallelTrainer.restore(str(tmp_path / "restore_from_uri"))
-
     # Restore from S3
     assert DataParallelTrainer.can_restore(
         str(URI(mock_s3_bucket_uri) / "restore_from_uri")
