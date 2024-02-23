@@ -123,7 +123,6 @@ def _get_config_docker_oci(tag: str, namespace: str, repository: str):
 
 
 def _get_image_creation_time(tag: str) -> datetime:
-    print(tag.split("/"))
     namespace, repo_tag = tag.split("/")
     repository, tag = repo_tag.split(":")
     config = _get_config_docker_oci(tag=tag, namespace=namespace, repository=repository)
