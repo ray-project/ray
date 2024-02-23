@@ -5,7 +5,6 @@ from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.dataset_logger import SystemException, UserCodeException
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -86,10 +85,6 @@ try:
 except ModuleNotFoundError:
     pass
 
-# Modify the wrapped exceptions emitted by Ray Data, so that
-# the logged exceptions are from the top-level Ray Data module.
-UserCodeException.__module__ = __name__
-SystemException.__module__ = __name__
 
 __all__ = [
     "ActorPoolStrategy",
@@ -137,7 +132,5 @@ __all__ = [
     "read_tfrecords",
     "read_webdataset",
     "set_progress_bars",
-    "SystemException",
     "Preprocessor",
-    "UserCodeException",
 ]

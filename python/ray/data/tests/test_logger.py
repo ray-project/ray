@@ -7,7 +7,8 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger, UserCodeException
+from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data.exceptions import SystemException, UserCodeException
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
@@ -48,7 +49,7 @@ def test_dataset_logger(shutdown_only):
 def check_full_stack_trace_logged_to_file():
     # Checks that the prefix text for the full stack trace is present
     # in the Ray Data log file.
-    log_path = ray.data._internal.dataset_logger.data_exception_logger._log_path
+    log_path = ray.data.exceptions.data_exception_logger._log_file_path
     with open(log_path, "r") as file:
         data = file.read()
         assert "Full stack trace:" in data
@@ -73,7 +74,7 @@ def test_omit_traceback_stdout_user_exception(ray_start_regular_shared):
         return x
 
     def run_with_patch():
-        with pytest.raises(ZeroDivisionError) as exc_info:
+        with pytest.raises(UserCodeException) as exc_info:
             ray.data.range(10).map(f).take_all()
         return exc_info
 
@@ -100,23 +101,21 @@ def test_omit_traceback_stdout_system_exception(ray_start_regular_shared):
         pass
 
     def run_with_patch():
-        with patch(
-            (
-                "ray.data._internal.execution.legacy_compat."
-                "get_legacy_lazy_block_list_read_only"
-            ),
-            side_effect=FakeException("fake exception"),
-        ):
-            with pytest.raises(FakeException, match="fake exception") as exc_info:
+        with pytest.raises(SystemException) as exc_info:
+            with patch(
+                (
+                    "ray.data._internal.execution.legacy_compat."
+                    "get_legacy_lazy_block_list_read_only"
+                ),
+                side_effect=FakeException("fake exception"),
+            ):
                 ray.data.range(10).materialize()
         return exc_info
 
     # Mock `ExecutionPlan.execute()` to raise an exception, to emulate
     # an error in internal Ray Data code.
     with patch.object(logging.Logger, "error") as mock_logger:
-        exc_info = run_with_patch()
-        assert issubclass(exc_info.type, FakeException)
-
+        run_with_patch()
         check_exception_text_logged_to_stdout(
             "Exception occurred in Ray Data or Ray Core internal code.",
             mock_logger.mock_calls,

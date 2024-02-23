@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_logger import DatasetLogger, omit_traceback_stdout
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
@@ -15,6 +15,7 @@ from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.exceptions import omit_traceback_stdout
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 
