@@ -338,12 +338,6 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     """Resuming unfinished trials should pick up existing state"""
     monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
 
-    # TODO(justinvyu): Setting storage_path to this tempdir causes this test to fail.
-    # This is because the error raised by the driver callback doesn't let the
-    # experiment sync happen (from ~/ray_results -> tmpdir). This would also
-    # be the case for real cloud syncing.
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
-
     fail_marker = tmpdir / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
@@ -405,9 +399,6 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
     """Not resuming unfinished trials (but only errored and pending) should work"""
     monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
 
-    # TODO(justinvyu): Same as above.
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
-
     fail_marker = tmpdir / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
@@ -466,11 +457,8 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-def _test_tuner_restore_from_cloud(
-    tmpdir, configure_storage_path, storage_path, monkeypatch
-):
+def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path):
     """Check that restoring Tuner() objects from cloud storage works"""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir / "ray_results"))
     tuner = Tuner(
         _dummy_train_fn,
         run_config=RunConfig(name="exp_dir", storage_path=configure_storage_path),
@@ -487,34 +475,24 @@ def _test_tuner_restore_from_cloud(
     prev_cp = _find_newest_experiment_checkpoint(str(check_path / "exp_dir"))
     prev_lstat = os.lstat(prev_cp)
 
-    (tmpdir / "ray_results").remove(ignore_errors=True)
-
     tuner2 = Tuner.restore(
         str(URI(storage_path) / "exp_dir"), trainable=_dummy_train_fn
     )
     results = tuner2.fit()
 
     assert results[0].metrics["_metric"] == 1
-    local_contents = os.listdir(tmpdir / "ray_results" / "exp_dir")
-    assert "tuner.pkl" in local_contents
 
-    after_cp = _find_newest_experiment_checkpoint(
-        str(tmpdir / "ray_results" / "exp_dir")
-    )
+    check_path_2 = tmpdir / "check_save_2"
+    _download_from_fs_path(fs=fs, fs_path=fs_path, local_path=str(check_path_2))
+    after_cp = _find_newest_experiment_checkpoint(str(check_path_2 / "exp_dir"))
     after_lstat = os.lstat(after_cp)
 
     # Experiment checkpoint was updated
     assert os.path.basename(prev_cp) != os.path.basename(after_cp)
     # Old experiment checkpoint still exists in dir
-    assert os.path.basename(prev_cp) in local_contents
+    assert os.path.basename(prev_cp) in os.listdir(check_path_2 / "exp_dir")
     # Contents changed
     assert prev_lstat.st_size != after_lstat.st_size
-
-    # Overwriting should work
-    tuner3 = Tuner.restore(
-        str(URI(storage_path) / "exp_dir"), trainable=_dummy_train_fn
-    )
-    tuner3.fit()
 
 
 def test_tuner_restore_from_cloud_manual_path(
@@ -528,7 +506,6 @@ def test_tuner_restore_from_cloud_manual_path(
     )
 
 
-@pytest.mark.skip("Hanging due to some problem with ray storage.")
 def test_tuner_restore_from_cloud_ray_storage(
     ray_shutdown, tmpdir, mock_s3_bucket_uri, monkeypatch
 ):
@@ -555,7 +532,7 @@ def test_tuner_restore_latest_available_checkpoint(
 
 
 @pytest.mark.parametrize("retry_num", [0, 2])
-def test_restore_retry(ray_start_2_cpus, tmpdir, monkeypatch, retry_num):
+def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
     """Test retrying restore on a trial level by setting `TUNE_RESTORE_RETRY_NUM`."""
 
     class MockTrainable(Trainable):
@@ -743,14 +720,13 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
     assert not results.errors
 
 
-@pytest.mark.parametrize("use_tune_run", [True])
+@pytest.mark.parametrize("use_tune_run", [True, False])
 def test_tuner_restore_from_moved_experiment_path(
     ray_start_2_cpus, tmp_path, use_tune_run
 ):
     """Check that restoring a Tuner from a moved experiment directory works."""
     # Create a fail_marker dummy file that causes the first Tune run to fail and
     # the second run to succeed
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = str(tmp_path / "local_dir")
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
