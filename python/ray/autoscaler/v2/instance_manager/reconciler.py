@@ -426,15 +426,13 @@ class Reconciler:
             _logger=_logger or logger,
         )
 
-        if Reconciler._is_head_node_running(instance_manager):
-            # We shouldn't be scaling the cluster until the head node is ready.
-            Reconciler._scale_cluster(
-                autoscaling_state=autoscaling_state,
-                instance_manager=instance_manager,
-                ray_state=ray_cluster_resource_state,
-                scheduler=scheduler,
-                autoscaling_config=autoscaling_config,
-            )
+        Reconciler._scale_cluster(
+            autoscaling_state=autoscaling_state,
+            instance_manager=instance_manager,
+            ray_state=ray_cluster_resource_state,
+            scheduler=scheduler,
+            autoscaling_config=autoscaling_config,
+        )
 
         Reconciler._handle_instances_launch(
             instance_manager=instance_manager, autoscaling_config=autoscaling_config
@@ -1295,6 +1293,11 @@ class Reconciler:
             reply.infeasible_cluster_resource_constraints
         )
 
+        if not Reconciler._is_head_node_running(instance_manager):
+            # We shouldn't be scaling the cluster until the head node is ready.
+            return
+
+        # Scale the clusters if needed.
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
         updates = {}
