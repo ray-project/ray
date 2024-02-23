@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -430,8 +430,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 return True
             # Case 2: the downstream operator has reserved the minimum resources, but
             # the resources are preempted by non-Data tasks or actors.
-            # We don't have a good way to detect this case, so we'll unblock backpressure
-            # when the downstream operator has been idle for a while.
+            # We don't have a good way to detect this case, so we'll unblock
+            # backpressure when the downstream operator has been idle for a while.
             cur_time = time.time()
             idle_info = self._idle_info[next_op]
             if (

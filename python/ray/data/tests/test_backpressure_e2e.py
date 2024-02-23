@@ -1,15 +1,23 @@
 import time
-import unittest
 
 import numpy as np
 import pytest
 
 import ray
-from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import restore_data_context  # noqa: F401
+from ray.data.tests.conftest import (
+    CoreExecutionMetrics,
+    assert_core_execution_metrics_equals,
+    get_initial_core_execution_metrics_snapshot,
+)
+from ray.tests.conftest import shutdown_only  # noqa: F401
 
 
-def test_large_e2e_backpressure_no_spilling(shutdown_only, restore_data_context):
-    """Test backpressure can prevent object spilling on a synthetic large-scale workload."""
+def test_large_e2e_backpressure_no_spilling(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    """Test backpressure can prevent object spilling on a synthetic large-scale
+    workload."""
     # The cluster has 10 CPUs and 200MB object store memory.
     #
     # Each produce task generates 10 blocks, each of which has 10MB data.
@@ -110,8 +118,8 @@ def _build_dataset(
 def test_no_deadlock_on_small_cluster_resources(
     cluster_cpus,
     cluster_obj_store_mem_mb,
-    shutdown_only,
-    restore_data_context,
+    shutdown_only,  # noqa: F811
+    restore_data_context,  # noqa: F811
 ):
     """Test when cluster resources are not enough for launch one task per op,
     the execution can still proceed without deadlock.
@@ -130,7 +138,9 @@ def test_no_deadlock_on_small_cluster_resources(
     assert len(ds.take_all()) == num_blocks
 
 
-def test_no_deadlock_on_resource_contention(shutdown_only, restore_data_context):
+def test_no_deadlock_on_resource_contention(
+    shutdown_only, restore_data_context  # noqa: F811
+):
     """Test when resources are preempted by non-Data code, the execution can
     still proceed without deadlock."""
     cluster_obj_store_mem = 1000 * 1024 * 1024
