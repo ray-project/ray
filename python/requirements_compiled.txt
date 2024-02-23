@@ -1293,7 +1293,7 @@ oauthlib==3.2.2
     # via
     #   databricks-cli
     #   requests-oauthlib
-onnx==1.12.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   tf2onnx
