@@ -256,13 +256,13 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         table.validate()
     else:
         # No extension array columns, so use built-in pyarrow.concat_tables.
-        if parse_version(_get_pyarrow_version()) < parse_version("14.0.0"):
+        if parse_version(_get_pyarrow_version()) >= parse_version("14.0.0"):
             # `promote` was superseded by `promote_options='default'` in Arrow 14. To
             # prevent `FutureWarning`s, we manually check the Arrow version and use the
             # appropriate parameter.
-            table = pyarrow.concat_tables(blocks, promote=True)
-        else:
             table = pyarrow.concat_tables(blocks, promote_options="default")
+        else:
+            table = pyarrow.concat_tables(blocks, promote=True)
     return table
 
 
