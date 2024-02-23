@@ -194,6 +194,7 @@ public class DeploymentConfig implements Serializable {
         io.ray.serve.generated.DeploymentConfig.newBuilder()
             .setNumReplicas(numReplicas)
             .setMaxConcurrentQueries(maxConcurrentQueries)
+            .setMaxQueuedRequests(-1)
             .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)

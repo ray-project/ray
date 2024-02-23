@@ -1,6 +1,7 @@
 import logging
 import tempfile
 
+import numpy as np
 import pytest
 
 import ray
@@ -184,6 +185,18 @@ def test_data_context_propagation(ray_start_4_cpus):
         train_loop=training_loop,
         datasets={"train": ray.data.range(10)},
     )
+    trainer.fit()
+
+
+def test_large_params(ray_start_4_cpus):
+    """Tests that large params are not serialized with the trainer actor
+    and are instead put into the object store separately."""
+    huge_array = np.zeros(shape=int(1e8))
+
+    def training_loop(self):
+        huge_array
+
+    trainer = DummyTrainer(training_loop)
     trainer.fit()
 
 

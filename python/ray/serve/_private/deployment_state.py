@@ -36,6 +36,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -334,6 +335,10 @@ class ActorReplicaWrapper:
     @property
     def max_concurrent_queries(self) -> int:
         return self.deployment_config.max_concurrent_queries
+
+    @property
+    def max_queued_requests(self) -> int:
+        return self.deployment_config.max_queued_requests
 
     @property
     def graceful_shutdown_timeout_s(self) -> float:
@@ -1274,8 +1279,8 @@ class DeploymentState:
         # time we checked.
         self._multiplexed_model_ids_updated = False
 
-        self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
-        self._last_notified_autoscaling_config = None
+        self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_broadcasted_deployment_config = None
 
     @property
     def autoscaling_policy_manager(self) -> AutoscalingPolicyManager:
@@ -1396,10 +1401,19 @@ class DeploymentState:
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
 
-    def notify_running_replicas_changed(self) -> None:
+    def broadcast_running_replicas_if_changed(self) -> None:
+        """Broadcasts the set of running replicas over long poll if it has changed.
+
+        Keeps an in-memory record of the last set of running replicas that was broadcast
+        to determine if it has changed.
+
+        The set will also be broadcast if any replicas have an updated set of
+        multiplexed model IDs.
+        """
         running_replica_infos = self.get_running_replica_infos()
         if (
-            set(self._last_notified_running_replica_infos) == set(running_replica_infos)
+            set(self._last_broadcasted_running_replica_infos)
+            == set(running_replica_infos)
             and not self._multiplexed_model_ids_updated
         ):
             return
@@ -1416,22 +1430,25 @@ class DeploymentState:
             (LongPollNamespace.RUNNING_REPLICAS, self._id.name),
             running_replica_infos,
         )
-        self._last_notified_running_replica_infos = running_replica_infos
+        self._last_broadcasted_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
 
-    def notify_autoscaling_config_changed(self) -> None:
-        current_autoscaling_config = (
-            self._target_state.info.deployment_config.autoscaling_config
-        )
-        if self._last_notified_autoscaling_config == current_autoscaling_config:
+    def broadcast_deployment_config_if_changed(self) -> None:
+        """Broadcasts the deployment config over long poll if it has changed.
+
+        Keeps an in-memory record of the last config that was broadcast to determine
+        if it has changed.
+        """
+        current_deployment_config = self._target_state.info.deployment_config
+        if self._last_broadcasted_deployment_config == current_deployment_config:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.AUTOSCALING_CONFIG, self._id),
-            current_autoscaling_config,
+            (LongPollNamespace.DEPLOYMENT_CONFIG, self._id),
+            current_deployment_config,
         )
 
-        self._last_notified_autoscaling_config = current_autoscaling_config
+        self._last_broadcasted_deployment_config = current_deployment_config
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
@@ -1867,13 +1884,12 @@ class DeploymentState:
             return (upscale, downscale)
 
         elif delta_replicas > 0:
-            # Don't ever exceed self._target_state.target_num_replicas.
-            stopping_replicas = self._replicas.count(
-                states=[
-                    ReplicaState.STOPPING,
-                ]
-            )
-            to_add = max(delta_replicas - stopping_replicas, 0)
+            to_add = delta_replicas
+            if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+                # Don't ever exceed target_num_replicas.
+                stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
+                to_add = max(delta_replicas - stopping_replicas, 0)
+
             if to_add > 0:
                 # Exponential backoff
                 failed_to_start_threshold = min(
@@ -2712,8 +2728,8 @@ class DeploymentStateManager:
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
 
         for deployment_state in self._deployment_states.values():
-            deployment_state.notify_running_replicas_changed()
-            deployment_state.notify_autoscaling_config_changed()
+            deployment_state.broadcast_running_replicas_if_changed()
+            deployment_state.broadcast_deployment_config_if_changed()
 
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)

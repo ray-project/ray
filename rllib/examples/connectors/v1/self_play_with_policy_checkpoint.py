@@ -14,7 +14,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
-from ray.rllib.examples.connectors.prepare_checkpoint import (
+from ray.rllib.examples.connectors.v1.prepare_checkpoint import (
     create_open_spiel_checkpoint,
 )
 from ray.rllib.policy.policy import Policy

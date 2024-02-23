@@ -366,6 +366,11 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
             "The resources dictionary must not "
             "contain the key 'memory' or 'object_store_memory'"
         )
+    elif "bundle" in resources:
+        raise ValueError(
+            "The resource should not include `bundle` which "
+            f"is reserved for Ray. resources: {resources}"
+        )
 
     num_cpus = options_dict.get("num_cpus")
     num_gpus = options_dict.get("num_gpus")
@@ -602,49 +607,38 @@ def get_num_cpus(
 
 
 # TODO(clarng): merge code with c++
-def get_cgroupv1_used_memory(memory_stat_filename, memory_usage_filename):
+def get_cgroup_used_memory(
+    memory_stat_filename: str,
+    memory_usage_filename: str,
+    inactive_file_key: str,
+    active_file_key: str,
+):
     """
-    The calculation logic is the same with `GetCGroupV1MemoryUsedBytes`
+    The calculation logic is the same with `GetCGroupMemoryUsedBytes`
     in `memory_monitor.cc` file.
     """
-    total_cache_bytes = -1
-    shmem_used_bytes = -1
+    inactive_file_bytes = -1
+    active_file_bytes = -1
     with open(memory_stat_filename, "r") as f:
         lines = f.readlines()
         for line in lines:
-            if "total_cache " in line:
-                total_cache_bytes = int(line.split()[1])
-            elif "total_shmem " in line:
-                shmem_used_bytes = int(line.split()[1])
+            if f"{inactive_file_key} " in line:
+                inactive_file_bytes = int(line.split()[1])
+            elif f"{active_file_key} " in line:
+                active_file_bytes = int(line.split()[1])
 
     with open(memory_usage_filename, "r") as f:
         lines = f.readlines()
         cgroup_usage_in_bytes = int(lines[0].strip())
 
-    if total_cache_bytes == -1 or cgroup_usage_in_bytes == -1 or shmem_used_bytes == -1:
+    if (
+        inactive_file_bytes == -1
+        or cgroup_usage_in_bytes == -1
+        or active_file_bytes == -1
+    ):
         return None
 
-    return cgroup_usage_in_bytes - (total_cache_bytes - shmem_used_bytes)
-
-
-def get_cgroupv2_used_memory(stat_file, usage_file):
-    # Uses same calculation as libcontainer, that is:
-    # memory.current - memory.stat[inactive_file]
-    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
-    inactive_file_bytes = -1
-    current_usage = -1
-    with open(usage_file, "r") as f:
-        current_usage = int(f.read().strip())
-    with open(stat_file, "r") as f:
-        lines = f.readlines()
-        for line in lines:
-            if "inactive_file" in line:
-                inactive_file_bytes = int(line.split()[1])
-        if current_usage >= 0 and inactive_file_bytes >= 0:
-            working_set = current_usage - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
-        return None
+    return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
 def get_used_memory():
@@ -657,21 +651,28 @@ def get_used_memory():
     # container.
     docker_usage = None
     # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-    memory_stat_filename = "/sys/fs/cgroup/memory/memory.stat"
+    memory_usage_filename_v1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    memory_stat_filename_v1 = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
     memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
-    if os.path.exists(memory_usage_filename):
-        docker_usage = get_cgroupv1_used_memory(
-            memory_stat_filename,
-            memory_usage_filename,
+    if os.path.exists(memory_usage_filename_v1) and os.path.exists(
+        memory_stat_filename_v1
+    ):
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v1,
+            memory_usage_filename_v1,
+            "total_inactive_file",
+            "total_active_file",
         )
     elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
         memory_stat_filename_v2
     ):
-        docker_usage = get_cgroupv2_used_memory(
-            memory_stat_filename_v2, memory_usage_filename_v2
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v2,
+            memory_usage_filename_v2,
+            "inactive_file",
+            "active_file",
         )
 
     if docker_usage is not None:
@@ -2014,6 +2015,13 @@ def pasre_pg_formatted_resources_to_original(
     for key, value in pg_formatted_resources.items():
         result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 2:
+            # Filter out resources that have bundle_group_[pg_id] since
+            # it is an implementation detail.
+            # This resource is automatically added to the resource
+            # request for all tasks that require placement groups.
+            if result.group(1) == "bundle":
+                continue
+
             original_resources[result.group(1)] = value
             continue
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
