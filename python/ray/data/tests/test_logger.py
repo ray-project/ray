@@ -101,7 +101,7 @@ def test_omit_traceback_stdout_system_exception(ray_start_regular_shared):
         pass
 
     def run_with_patch():
-        with pytest.raises(SystemException) as exc_info:
+        with pytest.raises(FakeException) as exc_info:
             with patch(
                 (
                     "ray.data._internal.execution.legacy_compat."
@@ -110,7 +110,8 @@ def test_omit_traceback_stdout_system_exception(ray_start_regular_shared):
                 side_effect=FakeException("fake exception"),
             ):
                 ray.data.range(10).materialize()
-        return exc_info
+            assert issubclass(exc_info.type, FakeException)
+            assert issubclass(exc_info.type, SystemException)
 
     # Mock `ExecutionPlan.execute()` to raise an exception, to emulate
     # an error in internal Ray Data code.

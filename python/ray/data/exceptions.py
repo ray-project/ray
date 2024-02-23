@@ -79,6 +79,6 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             if is_user_code_exception:
                 raise e.with_traceback(None)
             else:
-                raise SystemException() from e
+                raise e.with_traceback(None) from SystemException()
 
     return handle_trace
