@@ -38,7 +38,7 @@ class AuthTokenException(Exception):
         super().__init__(f"Failed to retrieve auth token from {message}.")
 
 
-def get_docker_auth_token(namespace: str, repository: str) -> Optional[str]:
+def _get_docker_auth_token(namespace: str, repository: str) -> Optional[str]:
     service, scope = (
         "registry.docker.io",
         f"repository:{namespace}/{repository}:pull",
@@ -51,9 +51,7 @@ def get_docker_auth_token(namespace: str, repository: str) -> Optional[str]:
     return token
 
 
-def get_docker_hub_auth_token(username: str, password: str) -> Optional[str]:
-    """Retrieve Docker Hub auth token."""
-
+def _get_docker_hub_auth_token(username: str, password: str) -> Optional[str]:
     url = "https://hub.docker.com/v2/users/login"
     json_body = {
         "username": username,
@@ -78,7 +76,7 @@ def _get_git_log(n_days: int = 30) -> str:
     )
 
 
-def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
+def _list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
     """
     Get list of recent commit SHAs (short version) on ray master branch.
 
@@ -95,9 +93,9 @@ def list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
     return short_commit_shas
 
 
-def get_config_docker_oci(tag: str, namespace: str, repository: str):
+def _get_config_docker_oci(tag: str, namespace: str, repository: str):
     """Get Docker image config from tag using OCI API."""
-    token = get_docker_auth_token(namespace, repository)
+    token = _get_docker_auth_token(namespace, repository)
 
     # Pull image manifest to get config digest
     headers = {
@@ -124,34 +122,17 @@ def get_config_docker_oci(tag: str, namespace: str, repository: str):
     return response.json()
 
 
-def get_image_creation_time(tag: str) -> datetime:
-    """
-    Get Docker image creation time from tag image config.
-
-    Args:
-        tag: Docker tag name
-
-    Returns:
-        Datetime object of image creation time.
-    """
+def _get_image_creation_time(tag: str) -> datetime:
     namespace, repo_tag = tag.split("/")
     repository, tag = repo_tag.split(":")
-    config = get_config_docker_oci(tag=tag, namespace=namespace, repository=repository)
+    config = _get_config_docker_oci(tag=tag, namespace=namespace, repository=repository)
     if "created" not in config:
         raise RetrieveImageConfigException("image creation time.")
     return parser.isoparse(config["created"])
 
 
 def delete_tag(tag: str, docker_hub_token: str) -> bool:
-    """
-    Delete tag from Docker Hub repo.
-
-    Args:
-        tag: Docker tag name
-        docker_hub_token: Docker Hub auth token
-    Returns:
-        True if tag was deleted successfully, False otherwise.
-    """
+    """Delete tag from Docker Hub repo."""
     headers = {
         "Authorization": f"Bearer {docker_hub_token}",
     }
@@ -241,7 +222,7 @@ def query_tags_from_docker_with_oci(namespace: str, repository: str) -> List[str
     Returns:
         List of tags from Docker Registry in format namespace/repository:tag.
     """
-    token = get_docker_auth_token(namespace, repository)
+    token = _get_docker_auth_token(namespace, repository)
     headers = {
         "Authorization": f"Bearer {token}",
     }

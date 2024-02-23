@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 import pytest
 
 from ci.ray_ci.automation.docker_tags_lib import (
-    get_docker_auth_token,
-    get_docker_hub_auth_token,
-    get_image_creation_time,
+    _get_docker_auth_token,
+    _get_docker_hub_auth_token,
+    _get_image_creation_time,
     delete_tag,
-    list_recent_commit_short_shas,
+    _list_recent_commit_short_shas,
     query_tags_from_docker_hub,
     query_tags_from_docker_with_oci,
     AuthTokenException,
@@ -25,7 +25,7 @@ def test_get_docker_auth_token(mock_requests):
         status_code=200, json=mock.MagicMock(return_value={"token": "test_token"})
     )
 
-    token = get_docker_auth_token(namespace, repository)
+    token = _get_docker_auth_token(namespace, repository)
 
     assert mock_requests.call_count == 1
     assert (
@@ -43,7 +43,7 @@ def test_get_docker_auth_token_no_token(mock_requests):
         status_code=200, json=mock.MagicMock(return_value={})
     )
 
-    token = get_docker_auth_token(namespace, repository)
+    token = _get_docker_auth_token(namespace, repository)
 
     assert mock_requests.call_count == 1
     assert (
@@ -62,7 +62,7 @@ def test_get_docker_auth_token_failure(mock_requests):
     )
 
     with pytest.raises(AuthTokenException, match="Docker. Error code: 400"):
-        get_docker_auth_token(namespace, repository)
+        _get_docker_auth_token(namespace, repository)
 
 
 @mock.patch("requests.post")
@@ -71,7 +71,7 @@ def test_get_docker_hub_auth_token(mock_requests):
         status_code=200, json=mock.MagicMock(return_value={"token": "test_token"})
     )
 
-    token = get_docker_hub_auth_token(
+    token = _get_docker_hub_auth_token(
         username="test_username", password="test_password"
     )
 
@@ -92,14 +92,14 @@ def test_get_docker_hub_auth_token_failure(mock_requests):
     )
 
     with pytest.raises(AuthTokenException, match="Docker Hub. Error code: 400"):
-        get_docker_hub_auth_token(username="test_username", password="test_password")
+        _get_docker_hub_auth_token(username="test_username", password="test_password")
 
 
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._get_git_log")
 def test_list_recent_commit_short_shas(mock_git_log):
     mock_git_log.return_value = "a1b2c3\nq2w3e4\nt5y678"
 
-    shas = list_recent_commit_short_shas()
+    shas = _list_recent_commit_short_shas()
 
     assert mock_git_log.call_count == 1
     assert shas == ["a1b2c3", "q2w3e4", "t5y678"]
@@ -109,20 +109,20 @@ def test_list_recent_commit_short_shas(mock_git_log):
 def test_list_recent_commit_short_shas_empty(mock_git_log):
     mock_git_log.return_value = ""
 
-    shas = list_recent_commit_short_shas(n_days=30)
+    shas = _list_recent_commit_short_shas(n_days=30)
 
     mock_git_log.assert_called_once_with(n_days=30)
     assert shas == []
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._get_config_docker_oci")
 def test_get_image_creation_time(mock_config_docker_oci):
     mock_config_docker_oci.return_value = {
         "architecture": "amd64",
         "created": "2024-01-26T23:00:00.000000000Z",
         "variant": "v1",
     }
-    created_time = get_image_creation_time(tag="test_namespace/test_repo:test_tag")
+    created_time = _get_image_creation_time(tag="test_namespace/test_repo:test_tag")
 
     mock_config_docker_oci.assert_called_once_with(
         tag="test_tag", namespace="test_namespace", repository="test_repo"
@@ -130,24 +130,24 @@ def test_get_image_creation_time(mock_config_docker_oci):
     assert created_time == datetime(2024, 1, 26, 23, 0, tzinfo=timezone.utc)
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._get_config_docker_oci")
 def test_get_image_creation_time_failure_unknown(mock_config_docker_oci):
     mock_config_docker_oci.side_effect = RetrieveImageConfigException(
         "Failed to retrieve image config."
     )
 
     with pytest.raises(RetrieveImageConfigException):
-        get_image_creation_time(tag="test_namespace/test_repo:test_tag")
+        _get_image_creation_time(tag="test_namespace/test_repo:test_tag")
     mock_config_docker_oci.assert_called_once_with(
         tag="test_tag", namespace="test_namespace", repository="test_repo"
     )
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_config_docker_oci")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._get_config_docker_oci")
 def test_get_image_creation_time_failure_no_create_time(mock_config_docker_oci):
     mock_config_docker_oci.return_value = {"architecture": "amd64", "variant": "v1"}
     with pytest.raises(RetrieveImageConfigException):
-        get_image_creation_time(tag="test_namespace/test_repo:test_tag")
+        _get_image_creation_time(tag="test_namespace/test_repo:test_tag")
     mock_config_docker_oci.assert_called_once_with(
         tag="test_tag", namespace="test_namespace", repository="test_repo"
     )
@@ -303,7 +303,7 @@ def test_query_tags_from_docker_hub_failure(
     assert queried_tags == expected_tags
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_auth_token")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._get_docker_auth_token")
 @mock.patch("requests.get")
 def test_query_tags_from_docker_with_oci(mock_requests, mock_get_token):
     mock_get_token.return_value = "test_token"
@@ -324,7 +324,7 @@ def test_query_tags_from_docker_with_oci(mock_requests, mock_get_token):
     ]
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_docker_auth_token")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._get_docker_auth_token")
 @mock.patch("requests.get")
 def test_query_tags_from_docker_with_oci_failure(mock_requests, mock_get_token):
     mock_get_token.return_value = "test_token"
