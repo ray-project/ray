@@ -17,7 +17,6 @@ ARCHITECTURE = [
     "aarch64",
 ]
 PYTHON_VERSIONS = {
-    "3.8": PythonVersionInfo(bin_path="cp38-cp38"),
     "3.9": PythonVersionInfo(bin_path="cp39-cp39"),
     "3.10": PythonVersionInfo(bin_path="cp310-cp310"),
     "3.11": PythonVersionInfo(bin_path="cp311-cp311"),
