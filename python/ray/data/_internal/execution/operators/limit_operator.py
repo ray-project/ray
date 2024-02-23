@@ -75,6 +75,7 @@ class LimitOperator(OneToOneOperator):
             owns_blocks=refs.owns_blocks,
         )
         self._buffer.append(out_refs)
+        self._metrics.on_output_queued(out_refs)
         if self._limit_reached():
             self.mark_execution_completed()
 
@@ -98,7 +99,9 @@ class LimitOperator(OneToOneOperator):
         return len(self._buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        return self._buffer.popleft()
+        output = self._buffer.popleft()
+        self._metrics.on_output_dequeued(output)
+        return output
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}

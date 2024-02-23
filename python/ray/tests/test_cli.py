@@ -29,6 +29,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import moto
@@ -976,6 +977,148 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
         _check_output_via_pattern("test_ray_status_multinode.txt", result)
     else:
         _check_output_via_pattern("test_ray_status_multinode_v1.txt", result)
+
+
+def test_ray_drain_node():
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+            "--deadline-remaining-seconds",
+            "-1",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "--deadline-remaining-seconds cannot be negative, got -1" in result.output
+
+    # Test invalid drain reason.
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            "--reason",
+            "DRAIN_NODE_REASON_INVALID",
+            "--reason-message",
+            "idle termination",
+        ],
+    )
+    assert result.exit_code != 0
+    assert (
+        "is not one of 'DRAIN_NODE_REASON_IDLE_TERMINATION', "
+        "'DRAIN_NODE_REASON_PREEMPTION'" in result.output
+    )
+
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--address",
+            "127.0.0.2:8888",
+            "--node-id",
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Ray cluster is not found at 127.0.0.2:8888" in result.output
+
+    result = runner.invoke(
+        scripts.drain_node,
+        [
+            "--node-id",
+            "invalid-node-id",
+            "--reason",
+            "DRAIN_NODE_REASON_IDLE_TERMINATION",
+            "--reason-message",
+            "idle termination",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Invalid hex ID of a Ray node, got invalid-node-id" in result.output
+
+    with patch("ray._raylet.check_health", return_value=True), patch(
+        "ray._raylet.GcsClient"
+    ) as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_IDLE_TERMINATION",
+                "--reason-message",
+                "idle termination",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[0] == mock.call.drain_node(
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            1,
+            "idle termination",
+            0,
+        )
+
+    with patch("ray._raylet.check_health", return_value=True), patch(
+        "ray._raylet.GcsClient"
+    ) as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.drain_node.return_value = (False, "Node not idle")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_IDLE_TERMINATION",
+                "--reason-message",
+                "idle termination",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "The drain request is not accepted: Node not idle" in result.output
+
+    with patch("ray._raylet.check_health", return_value=True), patch(
+        "time.time_ns", return_value=1000000000
+    ), patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_PREEMPTION",
+                "--reason-message",
+                "spot preemption",
+                "--deadline-remaining-seconds",
+                "1",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[0] == mock.call.drain_node(
+            "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+            2,
+            "spot preemption",
+            2000,
+        )
 
 
 @pytest.mark.skipif(

@@ -85,6 +85,14 @@ class ActorPoolMapOperator(MapOperator):
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        data_context = DataContext.get_current()
+        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
+                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+            )
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -171,6 +179,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def _add_bundled_input(self, bundle: RefBundle):
         self._bundle_queue.append(bundle)
+        self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
 
@@ -193,6 +202,7 @@ class ActorPoolMapOperator(MapOperator):
                 break
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
+            self._metrics.on_input_dequeued(bundle)
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
@@ -308,16 +318,12 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
         )
 
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.num_total_actors()
-        object_store_memory = self.metrics.obj_store_mem_cur
-        if self.metrics.obj_store_mem_pending_tasks is not None:
-            object_store_memory += self.metrics.obj_store_mem_pending_tasks
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=object_store_memory,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:

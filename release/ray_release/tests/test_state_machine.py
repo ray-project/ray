@@ -65,19 +65,6 @@ class MockIssueDB:
     issue_db = {}
 
 
-class MockUser:
-    def get_issues(self, state: str, labels: List[MockLabel]) -> List[MockIssue]:
-        issues = []
-        for issue in MockIssueDB.issue_db.values():
-            if issue.state != state:
-                continue
-            issue_labels = [label.name for label in issue.labels]
-            if all(label.name in issue_labels for label in labels):
-                issues.append(issue)
-
-        return issues
-
-
 class MockRepo:
     def create_issue(self, labels: List[str], title: str, *args, **kwargs):
         label_objs = [MockLabel(label) for label in labels]
@@ -88,6 +75,17 @@ class MockRepo:
 
     def get_issue(self, number: int):
         return MockIssueDB.issue_db[number]
+
+    def get_issues(self, state: str, labels: List[MockLabel]) -> List[MockIssue]:
+        issues = []
+        for issue in MockIssueDB.issue_db.values():
+            if issue.state != state:
+                continue
+            issue_labels = [label.name for label in issue.labels]
+            if all(label.name in issue_labels for label in labels):
+                issues.append(issue)
+
+        return issues
 
     def get_label(self, name: str):
         return MockLabel(name)
@@ -117,7 +115,6 @@ class MockBuildkite:
         return MockBuildkiteJob()
 
 
-TestStateMachine.ray_user = MockUser()
 TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
 

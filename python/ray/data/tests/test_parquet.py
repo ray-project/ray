@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from typing import Any
 
 import numpy as np
@@ -20,7 +21,6 @@ from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     PARALLELIZE_META_FETCH_THRESHOLD,
-    RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
     _SerializedFragment,
@@ -28,6 +28,7 @@ from ray.data.datasource.parquet_datasource import (
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
 
 
@@ -216,10 +217,6 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
             assert (
                 ray_remote_args["scheduling_strategy"]
                 == DataContext.get_current().scheduling_strategy
-            )
-            assert (
-                ray_remote_args["retry_exceptions"]
-                == RETRY_EXCEPTIONS_FOR_META_FETCH_TASK
             )
             return None
 
@@ -1071,55 +1068,6 @@ def test_parquet_write_create_dir(
 
 
 @pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_parquet_write_block_path_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    mock_block_write_path_provider,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-    path = os.path.join(data_path, "test_parquet_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
-    ds._set_uuid("data")
-
-    ds.write_parquet(
-        path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    path1 = os.path.join(path, "000000_000000_data.test.parquet")
-    path2 = os.path.join(path, "000001_000000_data.test.parquet")
-    dfds = pd.concat(
-        [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
-        ]
-    )
-    assert df.equals(dfds)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
-
-
-@pytest.mark.parametrize(
     "fs,data_path",
     [
         (None, lazy_fixture("local_path")),
@@ -1176,6 +1124,48 @@ def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
 
     assert ParquetBaseDatasource(path).get_name() == "ParquetBulk"
     assert ParquetDatasource(path).get_name() == "Parquet"
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+    ],
+)
+def test_parquet_concurrency(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    concurrency_counter = ConcurrencyCounter.remote()
+
+    def map_batches(batch):
+        ray.get(concurrency_counter.inc.remote())
+        time.sleep(0.5)
+        ray.get(concurrency_counter.decr.remote())
+        return batch
+
+    concurrency = 1
+    ds = ray.data.read_parquet(
+        data_path,
+        filesystem=fs,
+        concurrency=concurrency,
+        override_num_blocks=2,
+    )
+    ds = ds.map_batches(
+        map_batches,
+        batch_size=None,
+        concurrency=concurrency,
+    )
+    assert ds.count() == 6
+    actual_max_concurrency = ray.get(concurrency_counter.get_max_concurrency.remote())
+    assert actual_max_concurrency <= concurrency
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

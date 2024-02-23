@@ -171,7 +171,7 @@ def test_datasets(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_invalid_train_loop(ray_start_4_cpus):
+def test_invalid_train_loop():
     def train_loop(config, extra_arg):
         pass
 

@@ -1,6 +1,6 @@
 .. _generators:
 
-Ray Generators 
+Ray Generators
 ==============
 
 `Python generators <https://docs.python.org/3/howto/functional.html#generators>`_ are functions
@@ -29,7 +29,7 @@ Generator tasks stream outputs back to the caller before the task finishes.
 
 
 The above Ray generator yields the output every 5 seconds 5 times.
-With a normal Ray task, you have to wait 25 seconds to access the output. 
+With a normal Ray task, you have to wait 25 seconds to access the output.
 With a Ray generator, the caller can access the object reference
 before the task ``f`` finishes.
 
@@ -64,14 +64,14 @@ The Ray generator task returns an ``ObjectRefGenerator`` object, which is
 compatible with generator and async generator APIs. You can access the
 ``next``, ``__iter__``, ``__anext__``, ``__aiter__`` APIs from the class.
 
-Whenever a task invokes ``yield``, a corresponding output is ready and availabale from a generator as a Ray object reference. 
+Whenever a task invokes ``yield``, a corresponding output is ready and available from a generator as a Ray object reference.
 You can call ``next(gen)`` to obtain an object reference.
 If ``next`` has no more items to generate, it raises ``StopIteration``. If ``__anext__`` has no more items to generate, it raises
 ``StopAsyncIteration``
 
 The ``next`` API blocks the thread until the task generates a next object reference with ``yield``.
 Since the ``ObjectRefGenerator`` is just a Python generator, you can also use a for loop to
-iterate object references. 
+iterate object references.
 
 If you want to avoid blocking a thread, you can either use asyncio or :ref:`ray.wait API <generators-wait>`.
 
@@ -209,3 +209,4 @@ Ray generators don't support these features:
 - ``throw``, ``send``, and ``close`` APIs.
 - ``return`` statements from generators.
 - Passing ``ObjectRefGenerator`` to another task or actor.
+- :ref:`Ray Client <ray-client-ref>`
