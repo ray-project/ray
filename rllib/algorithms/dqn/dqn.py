@@ -23,7 +23,6 @@ from ray.rllib.algorithms.simple_q.simple_q import (
 )
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -52,7 +51,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import RLModuleSpec
+from ray.rllib.utils.typing import EpisodeType, RLModuleSpec, SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -343,6 +342,7 @@ class DQNConfig(SimpleQConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
+        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
         from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
             EpisodeReplayBuffer,
         )
@@ -467,21 +467,14 @@ class DQN(SimpleQ):
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
         train_results = {}
 
-        # Run multiple sampling iterations.
+        # Run multiple sampling + storing to buffer iterations.
         for _ in range(store_weight):
             with self._timers[SAMPLE_TIMER]:
-                # TODO (simon): Use `sychnronous_parallel_sample()` here.
-                if self.workers.num_remote_workers() <= 0:
-                    episodes: List[SingleAgentEpisode] = [
-                        self.workers.local_worker().sample()
-                    ]
-                else:
-                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
-                        lambda w: w.sample(),
-                        local_worker=False,
-                    )
+                episodes: EpisodeType = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    concat=True,
+                )
 
-            episodes = tree.flatten(episodes)
             # TODO (sven): single- vs multi-agent.
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
@@ -498,7 +491,7 @@ class DQN(SimpleQ):
 
         # If enough experiences have been sampled start training.
         if current_ts >= self.config.num_steps_sampled_before_learning_starts:
-            # Run multiple training iterations.
+            # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
                 train_dict = self.local_replay_buffer.sample(
@@ -538,7 +531,7 @@ class DQN(SimpleQ):
                         )
                     }
 
-                # Training on batch.
+                # Perform an update on the buffer-sampled train batch.
                 train_results = self.learner_group.update_from_batch(
                     train_batch,
                     reduce_fn=reduce_fn,
@@ -597,7 +590,7 @@ class DQN(SimpleQ):
         for _ in range(store_weight):
             # Sample (MultiAgentBatch) from workers.
             with self._timers[SAMPLE_TIMER]:
-                new_sample_batch = synchronous_parallel_sample(
+                new_sample_batch: SampleBatchType = synchronous_parallel_sample(
                     worker_set=self.workers, concat=True
                 )
 
