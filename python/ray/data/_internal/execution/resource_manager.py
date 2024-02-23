@@ -3,9 +3,11 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, List, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -23,6 +25,9 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
+
+
+logger = DatasetLogger(__name__)
 
 
 class ResourceManager:
@@ -265,6 +270,43 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     worse performance. And vice versa.
     """
 
+    @dataclass
+    class IdleInfo:
+        """Information for detecting idle operators."""
+
+        # The interval to detect idle operators.
+        DETECTION_INTERVAL_S = 1.0
+        # Print a warning if an operator is idle for this time.
+        WARN_ON_IDLE_TIME_S = 3.0
+        # Whether a warning has been printed.
+        _warn_printed = False
+
+        # per-op fields
+        last_num_outputs: int
+        last_output_time: float
+        last_detection_time: float
+
+        @classmethod
+        def print_warning_if_idle_for_too_long(
+            cls, op: PhysicalOperator, idle_time: float
+        ):
+            """Print a warning if an operator is idle for too long."""
+            if idle_time < cls.WARN_ON_IDLE_TIME_S or cls._warn_printed:
+                return
+            cls._warn_printed = True
+            msg = (
+                f"Operator {op} is running but has no outputs for {idle_time} seconds."
+                " Execution may be slower than expected.\n"
+                "Ignore this warning if your UDF is expected to be slow."
+                " Otherwise, this can happen when there are fewer cluster resources"
+                " available to Ray Data than expected."
+                " If you have non-Data tasks or actors running in the cluster, exclude"
+                " their resources from Ray Data with"
+                " `DataContext.get_current().execution_options.exclude_resources`."
+                " This message will only print once."
+            )
+            logger.get_logger(log_to_stdout=True).warning(msg)
+
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
         super().__init__(resource_manager)
         self._reservation_ratio = reservation_ratio
@@ -290,6 +332,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._cached_global_limits = ExecutionResources.zero()
         self._cached_num_eligible_ops = 0
 
+        self._idle_info = defaultdict(
+            lambda: self.IdleInfo(0, time.time(), time.time())
+        )
+
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         # Only consider map operators that are not completed.
         return [
@@ -312,6 +358,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
+        self._reserved_min_resource.clear()
         self._total_shared = copy.deepcopy(global_limits)
 
         if len(eligible_ops) == 0:
@@ -369,6 +416,41 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         res = op.incremental_resource_usage().satisfies_limit(budget)
         return res
 
+    def _should_unblock_streaming_output_backpressure(
+        self, op: PhysicalOperator
+    ) -> bool:
+        # In some edge cases, the downstream operators may have no enough resources to
+        # launch tasks. Then we should temporarily unblock the streaming output
+        # backpressure by allowing reading at least 1 block. So the current operator
+        # can finish at least one task and yield resources to the downstream operators.
+        for next_op in op.output_dependencies:
+            if not self._reserved_min_resource[next_op]:
+                # Case 1: the downstream operator hasn't reserved the minimum resources
+                # to run at least one task.
+                return True
+            # Case 2: the downstream operator has reserved the minimum resources, but
+            # the resources are preempted by non-Data tasks or actors.
+            # We don't have a good way to detect this case, so we'll unblock backpressure
+            # when the downstream operator has been idle for a while.
+            cur_time = time.time()
+            idle_info = self._idle_info[next_op]
+            if (
+                cur_time - idle_info.last_detection_time
+                > self.IdleInfo.DETECTION_INTERVAL_S
+            ):
+                cur_num_outputs = next_op.metrics.num_task_outputs_generated
+                if cur_num_outputs > idle_info.last_num_outputs:
+                    idle_info.last_num_outputs = cur_num_outputs
+                    idle_info.last_output_time = cur_time
+                    idle_info.last_detection_time = cur_time
+                else:
+                    idle_info.last_detection_time = cur_time
+                    self.IdleInfo.print_warning_if_idle_for_too_long(
+                        next_op, cur_time - idle_info.last_output_time
+                    )
+                    return True
+        return False
+
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
@@ -376,16 +458,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         outputs_remaining_reserved = max(
             self._reserved_for_op_outputs[op] - outputs_usage, 0
         )
-        if any(
-            not self._reserved_min_resource[next_op]
-            for next_op in op.output_dependencies
-        ):
-            # If any of the downstream operators haven't reserved the minimum
-            # resources to run at least one task, we should allow reading at least
-            # 1 byte. So that this operator can finish at least one task and yield
-            # resources to the downstream operators.
-            outputs_remaining_reserved = max(outputs_remaining_reserved, 1)
-        return self._op_budgets[op].object_store_memory + outputs_remaining_reserved
+        res = self._op_budgets[op].object_store_memory + outputs_remaining_reserved
+        assert res >= 0
+        if res == 0 and self._should_unblock_streaming_output_backpressure(op):
+            res = 1
+        return res
 
     def update_usages(self):
         eligible_ops = self._get_eligible_ops()
