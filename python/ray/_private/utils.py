@@ -366,6 +366,11 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
             "The resources dictionary must not "
             "contain the key 'memory' or 'object_store_memory'"
         )
+    elif "bundle" in resources:
+        raise ValueError(
+            "The resource should not include `bundle` which "
+            f"is reserved for Ray. resources: {resources}"
+        )
 
     num_cpus = options_dict.get("num_cpus")
     num_gpus = options_dict.get("num_gpus")
@@ -2010,6 +2015,13 @@ def pasre_pg_formatted_resources_to_original(
     for key, value in pg_formatted_resources.items():
         result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 2:
+            # Filter out resources that have bundle_group_[pg_id] since
+            # it is an implementation detail.
+            # This resource is automatically added to the resource
+            # request for all tasks that require placement groups.
+            if result.group(1) == "bundle":
+                continue
+
             original_resources[result.group(1)] = value
             continue
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
