@@ -3,7 +3,6 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
@@ -298,10 +297,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         def detect_idle(self, op: PhysicalOperator):
             cur_time = time.time()
-            if (
-                cur_time - self.last_detection_time[op]
-                > self.DETECTION_INTERVAL_S
-            ):
+            if cur_time - self.last_detection_time[op] > self.DETECTION_INTERVAL_S:
                 cur_num_outputs = op.metrics.num_task_outputs_generated
                 if cur_num_outputs > self.last_num_outputs[op]:
                     self.last_num_outputs[op] = cur_num_outputs
