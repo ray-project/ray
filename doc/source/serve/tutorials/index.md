@@ -13,6 +13,7 @@ stable-diffusion
 text-classification
 object-detection
 aws-neuron-core-inference
+aws-neuron-core-inference-stable-diffusion
 intel-habana-gaudi-inference
 gradio-integration
 batch
@@ -38,6 +39,7 @@ Intermediate
 
 ```{list-table}
   * - [Serve an Inference Model on AWS NeuronCores Using FastAPI](aws-neuron-core-inference)
+  * - [Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI](aws-neuron-core-inference-stable-diffusion)
   * - [Scale a Gradio App with Ray Serve](gradio-integration)
   * - [Serve a Text Generator with Request Batching](batch.md)
   * - [Serve a Chatbot with Request and Response Streaming](streaming)

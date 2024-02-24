@@ -1,16 +1,117 @@
 import asyncio
 import sys
 import time
+from functools import reduce
+from itertools import chain
 
 import pytest
 
 import ray
+from ray._private.test_utils import placement_group_assert_no_leak
 from ray.tests.test_placement_group import are_pairwise_unique
 from ray.util.state import list_actors, list_placement_groups
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import wait_for_condition
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_placement_group_no_resource(ray_start_cluster, connect_to_client):
+    @ray.remote(num_cpus=1)
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    @ray.remote(num_cpus=0)
+    class PhantomActor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    cluster = ray_start_cluster
+    num_nodes = 2
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    with connect_to_client_or_not(connect_to_client):
+        for _ in range(10):
+            pg1 = ray.util.placement_group(
+                name="pg1",
+                bundles=[
+                    {"CPU": 2},
+                ],
+            )
+            pg2 = ray.util.placement_group(
+                name="pg2",
+                bundles=[
+                    {"CPU": 2},
+                ],
+            )
+            ray.get(pg1.ready())
+            ray.get(pg2.ready())
+            actor_11 = Actor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg1, placement_group_bundle_index=0
+                )
+            ).remote()
+            actor_12 = Actor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg1, placement_group_bundle_index=0
+                )
+            ).remote()
+            actor_13 = PhantomActor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg1, placement_group_bundle_index=0
+                )
+            ).remote()
+            actor_21 = Actor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg2, placement_group_bundle_index=0
+                )
+            ).remote()
+            actor_22 = Actor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg2, placement_group_bundle_index=0
+                )
+            ).remote()
+            actor_23 = PhantomActor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg2, placement_group_bundle_index=0
+                )
+            ).remote()
+
+            first_node = [actor_11, actor_12, actor_13]
+            second_node = [actor_21, actor_22, actor_23]
+
+            for actor in chain(first_node, second_node):
+                ray.get(actor.value.remote())
+
+            # Get all actors.
+            actor_infos = ray._private.state.actors()
+
+            first_node_ids = [
+                actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
+                for actor in first_node
+            ]
+            second_node_ids = [
+                actor_infos.get(actor._actor_id.hex())["Address"]["NodeID"]
+                for actor in second_node
+            ]
+
+            def check_eq(ip1, ip2):
+                assert ip1 == ip2
+                return ip1
+
+            assert reduce(check_eq, first_node_ids) != reduce(check_eq, second_node_ids)
+
+            placement_group_assert_no_leak([pg1, pg2])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
