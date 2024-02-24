@@ -8,15 +8,13 @@ import time
 from typing import Dict, Optional
 
 import yaml
-from ray.autoscaler._private.fake_multi_node.node_provider import (
-    FAKE_HEAD_NODE_ID,
-)
 
 import ray
 import ray._private.services
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._raylet import GcsClientOptions
+from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)

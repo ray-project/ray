@@ -2080,7 +2080,6 @@ def start_monitor(
     backup_count: int = 0,
     monitor_ip: Optional[str] = None,
     autoscaler_v2: bool = False,
-    session_name: Optional[str] = None,
 ):
     """Run a process to monitor the other processes.
 
@@ -2116,9 +2115,6 @@ def start_monitor(
     ]
     assert gcs_address is not None
     command.append(f"--gcs-address={gcs_address}")
-
-    if session_name:
-        command.append(f"--session-name={session_name}")
 
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.

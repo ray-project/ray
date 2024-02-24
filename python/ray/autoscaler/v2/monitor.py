@@ -1,10 +1,8 @@
 """Autoscaler monitoring loop daemon."""
 
 import argparse
-import json
 import logging
 import os
-import signal
 import sys
 import time
 import traceback
@@ -17,35 +15,29 @@ from ray.autoscaler.v2.instance_manager.config import (
     IConfigReader,
 )
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
+from typing import Optional
 
-from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
-from ray.autoscaler._private.autoscaler import StandardAutoscaler
-from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import (
-    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
     AUTOSCALER_METRIC_PORT,
     AUTOSCALER_UPDATE_INTERVAL_S,
 )
-from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
-from ray.autoscaler._private.util import format_readonly_node_type
-from ray.core.generated import gcs_pb2
+from ray.autoscaler.v2.autoscaler import Autoscaler
+from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
+from ray.autoscaler.v2.instance_manager.config import FileConfigReader, IConfigReader
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
+from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
-    _internal_kv_del,
-    _internal_kv_get,
     _internal_kv_initialized,
-    _internal_kv_put,
 )
-from ray.core.generated.autoscaler_pb2 import AutoscalingState
 
 try:
     import prometheus_client
@@ -85,6 +77,7 @@ class AutoscalerMonitor:
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
 
+        self.autoscaler = None
         if log_dir:
             try:
                 ray_event_logger = get_event_logger(
@@ -180,9 +173,6 @@ class AutoscalerMonitor:
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
     def run(self):
-        # FIXME:
-        # Sleep for now to wait til head node is ready
-        time.sleep(1)
         try:
             self._run()
         except Exception:
@@ -283,7 +273,9 @@ if __name__ == "__main__":
         exit(0)
 
     autoscaling_config = os.path.expanduser(args.autoscaling_config)
-    logger.info(f"Starting monitor using ray installation: {ray.__file__}")
+    logger.info(
+        f"Starting autoscaler v2 monitor using ray installation: {ray.__file__}"
+    )
     logger.info(f"Ray version: {ray.__version__}")
     logger.info(f"Ray commit: {ray.__commit__}")
     logger.info(f"AutoscalerMonitor started with command: {sys.argv}")

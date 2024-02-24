@@ -41,13 +41,35 @@ class Provider(Enum):
 class IConfigReader(ABC):
     """An interface for reading Autoscaling config.
 
-    A utility class that converts the raw autoscaling configs into
-    various data structures that are used by the autoscaler.
+    A utility class that reads autoscaling configs from various sources:
+        - File
+        - In-memory dict
+        - Remote config service (e.g. KubeRay's config)
+
+    Example:
+        reader = FileConfigReader("path/to/config.yaml")
+        # Get the recently loaded config.
+        config = reader.get_autoscaling_config()
+
+        ...
+        # Read from the source
+        reader.read_from_source()
+        config = reader.get_autoscaling_config()
+
     """
 
     @abstractmethod
     def get_autoscaling_config(self) -> "AutoscalingConfig":
-        """Returns the autoscaling config."""
+        """Returns the recently read autoscaling config.
+
+        Returns:
+            AutoscalingConfig: The recently read autoscaling config.
+        """
+        pass
+
+    @abstractmethod
+    def read_from_source(self):
+        """Read the config from the source."""
         pass
 
 
@@ -410,19 +432,27 @@ class FileConfigReader(IConfigReader):
         """
         self._config_file_path = Path(config_file).resolve()
         self._skip_content_hash = skip_content_hash
+        self._cached_config = self._read()
+
+    def _read(self) -> AutoscalingConfig:
+        with open(self._config_file_path) as f:
+            config = yaml.safe_load(f.read())
+            return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
 
     def get_autoscaling_config(self) -> AutoscalingConfig:
         """
         Reads the configs from the file and returns the autoscaling config.
 
-        This reads from the file every time to pick up changes.
+        Args:
 
         Returns:
             AutoscalingConfig: The autoscaling config.
         """
-        with open(self._config_file_path) as f:
-            config = yaml.safe_load(f.read())
-            return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
+
+        return self._cached_config
+
+    def read_from_source(self):
+        self._cached_config = self._read()
 
 
 class KubeRayConfigReader(IConfigReader):
@@ -430,6 +460,10 @@ class KubeRayConfigReader(IConfigReader):
 
     def __init__(self, config_producer: AutoscalingConfigProducer):
         self._config_producer = config_producer
+        self._cached_config = self._read()
+
+    def _read(self) -> AutoscalingConfig:
+        return AutoscalingConfig(self._config_producer(), skip_update=True)
 
     def get_autoscaling_config(self) -> AutoscalingConfig:
         """
@@ -440,4 +474,7 @@ class KubeRayConfigReader(IConfigReader):
         Returns:
             AutoscalingConfig: The autoscaling config.
         """
-        return AutoscalingConfig(self._config_producer(), skip_update=True)
+        return self._cached_config
+
+    def read_from_source(self):
+        self._cached_config = self._read()
