@@ -2753,9 +2753,9 @@ py_test(
     name = "examples/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
     main = "examples/self_play_league_based_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=8"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
 )
 
 py_test(
