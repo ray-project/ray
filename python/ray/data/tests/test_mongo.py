@@ -80,10 +80,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=5,\n"
-        "   schema={float_field: double, int_field: int32}\n"
-        ")"
+        "Dataset(num_rows=5, schema={float_field: double, int_field: int32})"
     )
     assert df.equals(ds.to_pandas())
 
