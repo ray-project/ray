@@ -258,7 +258,7 @@ class ExecutionPlan:
                 else ""
             )
             num_blocks_str = (
-                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks}, "
+                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 if num_blocks
                 else ""
             )

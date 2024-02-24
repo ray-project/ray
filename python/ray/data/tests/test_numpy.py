@@ -131,10 +131,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, parallelism=1)
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=10,\n"
-        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -148,10 +145,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=10,\n"
-        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
     )
     assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
