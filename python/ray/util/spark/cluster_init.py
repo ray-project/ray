@@ -1115,12 +1115,12 @@ def _setup_ray_cluster_internal(
     )
 
     spark_executor_memory_bytes = get_configured_spark_executor_memory_bytes(spark)
-    spark_worker_required_mem_bytes = (
+    spark_worker_required_memory_bytes = (
         spark_executor_memory_bytes
         + spark_worker_ray_node_slots
         * (ray_worker_node_heap_mem_bytes + ray_worker_node_object_store_mem_bytes)
     )
-    if spark_worker_required_mem_bytes > 0.8 * spark_worker_mem_bytes:
+    if spark_worker_required_memory_bytes > 0.8 * spark_worker_mem_bytes:
         warn_msg = (
             "In each spark worker node, we recommend making the sum of "
             "'spark_executor_memory + num_Ray_worker_nodes_per_spark_worker * "
