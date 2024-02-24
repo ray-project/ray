@@ -346,6 +346,15 @@ class TestReservationOpResourceAllocator:
         # Test initial state when no resources are used.
         global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
         allocator.update_usages()
+        # +-----+------------------+------------------+--------------+
+        # |     | _op_reserved     | _reserved_for    | used shared  |
+        # |     | (used/remaining) | _op_outputs      | resources    |
+        # |     |                  | (used/remaining) |              |
+        # +-----+------------------+------------------+--------------+
+        # | op2 | 0/125            | 0/125            | 0            |
+        # +-----+------------------+------------------+--------------+
+        # | op3 | 0/125            | 0/125            | 0            |
+        # +-----+------------------+------------------+--------------+
         # o1 and o4 are not handled.
         assert o1 not in allocator._op_reserved
         assert o4 not in allocator._op_reserved
@@ -377,6 +386,16 @@ class TestReservationOpResourceAllocator:
         op_usages[o4] = ExecutionResources(0, 0, 75)
 
         allocator.update_usages()
+        # +-----+------------------+------------------+--------------+
+        # |     | _op_reserved     | _reserved_for    | used shared  |
+        # |     | (used/remaining) | _op_outputs      | resources    |
+        # |     |                  | (used/remaining) |              |
+        # +-----+------------------+------------------+--------------+
+        # | op2 | 125/0            | 100/25           | 400 - 125    |
+        # +-----+------------------+------------------+--------------+
+        # | op3 | 100/25           | 25/100           | 0            |
+        # +-----+------------------+------------------+--------------+
+        # remaining shared = 500 - 275 - 75 = 150
         # Test budgets.
         assert allocator._op_budgets[o2] == ExecutionResources(3, float("inf"), 75)
         assert allocator._op_budgets[o3] == ExecutionResources(5, float("inf"), 100)
@@ -387,6 +406,16 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o3) == 200
 
         # Test global_limits updated.
+        # +-----+------------------+------------------+--------------+
+        # |     | _op_reserved     | _reserved_for    | used shared  |
+        # |     | (used/remaining) | _op_outputs      | resources    |
+        # |     |                  | (used/remaining) |              |
+        # +-----+------------------+------------------+--------------+
+        # | op2 | 100/0            | 100/0            | 400 - 100    |
+        # +-----+------------------+------------------+--------------+
+        # | op3 | 100/ 0           | 25/75            | 0            |
+        # +-----+------------------+------------------+--------------+
+        # remaining shared = 400 - 300 - 75 = 25
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
         allocator.update_usages()
         # Test reserved resources for o2 and o3.
