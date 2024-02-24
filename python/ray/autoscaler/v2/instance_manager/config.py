@@ -12,6 +12,7 @@ from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
@@ -329,6 +330,13 @@ class AutoscalingConfig:
 
     def get_max_concurrent_launches(self) -> int:
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
+
+    def get_idle_timeout_s(self) -> float:
+        return self.get_config("idle_timeout_minutes", 0) * 60
+
+    def disable_launch_config_check(self) -> bool:
+        provider_config = self.get_provider_config()
+        return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
 
     def skip_ray_install(self) -> bool:
         return self.provider == Provider.KUBERAY
