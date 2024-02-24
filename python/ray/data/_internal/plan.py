@@ -261,7 +261,6 @@ class ExecutionPlan:
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks}, "
                 if num_blocks
                 else ""
-
             )
             dataset_str = (
                 f"{dataset.__class__.__name__}("
