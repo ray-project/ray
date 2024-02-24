@@ -406,7 +406,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_total_reserved = default_reserved.max(min_reserved)
             if op_total_reserved.satisfies_limit(self._total_shared):
                 # If the remaining resources are enough to reserve `op_total_reserved`,
-                # subtract it from `self._total_shared` and reserve it for this operator.
+                # subtract it from `self._total_shared` and reserve it for this op.
                 self._reserved_min_resources[op] = True
                 self._total_shared = self._total_shared.subtract(op_total_reserved)
                 self._op_reserved[op] = op_total_reserved
@@ -524,9 +524,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             else:
                 # For non-eligible ops, we still need to subtract
                 # their usage from the remaining shared resources.
-                remaining_shared = remaining_shared.subtract(
-                    op_usage
-                )
+                remaining_shared = remaining_shared.subtract(op_usage)
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
 

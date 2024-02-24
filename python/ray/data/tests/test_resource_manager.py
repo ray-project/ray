@@ -23,19 +23,18 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.test_streaming_executor import make_map_transformer
 
 
 def mock_map_op(
     input_op,
-    ray_remote_args={},
+    ray_remote_args=None,
     compute_strategy=None,
     incremental_resource_usage=None,
 ):
     op = MapOperator.create(
         MagicMock(),
         input_op,
-        ray_remote_args=ray_remote_args,
+        ray_remote_args=ray_remote_args or {},
         compute_strategy=compute_strategy,
     )
     op.start = MagicMock(side_effect=lambda _: None)
