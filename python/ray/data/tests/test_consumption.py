@@ -515,8 +515,11 @@ def test_limit(ray_start_regular_shared, lazy):
 
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
-@pytest.mark.parametrize("limit,min_read_tasks", [(10, 1), (20, 2), (30, 3), (60, 6)])
-def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks):
+@pytest.mark.parametrize("limit", [10, 20, 30, 60])
+def test_limit_no_redundant_read(
+    ray_start_regular_shared,
+    limit,
+):
     # Test that dataset truncation eliminates redundant reads.
     @ray.remote
     class Counter:
@@ -562,20 +565,26 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
 
     source = CountingRangeDatasource()
 
-    parallelism = 10
+    total_rows = 1000
+    parallelism = 100
     ds = ray.data.read_datasource(
         source,
         parallelism=parallelism,
-        n=10,
+        n=total_rows // parallelism,
     )
-    ds2 = ds.limit(limit)
+    # Apply multiple limit ops.
+    # Once the smallest limit is reached, the entire dataset should stop execution.
+    ds = ds.limit(total_rows)
+    ds = ds.limit(limit)
+    ds = ds.limit(total_rows)
     # Check content.
-    assert extract_values("id", ds2.take(limit)) == list(range(limit))
+    assert len(ds.take(limit)) == limit
     # Check number of read tasks launched.
     # min_read_tasks is the minimum number of read tasks needed for the limit.
     # We may launch more tasks than this number, in order to to maximize throughput.
     # But the actual number of read tasks should be less than the parallelism.
     count = ray.get(source.counter.get.remote())
+    min_read_tasks = limit // (total_rows // parallelism)
     assert min_read_tasks <= count < parallelism
 
 
@@ -706,7 +715,7 @@ def test_iter_rows(ray_start_regular_shared):
         assert row == df_row.to_dict()
 
     # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
+    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
         assert isinstance(row, dict)
         assert row == t_row
 
@@ -1649,8 +1658,8 @@ class FlakyCSVDatasink(_CSVDatasink):
 
 
 def test_datasource(ray_start_regular):
-    source = ray.data.datasource.RandomIntRowDatasource()
-    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
+    assert len(ray.data.read_datasource(source).take()) == 10
     source = ray.data.datasource.RangeDatasource(n=10)
     assert extract_values(
         "value",

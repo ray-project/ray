@@ -348,11 +348,16 @@ message DrainRayletRequest {
   // The detailed drain reason message.
   // Used for observability.
   string reason_message = 2;
+  /// Timestamp when the node to be drained will be force killed.
+  /// This is a hint to Ray that it should drain everything before the deadline.
+  int64 deadline_timestamp_ms = 3;
 }
 
 message DrainRayletReply {
   // Whether the drain request is accepted.
   bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
 }
 
 // Service for inter-node-manager communication.

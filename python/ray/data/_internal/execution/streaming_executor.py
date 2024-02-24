@@ -280,7 +280,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if i > PROGRESS_BAR_UPDATE_INTERVAL:
                 break
             if DEBUG_TRACE_SCHEDULING:
-                _debug_dump_topology(topology)
+                _debug_dump_topology(topology, self._resource_manager)
             topology[op].dispatch_next_task()
             self._resource_manager.update_usages()
             op = select_operator_to_run(
@@ -296,13 +296,15 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
-            op_state.refresh_progress_bar()
+            op_state.refresh_progress_bar(self._resource_manager)
 
         self._update_stats_metrics(state="RUNNING")
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             if not DEBUG_TRACE_SCHEDULING:
-                _debug_dump_topology(topology, log_to_stdout=False)
+                _debug_dump_topology(
+                    topology, self._resource_manager, log_to_stdout=False
+                )
             self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
@@ -428,16 +430,19 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         raise ValueError(error_message.strip())
 
 
-def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None:
+def _debug_dump_topology(
+    topology: Topology, resource_manager: ResourceManager, log_to_stdout: bool = True
+) -> None:
     """Print out current execution state for the topology for debugging.
 
     Args:
         topology: The topology to debug.
+        resource_manager: The resource manager for this topology.
     """
     logger.get_logger(log_to_stdout).info("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
         logger.get_logger(log_to_stdout).info(
-            f"{i}: {state.summary_str()}, "
+            f"{i}: {state.summary_str(resource_manager)}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
     logger.get_logger(log_to_stdout).info("")

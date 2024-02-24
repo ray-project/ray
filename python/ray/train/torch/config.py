@@ -11,10 +11,22 @@ import ray
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
+
+
+class TorchConfigContextManager:
+    def __enter__(self):
+        # Set default cuda device
+        if torch.cuda.is_available():
+            device = ray.train.torch.get_device()
+            if device.type == "cuda":
+                torch.cuda.set_device(device)
+
+    def __exit__(self, type, value, traceback):
+        # Propagate exceptions if any
+        return False
 
 
 @PublicAPI(stability="stable")
@@ -44,19 +56,9 @@ class TorchConfig(BackendConfig):
     def backend_cls(self):
         return _TorchBackend
 
-
-def _set_nccl_network_interface():
-    """Set the appropriate NCCL network interface to use."""
-
-    if "NCCL_SOCKET_IFNAME" not in os.environ:
-        logger.debug(
-            f"Setting NCCL_SOCKET_IFNAME to {DEFAULT_NCCL_SOCKET_IFNAME} "
-            f"to prioritize ethernet connection. To override this behavior, set the "
-            f"`NCCL_SOCKET_IFNAME` environment variable in your Ray runtime "
-            "environment: "
-            "`ray.init(runtime_env={{'env_vars': {'NCCL_SOCKET_IFNAME': 'ens5'}}}`"
-        )
-        os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
+    @property
+    def train_func_context(self):
+        return TorchConfigContextManager
 
 
 def _setup_torch_process_group(
@@ -154,9 +156,6 @@ class _TorchBackend(Backend):
                     backend = "gloo"
             else:
                 backend = backend_config.backend
-
-            if backend == "nccl":
-                worker_group.execute(_set_nccl_network_interface)
 
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port

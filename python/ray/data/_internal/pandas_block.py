@@ -16,6 +16,7 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
 from ray.data.block import (
@@ -27,7 +28,6 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.row import TableRow
 
 if TYPE_CHECKING:
     import pandas
@@ -66,7 +66,7 @@ class PandasRow(TableRow):
                 return None
 
             items = col.iloc[0]
-            if isinstance(items[0], TensorArrayElement):
+            if isinstance(items.iloc[0], TensorArrayElement):
                 # Getting an item in a Pandas tensor column may return
                 # a TensorArrayElement, which we have to convert to an ndarray.
                 return pd.Series(item.to_numpy() for item in items)

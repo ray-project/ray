@@ -52,12 +52,17 @@ export const useNodeList = () => {
     }))
     .sort(sorterFunc);
 
-  const sortedList = _.sortBy(nodeListWithAdditionalInfo, [
-    (obj) => !obj.raylet.isHeadNode,
-    // sort by alive first, then alphabetically for other states
-    (obj) => (obj.raylet.state === "ALIVE" ? "0" : obj.raylet.state),
-    (obj) => obj.raylet.nodeId,
-  ]);
+  const sortedList = _.sortBy(nodeListWithAdditionalInfo, (node) => {
+    // After sorting by user specified field, stable sort by
+    // 1) Alive nodes first then alphabetically for other states
+    // 2) Head node
+    // 3) Alphabetical by node id
+    const nodeStateOrder =
+      node.raylet.state === "ALIVE" ? "0" : node.raylet.state;
+    const isHeadNodeOrder = node.raylet.isHeadNode ? "0" : "1";
+    const nodeIdOrder = node.raylet.nodeId;
+    return [nodeStateOrder, isHeadNodeOrder, nodeIdOrder];
+  });
 
   return {
     nodeList: sortedList.filter((node) =>

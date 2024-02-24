@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import grpc
 import pytest
@@ -12,9 +12,10 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve._private.proxy import DRAINED_MESSAGE
+from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
+from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -24,21 +25,23 @@ STORAGE_ACTOR_NAME = "storage"
 
 
 class MockTimer(TimerBase):
-    def __init__(self, start_time=None):
+    def __init__(self, start_time: Optional[float] = None):
         self._lock = threading.Lock()
+        self.reset(start_time=start_time)
 
+    def reset(self, start_time: Optional[float] = None):
         if start_time is None:
             start_time = time.time()
         self._curr = start_time
 
-    def time(self):
+    def time(self) -> float:
         return self._curr
 
-    def advance(self, by):
+    def advance(self, by: float):
         with self._lock:
             self._curr += by
 
-    def realistic_sleep(self, amt):
+    def realistic_sleep(self, amt: float):
         with self._lock:
             self._curr += amt + 0.001
 
@@ -97,6 +100,12 @@ def check_telemetry_not_recorded(storage_handle, key):
     )
 
 
+def check_deployment_status(name, expected_status) -> DeploymentStatus:
+    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+    assert app_status.deployments[name].status == expected_status
+    return True
+
+
 def get_num_running_replicas(
     deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> int:
@@ -117,7 +126,7 @@ def check_num_replicas_gte(
 ) -> int:
     """Check if num replicas is >= target."""
 
-    assert get_num_running_replicas(name) >= target
+    assert get_num_running_replicas(name, app_name) >= target
     return True
 
 
@@ -126,7 +135,7 @@ def check_num_replicas_eq(
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_running_replicas(name) == target
+    assert get_num_running_replicas(name, app_name) == target
     return True
 
 
@@ -135,7 +144,50 @@ def check_num_replicas_lte(
 ) -> int:
     """Check if num replicas is <= target."""
 
-    assert get_num_running_replicas(name) <= target
+    assert get_num_running_replicas(name, app_name) <= target
+    return True
+
+
+def check_replica_counts(
+    controller: ActorHandle,
+    deployment_id: DeploymentID,
+    total: Optional[int] = None,
+    by_state: Optional[List[Tuple[ReplicaState, int, Callable]]] = None,
+):
+    """Uses _dump_replica_states_for_testing to check replica counts.
+
+    Args:
+        controller: A handle to the Serve controller.
+        deployment_id: The deployment to check replica counts for.
+        total: The total number of expected replicas for the deployment.
+        by_state: A list of tuples of the form
+            (replica state, number of replicas, filter function).
+            Used for more fine grained checks.
+    """
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_id)
+    )
+
+    if total is not None:
+        replica_counts = {
+            state: len(replicas.get([state]))
+            for state in ALL_REPLICA_STATES
+            if replicas.get([state])
+        }
+        assert replicas.count() == total, replica_counts
+
+    if by_state is not None:
+        for state, count, check in by_state:
+            assert isinstance(state, ReplicaState)
+            assert isinstance(count, int) and count >= 0
+            if check:
+                filtered = {r for r in replicas.get(states=[state]) if check(r)}
+                curr_count = len(filtered)
+            else:
+                curr_count = replicas.count(states=[state])
+            msg = f"Expected {count} for state {state} but got {curr_count}."
+            assert curr_count == count, msg
+
     return True
 
 
@@ -197,7 +249,7 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
             _, _ = stub.ListApplications.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.ListApplications.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
@@ -213,7 +265,7 @@ def ping_grpc_healthz(channel, test_draining=False):
             _, _ = stub.Healthz.with_call(request=request)
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
+        assert rpc_error.details() == DRAINING_MESSAGE
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
@@ -280,6 +332,8 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         await asyncio.sleep(100000)
     except asyncio.CancelledError:
+        # Clear the context var to avoid Ray recursively cancelling this method call.
+        ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
 
 

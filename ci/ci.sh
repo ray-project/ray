@@ -164,7 +164,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:core_worker_test
         -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
@@ -368,7 +367,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      make html
       pip install datasets==2.0.0
     fi
   )
@@ -380,7 +379,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make linkcheck
+      make linkcheck
     fi
   )
 }

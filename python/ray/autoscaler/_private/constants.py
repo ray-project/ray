@@ -50,6 +50,14 @@ AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
     "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10
 )
 
+# Default upscaling speed for the autoscaler. This specifies how many nodes
+# to request at a time, where the desired number to upscale is
+#   min(1, upscaling_speed * current_num_nodes)
+# e.g. 1.0 means to request enough nodes to double
+# the cluster size in each round of requests.
+# When the upscaling speed is 0.0, the autoscaler will request 1 node.
+DEFAULT_UPSCALING_SPEED = 0.0
+
 # Interval at which to perform autoscaling updates.
 AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
 

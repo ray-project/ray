@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.test_utils import (
+    check_deployment_status,
     check_num_replicas_eq,
     check_num_replicas_gte,
     check_num_replicas_lte,
@@ -47,12 +48,6 @@ def get_running_replica_tags(name: str, controller: ServeController) -> List:
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return [replica.replica_tag for replica in running_replicas]
-
-
-def check_deployment_status(name, expected_status) -> DeploymentStatus:
-    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-    assert app_status.deployments[name].status == expected_status
-    return True
 
 
 def get_deployment_start_time(controller: ServeController, name: str):
@@ -123,7 +118,7 @@ def test_autoscaling_metrics(serve_instance):
 
     handle = serve.run(A.bind())
     dep_id = DeploymentID("A", "default")
-    [handle.remote()._to_object_ref_sync() for _ in range(50)]
+    [handle.remote() for _ in range(50)]
 
     # Wait for metrics to propagate
     def get_data():
@@ -209,8 +204,9 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("smoothing_factor", [1])  # , 0.2])
-@pytest.mark.parametrize("use_upscale_downscale_config", [True])  # , False])
+@pytest.mark.parametrize("smoothing_factor", [1, 0.2])
+@pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance, smoothing_factor, use_upscale_downscale_config
 ):
@@ -245,7 +241,7 @@ def test_e2e_scale_up_down_with_0_replica(
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
@@ -400,6 +396,7 @@ def test_e2e_bursty(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_intermediate_downscaling(serve_instance):
     """
     Scales up, then down, and up again.
@@ -1086,7 +1083,7 @@ def test_autoscaling_status_changes(serve_instance):
     app = AutoscalingDeployment.bind()
 
     # Start the AutoscalingDeployment.
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
 
     # Active replicas are replicas that are waiting or running.
     expected_num_active_replicas: int = min_replicas
@@ -1170,7 +1167,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
@@ -1226,7 +1223,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)

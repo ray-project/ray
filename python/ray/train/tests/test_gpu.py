@@ -16,10 +16,8 @@ import ray.data
 from ray import train
 from ray.exceptions import RayTaskError
 from ray.train import ScalingConfig
-from ray.train._internal.worker_group import WorkerGroup
-from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
-from ray.train.torch.config import TorchConfig, _TorchBackend
+from ray.train.torch.config import TorchConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train.trainer import TrainingFailedError
 
@@ -66,6 +64,8 @@ def test_torch_get_device(
     ray.init(num_cpus=4, num_gpus=2)
 
     def train_fn():
+        # Confirm that the TorchConfig Prologue is effective
+        assert torch.cuda.current_device() == train.torch.get_device().index
         # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
@@ -104,6 +104,8 @@ def test_torch_get_device(
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
+        # Confirm that the TorchConfig Prologue is effective
+        assert torch.cuda.current_device() == train.torch.get_device().index
         devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
 
@@ -306,27 +308,6 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, data_loader_num_workers
     result2 = trainer.fit()
 
     assert result1.metrics["loss"] == result2.metrics["loss"]
-
-
-@pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])
-def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_ifname):
-    worker_group = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
-
-    if nccl_socket_ifname:
-
-        def set_env_var():
-            os.environ["NCCL_SOCKET_IFNAME"] = nccl_socket_ifname
-
-        worker_group.execute(set_env_var)
-
-    def assert_env_var_set():
-        value = nccl_socket_ifname if nccl_socket_ifname else DEFAULT_NCCL_SOCKET_IFNAME
-        assert os.environ["NCCL_SOCKET_IFNAME"] == value
-
-    torch_backend = _TorchBackend()
-    torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
-
-    worker_group.execute(assert_env_var_set)
 
 
 def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
