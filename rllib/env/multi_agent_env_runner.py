@@ -7,6 +7,10 @@ from typing import DefaultDict, Dict, List, Optional
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
+from ray.rllib.connectors.common.agent_to_module_mapping import (
+    perform_agent_to_module_mapping,
+    perform_module_to_agent_unmapping,
+)
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -14,6 +18,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.framework import convert_to_tensor
 from ray.rllib.utils.typing import ModelWeights
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
@@ -193,7 +198,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episode = self._new_episode()
+            self._episode = self._new_episode(0)
             self._make_on_episode_callback("on_episode_created")
 
             # Reset the environment.
@@ -238,6 +243,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
+                # Env-to-module connector.
                 to_module = self._cached_to_module or self._env_to_module(
                     rl_module=self.module,
                     episodes=[self._episode],
@@ -245,12 +251,32 @@ class MultiAgentEnvRunner(EnvRunner):
                     shared_data=self._shared_data,
                 )
                 self._cached_to_module = None
-                # Explore or not.
+
+                # Automatically perform agent-to-module mapping.
+                if self.config.perform_agent_module_mappings_automatically:
+                    to_module, memorized_map_structure = (
+                        perform_agent_to_module_mapping(to_module)
+                    )
+
+                # Convert data to proper tensor formats, depending on framework used by the
+                # RLModule.
+                # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
+                #  now we assume EnvRunners are always only on the CPU.
+                to_module = convert_to_tensor(to_module, self.module.framework)
+
+                # MARLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
                 else:
                     to_env = self.module.forward_inference(to_module)
 
+                # Automatically perform module-to-agent mapping.
+                if self.config.perform_agent_module_mappings_automatically:
+                    to_env = perform_module_to_agent_unmapping(
+                        to_env, memorized_map_structure
+                    )
+
+                # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
@@ -333,7 +359,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 self._make_on_episode_callback("on_episode_end")
 
                 # Create a new episode instance.
-                self._episode = self._new_episode()
+                self._episode = self._new_episode(0)
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
@@ -404,7 +430,7 @@ class MultiAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
-        _episode = self._new_episode()
+        _episode = self._new_episode(0)
         self._make_on_episode_callback("on_episode_created", _episode)
         shared_data = {
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
@@ -441,6 +467,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
+                # Env-to-module connector.
                 to_module = self._env_to_module(
                     rl_module=self.module,
                     episodes=[_episode],
@@ -448,12 +475,31 @@ class MultiAgentEnvRunner(EnvRunner):
                     shared_data=shared_data,
                 )
 
-                # Explore or not.
+                # Automatically perform agent-to-module mapping.
+                if self.config.perform_agent_module_mappings_automatically:
+                    to_module, memorized_map_structure = (
+                        perform_agent_to_module_mapping(to_module)
+                    )
+
+                # Convert data to proper tensor formats, depending on framework used by the
+                # RLModule.
+                # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
+                #  now we assume EnvRunners are always only on the CPU.
+                to_module = convert_to_tensor(to_module, self.module.framework)
+
+                # MARLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
                 else:
                     to_env = self.module.forward_inference(to_module)
 
+                # Automatically perform module-to-agent mapping.
+                if self.config.perform_agent_module_mappings_automatically:
+                    to_env = perform_module_to_agent_unmapping(
+                        to_env, memorized_map_structure
+                    )
+
+                # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
@@ -464,7 +510,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
             # Step the environment.
             actions = to_env.pop(SampleBatch.ACTIONS)
-
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions[0])
 
             # Add render data if needed.
@@ -522,7 +567,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     break
 
                 # Create a new episode instance.
-                _episode = self._new_episode()
+                _episode = self._new_episode(0)
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
@@ -667,11 +712,12 @@ class MultiAgentEnvRunner(EnvRunner):
         except NotImplementedError:
             return None
 
-    def _new_episode(self):
+    def _new_episode(self, env_vector_idx):
         return MultiAgentEpisode(
             observation_space=self.env.observation_space,
             action_space=self.env.action_space,
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
+            env_vector_idx=env_vector_idx,
         )
 
     def _make_on_episode_callback(self, which: str, episode=None):

@@ -82,57 +82,58 @@ class DefaultEnvToModule(ConnectorV2):
         # - Add the most recent STATE_OUTs to `data`.
         # - Later (after everything has been numpyf'ied): Make all data in `data`
         # have a time rank (T=1).
-        added_state = None
+        #added_state = None
         if rl_module.is_stateful() and STATE_IN not in data:
             data = self._add_most_recent_states_to_data(data, episodes, rl_module)
-            added_state = data[STATE_IN]
+            #added_state = data[STATE_IN]
+
+            # Only after everything has been batched and there are not more lists
+            # underneath the column names:
+            # Make all inputs (other than STATE_IN) have an additional T=1 axis.
+            #if added_state is not None:
+            data = tree.map_structure_with_path(
+                #TODO: if we DO batch above, axis must be 1!!!
+                lambda p, s: np.expand_dims(s, axis=0) if STATE_IN not in p else s,
+                data,
+            )
 
         # Perform AgentID to ModuleID mapping.
         if is_multi_agent:
-            # TODO (sven): Prepare for case where user already did the agent to module
-            #  mapping (see TODO comment above).
-            # Make sure user has not already done the mapping themselves.
-            # If all keys under obs are part of the MARLModule, then the mapping has
-            # already happened.
-            all_module_ids = set(rl_module.keys())
-            if not all(
-                module_id in all_module_ids
-                for module_id in data[SampleBatch.OBS].keys()
-            ):
-                if shared_data is None:
-                    raise RuntimeError(
-                        "In multi-agent mode, the DefaultEnvToModule requires the "
-                        "`shared_data` argument (a dict) to be passed into the call!"
-                    )
-                data = self._perform_agent_to_module_mapping(
-                    data, episodes, shared_data
-                )
+        #    # TODO (sven): Prepare for case where user already did the agent to module
+        #    #  mapping (see TODO comment above).
+        #    # Make sure user has not already done the mapping themselves.
+        #    # If all keys under obs are part of the MARLModule, then the mapping has
+        #    # already happened.
+        #    all_module_ids = set(rl_module.keys())
+        #    if not all(
+        #        module_id in all_module_ids
+        #        for module_id in data[SampleBatch.OBS].keys()
+        #    ):
+        #        if shared_data is None:
+        #            raise RuntimeError(
+        #                "In multi-agent mode, the DefaultEnvToModule requires the "
+        #                "`shared_data` argument (a dict) to be passed into the call!"
+        #            )
+                #data = self._perform_agent_to_module_mapping(
+                #    data, episodes, shared_data
+                #)
                 # Convert lists of items into properly stacked (batched) data.
-                for module_id, columns in data.items():
-                    for column, column_data in columns.items():
-                        if isinstance(column_data, list):
-                            data[module_id][column] = batch(column_data)
+                for column, column_data in data.items():
+                    for env_idx_agent_module_key, items in column_data.items():
+                        if isinstance(items, list):
+                            data[column][env_idx_agent_module_key] = batch(items)
 
         # Convert lists of items into properly stacked (batched) data.
         else:
-            for column, column_data in data.items():
-                if isinstance(column_data, list):
-                    data[column] = batch(column_data)
-
-        # Only after everything has been batched and there are not more lists
-        # underneath the column names:
-        # Make all inputs (other than STATE_IN) have an additional T=1 axis.
-        if added_state is not None:
-            data = tree.map_structure_with_path(
-                lambda p, s: np.expand_dims(s, axis=1) if STATE_IN not in p else s,
-                data,
-            )
+            for column, items in data.items():
+                if isinstance(items, list):
+                    data[column] = batch(items)
 
         # Convert data to proper tensor formats, depending on framework used by the
         # RLModule.
         # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
         #  now we assume EnvRunners are always only on the CPU.
-        data = convert_to_tensor(data, rl_module.framework)
+        #data = convert_to_tensor(data, rl_module.framework)
 
         return data
 
@@ -169,60 +170,6 @@ class DefaultEnvToModule(ConnectorV2):
             )
 
         return data
-
-    @staticmethod
-    def _perform_agent_to_module_mapping(data, episodes, shared_data):
-        """Performs flipping of `data` from agent ID- to module ID based mapping.
-
-        Before mapping (obs):
-        data[OBS]: "ag1" ... "ag2" ...
-
-        # Mapping (no cost/extra memory):
-        data[OBS]: "module1": push into list -> [..., ...]
-        # ... then perform batching: stack([each module's items in list], axis=0)
-        data[OBS]: "module1": [...] <- already batched data
-        # Flip column (e.g. OBS) with module IDs (no cost/extra memory):
-        data[module1]: OBS: ...
-        data[module2]: OBS: ...
-        """
-        # Current agent to module mapping function.
-        agent_to_module_mapping_fn = shared_data.get("agent_to_module_mapping_fn")
-        # Store in shared data, which module IDs map to which episode/agent, such
-        # that the module-to-env pipeline can map the data back to agents.
-        module_to_episode_agents_mapping = defaultdict(list)
-
-        for episode_idx, ma_episode in enumerate(episodes):
-            for agent_id in ma_episode.get_agents_that_stepped():
-                module_id = ma_episode.agent_episodes[agent_id].module_id
-                if module_id is None:
-                    module_id = agent_to_module_mapping_fn(agent_id, ma_episode)
-                    ma_episode.agent_episodes[agent_id].module_id = module_id
-                # Store (in the correct order) which episode+agentID belongs to which
-                # batch item in a module IDs forward batch.
-                module_to_episode_agents_mapping[module_id].append(
-                    (episode_idx, agent_id)
-                )
-
-        shared_data["module_to_episode_agents_mapping"] = dict(
-            module_to_episode_agents_mapping
-        )
-
-        # Mapping from ModuleID to column data.
-        module_data = {}
-
-        # Iterating over each column in the original data:
-        for column, agent_data in data.items():
-            for (agent_id, module_id), values_batch_or_list in agent_data.items():
-                for i, value in enumerate(values_batch_or_list):
-                    if module_id not in module_data:
-                        module_data[module_id] = {column: []}
-                    elif column not in module_data[module_id]:
-                        module_data[module_id][column] = []
-
-                    # Append the data.
-                    module_data[module_id][column].append(value)
-
-        return module_data
 
     def _map_space_if_necessary(self, space):
         if not self._multi_agent:

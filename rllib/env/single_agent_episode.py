@@ -146,6 +146,7 @@ class SingleAgentEpisode:
         "id_",
         "agent_id",
         "module_id",
+        "env_vector_idx",
         "_observation_space",
         "_action_space",
         "observations",
@@ -178,6 +179,7 @@ class SingleAgentEpisode:
         len_lookback_buffer: Union[int, str] = "auto",
         agent_id: Optional[AgentID] = None,
         module_id: Optional[ModuleID] = None,
+        env_vector_idx: Optional[int] = None,
     ):
         """Initializes a SingleAgentEpisode instance.
 
@@ -250,6 +252,7 @@ class SingleAgentEpisode:
 
         self.agent_id = agent_id
         self.module_id = module_id
+        self.env_vector_idx = env_vector_idx
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.

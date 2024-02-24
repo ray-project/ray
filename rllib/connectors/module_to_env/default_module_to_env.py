@@ -10,8 +10,10 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import convert_to_tensor
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import (
+    batch,
     clip_action,
     get_base_struct_from_space,
     unbatch,
@@ -95,12 +97,12 @@ class DefaultModuleToEnv(ConnectorV2):
         data = self._get_actions(data, rl_module, explore, is_multi_agent)
 
         # Check, whether module-to-agent mapping needs to be performed.
-        if is_multi_agent:
-            all_module_ids = set(rl_module.keys())
-            if all(module_id in all_module_ids for module_id in data.keys()):
-                data = self._perform_module_to_agent_unmapping(
-                    data, episodes, shared_data
-                )
+        #if is_multi_agent:
+        #    all_module_ids = set(rl_module.keys())
+            #if all(module_id in all_module_ids for module_id in data.keys()):
+            #    data = self._perform_module_to_agent_unmapping(
+            #        data, episodes, shared_data
+            #    )
 
         # Convert everything into numpy.
         data = convert_to_numpy(data)
@@ -116,8 +118,10 @@ class DefaultModuleToEnv(ConnectorV2):
 
         for module_id, module_data in data.items():
             state = module_data.pop(STATE_OUT, None)
+            # TODO: If we were NOT operating on unbatched data (but we are right now),
+            # this would have to be changed to axis=1
             module_data = tree.map_structure(
-                lambda s: np.squeeze(s, axis=1), module_data
+                lambda s: np.squeeze(s, axis=0), module_data
             )
             if state:
                 module_data[STATE_OUT] = state
@@ -129,100 +133,57 @@ class DefaultModuleToEnv(ConnectorV2):
         return data
 
     def _get_actions(self, data, rl_module, explore, is_multi_agent):
-        if not is_multi_agent:
-            data = {DEFAULT_POLICY_ID: data}
-            sa_rl_module = rl_module
+        #if not is_multi_agent:
+        #    data = {DEFAULT_POLICY_ID: data}
+        #    sa_rl_module = rl_module
 
-        for module_id, module_data in data.items():
-            if is_multi_agent:
-                sa_rl_module = rl_module[module_id]
+        #for module_id, module_data in data.items():
+        #if is_multi_agent:
+        #    sa_rl_module = rl_module[module_id]
 
-            # ACTION_DIST_INPUTS field returned by `forward_exploration|inference()` ->
-            # Create a new action distribution object.
-            action_dist = None
-            if SampleBatch.ACTION_DIST_INPUTS in module_data:
-                if explore:
-                    action_dist_class = sa_rl_module.get_exploration_action_dist_cls()
-                else:
-                    action_dist_class = sa_rl_module.get_inference_action_dist_cls()
-                action_dist = action_dist_class.from_logits(
-                    module_data[SampleBatch.ACTION_DIST_INPUTS]
-                )
-
-                # TODO (sven): Should this not already be taken care of by RLModule's
-                #  `get_...action_dist_cls()` methods?
-                if not explore:
-                    action_dist = action_dist.to_deterministic()
-
-            # If `forward_...()` returned actions, use them here as-is.
-            if SampleBatch.ACTIONS in module_data:
-                actions = module_data[SampleBatch.ACTIONS]
-            # Otherwise, sample actions from the distribution.
+        
+        # ACTION_DIST_INPUTS field returned by `forward_exploration|inference()` ->
+        # Create a new action distribution object.
+        action_dist = None
+        if SampleBatch.ACTION_DIST_INPUTS in data:
+            if explore:
+                action_dist_class = sa_rl_module.get_exploration_action_dist_cls()
             else:
-                if action_dist is None:
-                    raise KeyError(
-                        "Your RLModule's `forward_[exploration|inference]()` methods "
-                        f"must return a dict with either the '{SampleBatch.ACTIONS}' "
-                        f"key or the '{SampleBatch.ACTION_DIST_INPUTS}' key in it "
-                        "(or both)!"
-                    )
-                actions = module_data[SampleBatch.ACTIONS] = action_dist.sample()
-
-            # For convenience and if possible, compute action logp from distribution
-            # and add to output.
-            if action_dist is not None and SampleBatch.ACTION_LOGP not in module_data:
-                module_data[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
-
-        if not is_multi_agent:
-            return data[DEFAULT_POLICY_ID]
-        return data
-
-    def _perform_module_to_agent_unmapping(self, data, episodes, shared_data):
-        """Performs flipping of `data` from ModuleID- to AgentID based mapping.
-
-        Before mapping:
-        data[module1]: ACTIONS: ...
-        data[module2]: ACTIONS: ...
-
-        #
-        data[ACTIONS]: [{}] <- list index == episode index from shared_data
-
-        # Flip column (e.g. OBS) with module IDs (no cost/extra memory):
-        data[OBS]: "ag1": push into list -> [..., ...]
-
-        # Mapping (no cost/extra memory):
-        # ... then perform batching: stack([each module's items in list], axis=0)
-        data[OBS]: "module1": [...] <- already batched data
-
-        data[OBS]: "ag1" ... "ag2" ...
-        """
-        module_to_episode_agents_mapping = shared_data[
-            "module_to_episode_agents_mapping"
-        ]
-        agent_data = {}
-        for module_id, module_data in data.items():
-            if module_id not in module_to_episode_agents_mapping:
-                raise KeyError(
-                    f"ModuleID={module_id} not found in "
-                    f"`module_to_episode_agents_mapping`!"
+                action_dist_class = sa_rl_module.get_inference_action_dist_cls()
+            action_dist = action_dist_class.from_logits(
+                convert_to_tensor(
+                    batch(module_data[SampleBatch.ACTION_DIST_INPUTS]),
+                    framework=sa_rl_module.framework,
                 )
+            )
 
-            for column, values_batch in module_data.items():
-                if column not in agent_data:
-                    agent_data[column] = [{} for _ in range(len(episodes))]
-                for i, val in enumerate(unbatch(values_batch)):
-                    eps_idx, agent_id = module_to_episode_agents_mapping[module_id][i]
-                    # TODO (sven): If one agent is terminated, we should NOT perform
-                    #  another forward pass on its (obs) data anymore, which we
-                    #  currently do in case we are using the WriteObservationsToEpisode
-                    #  connector piece, due to the fact that this piece requires even
-                    #  the terminal obs to be processed inside the batch. This if block
-                    #  here is a temporary fix for this issue.
-                    if episodes[eps_idx].agent_episodes[agent_id].is_done:
-                        continue
-                    agent_data[column][eps_idx][agent_id] = val
+            # TODO (sven): Should this not already be taken care of by RLModule's
+            #  `get_...action_dist_cls()` methods?
+            if not explore:
+                action_dist = action_dist.to_deterministic()
 
-        return agent_data
+        # If `forward_...()` returned actions, use them here as-is.
+        if SampleBatch.ACTIONS in module_data:
+            actions = module_data[SampleBatch.ACTIONS]
+        # Otherwise, sample actions from the distribution.
+        else:
+            if action_dist is None:
+                raise KeyError(
+                    "Your RLModule's `forward_[exploration|inference]()` methods "
+                    f"must return a dict with either the '{SampleBatch.ACTIONS}' "
+                    f"key or the '{SampleBatch.ACTION_DIST_INPUTS}' key in it "
+                    "(or both)!"
+                )
+            actions = module_data[SampleBatch.ACTIONS] = action_dist.sample()
+
+        # For convenience and if possible, compute action logp from distribution
+        # and add to output.
+        if action_dist is not None and SampleBatch.ACTION_LOGP not in module_data:
+            module_data[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
+
+        #if not is_multi_agent:
+        #    return data[DEFAULT_POLICY_ID]
+        return data
 
     def _normalize_clip_actions(self, data, is_multi_agent):
         """Based on settings, will normalize (unsquash) and/or clip computed actions.

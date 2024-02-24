@@ -52,10 +52,29 @@ class PPOLearner(Learner):
         )
 
     @override(Learner)
+    def _update_from_batch_or_episodes(
+        self,
+        *,
+        batch=None,
+        episodes=None,
+        reduce_fn=_reduce_mean_results,
+        minibatch_size=None,
+        num_iters=1,
+    ):
+        # Call the train data preprocessor.
+        batch, episodes = self._preprocess_train_data(episodes=episodes)
+
+        return super()._update_from_batch_or_episodes(
+            batch=batch,
+            episodes=episodes,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
+
     def _preprocess_train_data(
         self,
         *,
-        batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
@@ -65,7 +84,7 @@ class PPOLearner(Learner):
                 "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
                 "to work with! Otherwise, GAE/advantage computation can't be performed."
             )
-        batch = batch or {}
+        batch = {}
 
         sa_episodes_list = list(
             self._learner_connector.single_agent_episode_iterator(

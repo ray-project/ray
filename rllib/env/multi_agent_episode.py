@@ -75,6 +75,7 @@ class MultiAgentEpisode:
         env_t_started: Optional[int] = None,
         agent_t_started: Optional[Dict[AgentID, int]] = None,
         len_lookback_buffer: Union[int, str] = "auto",
+        env_vector_idx: Optional[int] = None,
         agent_episode_ids: Optional[Dict[AgentID, str]] = None,
         agent_module_ids: Optional[Dict[AgentID, ModuleID]] = None,
         agent_to_module_mapping_fn: Optional[
@@ -88,24 +89,6 @@ class MultiAgentEpisode:
                 If None, a hexadecimal id is created. In case of providing
                 a string, make sure that it is unique, as episodes get
                 concatenated via this string.
-            agent_module_ids: An optional dict mapping AgentIDs to their respective
-                ModuleIDs (these mapping are always valid for an entire episode and
-                thus won't change during the course of this episode). If a mapping from
-                agent to module has already been provided via this dict, the (optional)
-                `agent_to_module_mapping_fn` will NOT be used again to map the same
-                agent (agents do not change their assigned module in the course of
-                one episode).
-            agent_to_module_mapping_fn: A callable taking an AgentID and a
-                MultiAgentEpisode as args and returning a ModuleID. Used to map agents
-                that have not been mapped yet (because they just entered this episode)
-                to a ModuleID. The resulting ModuleID is only stored inside the agent's
-                SingleAgentEpisode object.
-            agent_episode_ids: An optional dict mapping AgentIDs
-                to their corresponding `SingleAgentEpisode`. If None, each
-                `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
-                will generate a hexadecimal code. If a dictionary is provided
-                make sure that IDs are unique as agents' `SingleAgentEpisode`s
-                get concatenated or recreated by it.
             observations: A list of dictionaries mapping agent IDs to observations.
                 Can be None. If provided, should match all other episode data
                 (actions, rewards, etc.) in terms of list lengths and agent IDs.
@@ -166,6 +149,25 @@ class MultiAgentEpisode:
                 chunk's data.
                 If `len_lookback_buffer` is "auto" (default), will interpret all
                 provided data in the constructor as part of the lookback buffers.
+            env_vector_idx: TODO
+            agent_episode_ids: An optional dict mapping AgentIDs
+                to their corresponding `SingleAgentEpisode`. If None, each
+                `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
+                will generate a hexadecimal code. If a dictionary is provided
+                make sure that IDs are unique as agents' `SingleAgentEpisode`s
+                get concatenated or recreated by it.
+            agent_module_ids: An optional dict mapping AgentIDs to their respective
+                ModuleIDs (these mapping are always valid for an entire episode and
+                thus won't change during the course of this episode). If a mapping from
+                agent to module has already been provided via this dict, the (optional)
+                `agent_to_module_mapping_fn` will NOT be used again to map the same
+                agent (agents do not change their assigned module in the course of
+                one episode).
+            agent_to_module_mapping_fn: A callable taking an AgentID and a
+                MultiAgentEpisode as args and returning a ModuleID. Used to map agents
+                that have not been mapped yet (because they just entered this episode)
+                to a ModuleID. The resulting ModuleID is only stored inside the agent's
+                SingleAgentEpisode object.
         """
         self.id_: str = id_ or uuid.uuid4().hex
         if agent_to_module_mapping_fn is None:
@@ -175,6 +177,8 @@ class MultiAgentEpisode:
                 AlgorithmConfig.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
             )
         self.agent_to_module_mapping_fn = agent_to_module_mapping_fn
+
+        self.env_vector_idx = env_vector_idx
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
@@ -304,6 +308,7 @@ class MultiAgentEpisode:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
                     module_id=self.agent_to_module_mapping_fn(agent_id, self),
+                    env_vector_idx=self.env_vector_idx,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -406,6 +411,7 @@ class MultiAgentEpisode:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
                     module_id=self.agent_to_module_mapping_fn(agent_id, self),
+                    env_vector_idx=self.env_vector_idx,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -1573,6 +1579,7 @@ class MultiAgentEpisode:
                 ),
                 agent_id=agent_id,
                 module_id=module_id,
+                env_vector_idx=self.env_vector_idx,
                 observations=agent_obs,
                 observation_space=self.observation_space.get(agent_id),
                 infos=infos_per_agent[agent_id],

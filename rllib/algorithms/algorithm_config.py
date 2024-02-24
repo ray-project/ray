@@ -344,6 +344,7 @@ class AlgorithmConfig(_Config):
         self.enable_connectors = True
         self._env_to_module_connector = None
         self._module_to_env_connector = None
+        self.perform_agent_module_mappings_automatically = True
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -1424,6 +1425,7 @@ class AlgorithmConfig(_Config):
         module_to_env_connector: Optional[
             Callable[[EnvType, "RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
+        perform_agent_module_mappings_automatically: Optional[bool] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
@@ -1475,6 +1477,16 @@ class AlgorithmConfig(_Config):
             module_to_env_connector: A callable taking an Env and an RLModule as input
                 args and returning a module-to-env ConnectorV2 (might be a pipeline)
                 object.
+            perform_agent_module_mappings_automatically: If True (default), RLlib's
+                EnvRunners will automatically perform agent-to-module mapping before
+                the RLModule forward pass and module-to-agent mapping afterwards (before
+                sending actions back into the env). Also, agent-to-module mapping will
+                be performed automatically on the Learner side.
+                If False, the user has to take care of mapping from an agent-based batch
+                to a module-based one via custom ConnectorV2's that the user defines in
+                their pipeline(s).
+                Note that this setting is only relevant for multi-agent setups AND only
+                if the new API stack is used (including the new EnvRunner classes).
             episode_lookback_horizon: The amount of data (in timesteps) to keep from the
                 preceeding episode chunk when a new chunk (for the same episode) is
                 generated to continue sampling at a later time. The larger this value,
@@ -1577,6 +1589,10 @@ class AlgorithmConfig(_Config):
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
             self._module_to_env_connector = module_to_env_connector
+        if perform_agent_module_mappings_automatically is not NotProvided:
+            self.perform_agent_module_mappings_automatically = (
+                perform_agent_module_mappings_automatically
+            )
         if episode_lookback_horizon is not NotProvided:
             self.episode_lookback_horizon = episode_lookback_horizon
         if use_worker_filter_stats is not NotProvided:
