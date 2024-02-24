@@ -294,6 +294,7 @@ async def test_monitor_events():
         assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
 
 
+# TODO
 def test_autoscaler_cluster_events(shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 2},

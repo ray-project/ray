@@ -572,8 +572,9 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_demand_report_for_node_affinity_scheduling_strategy(
-    monkeypatch, shutdown_only
+    autoscaler_v2, monkeypatch, shutdown_only
 ):
     from ray.cluster_utils import AutoscalingCluster
 
@@ -590,6 +591,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     cluster.start()
@@ -651,7 +653,8 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
 @pytest.mark.skipif(os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
-def test_demand_report_when_scale_up(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
     from ray.cluster_utils import AutoscalingCluster
 
@@ -668,6 +671,8 @@ def test_demand_report_when_scale_up(shutdown_only):
                 "max_workers": 10,
             },
         },
+        autoscaler_v2=autoscaler_v2,
+        max_workers=20,  # default 8
     )
 
     cluster.start()

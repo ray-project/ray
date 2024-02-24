@@ -13,7 +13,7 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
-    SKIP_RAY_INSTALL_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
@@ -102,7 +102,9 @@ class NodeTypeConfig:
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
-    # The node config's launch config hash.
+    # The node config's launch config hash. It's calculated from the auth
+    # config, and the node's config in the `AutoscalingConfig` for the node
+    # type when launching the node. It's used to detect config changes.
     launch_config_hash: str = ""
 
     def __post_init__(self):
@@ -298,19 +300,31 @@ class AutoscalingConfig:
             return None
         node_type_configs = {}
         auth_config = self._configs.get("auth", {})
+        head_node_type = self.get_head_node_type()
+        assert head_node_type
         for node_type, node_config in available_node_types.items():
             launch_config_hash = hash_launch_conf(
                 node_config.get("node_config", {}), auth_config
             )
+            max_workers_nodes = node_config.get("max_workers", 0)
+            if head_node_type == node_type:
+                max_workers_nodes += 1
+
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
-                max_worker_nodes=node_config.get("max_workers", 0),
+                max_worker_nodes=max_workers_nodes,
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
             )
         return node_type_configs
+
+    def get_head_node_type(self) -> NodeType:
+        available_node_types = self._configs.get("available_node_types", {})
+        if len(available_node_types) == 1:
+            return list(available_node_types.keys())[0]
+        return self._configs.get("head_node_type")
 
     def get_max_num_worker_nodes(self) -> Optional[int]:
         return self.get_config("max_workers", None)
@@ -330,18 +344,18 @@ class AutoscalingConfig:
     def get_max_concurrent_launches(self) -> int:
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
-    def skip_ray_install(self) -> bool:
-        provider_config = self.get_provider_config()
-        return provider_config.get(SKIP_RAY_INSTALL_KEY, True)
+    def disable_node_updaters(self) -> bool:
+        provider_config = self._configs.get("provider", {})
+        return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
 
-    def get_idle_timeout_s(self) -> int:
+    def get_idle_timeout_s(self) -> float:
         return self.get_config("idle_timeout_minutes", 0) * 60
 
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
         return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
 
-    def need_ray_stop(self) -> bool:
+    def worker_rpc_drain(self) -> bool:
         provider_config = self._configs.get("provider", {})
         return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 

@@ -44,12 +44,15 @@ class AutoscalingCluster:
         """
         self._head_resources = head_resources
         self._config = self._generate_config(
-            head_resources, worker_node_types, autoscaler_v2, **config_kwargs
+            head_resources,
+            worker_node_types,
+            autoscaler_v2=autoscaler_v2,
+            **config_kwargs,
         )
         self._autoscaler_v2 = autoscaler_v2
 
     def _generate_config(
-        self, head_resources, worker_node_types, autoscaler_v2, **config_kwargs
+        self, head_resources, worker_node_types, autoscaler_v2=False, **config_kwargs
     ):
         base_config = yaml.safe_load(
             open(
