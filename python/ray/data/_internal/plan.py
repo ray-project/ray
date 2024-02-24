@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+    from ray.data.dataset import Dataset
 
 
 # Scheduling strategy can be inherited from prev operator if not specified.
@@ -102,7 +103,7 @@ class ExecutionPlan:
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
-    def get_plan_as_string(self, classname: str) -> str:
+    def get_plan_as_string(self, dataset: "Dataset") -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
@@ -111,6 +112,8 @@ class ExecutionPlan:
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
+
+        from ray.data.dataset import MaterializedDataset
 
         # Do not force execution for schema, as this method is expected to be very
         # cheap.
@@ -191,19 +194,22 @@ class ExecutionPlan:
         count = self._get_num_rows_from_blocks_metadata(dataset_blocks)
         if count is None:
             count = "?"
-        if dataset_blocks is None:
-            num_blocks = "?"
-        else:
+
+        num_blocks = None
+        if dataset_blocks is not None and isinstance(dataset, MaterializedDataset):
             num_blocks = dataset_blocks.estimated_num_blocks()
+
         name_str = (
             "name={}, ".format(self._dataset_name)
             if self._dataset_name is not None
             else ""
         )
-        dataset_str = "{}({}num_blocks={}, num_rows={}, schema={})".format(
-            classname,
+        num_blocks_str = f"num_blocks={num_blocks}, " if num_blocks else ""
+
+        dataset_str = "{}({}{}num_rows={}, schema={})".format(
+            dataset.__class__.__name__,
             name_str,
-            num_blocks,
+            num_blocks_str,
             count,
             schema_str,
         )
@@ -252,9 +258,9 @@ class ExecutionPlan:
                 else ""
             )
             dataset_str = (
-                f"{classname}("
+                f"{dataset.__class__.__name__}("
                 f"{name_str}"
-                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
+                f"\n{trailing_space}{INDENT_STR}{num_blocks_str}"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
                 f"\n{trailing_space})"

@@ -5,10 +5,8 @@ wandb==0.13.4
 
 # ML training frameworks
 xgboost==1.7.6
-git+https://github.com/ray-project/xgboost_ray@5a840af05d487171883dadbfdd37b138b607bed8#egg=xgboost_ray
 
 lightgbm==3.3.5
-git+https://github.com/ray-project/lightgbm_ray.git@4c4d3413f86db769bddb6d08e2480a04bc75d712#egg=lightgbm_ray
 
 # Huggingface
 transformers==4.19.1  # TODO(ml-team): This should be upgraded.

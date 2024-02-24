@@ -1060,7 +1060,7 @@ def test_dataset_name():
     assert ds._name == "test_ds"
     assert str(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"
+        "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
     )
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
@@ -1097,7 +1097,6 @@ def test_dataset_name():
         str(ds)
         == """Dataset(
    name=very_loooooooong_name,
-   num_blocks=20,
    num_rows=100,
    schema={id: int64}
 )"""

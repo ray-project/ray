@@ -38,11 +38,7 @@ def test_tensors_basic(ray_start_regular_shared):
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=6,\n"
-        "   num_rows=6,\n"
-        "   schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)}\n"
-        ")"
+        "Dataset(num_rows=6, schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)})"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 

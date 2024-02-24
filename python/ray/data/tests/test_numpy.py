@@ -116,7 +116,6 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=2,\n"
         "   num_rows=?,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
@@ -133,7 +132,6 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, parallelism=1)
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=1,\n"
         "   num_rows=10,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
@@ -151,7 +149,6 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.count() == 10
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=1,\n"
         "   num_rows=10,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
@@ -191,7 +188,6 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     )
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=1,\n"
         "   num_rows=10,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
