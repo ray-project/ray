@@ -34,7 +34,7 @@ from ray.rllib.utils.typing import (
     ModuleID,
     ResultDict,
     RLModuleSpec,
-    ShouldModuleBeUpdatedFn,
+    T,
 )
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
@@ -54,17 +54,6 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
         raise ValueError("framework must be either torch or tf")
 
     return backend_config
-
-
-def _default_should_module_be_updated_fn(
-    module_id: ModuleID,
-    batch: MultiAgentBatch,
-) -> bool:
-    """Default implemntation for `LearnerGroup.should_module_be_updated_fn()`.
-
-    It assumes that all modules are to be updated by default.
-    """
-    return True
 
 
 @PublicAPI(stability="alpha")
@@ -129,10 +118,6 @@ class LearnerGroup:
         # true. the backend executor would otherwise log a warning to the console from
         # ray train.
         self._is_shut_down = False
-
-        # The callable to use to figure out whether a (single-agent) sub-module is
-        # trainable (via its ModuleID and the train batch) or not.
-        self._should_module_be_updated_fn = _default_should_module_be_updated_fn
 
         # How many timesteps had to be dropped due to a full input queue?
         self._ts_dropped = 0
@@ -252,19 +237,8 @@ class LearnerGroup:
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        # Construct a multi-agent batch with only those modules in it that should
-        # be updated.
-        # TODO (sven): Move this filtering of input data into individual Learners.
-        #  It might be that the postprocessing of batch/episodes on each Learner
-        #  requires the non-trainable modules' data.
-        train_batch = {}
-        for module_id in batch.policy_batches.keys():
-            if self.should_module_be_updated_fn(module_id, batch):
-                train_batch[module_id] = batch.policy_batches[module_id]
-        train_batch = MultiAgentBatch(train_batch, batch.count)
-
         return self._update(
-            batch=train_batch,
+            batch=batch,
             episodes=None,
             async_update=async_update,
             reduce_fn=reduce_fn,
@@ -338,7 +312,6 @@ class LearnerGroup:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
             if batch_shard is not None:
@@ -508,7 +481,7 @@ class LearnerGroup:
             results = self._get_results(results)
             if reduce_fn is None:
                 return results
-            # TODO(sven): Move reduce_fn to the training_step
+            # TODO (sven): Move reduce_fn to the training_step
             return reduce_fn(results)
 
     def add_module(
@@ -613,10 +586,7 @@ class LearnerGroup:
             )
             learner_state = self._get_results(results)[0]
 
-        return {
-            "learner_state": learner_state,
-            "should_module_be_updated_fn": self.should_module_be_updated_fn,
-        }
+        return {"learner_state": learner_state}
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of this LearnerGroup.
@@ -632,42 +602,21 @@ class LearnerGroup:
                 self._learner.set_state(learner_state)
             else:
                 self._worker_manager.foreach_actor(lambda w: w.set_state(learner_state))
-        if state.get("should_module_be_updated_fn"):
-            self.set_should_module_be_updated_fn(state["should_module_be_updated_fn"])
 
-    @property
-    def should_module_be_updated_fn(self):
-        return self._should_module_be_updated_fn
-
-    def set_should_module_be_updated_fn(
-        self, should_module_be_updated_fn: Optional[ShouldModuleBeUpdatedFn] = None
-    ) -> None:
-        """Sets the function that determines whether a module should be updated or not.
+    def foreach_learner(
+        self, func: Callable[[Learner, Optional[Any]], T], **kwargs
+    ) -> List[T]:
+        """Calls the given function on each Learner L with the args: (L, **kwargs).
 
         Args:
-            should_module_be_updated_fn: An optional callable that takes in a ModuleID
-                and a batch and returns a boolean indicating whether the module should
-                be updated on the given batch.
+            func: The function to call on each Learner L with (L, **kwargs).
+
+        Returns:
+            A list of size len(Learners) with the return values of all calls to `func`.
         """
-        # If None, use default implementation (all modules should be updated).
-        if should_module_be_updated_fn is None:
-            should_module_be_updated_fn = _default_should_module_be_updated_fn
-        # If container given, construct a simple callable returning True
-        # if the ModuleID is found in the list/set of IDs.
-        elif not callable(should_module_be_updated_fn):
-            if not isinstance(should_module_be_updated_fn, (list, set, tuple)):
-                raise ValueError(
-                    "`should_module_be_updated_fn` arg must either be a [list|set|"
-                    "tuple] or a callable taking a ModuleID and a MultiAgentBatch as "
-                    "call args and returning True|False (whether module is to be "
-                    "updated or not?)."
-                )
-            module_ids = set(should_module_be_updated_fn)
-
-            def should_module_be_updated_fn(mid, batch=None):
-                return mid in module_ids
-
-        self._should_module_be_updated_fn = should_module_be_updated_fn
+        if self.is_local:
+            return [func(self._learner, **kwargs)]
+        return self._worker_manager.foreach_actor(partial(func, **kwargs))
 
     # TODO (sven): Why did we chose to re-invent the wheel here and provide load/save
     #  from/to disk functionality? This should all be replaced with a simple
@@ -767,7 +716,6 @@ class LearnerGroup:
         modules_to_load: Optional[Set[str]] = None,
         rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
-
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
         `load_module_state` can be used 3 ways:
@@ -1013,7 +961,3 @@ class LearnerGroup:
         # Just in case, we would like to revert this API retirement, we can do so
         # easily.
         return self._update(*args, **kwargs, async_update=True)
-
-    @Deprecated(new="LearnerGroup.set_should_module_be_updated_fn()", error=True)
-    def set_is_module_trainable(self, *args, **kwargs):
-        pass

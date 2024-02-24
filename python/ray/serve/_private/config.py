@@ -88,6 +88,11 @@ class DeploymentConfig(BaseModel):
         max_concurrent_queries: The maximum number of queries
             that is sent to a replica of this deployment without receiving
             a response. Defaults to 100.
+        max_queued_requests: Maximum number of requests to this deployment that will be
+            queued at each *caller* (proxy or DeploymentHandle). Once this limit is
+            reached, subsequent requests will raise a BackPressureError (for handles) or
+            return an HTTP 503 status code (for HTTP requests). Defaults to -1 (no
+            limit).
         user_config: Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
             user_config is not None. Must be JSON-serializable.
@@ -113,6 +118,10 @@ class DeploymentConfig(BaseModel):
     max_concurrent_queries: PositiveInt = Field(
         default=DEFAULT_MAX_CONCURRENT_QUERIES,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    max_queued_requests: int = Field(
+        default=-1,
+        update_type=DeploymentOptionUpdateType.LightWeight,
     )
     user_config: Any = Field(
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
@@ -190,6 +199,18 @@ class DeploymentConfig(BaseModel):
         from ray.serve.schema import LoggingConfig
 
         v = LoggingConfig(**v).dict()
+
+        return v
+
+    @validator("max_queued_requests", always=True)
+    def validate_max_queued_requests(cls, v):
+        if not isinstance(v, int):
+            raise TypeError("max_queued_requests must be an integer.")
+
+        if v < 1 and v != -1:
+            raise ValueError(
+                "max_queued_requests must be -1 (no limit) or a positive integer."
+            )
 
         return v
 
