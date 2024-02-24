@@ -179,7 +179,7 @@ class Reconciler:
         cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
         ray_install_errors: Optional[List[RayInstallError]] = None,
         ray_stop_errors: Optional[List[RayStopError]] = None,
-        metric_reporter: Optional[AutoscalerMetricsReporter] = None,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
@@ -205,7 +205,7 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
-            metric_reporter: The metric reporter to report the autoscaler metrics.
+            metrics_reporter: The metric reporter to report the autoscaler metrics.
             _logger: The logger (for testing).
 
         """
@@ -240,7 +240,7 @@ class Reconciler:
         Reconciler._report_metrics(
             instance_manager=instance_manager,
             autoscaling_config=autoscaling_config,
-            metric_reporter=metric_reporter,
+            metrics_reporter=metrics_reporter,
         )
 
         return autoscaling_state
@@ -1643,13 +1643,13 @@ class Reconciler:
     def _report_metrics(
         instance_manager: InstanceManager,
         autoscaling_config: AutoscalingConfig,
-        metric_reporter: Optional[AutoscalerMetricsReporter] = None,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ):
-        if not metric_reporter:
+        if not metrics_reporter:
             return
 
         instances, _ = Reconciler._get_im_instances(instance_manager)
         node_type_configs = autoscaling_config.get_node_type_configs()
 
-        metric_reporter.report_instances(instances)
-        metric_reporter.report_resources(instances, node_type_configs)
+        metrics_reporter.report_instances(instances)
+        metrics_reporter.report_resources(instances, node_type_configs)
