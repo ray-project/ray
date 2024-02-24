@@ -75,6 +75,12 @@ class MockAutoscalingConfig:
     def worker_rpc_drain(self):
         return self._configs.get("worker_rpc_drain", True)
 
+    def disable_launch_config_check(self):
+        return self._configs.get("disable_launch_config_check", False)
+
+    def get_idle_timeout_s(self):
+        return self._configs.get("idle_timeout_s", 999)
+
 
 class MockScheduler(IResourceScheduler):
     def __init__(self, to_launch=None, to_terminate=None):

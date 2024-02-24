@@ -300,19 +300,31 @@ class AutoscalingConfig:
             return None
         node_type_configs = {}
         auth_config = self._configs.get("auth", {})
+        head_node_type = self.get_head_node_type()
+        assert head_node_type
         for node_type, node_config in available_node_types.items():
             launch_config_hash = hash_launch_conf(
                 node_config.get("node_config", {}), auth_config
             )
+            max_workers_nodes = node_config.get("max_workers", 0)
+            if head_node_type == node_type:
+                max_workers_nodes += 1
+
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
-                max_worker_nodes=node_config.get("max_workers", 0),
+                max_worker_nodes=max_workers_nodes,
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
             )
         return node_type_configs
+
+    def get_head_node_type(self) -> NodeType:
+        available_node_types = self._configs.get("available_node_types", {})
+        if len(available_node_types) == 1:
+            return list(available_node_types.keys())[0]
+        return self._configs.get("head_node_type")
 
     def get_max_num_worker_nodes(self) -> Optional[int]:
         return self.get_config("max_workers", None)
@@ -335,6 +347,13 @@ class AutoscalingConfig:
     def disable_node_updaters(self) -> bool:
         provider_config = self._configs.get("provider", {})
         return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
+
+    def get_idle_timeout_s(self) -> float:
+        return self.get_config("idle_timeout_minutes", 0) * 60
+
+    def disable_launch_config_check(self) -> bool:
+        provider_config = self.get_provider_config()
+        return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
 
     def worker_rpc_drain(self) -> bool:
         provider_config = self._configs.get("provider", {})
