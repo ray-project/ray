@@ -1408,13 +1408,13 @@ class TestReconciler:
         )
 
         assert len(subscriber.events) == 1
-        assert subscriber.events[0].new_instance_status == Instance.TERMINATING
+        assert subscriber.events[0].new_instance_status == Instance.ALLOCATED
         assert subscriber.events[0].cloud_instance_id == "c-2"
 
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 2
         statuses = {instance.status for instance in instances.values()}
-        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
+        assert statuses == {Instance.RAY_RUNNING, Instance.ALLOCATED}
 
 
 if __name__ == "__main__":

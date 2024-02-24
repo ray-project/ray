@@ -173,7 +173,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             config_file.flush()
 
             subprocess.check_call(
-                ["kubectl", "apply", "--wait=true", "-f", config_file.name],
+                ["kubectl", "apply", "-f", config_file.name],
                 stdout=sys.stdout,
                 stderr=sys.stderr,
             )
