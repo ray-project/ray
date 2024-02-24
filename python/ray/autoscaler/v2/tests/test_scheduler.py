@@ -10,6 +10,7 @@ import ray
 from ray.autoscaler.v2.scheduler import (
     NodeTypeConfig,
     ResourceDemandScheduler,
+    ResourceRequestSource,
     SchedulingNode,
     SchedulingNodeStatus,
     SchedulingReply,
@@ -160,7 +161,10 @@ class TestSchedulingNode:
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
         assert node.ray_node_id == "r1"
         assert node.im_instance_id == "1"
-        assert node.available_resources == {"CPU": 0}
+        assert node.available_resources == {
+            ResourceRequestSource.PENDING_DEMAND: {"CPU": 0},
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
+        }
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "bar"}
 
@@ -191,7 +195,10 @@ class TestSchedulingNode:
         assert node is not None
         assert node.node_type == "type_1"
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
-        assert node.available_resources == {"CPU": 1}
+        assert node.available_resources == {
+            ResourceRequestSource.PENDING_DEMAND: {"CPU": 1},
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
+        }
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "foo"}
 

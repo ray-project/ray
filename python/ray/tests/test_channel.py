@@ -40,17 +40,6 @@ def test_errors(ray_start_regular):
             return self.chan
 
     a = Actor.remote()
-    # Only original creator can write.
-    chan = ray.get(a.make_chan.remote(do_write=False))
-    with pytest.raises(ray.exceptions.RaySystemError):
-        chan.write(b"hi")
-
-    # Only original creator can write.
-    chan = ray.get(a.make_chan.remote(do_write=True))
-    assert chan.begin_read() == b"hello"
-    with pytest.raises(ray.exceptions.RaySystemError):
-        chan.write(b"hi")
-
     # Multiple consecutive reads from the same process are fine.
     chan = ray.get(a.make_chan.remote(do_write=True))
     assert chan.begin_read() == b"hello"

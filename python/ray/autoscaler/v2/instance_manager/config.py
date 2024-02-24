@@ -12,6 +12,8 @@ from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
@@ -100,7 +102,9 @@ class NodeTypeConfig:
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
-    # The node config's launch config hash.
+    # The node config's launch config hash. It's calculated from the auth
+    # config, and the node's config in the `AutoscalingConfig` for the node
+    # type when launching the node. It's used to detect config changes.
     launch_config_hash: str = ""
 
     def __post_init__(self):
@@ -328,10 +332,11 @@ class AutoscalingConfig:
     def get_max_concurrent_launches(self) -> int:
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
-    def skip_ray_install(self) -> bool:
-        return self.provider == Provider.KUBERAY
+    def disable_node_updaters(self) -> bool:
+        provider_config = self._configs.get("provider", {})
+        return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
 
-    def need_ray_stop(self) -> bool:
+    def worker_rpc_drain(self) -> bool:
         provider_config = self._configs.get("provider", {})
         return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 

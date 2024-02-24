@@ -231,7 +231,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
             batch[SampleBatch.REWARDS]
-            + (self.config.gamma**self.config.n_step) * q_next_masked
+            + (self.config.gamma ** batch["n_steps"]) * q_next_masked
         ).detach()
 
         # Calculate the TD-error. Note, this is needed for the priority weights in
