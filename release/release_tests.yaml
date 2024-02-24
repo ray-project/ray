@@ -113,7 +113,7 @@
 # 10 GB image classification raw images with 1 GPU.
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_raw
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -140,7 +140,7 @@
 # 10 GB image classification parquet with 1 GPU.
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_parquet
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -168,7 +168,7 @@
 # 300 GB image classification raw images with 16 GPUs
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_raw
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -197,7 +197,7 @@
 
 
 - name: chaos_torch_batch_inference_16_gpu_300gb_raw
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests
 
   frequency: nightly
@@ -229,7 +229,7 @@
 # 300 GB image classification parquet data with 16 GPUs
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_parquet
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -260,7 +260,7 @@
 # 10 TB image classification parquet data with heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
 - name: torch_batch_inference_hetero_10tb_parquet
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: weekly
