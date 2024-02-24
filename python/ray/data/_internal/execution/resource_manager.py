@@ -390,7 +390,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = op.incremental_resource_usage(consider_autoscaling=False)
+            min_reserved = copy.deepcopy(
+                op.incremental_resource_usage(consider_autoscaling=False)
+            )
             # 2. To ensure that all GPUs are utilized, reserve enough resource budget
             # to launch one task for each worker.
             if (
@@ -468,48 +470,63 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     return True
         return False
 
+    def _op_outputs_reserved_remaining(self, op: PhysicalOperator) -> int:
+        outputs_usage = self._resource_manager._mem_op_outputs[op]
+        return max(self._reserved_for_op_outputs[op] - outputs_usage, 0)
+
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
-        outputs_usage = self._resource_manager._mem_op_outputs[op]
-        outputs_remaining_reserved = max(
-            self._reserved_for_op_outputs[op] - outputs_usage, 0
-        )
-        res = self._op_budgets[op].object_store_memory + outputs_remaining_reserved
+        res = self._op_budgets[
+            op
+        ].object_store_memory + self._op_outputs_reserved_remaining(op)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
             res = 1
         return res
 
     def update_usages(self):
+        self._update_reservation()
+
+        self._op_budgets.clear()
         eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 
-        self._update_reservation()
-
-        self._op_budgets.clear()
         # Remaining of shared resources.
         remaining_shared = self._total_shared
         for op in self._resource_manager._topology:
             op_usage = self._resource_manager.get_op_usage(op)
             if op in eligible_ops:
+                # Op resource usage without considering `_reserved_for_op_outputs`.
+                op_usage_wo_op_outputs_reserved = ExecutionResources(
+                    op_usage.cpu,
+                    op_usage.gpu,
+                    self._resource_manager._mem_pending_task_outputs[op]
+                    + max(
+                        self._resource_manager._mem_op_outputs[op]
+                        - self._reserved_for_op_outputs[op],
+                        0,
+                    ),
+                )
                 op_reserved = self._op_reserved[op]
                 # How much of the reserved resources are remaining.
-                op_reserved_remaining = op_reserved.subtract(op_usage).max(
-                    ExecutionResources.zero()
-                )
+                op_reserved_remaining = op_reserved.subtract(
+                    op_usage_wo_op_outputs_reserved
+                ).max(ExecutionResources.zero())
                 self._op_budgets[op] = op_reserved_remaining
                 # How much of the reserved resources are exceeded.
                 # If exceeded, we need to subtract from the remaining shared resources.
-                op_reserved_exceeded = op_usage.subtract(op_reserved).max(
-                    ExecutionResources.zero()
-                )
+                op_reserved_exceeded = op_usage_wo_op_outputs_reserved.subtract(
+                    op_reserved
+                ).max(ExecutionResources.zero())
                 remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
             else:
                 # For non-eligible ops, we still need to subtract
                 # their usage from the remaining shared resources.
-                remaining_shared = remaining_shared.subtract(op_usage)
+                remaining_shared = remaining_shared.subtract(
+                    op_usage
+                )
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
 

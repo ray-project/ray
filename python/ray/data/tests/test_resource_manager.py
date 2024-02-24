@@ -300,13 +300,15 @@ class TestReservationOpResourceAllocator:
         o4 = LimitOperator(1, o3)
 
         o2.incremental_resource_usage = MagicMock(
-            return_value=ExecutionResources(1, 0, 10)
+            return_value=ExecutionResources(1, 0, 15)
         )
         o3.incremental_resource_usage = MagicMock(
             return_value=ExecutionResources(1, 0, 10)
         )
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        pending_task_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
+        op_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
 
         topo, _ = build_streaming_topology(o4, ExecutionOptions())
 
@@ -318,6 +320,9 @@ class TestReservationOpResourceAllocator:
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_pending_task_outputs = pending_task_outputs_usages
+        resource_manager._mem_op_outputs = op_outputs_usages
+
         resource_manager.get_global_limits = MagicMock(
             side_effect=mock_get_global_limits
         )
@@ -329,25 +334,22 @@ class TestReservationOpResourceAllocator:
         # Test initial state when no resources are used.
         global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
         allocator.update_usages()
+        # o1 and o4 are not handled.
         assert o1 not in allocator._op_reserved
         assert o4 not in allocator._op_reserved
         assert o1 not in allocator._op_budgets
         assert o4 not in allocator._op_budgets
-
+        # Test reserved resources for o2 and o3.
         assert allocator._op_reserved[o2] == ExecutionResources(4, 0, 125)
         assert allocator._op_reserved[o3] == ExecutionResources(4, 0, 125)
         assert allocator._reserved_for_op_outputs[o2] == 125
         assert allocator._reserved_for_op_outputs[o3] == 125
-
+        # 50% of the global limits are shared.
         assert allocator._total_shared == ExecutionResources(8, 0, 500)
-
-        assert allocator._op_budgets[o2] == ExecutionResources(
-            8, float("inf"), 375
-        )
-        assert allocator._op_budgets[o3] == ExecutionResources(
-            8, float("inf"), 375
-        )
-
+        # Test budgets.
+        assert allocator._op_budgets[o2] == ExecutionResources(8, float("inf"), 375)
+        assert allocator._op_budgets[o3] == ExecutionResources(8, float("inf"), 375)
+        # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
         assert allocator.max_task_output_bytes_to_read(o2) == 500
@@ -355,52 +357,44 @@ class TestReservationOpResourceAllocator:
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
+        pending_task_outputs_usages[o2] = 400
+        op_outputs_usages[o2] = 100
         op_usages[o3] = ExecutionResources(2, 0, 125)
-        op_usages[o4] = ExecutionResources(0, 0, 50)
+        pending_task_outputs_usages[o3] = 100
+        op_outputs_usages[o3] = 25
+        op_usages[o4] = ExecutionResources(0, 0, 75)
 
         allocator.update_usages()
-        assert allocator.get_op_limits(o1) == ExecutionResources.inf()
-        assert allocator.get_op_limits(o4) == ExecutionResources.inf()
-        assert allocator.get_op_limits(o2) == ExecutionResources(
-            3, float("inf"), 100
-        )
-        assert allocator.get_op_limits(o3) == ExecutionResources(
-            5, float("inf"), 225
-        )
+        # Test budgets.
+        assert allocator._op_budgets[o2] == ExecutionResources(3, float("inf"), 75)
+        assert allocator._op_budgets[o3] == ExecutionResources(5, float("inf"), 100)
+        # Test can_submit_new_task and max_task_output_bytes_to_read.
+        assert allocator.can_submit_new_task(o2)
+        assert allocator.can_submit_new_task(o3)
+        assert allocator.max_task_output_bytes_to_read(o2) == 100
+        assert allocator.max_task_output_bytes_to_read(o3) == 200
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
         allocator.update_usages()
-        assert o1 not in allocator._op_reserved
-        assert o4 not in allocator._op_reserved
-        assert allocator._op_reserved[o2] == ExecutionResources(3, 0, 200)
-        assert allocator._op_reserved[o3] == ExecutionResources(3, 0, 200)
+        # Test reserved resources for o2 and o3.
+        assert allocator._op_reserved[o2] == ExecutionResources(3, 0, 100)
+        assert allocator._op_reserved[o3] == ExecutionResources(3, 0, 100)
+        assert allocator._reserved_for_op_outputs[o2] == 100
+        assert allocator._reserved_for_op_outputs[o3] == 100
+        # 50% of the global limits are shared.
         assert allocator._total_shared == ExecutionResources(6, 0, 400)
 
-        assert allocator.get_op_limits(o1) == ExecutionResources.inf()
-        assert allocator.get_op_limits(o4) == ExecutionResources.inf()
-        assert allocator.get_op_limits(o2) == ExecutionResources(
-            1.5, float("inf"), 25
-        )
-        assert allocator.get_op_limits(o3) == ExecutionResources(
-            2.5, float("inf"), 100
-        )
+        # Test budgets.
+        assert allocator._op_budgets[o2] == ExecutionResources(1.5, float("inf"), 12.5)
+        assert allocator._op_budgets[o3] == ExecutionResources(2.5, float("inf"), 12.5)
+        # Test can_submit_new_task and max_task_output_bytes_to_read.
+        assert not allocator.can_submit_new_task(o2)
+        assert allocator.can_submit_new_task(o3)
+        assert allocator.max_task_output_bytes_to_read(o2) == 12.5
+        assert allocator.max_task_output_bytes_to_read(o3) == 87.5
 
-        # Test global_limits exceeded.
-        op_usages[o4] = ExecutionResources(0, 0, 150)
-        allocator.update_usages()
-        assert allocator.get_op_limits(o1) == ExecutionResources.inf()
-        assert allocator.get_op_limits(o4) == ExecutionResources.inf()
-        assert allocator.get_op_limits(o2) == ExecutionResources(
-            1.5, float("inf"), 0
-        )
-        # o3 still has object_store_memory in its reserved resources,
-        # even if the global limits are already exceeded.
-        assert allocator.get_op_limits(o3) == ExecutionResources(
-            2.5, float("inf"), 75
-        )
-
-    def test_reserve_at_least_incremental_resource_usage(self, restore_data_context):
+    def test_reserve_minimum_resources(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
         for each operator."""
         DataContext.get_current().op_resource_reservation_enabled = True
@@ -429,19 +423,17 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_reserved[o2] == incremental_usage
         assert allocator._op_reserved[o3] == incremental_usage
 
-        assert allocator.get_op_limits(o2) == ExecutionResources(
-            4, float("inf"), 850
-        )
-        assert allocator.get_op_limits(o3) == ExecutionResources(
-            4, float("inf"), 850
-        )
+        assert allocator.get_op_limits(o2) == ExecutionResources(4, float("inf"), 850)
+        assert allocator.get_op_limits(o3) == ExecutionResources(4, float("inf"), 850)
 
-    def test_no_eligible_ops(self, restore_data_context):
+    def test_only_handle_eligible_ops(self, restore_data_context):
+        """Test that we only handle non-completed map ops."""
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer([])
-        o2 = LimitOperator(1, o1)
-        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+        o2 = MapOperator.create(MagicMock(), o1)
+        o3 = LimitOperator(1, o2)
+        topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
         resource_manager.get_op_usage = MagicMock(
@@ -452,11 +444,16 @@ class TestReservationOpResourceAllocator:
         )
 
         assert resource_manager.op_resource_allocator_enabled()
-        op_resource_allocator = resource_manager._op_resource_allocator
-        assert isinstance(op_resource_allocator, ReservationOpResourceAllocator)
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        op_resource_allocator.update_usages()
-        assert op_resource_allocator.get_op_limits(o1) == ExecutionResources.inf()
+        allocator.update_usages()
+        assert o2 in allocator._op_budgets
+        assert o3 not in allocator._op_budgets
+
+        o2.completed = MagicMock(return_value=True)
+        allocator.update_usages()
+        assert o2 not in allocator._op_budgets
 
     def test_only_enable_for_ops_with_accurate_memory_accouting(
         self, restore_data_context
