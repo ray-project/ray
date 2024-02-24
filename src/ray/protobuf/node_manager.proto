@@ -356,6 +356,8 @@ message DrainRayletRequest {
 message DrainRayletReply {
   // Whether the drain request is accepted.
   bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
 }
 
 // Service for inter-node-manager communication.

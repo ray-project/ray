@@ -340,21 +340,21 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
-    "test_autoscaler.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

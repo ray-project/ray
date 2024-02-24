@@ -1,6 +1,7 @@
 import copy
 import logging
 import time
+import uuid
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -8,18 +9,27 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
-from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
+from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
+from ray.autoscaler._private.resource_demand_scheduler import (
+    UtilizationScore,
+    _fits,
+    _inplace_subtract,
+)
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
-from ray.autoscaler.v2.utils import resource_requests_by_count
+from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    LaunchRequest,
+    TerminationRequest,
+)
 
 # ============= Resource Scheduling Service API =======================
 #
@@ -92,13 +102,13 @@ class SchedulingNodeStatus(Enum):
     The status of a scheduling node (`SchedulingNode`)
     """
 
-    # The node is to be launched.
+    # The node is added by the ResourceDemandScheduler.
     TO_LAUNCH = "TO_LAUNCH"
     # The node is pending, i.e. there's already an autoscaler instance being launched
-    PENDING = "PENDING"
-    # The node is running.
-    RUNNING = "RUNNING"
-    # The node is to be terminated.
+    # The node is schedulable. It could be running ray or pending to run ray. Either
+    # Way, it should be able to accept new resource requests/resource constraints.
+    SCHEDULABLE = "SCHEDULABLE"
+    # The node is to be terminated by the ResourceDemandScheduler
     TO_TERMINATE = "TO_TERMINATE"
 
 
@@ -109,7 +119,7 @@ class SchedulingNode:
 
     A scheduling node is expected to be used as:
 
-        node  = SchedulingNode.from_node_config(node_config)
+        node  = SchedulingNode.new(instance, node_configs)
         remaining, score = node.try_schedule(requests)
 
         .... do something with the score ....
@@ -118,9 +128,105 @@ class SchedulingNode:
         One could also extend the scheduling behavior by overriding `try_schedule`
     """
 
-    @classmethod
+    @staticmethod
+    def new(
+        instance: AutoscalerInstance, node_type_configs: Dict[NodeType, NodeTypeConfig]
+    ) -> Optional["SchedulingNode"]:
+        """
+        Create a new scheduling node from an autoscaler instance.
+
+        It creates:
+            - None if the instance is not schedulable by IM.
+            - A schedulable node if the instance is running ray or pending to run ray,
+              so it should be considered in the scheduling process.
+
+        Args:
+            instance: The instance.
+            node_type_configs: The node type configs.
+
+        """
+        if not SchedulingNode.is_schedulable(instance):
+            return None
+
+        if instance.im_instance.status == Instance.RAY_RUNNING:
+            assert instance.ray_node is not None, (
+                "ray node should not be None "
+                f"when the instance is running ray: instance={instance}"
+            )
+            # An running ray node
+            return SchedulingNode(
+                node_type=instance.im_instance.instance_type,
+                total_resources=dict(instance.ray_node.total_resources),
+                # Use ray node's available resources.
+                available_resources=dict(instance.ray_node.available_resources),
+                # Use ray node's dynamic labels.
+                labels=dict(instance.ray_node.dynamic_labels),
+                status=SchedulingNodeStatus.SCHEDULABLE,
+                im_instance_id=instance.im_instance.instance_id,
+                ray_node_id=instance.im_instance.node_id,
+                idle_duration_ms=instance.ray_node.idle_duration_ms,
+            )
+
+        # This is an instance pending to run ray. Initialize a schedulable node
+        # from the node type config.
+        node_config = node_type_configs.get(instance.im_instance.instance_type, None)
+        if node_config is None:
+            # Configs might have been updated, and no more
+            # node_type_configs for this node type. We should terminate it.
+            return SchedulingNode(
+                node_type=instance.im_instance.instance_type,
+                total_resources={},
+                available_resources={},
+                labels={},
+                status=SchedulingNodeStatus.TO_TERMINATE,
+                im_instance_id=instance.im_instance.instance_id,
+                termination_request=TerminationRequest(
+                    id=str(uuid.uuid4()),
+                    instance_id=instance.im_instance.instance_id,
+                    cause=TerminationRequest.Cause.OUTDATED,
+                    instance_type=instance.im_instance.instance_type,
+                ),
+            )
+
+        return SchedulingNode.from_node_config(
+            node_config,
+            SchedulingNodeStatus.SCHEDULABLE,
+            instance.im_instance.instance_id,
+        )
+
+    @staticmethod
+    def is_schedulable(instance: AutoscalerInstance) -> bool:
+        """
+        Check if the instance is schedulable by IM.
+
+        Args:
+            instance: The instance.
+
+        Returns:
+            True if the instance is schedulable by IM.
+        """
+        if instance.im_instance is None:
+            # We will skip any instances that are not yet in IM which
+            # could be
+            #   1. an out-of-band ray node
+            #   2. an cloud instance running ray not yet discovered
+            #      by the IM's Reconciler
+            #   3. an cloud instance already terminated but ray state
+            #      still lagging behind.
+            #
+            # In all of these cases, the instance is not schedulable or
+            # shouldn't be managed by IM, so we don't consider them.
+            return False
+
+        # These are the statuses where there's a running ray node or
+        # could eventually run ray.
+        if InstanceUtil.is_ray_running_reachable(instance.im_instance.status):
+            return True
+
+        return False
+
+    @staticmethod
     def from_node_config(
-        cls,
         node_config: NodeTypeConfig,
         status: SchedulingNodeStatus,
         im_instance_id: Optional[str] = None,
@@ -133,7 +239,7 @@ class SchedulingNode:
             status: The status of the node.
             im_instance_id: The instance id of the im instance.
         """
-        return cls(
+        return SchedulingNode(
             node_type=node_config.name,
             total_resources=dict(node_config.resources),
             available_resources=dict(node_config.resources),
@@ -142,8 +248,13 @@ class SchedulingNode:
             im_instance_id=im_instance_id,
         )
 
+    def __post_init__(self):
+        assert self.node_type, "node_type should be set"
+
     # Node type name.
     node_type: NodeType
+    # Status
+    status: SchedulingNodeStatus
     # Requests committed to be placed on this node.
     sched_requests: List[ResourceRequest] = field(default_factory=list)
     # The node's current resource capacity.
@@ -152,8 +263,6 @@ class SchedulingNode:
     available_resources: Dict[str, float] = field(default_factory=dict)
     # Node's labels, including static or dynamic labels.
     labels: Dict[str, str] = field(default_factory=dict)
-    # Status
-    status: SchedulingNodeStatus = SchedulingNodeStatus.TO_LAUNCH
     # Observability descriptive message for why the node was launched in the
     # first place.
     launch_reason: Optional[str] = None
@@ -175,9 +284,8 @@ class SchedulingNode:
         Try to schedule the resource requests on this node.
 
         This modifies the node's available resources if the requests are schedulable.
-        When iterating through the requests, the requests are sorted by the
-        `_sort_resource_request` function. The requests are scheduled one by one in
-        the sorted order, and no backtracking is done.
+        The requests are scheduled one by one in the sorted order, and no
+        backtracking is done.
 
         Args:
             requests: The resource requests to be scheduled.
@@ -188,7 +296,17 @@ class SchedulingNode:
                 - the utilization score for this node with respect to the current
                 resource requests being scheduled.
         """
-        pass
+        # Track the resource requests that cannot be scheduled on this node.
+        unschedulable_requests = []
+
+        # Sort the requests and try schedule them one by one.
+        for r in requests:
+            if not self._try_schedule_one(r):
+                unschedulable_requests.append(r)
+
+        score = self._compute_score()
+
+        return unschedulable_requests, score
 
     def _compute_score(self) -> UtilizationScore:
         """
@@ -222,7 +340,74 @@ class SchedulingNode:
         Returns:
             A utilization score for this node.
         """
-        pass
+
+        # Compute the number of resource types being scheduled.
+        num_matching_resource_types = 0
+        for req in self.sched_requests:
+            for resource_name in req.resources_bundle.keys():
+                if resource_name in self.total_resources:
+                    num_matching_resource_types += 1
+
+        # Compute the utilization rate for each resource type
+        util_by_resources = []
+        for k, v in self.total_resources.items():
+            if v == 0:
+                # Skip any zero values.
+                continue
+            if k in self.available_resources:
+                util = (v - self.available_resources.get(k, 0)) / v
+                assert util >= 0 and util <= 1, f"Invalid utilization: {util}"
+                util_by_resources.append(util)
+
+        # Prefer not to launch a GPU node if there aren't any GPU requirements in the
+        # resource bundle.
+        gpu_ok = True
+        if AUTOSCALER_CONSERVE_GPU_NODES:
+            # TODO: we should also generalize this optimization for accelerators.
+            # https://github.com/ray-project/ray/issues/43079
+            is_gpu_node = self.total_resources.get("GPU", 0) > 0
+            any_gpu_requests = any(
+                "GPU" in r.resources_bundle for r in self.sched_requests
+            )
+            if is_gpu_node and not any_gpu_requests:
+                gpu_ok = False
+
+        # Prioritize avoiding gpu nodes for non-gpu workloads first,
+        # then prioritize matching multiple resource types,
+        # then prioritize using all resources,
+        # then prioritize overall balance of multiple resources.
+        return (
+            gpu_ok,
+            num_matching_resource_types,
+            min(util_by_resources) if util_by_resources else 0,
+            float(sum(util_by_resources)) / len(util_by_resources)
+            if util_by_resources
+            else 0,
+        )
+
+    def _try_schedule_one(self, request: ResourceRequest) -> bool:
+        """
+        Try to schedule one resource request on this node.
+        If the resource request is schedulable, the node's available resources will be
+        updated, as well as the dynamic labels.
+
+        Returns:
+            True if the resource request is scheduled on this node.
+        """
+
+        # TODO: add labels when implementing the gang scheduling.
+
+        # Check if there's enough resources to schedule the request.
+        if not _fits(self.available_resources, dict(request.resources_bundle)):
+            return False
+
+        # Schedule the request, update resources
+        _inplace_subtract(self.available_resources, dict(request.resources_bundle))
+
+        # Add the request to the node.
+        self.sched_requests.append(request)
+
+        return True
 
     def __repr__(self) -> str:
         return (
@@ -317,60 +502,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Initialize the scheduling nodes.
             for instance in req.current_instances:
-                if instance.ray_node is not None:
-                    # This is a running ray node.
-                    nodes.append(
-                        SchedulingNode(
-                            node_type=instance.ray_node.ray_node_type_name,
-                            total_resources=dict(instance.ray_node.total_resources),
-                            available_resources=dict(
-                                instance.ray_node.available_resources
-                            ),
-                            labels=dict(instance.ray_node.dynamic_labels),
-                            status=SchedulingNodeStatus.RUNNING,
-                            im_instance_id=instance.im_instance.instance_id
-                            if instance.im_instance
-                            else None,
-                            ray_node_id=instance.ray_node.node_id.decode("utf-8"),
-                            idle_duration_ms=instance.ray_node.idle_duration_ms,
-                        )
-                    )
-                elif (
-                    instance.im_instance is not None
-                    and InstanceUtil.is_ray_running_reachable(
-                        instance.im_instance.status
-                    )
-                ):
-                    # This is an im instance that's pending to run ray:
-                    # e.g. allocated, or being requested, or ray is installing.
-                    node_config = node_type_configs.get(
-                        instance.im_instance.instance_type, None
-                    )
-
-                    if node_config is None:
-                        # Configs might have been updated, and no more
-                        # node_type_configs for this node type.
-                        logger.info(
-                            "Skipping instance {} since no node config found for "
-                            "{}".format(
-                                instance.im_instance.instance_id,
-                                instance.im_instance.instance_type,
-                            )
-                        )
-                        continue
-                    nodes.append(
-                        SchedulingNode.from_node_config(
-                            node_config,
-                            status=SchedulingNodeStatus.PENDING,
-                            im_instance_id=instance.im_instance.instance_id,
-                        )
-                    )
-                else:
-                    logger.debug(
-                        "Skipping instance {} since it's not pending/running".format(
-                            instance
-                        )
-                    )
+                node = SchedulingNode.new(instance, node_type_configs)
+                if node:
+                    nodes.append(node)
 
             return cls(
                 nodes=nodes,
@@ -419,6 +553,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             nodes = copy.deepcopy(self._nodes)
             return nodes
 
+        def get_node_type_available(self) -> Dict[NodeType, int]:
+            return copy.deepcopy(self._node_type_available)
+
         def get_cluster_shape(self) -> Dict[NodeType, int]:
             cluster_shape = defaultdict(int)
             for node in self._nodes:
@@ -465,7 +602,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     LaunchRequest(
                         instance_type=instance_type,
                         count=count,
-                        id=str(time.time_ns()),
+                        id=str(uuid.uuid4()),
                         request_ts_ms=time.time_ns() // 1000,
                     )
                 )
@@ -515,7 +652,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Compute the number of nodes to launch.
         reply = SchedulingReply(
-            infeasible_resource_requests=resource_requests_by_count(
+            infeasible_resource_requests=ResourceRequestUtil.group_by_count(
                 infeasible_requests
             ),
             infeasible_gang_resource_requests=infeasible_gang_requests,
@@ -545,12 +682,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             else:
                 non_terminating_nodes_by_type[node.node_type].append(node)
 
-        terminating_nodes = []
         # Step 1. Enforce the max number of workers for each node type.
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
-            node_config = ctx.get_node_type_configs().get(node_type, None)
-            num_max_nodes_per_type = node_config.max_worker_nodes if node_config else 0
+            node_config = ctx.get_node_type_configs()[node_type]
+            num_max_nodes_per_type = node_config.max_worker_nodes
             num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
 
             if num_extra_nodes <= 0:
@@ -696,10 +832,11 @@ class ResourceDemandScheduler(IResourceScheduler):
         for node in terminated_nodes:
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
-                id=str(time.time_ns()),
+                id=str(uuid.uuid4()),
                 instance_id=node.im_instance_id,
                 ray_node_id=node.ray_node_id,
                 cause=cause,
+                instance_type=node.node_type,
             )
             if cause == TerminationRequest.Cause.MAX_NUM_NODES:
                 node.termination_request.max_num_nodes = max_num_nodes
@@ -724,7 +861,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         Such that nodes sorted earlier will be terminated first.
         """
 
-        running_ray = node.status == SchedulingNodeStatus.RUNNING
+        running_ray = node.ray_node_id is not None
         # Reverse the idle duration such that the nodes with the largest idle duration
         # will be terminated first.
         idle_dur = -1 * node.idle_duration_ms
@@ -819,7 +956,23 @@ class ResourceDemandScheduler(IResourceScheduler):
         Returns:
             A list of infeasible resource requests.
         """
-        return []
+        logger.debug(
+            "Scheduling resource requests: {}".format(
+                ResourceRequestUtil.to_dict_list(requests_by_count)
+            )
+        )
+        requests = ResourceRequestUtil.ungroup_by_count(requests_by_count)
+
+        nodes, infeasible = ResourceDemandScheduler._try_schedule(ctx, requests)
+
+        # Regardless if there's feasible, we will update the context for schedule nodes.
+        ctx.update(nodes)
+
+        logger.info(
+            f"Resource requests scheduled: {ctx}, "
+            f"infeasible: {ResourceRequestUtil.to_dict_list(infeasible)}"
+        )
+        return infeasible
 
     @staticmethod
     def _sched_gang_resource_requests(
@@ -840,3 +993,191 @@ class ResourceDemandScheduler(IResourceScheduler):
             A list of infeasible gang resource requests.
         """
         return []
+
+    @staticmethod
+    def _try_schedule(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+        requests_to_sched: List[ResourceRequest],
+    ) -> Tuple[List[SchedulingNode], List[ResourceRequest]]:
+        """
+        Try to schedule the resource requests on the current context.
+
+        It tries to schedule the requests on the existing nodes first, and
+        then try to schedule the requests on new nodes if possible.
+
+        Args:
+            requests_to_sched: The resource requests to be scheduled.
+            ctx: The current scheduling context.
+
+        Returns:
+            - List of scheduled nodes to that have part or all of the requests
+                scheduled.
+            - List of infeasible requests remained that cannot be scheduled.
+        """
+        # First sort the requests.
+        def _sort_resource_request(req: ResourceRequest) -> Tuple:
+            """
+            Sort the resource requests by:
+                1. The length of it's placement constraints.
+                2. The number of resources it requests.
+                3. The values of resources it requests.
+                4. lexicographically for each resource (for stable ordering)
+
+            This is a legacy sorting function for the autoscaler's binpacking
+            algo - we do this so that we could have a deterministic scheduling
+            results with reasonable fragmentation.
+            """
+            return (
+                len(req.placement_constraints),
+                len(req.resources_bundle.values()),
+                sum(req.resources_bundle.values()),
+                sorted(req.resources_bundle.items()),
+            )
+
+        requests_to_sched = sorted(
+            requests_to_sched, key=_sort_resource_request, reverse=True
+        )
+
+        existing_nodes = ctx.get_nodes()
+        node_type_available = ctx.get_node_type_available()
+
+        # A list of nodes that are either:
+        #   1. existing nodes in the cluster. or
+        #   2. new nodes that are launched to satisfy the resource requests.
+        target_nodes = []
+
+        # Try scheduling resource requests with existing nodes first.
+        while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
+            (
+                best_node,
+                requests_to_sched,
+                existing_nodes,
+            ) = ResourceDemandScheduler._sched_best_node(
+                requests_to_sched, existing_nodes
+            )
+            if best_node is None:
+                # No existing nodes can schedule any more requests.
+                break
+
+            target_nodes.append(best_node)
+
+        # If there's any existing nodes left, we will add to the target nodes
+        target_nodes.extend(existing_nodes)
+
+        # Try scheduling resource requests with new nodes.
+        node_pools = [
+            SchedulingNode.from_node_config(
+                ctx.get_node_type_configs()[node_type],
+                status=SchedulingNodeStatus.TO_LAUNCH,
+            )
+            for node_type, num_available in node_type_available.items()
+            if num_available > 0
+        ]
+        while len(requests_to_sched) > 0 and len(node_pools) > 0:
+            # Max number of nodes reached.
+            max_num_nodes = ctx.get_max_num_nodes()
+            if max_num_nodes is not None and len(target_nodes) >= max_num_nodes:
+                logger.debug(
+                    "Max number of nodes reached: {}, "
+                    "cannot launch more nodes.".format(max_num_nodes)
+                )
+                break
+
+            (
+                best_node,
+                requests_to_sched,
+                node_pools,
+            ) = ResourceDemandScheduler._sched_best_node(requests_to_sched, node_pools)
+            if best_node is None:
+                break
+
+            target_nodes.append(best_node)
+            # Update the node pool if a node with the same node type of the
+            # added node can be launched.
+            node_type_available[best_node.node_type] -= 1
+            if node_type_available[best_node.node_type] > 0:
+                node_pools.append(
+                    SchedulingNode.from_node_config(
+                        ctx.get_node_type_configs()[best_node.node_type],
+                        status=SchedulingNodeStatus.TO_LAUNCH,
+                    )
+                )
+
+        return target_nodes, requests_to_sched
+
+    @staticmethod
+    def _sched_best_node(
+        requests: List[ResourceRequest],
+        nodes: List[SchedulingNode],
+    ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
+        """
+        Schedule the requests on the best node.
+        A simple greedy algorithm is used to schedule the requests:
+            1. Try to schedule the requests on each node.
+            2. Sort the nodes by a score
+            3. Return the node with the highest score.
+
+        The highest score node is updated with the scheduled requests, and the node is
+        removed from the node list.
+
+        Args:
+            requests: The resource requests to be scheduled.
+            nodes: The node candidates to be scheduled on. The nodes will be updated
+                after the scheduling attempt, i.e. the node that is scheduled will be
+                removed from the list.
+        Returns:
+            best_node: The best node to schedule the requests.
+            infeasible: The infeasible requests that cannot be scheduled on the best
+                node.
+            nodes: Remaining nodes after the best node is removed.
+        """
+        results = []
+
+        # A temporary data class to store the scheduling result.
+        @dataclass
+        class ScheduleResult:
+            # The node candidate after a scheduling attempt.
+            node: SchedulingNode
+            # The infeasible resource requests that are not scheduled.
+            infeasible_requests: List[ResourceRequest]
+            # The index of the node in the original node list.
+            idx: int
+            # the score of the scheduling node to compare with others.
+            score: UtilizationScore
+
+        nodes_copy = copy.deepcopy(nodes)
+
+        # Iterate through each node and modify the node's available resources
+        # if the requests are schedulable.
+        for idx, node in enumerate(nodes_copy):
+            remaining, score = node.try_schedule(requests)
+
+            if len(remaining) == len(requests):
+                # The node cannot schedule any of the requests.
+                continue
+
+            results.append(ScheduleResult(node, remaining, idx, score))
+
+        # No nodes can schedule any of the requests.
+        if len(results) == 0:
+            logger.debug(
+                "No nodes can schedule the requests: {}, for nodes: {}".format(
+                    ResourceRequestUtil.to_dict_list(requests), nodes
+                )
+            )
+            return None, requests, nodes
+
+        # Sort the results by score.
+        results = sorted(results, key=lambda r: r.score, reverse=True)
+        best_result = results[0]
+
+        # Remove the best node from the nodes.
+        nodes.pop(best_result.idx)
+        logger.debug(
+            "best_node: {}, score: {}, remaining requests: {}".format(
+                best_result.node,
+                best_result.score,
+                ResourceRequestUtil.to_dict_list(best_result.infeasible_requests),
+            )
+        )
+        return best_result.node, best_result.infeasible_requests, nodes
