@@ -178,6 +178,7 @@ class _Bar:
             total=state["total"],
             position=pos_offset + state["pos"],
             leave=False,
+            dynamic_ncols=True,
         )
         if state["x"]:
             self.bar.update(state["x"])

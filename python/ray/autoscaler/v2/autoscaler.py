@@ -69,19 +69,6 @@ class Autoscaler:
         self._event_logger = event_logger
         self._scheduler = ResourceDemandScheduler(self._event_logger)
 
-        self._init_head_node()
-
-    def _init_head_node(self):
-        """
-        Initialize the head node of the cluster.
-        This is needed to ensure that the head node is properly initialized
-        in the instance manager.
-        """
-        Reconciler.initialize_head_node(
-            instance_manager=self._instance_manager,
-            non_terminated_cloud_instances=self._cloud_provider.get_non_terminated(),
-        )
-
     def _init_cloud_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
     ):
@@ -131,7 +118,7 @@ class Autoscaler:
         subscribers.append(
             RayStopper(gcs_client=gcs_client, error_queue=ray_stop_errors_queue)
         )
-        if not config.skip_ray_install():
+        if not config.disable_node_updaters():
             # Supporting ray installer is only needed for providers that install
             # and manage ray. Not for providers that only launch instances
             # (e.g. KubeRay)

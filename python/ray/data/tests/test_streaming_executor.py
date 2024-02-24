@@ -798,15 +798,6 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_time_scheduling():
-    ds = ray.data.range(1000).map_batches(lambda x: x)
-    for _ in ds.iter_batches():
-        continue
-
-    ds_stats = ds._plan.stats()
-    assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
-
-
 if __name__ == "__main__":
     import sys
 

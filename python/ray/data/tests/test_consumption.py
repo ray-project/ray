@@ -715,7 +715,7 @@ def test_iter_rows(ray_start_regular_shared):
         assert row == df_row.to_dict()
 
     # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
+    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
         assert isinstance(row, dict)
         assert row == t_row
 
@@ -1658,8 +1658,8 @@ class FlakyCSVDatasink(_CSVDatasink):
 
 
 def test_datasource(ray_start_regular):
-    source = ray.data.datasource.RandomIntRowDatasource()
-    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
+    assert len(ray.data.read_datasource(source).take()) == 10
     source = ray.data.datasource.RangeDatasource(n=10)
     assert extract_values(
         "value",
