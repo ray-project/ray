@@ -257,10 +257,16 @@ class ExecutionPlan:
                 if self._dataset_name is not None
                 else ""
             )
+            num_blocks_str = (
+                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks}, "
+                if num_blocks
+                else ""
+
+            )
             dataset_str = (
                 f"{dataset.__class__.__name__}("
                 f"{name_str}"
-                f"\n{trailing_space}{INDENT_STR}{num_blocks_str}"
+                f"{num_blocks_str}"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
                 f"\n{trailing_space})"
@@ -327,7 +333,7 @@ class ExecutionPlan:
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
-    def initial_num_blocks(self) -> int:
+    def initial_num_blocks(self) -> Optional[int]:
         """Get the estimated number of blocks from the logical plan
         after applying execution plan optimizations, but prior to
         fully executing the dataset."""

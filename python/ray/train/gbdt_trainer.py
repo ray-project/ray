@@ -260,7 +260,10 @@ class GBDTTrainer(BaseTrainer):
         # imported here.
         for dataset_key, dataset in self.datasets.items():
             dataset_num_blocks = dataset._plan.initial_num_blocks()
-            if dataset_num_blocks < self._ray_params.num_actors:
+            if (
+                dataset_num_blocks is not None 
+                and dataset_num_blocks < self._ray_params.num_actors
+            ):
                 if dataset.size_bytes() > _WARN_REPARTITION_THRESHOLD:
                     warnings.warn(
                         f"Dataset '{dataset_key}' has {dataset_num_blocks} blocks, "

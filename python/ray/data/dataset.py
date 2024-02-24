@@ -970,8 +970,8 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.repartition(10)._plan.initial_num_blocks()
+            >>> ds = ray.data.range(100).repartition(10).materialize()
+            >>> ds.num_blocks()
             10
 
         Time complexity: O(dataset size / parallelism)
@@ -2578,17 +2578,11 @@ class Dataset:
     def num_blocks(self) -> int:
         """Return the number of blocks of this Dataset.
 
-        Note that during read and transform operations, the number of blocks
+        This is only implemented for :class:`~ray.data.MaterializedDataset`,
+        since the number of blocks may dynamically change during execution.
+        For instance, during read and transform operations, the number of blocks
         may be dynamically adjusted to respect memory limits, increasing the
         number of blocks at runtime.
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100).repartition(10)
-            >>> ds.num_blocks()
-            10
-
-        Time complexity: O(1)
 
         Returns:
             The number of blocks of this dataset.
@@ -5033,15 +5027,11 @@ class MaterializedDataset(Dataset, Generic[T]):
     """
 
     def num_blocks(self) -> int:
-        """Return the number of blocks of this Dataset.
-
-        Note that during read and transform operations, the number of blocks
-        may be dynamically adjusted to respect memory limits, increasing the
-        number of blocks at runtime.
+        """Return the number of blocks of this MaterializedDataset.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100).repartition(10)
+            >>> ds = ray.data.range(100).repartition(10).materialize()
             >>> ds.num_blocks()
             10
 

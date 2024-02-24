@@ -1095,11 +1095,7 @@ def test_dataset_name():
     ds._set_name("very_loooooooong_name")
     assert (
         str(ds)
-        == """Dataset(
-   name=very_loooooooong_name,
-   num_rows=100,
-   schema={id: int64}
-)"""
+        == "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
     )
 
 

@@ -128,6 +128,7 @@ Inspecting Metadata
    Dataset.count
    Dataset.columns
    Dataset.schema
+   Dataset.num_blocks
    Dataset.size_bytes
    Dataset.input_files
    Dataset.stats

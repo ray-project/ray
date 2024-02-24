@@ -154,8 +154,8 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 0)
 
     # Forces a data read.
@@ -236,8 +236,8 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 2)
 
     # Forces a data read.
@@ -357,8 +357,8 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 2)
 
     # Forces a data read.
@@ -441,8 +441,8 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, " "schema={one: int64, two: string})", ds
+    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     check_num_computed(ds, 2)
 
     # Forces a data read.
@@ -693,8 +693,8 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == "Dataset(num_rows=6, " "schema={two: string, one: int32})", ds
-    assert repr(ds) == "Dataset(num_rows=6, " "schema={two: string, one: int32})", ds
+    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
     check_num_computed(ds, 0)
 
     # Forces a data read.
