@@ -26,6 +26,26 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_streaming_executor import make_map_transformer
 
 
+def mock_map_op(
+    input_op,
+    ray_remote_args={},
+    compute_strategy=None,
+    incremental_resource_usage=None,
+):
+    op = MapOperator.create(
+        MagicMock(),
+        input_op,
+        ray_remote_args=ray_remote_args,
+        compute_strategy=compute_strategy,
+    )
+    op.start = MagicMock(side_effect=lambda _: None)
+    if incremental_resource_usage is not None:
+        op.incremental_resource_usage = MagicMock(
+            return_value=incremental_resource_usage
+        )
+    return op
+
+
 class TestResourceManager:
     """Unit tests for ResourceManager."""
 
@@ -114,8 +134,8 @@ class TestResourceManager:
     def test_update_usage(self):
         """Test calculating op_usage."""
         o1 = InputDataBuffer([])
-        o2 = MapOperator.create(make_map_transformer(lambda block: block), o1)
-        o3 = MapOperator.create(make_map_transformer(lambda block: block), o2)
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
         # Mock different metrics that contribute to the resource usage.
@@ -211,8 +231,8 @@ class TestResourceManager:
         input.size_bytes = MagicMock(return_value=1)
 
         o1 = InputDataBuffer([input])
-        o2 = MapOperator.create(MagicMock(), o1)
-        o3 = MapOperator.create(MagicMock(), o2)
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
 
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
         resource_manager = ResourceManager(topo, ExecutionOptions())
@@ -295,16 +315,9 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer([])
-        o2 = MapOperator.create(MagicMock(), o1)
-        o3 = MapOperator.create(MagicMock(), o2)
+        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
+        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
         o4 = LimitOperator(1, o3)
-
-        o2.incremental_resource_usage = MagicMock(
-            return_value=ExecutionResources(1, 0, 15)
-        )
-        o3.incremental_resource_usage = MagicMock(
-            return_value=ExecutionResources(1, 0, 10)
-        )
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
         pending_task_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
@@ -404,10 +417,8 @@ class TestReservationOpResourceAllocator:
         incremental_usage = ExecutionResources(cpu=3, gpu=0, object_store_memory=500)
 
         o1 = InputDataBuffer([])
-        o2 = MapOperator.create(MagicMock(), o1)
-        o2.incremental_resource_usage = MagicMock(return_value=incremental_usage)
-        o3 = MapOperator.create(MagicMock(), o2)
-        o3.incremental_resource_usage = MagicMock(return_value=incremental_usage)
+        o2 = mock_map_op(o1, incremental_resource_usage=incremental_usage)
+        o3 = mock_map_op(o2, incremental_resource_usage=incremental_usage)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
@@ -435,14 +446,12 @@ class TestReservationOpResourceAllocator:
         incremental_usage = ExecutionResources(cpu=0, gpu=0, object_store_memory=100)
 
         o1 = InputDataBuffer([])
-        o2 = MapOperator.create(
-            MagicMock(),
+        o2 = mock_map_op(
             o1,
             ray_remote_args={"num_cpus": 0, "num_gpus": 1},
             compute_strategy=ray.data.ActorPoolStrategy(size=8),
+            incremental_resource_usage=incremental_usage,
         )
-        o2.start = MagicMock(side_effect=lambda _: _)
-        o2.incremental_resource_usage = MagicMock(return_value=incremental_usage)
         topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
@@ -462,7 +471,7 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer([])
-        o2 = MapOperator.create(MagicMock(), o1)
+        o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
@@ -495,9 +504,9 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer([])
-        o2 = MapOperator.create(MagicMock(), o1)
+        o2 = mock_map_op(o1)
         o3 = InputDataBuffer([])
-        o4 = MapOperator.create(MagicMock(), o3)
+        o4 = mock_map_op(o3)
         o3 = UnionOperator(o2, o4)
 
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
