@@ -121,7 +121,7 @@ def test_no_deadlock_on_small_cluster_resources(
     shutdown_only,  # noqa: F811
     restore_data_context,  # noqa: F811
 ):
-    """Test when cluster resources are not enough for launch one task per op,
+    """Test when cluster resources are not enough for launching one task per op,
     the execution can still proceed without deadlock.
     """
     cluster_obj_store_mem_mb *= 1024**2

@@ -270,9 +270,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     worse performance. And vice versa.
     """
 
-    @dataclass
-    class IdleInfo:
-        """Information for detecting idle operators.
+    class IdleDetector:
+        """Utility class for detecting idle operators.
 
         Note, stalling can happen when there are less resources than Data executor
         expects. E.g., when some resources are preempted by non-Data code, see
@@ -291,10 +290,30 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Whether a warning has been printed.
         _warn_printed = False
 
-        # per-op fields
-        last_num_outputs: int
-        last_output_time: float
-        last_detection_time: float
+        def __init__(self):
+            # per-op fields
+            self.last_num_outputs = defaultdict(int)
+            self.last_output_time = defaultdict(lambda: time.time())
+            self.last_detection_time = defaultdict(lambda: time.time())
+
+        def detect_idle(self, op: PhysicalOperator):
+            cur_time = time.time()
+            if (
+                cur_time - self.last_detection_time[op]
+                > self.DETECTION_INTERVAL_S
+            ):
+                cur_num_outputs = op.metrics.num_task_outputs_generated
+                if cur_num_outputs > self.last_num_outputs[op]:
+                    self.last_num_outputs[op] = cur_num_outputs
+                    self.last_output_time[op] = cur_time
+                    self.last_detection_time[op] = cur_time
+                else:
+                    self.last_detection_time[op] = cur_time
+                    self.print_warning_if_idle_for_too_long(
+                        op, cur_time - self.last_output_time[op]
+                    )
+                    return True
+            return False
 
         @classmethod
         def print_warning_if_idle_for_too_long(
@@ -344,9 +363,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._cached_global_limits = ExecutionResources.zero()
         self._cached_num_eligible_ops = 0
 
-        self._idle_info = defaultdict(
-            lambda: self.IdleInfo(0, time.time(), time.time())
-        )
+        self._idle_detector = self.IdleDetector()
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         # Only consider map operators that are not completed.
@@ -451,23 +468,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # the resources are preempted by non-Data tasks or actors.
             # We don't have a good way to detect this case, so we'll unblock
             # backpressure when the downstream operator has been idle for a while.
-            cur_time = time.time()
-            idle_info = self._idle_info[next_op]
-            if (
-                cur_time - idle_info.last_detection_time
-                > self.IdleInfo.DETECTION_INTERVAL_S
-            ):
-                cur_num_outputs = next_op.metrics.num_task_outputs_generated
-                if cur_num_outputs > idle_info.last_num_outputs:
-                    idle_info.last_num_outputs = cur_num_outputs
-                    idle_info.last_output_time = cur_time
-                    idle_info.last_detection_time = cur_time
-                else:
-                    idle_info.last_detection_time = cur_time
-                    self.IdleInfo.print_warning_if_idle_for_too_long(
-                        next_op, cur_time - idle_info.last_output_time
-                    )
-                    return True
+            if self._idle_detector.detect_idle(next_op):
+                return True
         return False
 
     def _op_outputs_reserved_remaining(self, op: PhysicalOperator) -> int:
