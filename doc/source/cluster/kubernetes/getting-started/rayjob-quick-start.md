@@ -59,7 +59,7 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 ```sh
 # Step 3.1: Download `ray-job.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.1.0/ray-operator/config/samples/ray-job.sample.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.sample.yaml
 
 # Step 3.2: Create a RayJob
 kubectl apply -f ray-job.sample.yaml
@@ -149,7 +149,7 @@ kubectl delete -f ray-job.sample.yaml
 
 ```sh
 # Step 7.1: Download `ray-job.shutdown.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.1.0/ray-operator/config/samples/ray-job.shutdown.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 7.2: Create a RayJob
 kubectl apply -f ray-job.shutdown.yaml

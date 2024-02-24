@@ -52,8 +52,8 @@ class RayStopper(InstanceUpdatedSubscriber):
                 def _log_on_error(fut):
                     try:
                         fut.result()
-                    except Exception as e:
-                        logger.exception(f"Error stopping/drain ray: {e}")
+                    except Exception:
+                        logger.exception("Error stopping/drain ray.")
 
                 fut.add_done_callback(_log_on_error)
 
