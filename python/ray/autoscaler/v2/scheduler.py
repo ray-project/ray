@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SchedulingRequest:
+    # If outdated node check through launch config is disabled.
+    disable_launch_config_check: bool
     # Available node type configs
     node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
     # Max number of worker nodes.
@@ -144,7 +146,9 @@ class SchedulingNode:
 
     @staticmethod
     def new(
-        instance: AutoscalerInstance, node_type_configs: Dict[NodeType, NodeTypeConfig]
+        instance: AutoscalerInstance,
+        node_type_configs: Dict[NodeType, NodeTypeConfig],
+        disable_launch_config_check: bool,
     ) -> Optional["SchedulingNode"]:
         """
         Create a new scheduling node from an autoscaler instance.
@@ -198,6 +202,16 @@ class SchedulingNode:
         # from the node type config.
         node_config = node_type_configs.get(instance.im_instance.instance_type, None)
         if node_config is None:
+            if disable_launch_config_check:
+                # We are not terminating outdated nodes.
+                logger.info(
+                    "Node config for {node_config} is missing, but we are not "
+                    "terminating the outdated node because "
+                    "`disable_launch_config_check` is True in "
+                    "the autoscaler's provider config.".format(node_config=node_config)
+                )
+                return None
+
             # Configs might have been updated, and no more
             # node_type_configs for this node type. We should terminate it.
             return SchedulingNode(
@@ -216,8 +230,8 @@ class SchedulingNode:
         return SchedulingNode.from_node_config(
             node_config,
             SchedulingNodeStatus.SCHEDULABLE,
-            instance.im_instance.instance_id,
             node_kind=instance.im_instance.node_kind,
+            im_instance_id=instance.im_instance.instance_id,
         )
 
     @staticmethod
@@ -255,8 +269,8 @@ class SchedulingNode:
     def from_node_config(
         node_config: NodeTypeConfig,
         status: SchedulingNodeStatus,
+        node_kind: NodeKind,
         im_instance_id: Optional[str] = None,
-        node_kind: NodeKind = NodeKind.WORKER,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -538,6 +552,8 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # The node type configs for this scheduling request.
         _node_type_configs: Dict[NodeType, NodeTypeConfig]
+        # If outdated node check through launch config is disabled.
+        _disable_launch_config_check: bool
         # The max number of nodes for the entire cluster.
         _max_num_nodes: Optional[int] = None
         # The idle timeout in seconds.
@@ -553,6 +569,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             self,
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
+            disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[int] = None,
         ):
@@ -563,6 +580,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
+            self._disable_launch_config_check = disable_launch_config_check
 
         @classmethod
         def from_schedule_request(
@@ -583,13 +601,16 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Initialize the scheduling nodes.
             for instance in req.current_instances:
-                node = SchedulingNode.new(instance, node_type_configs)
+                node = SchedulingNode.new(
+                    instance, node_type_configs, req.disable_launch_config_check
+                )
                 if node:
                     nodes.append(node)
 
             return cls(
                 nodes=nodes,
                 node_type_configs=node_type_configs,
+                disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
             )
@@ -748,7 +769,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Schedule the tasks/actor resource requests
         infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
             ctx,
-            request.resource_requests,
+            ResourceRequestUtil.ungroup_by_count(request.resource_requests),
         )
 
         # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
@@ -866,15 +887,14 @@ class ResourceDemandScheduler(IResourceScheduler):
             max_num_nodes=num_max_nodes,
         )
 
-        if len(to_terminate_nodes) < num_to_terminate:
-            logger.warning(
-                "Terminating {} nodes, failed to terminate {} nodes to "
-                "satisfy max_num_nodes={}".format(
-                    len(to_terminate_nodes),
-                    num_to_terminate - len(to_terminate_nodes),
-                    num_max_nodes,
-                )
+        assert len(to_terminate_nodes) == num_to_terminate, (
+            "Terminating {} nodes, failed to terminate {} nodes to "
+            "satisfy max_num_nodes={}".format(
+                len(to_terminate_nodes),
+                num_to_terminate - len(to_terminate_nodes),
+                num_max_nodes,
             )
+        )
 
         # Update the context
         terminating_nodes.extend(to_terminate_nodes)
@@ -1017,6 +1037,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                         SchedulingNode.from_node_config(
                             copy.deepcopy(node_type_config),
                             status=SchedulingNodeStatus.TO_LAUNCH,
+                            node_kind=NodeKind.WORKER,
                         )
                     ]
                     * (min_count - cur_count)
@@ -1077,7 +1098,7 @@ class ResourceDemandScheduler(IResourceScheduler):
     @staticmethod
     def _sched_resource_requests(
         ctx: "ResourceDemandScheduler.ScheduleContext",
-        requests_by_count: List[ResourceRequestByCount],
+        requests: List[ResourceRequest],
     ) -> List[ResourceRequest]:
         """
         Schedule the resource requests.
@@ -1089,12 +1110,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         Returns:
             A list of infeasible resource requests.
         """
-        logger.debug(
-            "Scheduling resource requests: {}".format(
-                ResourceRequestUtil.to_dict_list(requests_by_count)
-            )
-        )
-        requests = ResourceRequestUtil.ungroup_by_count(requests_by_count)
         nodes, infeasible = ResourceDemandScheduler._try_schedule(
             ctx, requests, resource_request_source=ResourceRequestSource.PENDING_DEMAND
         )
@@ -1203,6 +1218,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             SchedulingNode.from_node_config(
                 ctx.get_node_type_configs()[node_type],
                 status=SchedulingNodeStatus.TO_LAUNCH,
+                node_kind=NodeKind.WORKER,
             )
             for node_type, num_available in node_type_available.items()
             if num_available > 0
@@ -1236,6 +1252,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     SchedulingNode.from_node_config(
                         ctx.get_node_type_configs()[best_node.node_type],
                         status=SchedulingNodeStatus.TO_LAUNCH,
+                        node_kind=NodeKind.WORKER,
                     )
                 )
 
@@ -1334,6 +1351,10 @@ class ResourceDemandScheduler(IResourceScheduler):
             ctx: The schedule context.
         """
         nodes = ctx.get_nodes()
+
+        if ctx._disable_launch_config_check:
+            # Outdated nodes check through launch config check is disabled.
+            return
 
         for node in nodes:
             if node.status != SchedulingNodeStatus.SCHEDULABLE:

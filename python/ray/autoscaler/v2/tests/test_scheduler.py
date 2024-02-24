@@ -46,6 +46,7 @@ def sched_request(
     cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
     idle_timeout_s: Optional[int] = None,
+    disable_launch_config_check: Optional[bool] = False,
 ) -> SchedulingRequest:
 
     if resource_requests is None:
@@ -71,6 +72,7 @@ def sched_request(
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
         idle_timeout_s=idle_timeout_s,
+        disable_launch_config_check=disable_launch_config_check,
     )
 
 
@@ -123,7 +125,10 @@ class TestSchedulingNode:
                 assert False, f"Unknown status {status}"
 
     @staticmethod
-    def test_new_node():
+    @pytest.mark.parametrize(
+        "disable_launch_config_check", [True, False], ids=["disabled", "enabled"]
+    )
+    def test_new_node(disable_launch_config_check):
         # Assert none IM instance.
         node_type_configs = {
             "type_1": NodeTypeConfig(
@@ -135,7 +140,10 @@ class TestSchedulingNode:
             ),
         }
         instance = make_autoscaler_instance(im_instance=None)
-        assert SchedulingNode.new(instance, node_type_configs) is None
+        assert (
+            SchedulingNode.new(instance, node_type_configs, disable_launch_config_check)
+            is None
+        )
 
         # A running ray node
         instance = make_autoscaler_instance(
@@ -153,7 +161,9 @@ class TestSchedulingNode:
                 node_id="r1",
             ),
         )
-        node = SchedulingNode.new(instance, node_type_configs)
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check
+        )
         assert node is not None
         assert node.node_type == "type_1"
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
@@ -174,12 +184,17 @@ class TestSchedulingNode:
                 instance_id="1",
             ),
         )
-        node = SchedulingNode.new(instance, node_type_configs)
-        assert node is not None
-        assert node.node_type == "type_no_longer_exists"
-        assert node.status == SchedulingNodeStatus.TO_TERMINATE
-        assert node.termination_request is not None
-        assert node.termination_request.cause == TerminationRequest.Cause.OUTDATED
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check
+        )
+        if not disable_launch_config_check:
+            assert node is not None
+            assert node.node_type == "type_no_longer_exists"
+            assert node.status == SchedulingNodeStatus.TO_TERMINATE
+            assert node.termination_request is not None
+            assert node.termination_request.cause == TerminationRequest.Cause.OUTDATED
+        else:
+            assert node is None
 
         # A pending ray node
         instance = make_autoscaler_instance(
@@ -189,7 +204,9 @@ class TestSchedulingNode:
                 instance_id="1",
             )
         )
-        node = SchedulingNode.new(instance, node_type_configs)
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check
+        )
         assert node is not None
         assert node.node_type == "type_1"
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
@@ -973,7 +990,10 @@ def test_resource_constrains():
     assert len(reply.infeasible_cluster_resource_constraints) == 1
 
 
-def test_outdated_nodes():
+@pytest.mark.parametrize(
+    "disable_launch_config_check", [True, False], ids=["disabled", "enabled"]
+)
+def test_outdated_nodes(disable_launch_config_check):
     """
     Test that nodes with outdated node configs are terminated.
     """
@@ -998,6 +1018,7 @@ def test_outdated_nodes():
 
     request = sched_request(
         node_type_configs=node_type_configs,
+        disable_launch_config_check=disable_launch_config_check,
         instances=[
             make_autoscaler_instance(
                 im_instance=Instance(
@@ -1053,8 +1074,12 @@ def test_outdated_nodes():
 
     reply = scheduler.schedule(request)
     to_launch, to_terminate = _launch_and_terminate(reply)
-    assert to_terminate == [("i-1", "r-1", TerminationRequest.Cause.OUTDATED)]
-    assert to_launch == {"type_cpu": 1}  # Launch 1 to replace the outdated node.
+    if not disable_launch_config_check:
+        assert to_terminate == [("i-1", "r-1", TerminationRequest.Cause.OUTDATED)]
+        assert to_launch == {"type_cpu": 1}  # Launch 1 to replace the outdated node.
+    else:
+        assert to_terminate == []
+        assert to_launch == {}
 
 
 @pytest.mark.parametrize("idle_timeout_s", [1, 2, 10])
