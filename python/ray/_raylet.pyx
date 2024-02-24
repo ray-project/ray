@@ -2891,12 +2891,14 @@ cdef class GcsClient:
         cdef:
             int64_t timeout_ms = -1
             c_bool is_accepted = False
+            c_string rejection_reason_message
         with nogil:
             check_status(self.inner.get().DrainNode(
                 node_id, reason, reason_message,
-                deadline_timestamp_ms, timeout_ms, is_accepted))
+                deadline_timestamp_ms, timeout_ms, is_accepted,
+                rejection_reason_message))
 
-        return is_accepted
+        return (is_accepted, rejection_reason_message.decode())
 
     @_auto_reconnect
     def drain_nodes(self, node_ids, timeout=None):
@@ -3379,15 +3381,14 @@ cdef class CoreWorker:
         return self.plasma_event_handler
 
     def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1,
-                    c_bool _is_experimental_mutable_object=False):
+                    int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, _is_experimental_mutable_object, &results)
+                c_object_ids, timeout_ms, &results)
         check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
@@ -3423,7 +3424,7 @@ cdef class CoreWorker:
                             c_bool created_by_worker,
                             owner_address=None,
                             c_bool inline_small_object=True,
-                            c_bool is_experimental_mutable_object=False,
+                            c_bool is_experimental_channel=False,
                             ):
         cdef:
             unique_ptr[CAddress] c_owner_address
@@ -3434,7 +3435,7 @@ cdef class CoreWorker:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker()
                              .CreateOwnedAndIncrementLocalRef(
-                             is_experimental_mutable_object, metadata,
+                             is_experimental_channel, metadata,
                              data_size, contained_ids,
                              c_object_id, data, created_by_worker,
                              move(c_owner_address),
@@ -3524,10 +3525,9 @@ cdef class CoreWorker:
                             generator_id=CObjectID.Nil(),
                             owner_address=c_owner_address))
 
-    def experimental_mutable_object_put_serialized(self, serialized_object,
-                                                   ObjectRef object_ref,
-                                                   num_readers
-                                                   ):
+    def experimental_channel_put_serialized(self, serialized_object,
+                                            ObjectRef object_ref,
+                                            num_readers):
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
@@ -3536,7 +3536,7 @@ cdef class CoreWorker:
         metadata = string_to_buffer(serialized_object.metadata)
         data_size = serialized_object.total_bytes
         check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalMutableObjectWriteAcquire(
+                     .ExperimentalChannelWriteAcquire(
                          c_object_id,
                          metadata,
                          data_size,
@@ -3547,18 +3547,32 @@ cdef class CoreWorker:
             (<SerializedObject>serialized_object).write_to(
                 Buffer.make(data))
         check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalMutableObjectWriteRelease(
+                     .ExperimentalChannelWriteRelease(
                          c_object_id,
                          ))
 
-    def experimental_mutable_object_set_error(self, ObjectRef object_ref):
+    def experimental_channel_set_error(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
 
         check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalMutableObjectSetError(c_object_id))
+                     .ExperimentalChannelSetError(c_object_id))
 
-    def experimental_mutable_object_read_release(self, object_refs):
+    def experimental_channel_register_writer(self, ObjectRef object_ref):
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .ExperimentalChannelRegisterWriter(c_object_id))
+
+    def experimental_channel_register_reader(self, ObjectRef object_ref):
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+
+        check_status(CCoreWorkerProcess.GetCoreWorker()
+                     .ExperimentalChannelRegisterReader(c_object_id))
+
+    def experimental_channel_read_release(self, object_refs):
         """
         For experimental.channel.Channel.
 
@@ -3571,7 +3585,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = (CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalMutableObjectReadRelease(c_object_ids))
+                         .ExperimentalChannelReadRelease(c_object_ids))
         check_status(op_status)
 
     def put_serialized_object_and_increment_local_ref(
@@ -3580,7 +3594,7 @@ cdef class CoreWorker:
             c_bool pin_object=True,
             owner_address=None,
             c_bool inline_small_object=True,
-            c_bool _is_experimental_mutable_object=False,
+            c_bool _is_experimental_channel=False,
             ):
         cdef:
             CObjectID c_object_id
@@ -3598,7 +3612,7 @@ cdef class CoreWorker:
             metadata, total_bytes, object_ref,
             contained_object_ids,
             &c_object_id, &data, True, owner_address, inline_small_object,
-            _is_experimental_mutable_object)
+            _is_experimental_channel)
 
         logger.debug(
             f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")
