@@ -394,14 +394,14 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o2) == 12.5
         assert allocator.max_task_output_bytes_to_read(o3) == 87.5
 
-    def test_reserve_minimum_resources(self, restore_data_context):
+    def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
         for each operator."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
-        global_limits = ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
-        incremental_usage = ExecutionResources(cpu=3, gpu=0, object_store_memory=600)
+        global_limits = ExecutionResources(cpu=6, gpu=0, object_store_memory=1600)
+        incremental_usage = ExecutionResources(cpu=3, gpu=0, object_store_memory=500)
 
         o1 = InputDataBuffer([])
         o2 = MapOperator.create(MagicMock(), o1)
@@ -422,9 +422,40 @@ class TestReservationOpResourceAllocator:
         allocator.update_usages()
         assert allocator._op_reserved[o2] == incremental_usage
         assert allocator._op_reserved[o3] == incremental_usage
+        assert allocator._reserved_for_op_outputs[o2] == 200
+        assert allocator._reserved_for_op_outputs[o2] == 200
 
-        assert allocator.get_op_limits(o2) == ExecutionResources(4, float("inf"), 850)
-        assert allocator.get_op_limits(o3) == ExecutionResources(4, float("inf"), 850)
+    def test_reserve_min_resources_for_gpu_ops(self, restore_data_context):
+        """Test that we'll reserve enough resources for ActorPoolMapOperator
+        that uses GPU."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        global_limits = ExecutionResources(cpu=6, gpu=0, object_store_memory=1600)
+        incremental_usage = ExecutionResources(cpu=0, gpu=0, object_store_memory=100)
+
+        o1 = InputDataBuffer([])
+        o2 = MapOperator.create(
+            MagicMock(),
+            o1,
+            ray_remote_args={"num_cpus": 0, "num_gpus": 1},
+            compute_strategy=ray.data.ActorPoolStrategy(size=8),
+        )
+        o2.start = MagicMock(side_effect=lambda _: _)
+        o2.incremental_resource_usage = MagicMock(return_value=incremental_usage)
+        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+
+        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        allocator.update_usages()
+        assert allocator._op_reserved[o2].object_store_memory == 800
 
     def test_only_handle_eligible_ops(self, restore_data_context):
         """Test that we only handle non-completed map ops."""
