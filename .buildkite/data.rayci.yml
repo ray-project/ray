@@ -7,7 +7,7 @@ steps:
   - name: data6build
     wanda: ci/docker/data6.build.wanda.yaml
 
-  - name: data14build
+  - name: data15build
     wanda: ci/docker/data14.build.wanda.yaml
 
   - name: databuild-multipy
@@ -49,9 +49,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name data14build
+        --build-name data15build
         --except-tags data_integration,doctest
-    depends_on: data14build
+    depends_on: data15build
 
   - label: ":database: data: python {{matrix.python}} tests ({{matrix.worker_id}})"
     if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
@@ -93,17 +93,17 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data 
-        --build-name data14build
+        --build-name data15build
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data 
-        --build-name data14build
+        --build-name data15build
         --except-tags gpu,post_wheel_build,doctest
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: data14build
+    depends_on: data15build
 
   - label: ":database: data: doc gpu tests"
     tags: 
@@ -146,9 +146,9 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name data14build
+        --build-name data15build
         --parallelism-per-worker 3
-    depends_on: data14build
+    depends_on: data15build
 
   - label: ":database: data: flaky tests"
     tags: 
@@ -160,9 +160,9 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests 
         --parallelism-per-worker 3
-        --build-name data14build
+        --build-name data15build
         --except-tags gpu_only,gpu
-    depends_on: data14build
+    depends_on: data15build
 
   - label: ":database: data: flaky gpu tests"
     tags: 
