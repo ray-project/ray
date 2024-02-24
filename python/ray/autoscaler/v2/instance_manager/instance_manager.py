@@ -249,8 +249,7 @@ class InstanceManager:
         """
         Create a new instance from the given update.
         """
-
-        if update.new_instance_status not in [
+        if not update.upsert or update.new_instance_status not in [
             # For unmanaged instance not initialized by InstanceManager,
             # e.g. head node
             Instance.ALLOCATED,
@@ -264,8 +263,9 @@ class InstanceManager:
                 cur_status=Instance.UNKNOWN,
                 update=update,
                 details=(
-                    "Invalid status for new instance, must be one of "
-                    "[ALLOCATED, QUEUED, TERMINATING]"
+                    "Invalid event for creating instance, must be one of "
+                    "[ALLOCATED, QUEUED, TERMINATING] or upsert must "
+                    "be true."
                 ),
             )
 

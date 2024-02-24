@@ -141,21 +141,24 @@ message InstanceUpdateEvent {
   Instance.InstanceStatus new_instance_status = 2;
   // The details of the status change if any.
   string details = 3;
+  // Whether to upsert the instance. If true, the instance will be created if it
+  // doesn't exist, if false, the instance must exist or the update will fail.
+  bool upsert = 4;
 
   /// Additional metdata for the update event.
 
   // The instance type for QUEUED/REQUESTED/ALLOCATED event.
-  optional string instance_type = 4;
+  optional string instance_type = 5;
   // Cloud instance id for ALLOCATED event.
-  optional string cloud_instance_id = 5;
+  optional string cloud_instance_id = 6;
   // The ray node type for ALLOCATED event.
-  optional NodeKind node_kind = 6;
+  optional NodeKind node_kind = 7;
   // Ray node id for RAY_RUNNING event.
-  optional string ray_node_id = 7;
+  optional string ray_node_id = 8;
   // Launch request id for REQUESTED event.
-  optional string launch_request_id = 8;
+  optional string launch_request_id = 9;
   // Termination request for RAY_STOPPING event.
-  optional TerminationRequest termination_request = 9;
+  optional TerminationRequest termination_request = 10;
 }
 
 // Launch request for a node type.

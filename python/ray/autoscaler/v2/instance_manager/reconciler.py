@@ -290,6 +290,7 @@ class Reconciler:
             cloud_instance_id=head_cloud_instance.cloud_instance_id,
             node_kind=head_cloud_instance.node_kind,
             instance_type=head_cloud_instance.node_type,
+            upsert=True,
         )
         instances, version = Reconciler._get_im_instances(instance_manager)
         assert len(instances) == 0, "No instance should have been initialized. "
@@ -1332,6 +1333,7 @@ class Reconciler:
                     instance_id=instance_id,
                     new_instance_status=IMInstance.QUEUED,
                     instance_type=launch_request.instance_type,
+                    upsert=True,
                 )
 
                 logger.info(
@@ -1569,6 +1571,7 @@ class Reconciler:
                 cloud_instance_id=cloud_instance_id,
                 new_instance_status=IMInstance.TERMINATING,
                 details="Leaked cloud instance",
+                upsert=True,
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)

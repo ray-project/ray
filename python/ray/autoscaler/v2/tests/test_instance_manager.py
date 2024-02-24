@@ -232,11 +232,13 @@ class InstanceManagerTest(unittest.TestCase):
                         instance_type="type-1",
                         instance_id="id-1",
                         new_instance_status=Instance.QUEUED,
+                        upsert=True,
                     ),
                     InstanceUpdateEvent(
                         instance_id="id-2",
                         new_instance_status=Instance.TERMINATING,
                         cloud_instance_id="cloud-id-2",
+                        upsert=True,
                     ),
                     InstanceUpdateEvent(
                         instance_id="id-3",
@@ -244,6 +246,7 @@ class InstanceManagerTest(unittest.TestCase):
                         cloud_instance_id="cloud-id-3",
                         node_kind=NodeKind.WORKER,
                         instance_type="type-3",
+                        upsert=True,
                     ),
                 ],
             )
@@ -257,6 +260,21 @@ class InstanceManagerTest(unittest.TestCase):
         assert instance_by_ids["id-3"].status == Instance.ALLOCATED
         assert instance_by_ids["id-3"].cloud_instance_id == "cloud-id-3"
         version = reply.state.version
+
+        # With non-upsert flags.
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=version,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_type="type-1",
+                        instance_id="id-999",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                ],
+            )
+        )
+        assert reply.status.code == StatusCode.INVALID_VALUE
 
         # With invalid statuses
         all_statuses = set(Instance.InstanceStatus.values())
