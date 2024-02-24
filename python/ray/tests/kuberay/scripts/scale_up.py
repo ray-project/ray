@@ -14,12 +14,11 @@ def main():
 
     def verify():
         cluster_resources = ray.cluster_resources()
-        assert cluster_resources.get("CPU", 0) == 2
+        assert cluster_resources.get("CPU", 0) == 2, cluster_resources
 
         return True
 
-    wait_for_condition(verify, timeout=15, retry_interval_ms=1000)
-    
+    wait_for_condition(verify, timeout=20, retry_interval_ms=2000)
 
 
 if __name__ == "__main__":

@@ -764,7 +764,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             ]
 
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
-        logger.info(
+        logger.debug(
             "Scheduling for request: resource_request={}, gang_resource_request={}, "
             "cluster_constraint={}".format(
                 ResourceRequestUtil.to_dict_list(request.resource_requests),
@@ -1544,6 +1544,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 id=str(time.time_ns()),
                 instance_id=node.im_instance_id,
                 ray_node_id=node.ray_node_id,
+                instance_type=node.node_type,
                 cause=TerminationRequest.Cause.IDLE,
                 idle_duration_ms=node.idle_duration_ms,
             )

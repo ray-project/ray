@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional
+from ray._private.protobuf_compat import message_to_dict
 
 from ray.autoscaler.v2.instance_manager.common import (
     InstanceUtil,
@@ -202,6 +203,8 @@ class InstanceManager:
             assert update.instance_type, "REQUESTED update must have instance_type"
             instance.launch_request_id = update.launch_request_id
             instance.instance_type = update.instance_type
+        elif update.new_instance_status == Instance.TERMINATING:
+            instance.cloud_instance_id = update.cloud_instance_id
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
@@ -251,5 +254,10 @@ class InstanceManager:
             f"{update.new_instance_status}"
         )
         InstanceManager._apply_update(instance, update)
+        logger.info(
+            "Updating instance {instance_id} with {update}".format(
+                instance_id=instance.instance_id, update=message_to_dict(update)
+            )
+        )
 
         return instance

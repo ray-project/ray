@@ -51,25 +51,26 @@ class AutoscalerEventLogger:
 
         # Log any terminate events.
         if terminate_requests:
-            termination_by_causes = defaultdict(int)
+            termination_by_cause_and_types = defaultdict(int)
             for req in terminate_requests:
-                termination_by_causes[req.cause] += 1
+                termination_by_cause_and_types[(req.cause, req.instance_type)] += 1
 
             cause_reason_map = {
-                TerminationRequest.Cause.OUTDATED: "they are outdated",
+                TerminationRequest.Cause.OUTDATED: "outdated",
                 TerminationRequest.Cause.MAX_NUM_NODES: "max number of worker nodes reached",  # noqa
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE: "max number of worker nodes per type reached",  # noqa
-                TerminationRequest.Cause.IDLE: "they are idle",
+                TerminationRequest.Cause.IDLE: "idle",
             }
 
-            log_str = "Terminating "
-            for idx, (cause, count) in enumerate(termination_by_causes.items()):
-                log_str += f"{count} nodes because {cause_reason_map[cause]}"
-                if idx < len(termination_by_causes) - 1:
-                    log_str += ", "
-
-            self._base_event_logger.info(f"{log_str}.")
-            logger.info(f"{log_str}.")
+            for idx, ((cause, instance_type), count) in enumerate(
+                termination_by_cause_and_types.items()
+            ):
+                log_str = "Removing "
+                log_str += (
+                    f"{count} nodes of type {instance_type} ({cause_reason_map[cause]})"
+                )
+                self._base_event_logger.info(f"{log_str}.")
+                logger.info(f"{log_str}.")
 
         # Cluster shape changes.
         if launch_requests or terminate_requests:

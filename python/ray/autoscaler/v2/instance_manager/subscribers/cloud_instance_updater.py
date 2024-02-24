@@ -2,6 +2,7 @@ import logging
 import uuid
 from collections import defaultdict
 from typing import List
+from ray._private.protobuf_compat import message_to_dict
 
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
@@ -55,6 +56,9 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             return
 
         # Terminate the instances.
+        for event in new_terminations:
+            logger.info("Terminating event received: {}".format(message_to_dict(event)))
+
         cloud_instance_ids = [event.cloud_instance_id for event in new_terminations]
 
         # This is an async call.

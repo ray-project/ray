@@ -361,6 +361,13 @@ class AutoscalingConfig:
     def get_provider_config(self) -> Dict[str, Any]:
         return self._configs.get("provider", {})
 
+    def get_head_node_type(self) -> NodeType:
+        node_types = self._configs.get("available_node_types", {})
+        if len(node_types) == 1:
+            # If there's only one node type, it's the head node type.
+            return list(node_types.keys())[0]
+        return self._configs.get("head_node_type", "")
+
     def dump(self) -> str:
         return yaml.safe_dump(self._configs)
 

@@ -173,7 +173,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             config_file.flush()
 
             subprocess.check_call(
-                ["kubectl", "apply", "-f", config_file.name],
+                ["kubectl", "apply", "--wait=true", "-f", config_file.name],
                 stdout=sys.stdout,
                 stderr=sys.stderr,
             )
@@ -339,7 +339,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # Check that stdout autoscaler logging is working.
         logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
         assert "Removing 1 nodes of type fake-gpu-group (idle)." in logs
-        wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
+        wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE, tries=120)
 
         # Check custom resource upscaling.
 

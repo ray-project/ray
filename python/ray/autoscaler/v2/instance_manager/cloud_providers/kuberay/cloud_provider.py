@@ -38,6 +38,14 @@ from ray.autoscaler.v2.schema import NodeType
 logger = logging.getLogger(__name__)
 
 
+def _worker_groups(raycluster: Dict[str, Any]):
+    """Extract worker group index from RayCluster."""
+    group_names = [
+        spec["groupName"] for spec in raycluster["spec"].get("workerGroupSpecs", [])
+    ]
+    return group_names
+
+
 class KubeRayProvider(ICloudInstanceProvider):
     """
     This class is a thin wrapper around the Kubernetes API client. It modifies
@@ -61,6 +69,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
+        self._head_node_type_name = provider_config["head_node_type_name"]
 
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
@@ -119,6 +128,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             # This request is already processed.
             return
         self._requests.add(request_id)
+        logger.info("[{}]Terminating nodes: {}".format(request_id, ids))
 
         scale_request = self._initialize_scale_request(
             to_launch={}, to_delete_instances=ids
@@ -142,13 +152,14 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._submit_scale_request(scale_request)
         except Exception as e:
             logger.exception(f"Error terminating nodes: {e}")
-            self._add_terminate_errors(ids, request_id, details=str(e), cause=e)
+            self._add_terminate_errors(ids, request_id, details=str(e), e=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
             # This request is already processed.
             return
         self._requests.add(request_id)
+        logger.info("[{}]Launching shape: {}".format(request_id, shape))
 
         scale_request = self._initialize_scale_request(
             to_launch=shape, to_delete_instances=[]
@@ -172,7 +183,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._submit_scale_request(scale_request)
         except Exception as e:
             logger.exception(f"Error launching nodes: {e}")
-            self._add_launch_errors(shape, request_id, details=str(e), cause=e)
+            self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
         errors = []
@@ -272,6 +283,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         patch_payload = []
 
         raycluster = self.ray_cluster
+        # logger.info("Groups are: {}".format(_worker_groups(raycluster)))
 
         # Collect patches for replica counts.
         for node_type, target_replicas in scale_request.desired_num_workers.items():
@@ -378,6 +390,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
         self._cached_instances = self._fetch_instances()
+        # logger.info("Groups are: {}".format(_worker_groups(self._ray_cluster)))
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -473,20 +486,24 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # Ignore pods marked for termination.
                 continue
             pod_name = pod["metadata"]["name"]
-            cloud_instance = self._cloud_instance_from_pod(pod)
+            cloud_instance = self._cloud_instance_from_pod(
+                pod, self._head_node_type_name
+            )
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
         return cloud_instances
 
     @staticmethod
-    def _cloud_instance_from_pod(pod: Dict[str, Any]) -> Optional[CloudInstance]:
+    def _cloud_instance_from_pod(
+        pod: Dict[str, Any], head_node_type_name: NodeType
+    ) -> Optional[CloudInstance]:
         """
         Convert a pod to a Ray CloudInstance.
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
             kind = NodeKind.HEAD
-            type = KUBERAY_TYPE_HEAD
+            type = head_node_type_name
         elif labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_WORKER:
             kind = NodeKind.WORKER
             type = labels[KUBERAY_LABEL_KEY_TYPE]

@@ -53,6 +53,7 @@ spec:
             requests:
               cpu: "500m"
               memory: "2G"
+        restartPolicy: Never
   workerGroupSpecs:
   - replicas: 1
     minReplicas: 1
@@ -76,3 +77,4 @@ spec:
             requests:
               cpu: "500m"
               memory: "1G"
+        restartPolicy: Never
