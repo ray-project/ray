@@ -26,7 +26,9 @@ from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
 )
+from ray.serve._private.utils import inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
+from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -47,6 +49,8 @@ class Router:
         event_loop: asyncio.BaseEventLoop = None,
         _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
+        enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+        enable_strict_max_concurrent_queries: bool = RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,  # noqa: E501
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -56,6 +60,17 @@ class Router:
         self._event_loop = event_loop
         self.deployment_id = deployment_id
         self.handle_id = handle_id
+
+        if inside_ray_client_context():
+            # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
+            # to override the behavior.
+            self._enable_queue_len_cache = False
+            self._enable_strict_max_concurrent_queries = False
+        else:
+            self._enable_queue_len_cache = enable_queue_len_cache
+            self._enable_strict_max_concurrent_queries = (
+                enable_strict_max_concurrent_queries
+            )
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
@@ -70,7 +85,7 @@ class Router:
                 self_node_id,
                 self_actor_id,
                 self_availability_zone,
-                use_replica_queue_len_cache=RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+                use_replica_queue_len_cache=enable_queue_len_cache,
             )
 
         logger.info(
@@ -163,7 +178,7 @@ class Router:
         self.deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
-        autoscaling_config: AutoscalingConfig = self.curr_autoscaling_config
+        autoscaling_config = self.curr_autoscaling_config
         if autoscaling_config:
             # Optimization for autoscaling cold start time. If there are
             # currently 0 replicas for the deployment, and there is at
@@ -285,34 +300,41 @@ class Router:
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"], str]:
+    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], str]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self._replica_scheduler.choose_replica_for_request(pr)
-        replica_id = replica.replica_id
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
-        if (
-            not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
-            or replica.is_cross_language
-        ):
-            return replica.send_request(pr), replica_id
+        if not self._enable_strict_max_concurrent_queries or replica.is_cross_language:
+            return replica.send_request(pr), replica.replica_id
 
         while True:
-            obj_ref_or_gen, queue_len_info = await replica.send_request_with_rejection(
-                pr
-            )
-            if RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE:
-                self._replica_scheduler.replica_queue_len_cache.update(
-                    replica_id, queue_len_info.num_ongoing_requests
-                )
-            if queue_len_info.accepted:
-                return obj_ref_or_gen, replica_id
+            obj_ref_gen = None
+            try:
+                (
+                    obj_ref_gen,
+                    queue_len_info,
+                ) = await replica.send_request_with_rejection(pr)
+                if self._enable_queue_len_cache:
+                    self._replica_scheduler.replica_queue_len_cache.update(
+                        replica.replica_id, queue_len_info.num_ongoing_requests
+                    )
+                if queue_len_info.accepted:
+                    return obj_ref_gen, replica.replica_id
+            except asyncio.CancelledError:
+                # NOTE(edoakes): this is not strictly necessary because there are
+                # currently no `await` statements between getting the ref and returning,
+                # but I'm adding it defensively.
+                if obj_ref_gen is not None:
+                    ray.cancel(obj_ref_gen)
+
+                raise
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
@@ -327,10 +349,25 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
         """Assign a request to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(tags={"route": request_meta.route})
+
+        num_queued_requests = self.num_queued_queries
+        max_queued_requests = (
+            self.deployment_config.max_queued_requests
+            if self.deployment_config is not None
+            else -1
+        )
+        if max_queued_requests != -1 and num_queued_requests >= max_queued_requests:
+            e = BackPressureError(
+                num_queued_requests=num_queued_requests,
+                max_queued_requests=max_queued_requests,
+            )
+            logger.warning(e.message)
+            raise e
+
         self.num_queued_queries += 1
         self.num_queued_queries_gauge.set(self.num_queued_queries)
 
@@ -350,6 +387,7 @@ class Router:
                 **self._get_aggregated_requests(), send_timestamp=time.time()
             )
 
+        ref = None
         try:
             request_args, request_kwargs = await self._resolve_deployment_responses(
                 request_args, request_kwargs
@@ -372,6 +410,14 @@ class Router:
                     ref.completed()._on_completed(callback)
 
             return ref
+        except asyncio.CancelledError:
+            # NOTE(edoakes): this is not strictly necessary because there are currently
+            # no `await` statements between getting the ref and returning, but I'm
+            # adding it defensively.
+            if ref is not None:
+                ray.cancel(ref)
+
+            raise
         finally:
             # If the request is disconnected before assignment, this coroutine
             # gets cancelled by the caller and an asyncio.CancelledError is

@@ -17,6 +17,7 @@ Test owner: krfricke
 Acceptance criteria: Should run faster than 2600 seconds. Should run without
 errors.
 """
+
 from collections import Counter
 import json
 import os
@@ -81,6 +82,7 @@ def main():
         config=config,
         num_samples=num_samples,
         resources_per_trial=ray_params.get_tune_resources(),
+        storage_path="/mnt/cluster_storage",
     )
     time_taken = time.monotonic() - start_time
 

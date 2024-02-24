@@ -224,29 +224,31 @@ def test_handle_early_detect_failure(shutdown_ray):
     It should detect replica raises ActorError and take them out of the replicas set.
     """
 
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
-    def f(do_crash: bool = False):
-        if do_crash:
-            os._exit(1)
-        return os.getpid()
+    try:
 
-    handle = serve.run(f.bind())
-    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(2)])
-    assert len(set(pids)) == 2
+        @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+        def f(do_crash: bool = False):
+            if do_crash:
+                os._exit(1)
+            return os.getpid()
 
-    client = _get_global_client()
-    # Kill the controller so that the replicas membership won't be updated
-    # through controller health check + long polling.
-    ray.kill(client._controller, no_restart=True)
+        handle = serve.run(f.bind())
+        responses = [handle.remote() for _ in range(10)]
+        assert len({r.result() for r in responses}) == 2
 
-    with pytest.raises(RayActorError):
-        handle.remote(do_crash=True).result()
+        client = _get_global_client()
+        # Kill the controller so that the replicas membership won't be updated
+        # through controller health check + long polling.
+        ray.kill(client._controller, no_restart=True)
 
-    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(10)])
-    assert len(set(pids)) == 1
+        with pytest.raises(RayActorError):
+            handle.remote(do_crash=True).result()
 
-    # Restart the controller, and then clean up all the replicas
-    serve.shutdown()
+        responses = [handle.remote() for _ in range(10)]
+        assert len({r.result() for r in responses}) == 1
+    finally:
+        # Restart the controller, and then clean up all the replicas.
+        serve.shutdown()
 
 
 def test_autoscaler_shutdown_node_http_everynode(

@@ -118,7 +118,7 @@ def test_autoscaling_metrics(serve_instance):
 
     handle = serve.run(A.bind())
     dep_id = DeploymentID("A", "default")
-    [handle.remote()._to_object_ref_sync() for _ in range(50)]
+    [handle.remote() for _ in range(50)]
 
     # Wait for metrics to propagate
     def get_data():
@@ -206,6 +206,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("smoothing_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance, smoothing_factor, use_upscale_downscale_config
 ):
@@ -395,6 +396,7 @@ def test_e2e_bursty(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_intermediate_downscaling(serve_instance):
     """
     Scales up, then down, and up again.
@@ -1081,7 +1083,7 @@ def test_autoscaling_status_changes(serve_instance):
     app = AutoscalingDeployment.bind()
 
     # Start the AutoscalingDeployment.
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
 
     # Active replicas are replicas that are waiting or running.
     expected_num_active_replicas: int = min_replicas
@@ -1165,7 +1167,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
@@ -1221,7 +1223,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
