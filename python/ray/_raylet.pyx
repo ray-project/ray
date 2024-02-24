@@ -1407,6 +1407,11 @@ async def execute_streaming_generator_async(
     loop = asyncio.get_running_loop()
     worker = ray._private.worker.global_worker
 
+    # NOTE: Reporting generator output in a streaming fashion,
+    #       is done in a standalone thread-pool fully *asynchronously*
+    #       to avoid blocking the event-loop and allow it to *concurrently*
+    #       make progress, since serializing and actual RPC I/O is done
+    #       with "nogil".
     try:
         async for output in gen:
             # Report the output to the owner of the task.
