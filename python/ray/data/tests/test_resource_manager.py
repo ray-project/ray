@@ -355,6 +355,7 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # | op3 | 0/125            | 0/125            | 0            |
         # +-----+------------------+------------------+--------------+
+        # remaining shared = 500
         # o1 and o4 are not handled.
         assert o1 not in allocator._op_reserved
         assert o4 not in allocator._op_reserved
