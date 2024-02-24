@@ -8,7 +8,7 @@ steps:
     wanda: ci/docker/data6.build.wanda.yaml
 
   - name: data15build
-    wanda: ci/docker/data14.build.wanda.yaml
+    wanda: ci/docker/data15.build.wanda.yaml
 
   - name: databuild-multipy
     label: "wanda: databuild-py{{matrix}}"
