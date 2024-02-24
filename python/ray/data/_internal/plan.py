@@ -1,6 +1,6 @@
 import copy
 import itertools
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -103,7 +103,7 @@ class ExecutionPlan:
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
-    def get_plan_as_string(self, dataset: "Dataset") -> str:
+    def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
@@ -196,7 +196,7 @@ class ExecutionPlan:
             count = "?"
 
         num_blocks = None
-        if dataset_blocks is not None and isinstance(dataset, MaterializedDataset):
+        if dataset_blocks is not None and dataset_cls == MaterializedDataset:
             num_blocks = dataset_blocks.estimated_num_blocks()
 
         name_str = (
@@ -207,7 +207,7 @@ class ExecutionPlan:
         num_blocks_str = f"num_blocks={num_blocks}, " if num_blocks else ""
 
         dataset_str = "{}({}{}num_rows={}, schema={})".format(
-            dataset.__class__.__name__,
+            dataset_cls.__name__,
             name_str,
             num_blocks_str,
             count,
@@ -263,7 +263,7 @@ class ExecutionPlan:
                 else ""
             )
             dataset_str = (
-                f"{dataset.__class__.__name__}("
+                f"{dataset_cls.__name__}("
                 f"{name_str}"
                 f"{num_blocks_str}"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"

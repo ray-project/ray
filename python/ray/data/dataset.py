@@ -4930,7 +4930,7 @@ class Dataset:
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        return self._plan.get_plan_as_string(self)
+        return self._plan.get_plan_as_string(self.__class__)
 
     def __str__(self) -> str:
         return repr(self)
