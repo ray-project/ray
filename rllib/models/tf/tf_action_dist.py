@@ -5,7 +5,10 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Optional
 
-from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.action_dist import (
+    ActionDistribution,
+    MultiActionDistributionMixIn,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
 from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
@@ -20,6 +23,8 @@ tfp = try_import_tfp()
 @DeveloperAPI
 class TFActionDistribution(ActionDistribution):
     """TF-specific extensions for building action distributions."""
+
+    framework = "tf"
 
     @override(ActionDistribution)
     def __init__(self, inputs: List[TensorType], model: ModelV2):
@@ -91,9 +96,9 @@ class Categorical(TFActionDistribution):
     def _build_sample_op(self) -> TensorType:
         return tf.squeeze(tf.random.categorical(self.inputs, 1), axis=1)
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(cls, action_space, model_config):
         return action_space.n
 
 
@@ -185,10 +190,10 @@ class MultiCategorical(TFActionDistribution):
             )
         return sample_op
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         # Int Box.
         if isinstance(action_space, gym.spaces.Box):
@@ -311,10 +316,10 @@ class GumbelSoftmax(TFActionDistribution):
     def _build_sample_op(self) -> TensorType:
         return self.dist.sample()
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return action_space.n
 
@@ -383,10 +388,10 @@ class DiagGaussian(TFActionDistribution):
             return tf.squeeze(sample, axis=-1)
         return sample
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
@@ -482,10 +487,10 @@ class SquashedGaussian(TFActionDistribution):
         unsquashed = tf.math.atanh(save_normed_values)
         return unsquashed
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
@@ -538,10 +543,10 @@ class Beta(TFActionDistribution):
     def _unsquash(self, values: TensorType) -> TensorType:
         return (values - self.low) / (self.high - self.low)
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
@@ -566,16 +571,16 @@ class Deterministic(TFActionDistribution):
     def _build_sample_op(self) -> TensorType:
         return self.inputs
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32)
 
 
 @DeveloperAPI
-class MultiActionDistribution(TFActionDistribution):
+class MultiActionDistribution(MultiActionDistributionMixIn, TFActionDistribution):
     """Action distribution that operates on a set of actions.
 
     Args:
@@ -635,48 +640,6 @@ class MultiActionDistribution(TFActionDistribution):
 
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
-    @override(ActionDistribution)
-    def kl(self, other):
-        kl_list = [
-            d.kl(o)
-            for d, o in zip(
-                self.flat_child_distributions, other.flat_child_distributions
-            )
-        ]
-        return functools.reduce(lambda a, b: a + b, kl_list)
-
-    @override(ActionDistribution)
-    def entropy(self):
-        entropy_list = [d.entropy() for d in self.flat_child_distributions]
-        return functools.reduce(lambda a, b: a + b, entropy_list)
-
-    @override(ActionDistribution)
-    def sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions
-        )
-        return tree.map_structure(lambda s: s.sample(), child_distributions)
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions
-        )
-        return tree.map_structure(
-            lambda s: s.deterministic_sample(), child_distributions
-        )
-
-    @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        p = self.flat_child_distributions[0].sampled_action_logp()
-        for c in self.flat_child_distributions[1:]:
-            p += c.sampled_action_logp()
-        return p
-
-    @override(ActionDistribution)
-    def required_model_output_shape(self, action_space, model_config):
-        return np.sum(self.input_lens, dtype=np.int32)
-
 
 @DeveloperAPI
 class Dirichlet(TFActionDistribution):
@@ -727,9 +690,9 @@ class Dirichlet(TFActionDistribution):
     def _build_sample_op(self) -> TensorType:
         return self.dist.sample()
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32)

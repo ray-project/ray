@@ -5,7 +5,10 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Optional
 
-from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.action_dist import (
+    ActionDistribution,
+    MultiActionDistributionMixIn,
+)
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -19,6 +22,8 @@ torch, nn = try_import_torch()
 @DeveloperAPI
 class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
+
+    framework = "torch"
 
     @override(ActionDistribution)
     def __init__(self, inputs: List[TensorType], model: TorchModelV2):
@@ -77,10 +82,10 @@ class TorchCategorical(TorchDistributionWrapper):
         self.last_sample = self.dist.probs.argmax(dim=1)
         return self.last_sample
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return action_space.n
 
@@ -170,10 +175,10 @@ class TorchMultiCategorical(TorchDistributionWrapper):
     def kl(self, other: ActionDistribution) -> TensorType:
         return torch.sum(self.multi_kl(other), dim=1)
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         # Int Box.
         if isinstance(action_space, gym.spaces.Box):
@@ -275,10 +280,10 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     def kl(self, other: ActionDistribution) -> TensorType:
         return super().kl(other).sum(-1)
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
@@ -381,10 +386,10 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         unsquashed = torch.atanh(save_normed_values)
         return unsquashed
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
@@ -441,10 +446,10 @@ class TorchBeta(TorchDistributionWrapper):
     def _unsquash(self, values: TensorType) -> TensorType:
         return (values - self.low) / (self.high - self.low)
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
@@ -469,16 +474,18 @@ class TorchDeterministic(TorchDistributionWrapper):
     def sample(self) -> TensorType:
         return self.deterministic_sample()
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-        action_space: gym.Space, model_config: ModelConfigDict
+        cls, action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape, dtype=np.int32)
 
 
 @DeveloperAPI
-class TorchMultiActionDistribution(TorchDistributionWrapper):
+class TorchMultiActionDistribution(
+    MultiActionDistributionMixIn, TorchDistributionWrapper
+):
     """Action distribution that operates on multiple, possibly nested actions."""
 
     def __init__(self, inputs, model, *, child_distributions, input_lens, action_space):
@@ -554,48 +561,6 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
-    @override(ActionDistribution)
-    def kl(self, other):
-        kl_list = [
-            d.kl(o)
-            for d, o in zip(
-                self.flat_child_distributions, other.flat_child_distributions
-            )
-        ]
-        return functools.reduce(lambda a, b: a + b, kl_list)
-
-    @override(ActionDistribution)
-    def entropy(self):
-        entropy_list = [d.entropy() for d in self.flat_child_distributions]
-        return functools.reduce(lambda a, b: a + b, entropy_list)
-
-    @override(ActionDistribution)
-    def sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions
-        )
-        return tree.map_structure(lambda s: s.sample(), child_distributions)
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        child_distributions = tree.unflatten_as(
-            self.action_space_struct, self.flat_child_distributions
-        )
-        return tree.map_structure(
-            lambda s: s.deterministic_sample(), child_distributions
-        )
-
-    @override(TorchDistributionWrapper)
-    def sampled_action_logp(self):
-        p = self.flat_child_distributions[0].sampled_action_logp()
-        for c in self.flat_child_distributions[1:]:
-            p += c.sampled_action_logp()
-        return p
-
-    @override(ActionDistribution)
-    def required_model_output_shape(self, action_space, model_config):
-        return np.sum(self.input_lens, dtype=np.int32)
-
 
 @DeveloperAPI
 class TorchDirichlet(TorchDistributionWrapper):
@@ -638,7 +603,7 @@ class TorchDirichlet(TorchDistributionWrapper):
     def entropy(self):
         return self.dist.entropy()
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(cls, action_space, model_config):
         return np.prod(action_space.shape, dtype=np.int32)

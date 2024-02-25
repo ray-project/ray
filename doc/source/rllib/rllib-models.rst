@@ -480,8 +480,8 @@ Similar to custom models and preprocessors, you can also specify a custom action
     from ray.rllib.models.preprocessors import Preprocessor
 
     class MyActionDist(ActionDistribution):
-        @staticmethod
-        def required_model_output_shape(action_space, model_config):
+        @classmethod
+        def required_model_output_shape(cls, action_space, model_config):
             return 7  # controls model output feature vector size
 
         def __init__(self, inputs, model):
@@ -612,8 +612,8 @@ To do this, you need both a custom model that implements the autoregressive patt
     class BinaryAutoregressiveOutput(ActionDistribution):
         """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
 
-        @staticmethod
-        def required_model_output_shape(self, model_config):
+        @classmethod
+        def required_model_output_shape(cls, action_space, model_config):
             return 16  # controls model output feature vector size
 
         def sample(self):
