@@ -39,7 +39,7 @@ steps:
         --except-tags data_integration,doctest
     depends_on: data6build
 
-  - label: ":database: data: arrow 14 tests"
+  - label: ":database: data: arrow 15 tests"
     tags: 
       - python
       - data
