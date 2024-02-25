@@ -416,7 +416,7 @@ def test_colocate_trainer_and_rank0_worker(
         placement_strategy=placement_strategy,
     )
 
-    if scale_config.total_resouces:
+    if scale_config.total_resources:
         trainer = CustomDataParallelTrainer(
             train_func,
             scaling_config=scale_config,
