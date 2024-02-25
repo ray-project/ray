@@ -117,6 +117,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._episodes: List[Optional[SingleAgentEpisode]] = [
             None for _ in range(self.num_envs)
         ]
+        self._shared_data = None
 
         self._done_episodes_for_metrics: List[SingleAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[List] = defaultdict(list)
@@ -220,6 +221,7 @@ class SingleAgentEnvRunner(EnvRunner):
             for env_index in range(self.num_envs):
                 self._episodes.append(self._new_episode(env_index))
                 self._make_on_episode_callback("on_episode_created", env_index)
+            self._shared_data = {}
 
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
@@ -258,14 +260,9 @@ class SingleAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=self._episodes,
                     explore=explore,
+                    shared_data=self._shared_data,
                 )
                 self._cached_to_module = None
-
-                # Convert data to proper tensor formats, depending on framework used by the
-                # RLModule.
-                # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
-                #  now we assume EnvRunners are always only on the CPU.
-                to_module = convert_to_tensor(to_module, self.module.framework)
 
                 # RLModule forward pass: Explore or not.
                 if explore:
@@ -274,7 +271,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     to_env = self.module.forward_inference(to_module)
 
                 # Unbatch (listify) everything before calling the connector.
-                to_env = tree.map_structure(lambda s: unbatch(convert_to_numpy(s)), to_env)
+                #to_env = tree.map_structure(lambda s: unbatch(convert_to_numpy(s)), to_env)
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
@@ -282,6 +279,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     data=to_env,
                     episodes=self._episodes,
                     explore=explore,
+                    shared_data=self._shared_data,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -302,7 +300,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 #  certain env parameter during different episodes (for example for
                 #  benchmarking).
-                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
+                extra_model_output = {k: v[(env_index,)] for k, v in to_env.items()}
 
                 # In inference, we have only the action logits.
                 if terminateds[env_index] or truncateds[env_index]:
@@ -372,6 +370,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 rl_module=self.module,
                 episodes=self._episodes,
                 explore=explore,
+                shared_data=self._shared_data,
             )
 
         # Return done episodes ...
@@ -427,6 +426,7 @@ class SingleAgentEnvRunner(EnvRunner):
         for env_index in range(self.num_envs):
             episodes.append(self._new_episode(env_index))
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
+        _shared_data = {}
 
         # Initialize image rendering if needed.
         render_images = [None] * self.num_envs
@@ -456,13 +456,14 @@ class SingleAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=episodes,
                     explore=explore,
+                    shared_data=_shared_data,
                 )
 
                 # Convert data to proper tensor formats, depending on framework used by the
                 # RLModule.
                 # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
                 #  now we assume EnvRunners are always only on the CPU.
-                to_module = convert_to_tensor(to_module, self.module.framework)
+                #to_module = convert_to_tensor(to_module, self.module.framework)
 
                 # RLModule forward pass: Explore or not.
                 if explore:
@@ -471,7 +472,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     to_env = self.module.forward_inference(to_module)
 
                 # Unbatch (listify) everything before calling the connector.
-                to_env = tree.map_structure(lambda s: unbatch(convert_to_numpy(s)), to_env)
+                #to_env = tree.map_structure(lambda s: unbatch(convert_to_numpy(s)), to_env)
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
@@ -479,6 +480,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     data=to_env,
                     episodes=episodes,
                     explore=explore,
+                    shared_data=_shared_data,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the

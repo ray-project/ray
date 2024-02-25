@@ -7,10 +7,10 @@ from typing import DefaultDict, Dict, List, Optional
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
-from ray.rllib.connectors.common.agent_to_module_mapping import (
-    perform_agent_to_module_mapping,
-    perform_module_to_agent_unmapping,
-)
+#from ray.rllib.connectors.common.agent_to_module_mapping import (
+#    perform_agent_to_module_mapping,
+#    perform_module_to_agent_unmapping,
+#)
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -253,16 +253,16 @@ class MultiAgentEnvRunner(EnvRunner):
                 self._cached_to_module = None
 
                 # Automatically perform agent-to-module mapping.
-                if self.config.perform_agent_module_mappings_automatically:
-                    to_module, memorized_map_structure = (
-                        perform_agent_to_module_mapping(to_module)
-                    )
+                #if self.config.perform_agent_module_mappings_automatically:
+                #    to_module, memorized_map_structure = (
+                #        perform_agent_to_module_mapping(to_module)
+                #    )
 
                 # Convert data to proper tensor formats, depending on framework used by the
                 # RLModule.
                 # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
                 #  now we assume EnvRunners are always only on the CPU.
-                to_module = convert_to_tensor(to_module, self.module.framework)
+                #to_module = convert_to_tensor(to_module, self.module.framework)
 
                 # MARLModule forward pass: Explore or not.
                 if explore:
@@ -271,10 +271,10 @@ class MultiAgentEnvRunner(EnvRunner):
                     to_env = self.module.forward_inference(to_module)
 
                 # Automatically perform module-to-agent mapping.
-                if self.config.perform_agent_module_mappings_automatically:
-                    to_env = perform_module_to_agent_unmapping(
-                        to_env, memorized_map_structure
-                    )
+                #if self.config.perform_agent_module_mappings_automatically:
+                #    to_env = perform_module_to_agent_unmapping(
+                #        to_env, memorized_map_structure
+                #    )
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
@@ -432,7 +432,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Create a new multi-agent episode.
         _episode = self._new_episode(0)
         self._make_on_episode_callback("on_episode_created", _episode)
-        shared_data = {
+        _shared_data = {
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
@@ -472,20 +472,20 @@ class MultiAgentEnvRunner(EnvRunner):
                     rl_module=self.module,
                     episodes=[_episode],
                     explore=explore,
-                    shared_data=shared_data,
+                    shared_data=_shared_data,
                 )
 
                 # Automatically perform agent-to-module mapping.
-                if self.config.perform_agent_module_mappings_automatically:
-                    to_module, memorized_map_structure = (
-                        perform_agent_to_module_mapping(to_module)
-                    )
+                #if self.config.perform_agent_module_mappings_automatically:
+                #    to_module, memorized_map_structure = (
+                #        perform_agent_to_module_mapping(to_module)
+                #    )
 
                 # Convert data to proper tensor formats, depending on framework used by the
                 # RLModule.
                 # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
                 #  now we assume EnvRunners are always only on the CPU.
-                to_module = convert_to_tensor(to_module, self.module.framework)
+                #to_module = convert_to_tensor(to_module, self.module.framework)
 
                 # MARLModule forward pass: Explore or not.
                 if explore:
@@ -494,10 +494,10 @@ class MultiAgentEnvRunner(EnvRunner):
                     to_env = self.module.forward_inference(to_module)
 
                 # Automatically perform module-to-agent mapping.
-                if self.config.perform_agent_module_mappings_automatically:
-                    to_env = perform_module_to_agent_unmapping(
-                        to_env, memorized_map_structure
-                    )
+                #if self.config.perform_agent_module_mappings_automatically:
+                #    to_env = perform_module_to_agent_unmapping(
+                #        to_env, memorized_map_structure
+                #    )
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
@@ -505,7 +505,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     data=to_env,
                     episodes=[_episode],
                     explore=explore,
-                    shared_data=shared_data,
+                    shared_data=_shared_data,
                 )
 
             # Step the environment.

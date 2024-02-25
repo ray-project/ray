@@ -10,7 +10,7 @@ from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
-class AddLastObservationToBatch(ConnectorV2):
+class AddObservationFromEpisodeToBatch(ConnectorV2):
     """Gets the last observation from a running episode and adds it to the batch.
 
     - Operates on a list of Episode objects.
@@ -24,7 +24,7 @@ class AddLastObservationToBatch(ConnectorV2):
         import gymnasium as gym
         import numpy as np
 
-        from ray.rllib.connectors.env_to_module import AddLastObservationToBatch
+        from ray.rllib.connectors.common import AddObservationFromEpisodeToBatch
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
@@ -46,7 +46,7 @@ class AddLastObservationToBatch(ConnectorV2):
         print(f"2nd Episode's last obs is {eps_2_last_obs}")
 
         # Create an instance of this class, providing the obs- and action spaces.
-        connector = AddLastObservationToBatch(obs_space, act_space)
+        connector = AddObservationFromEpisodeToBatch(obs_space, act_space)
 
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
@@ -70,11 +70,13 @@ class AddLastObservationToBatch(ConnectorV2):
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a AddLastObservationToBatchConnector instance.
+        """Initializes a AddObservationFromEpisodeToBatch instance.
 
         Args:
             as_learner_connector: Whether this connector is part of a Learner connector
-                pipeline, as opposed to a env-to-module pipeline.
+                pipeline, as opposed to a env-to-module pipeline. As a Learner
+                connector, it will add an entire Episode's observations (each timestep)
+                to the batch.
         """
         super().__init__(
             input_observation_space=input_observation_space,
@@ -96,23 +98,27 @@ class AddLastObservationToBatch(ConnectorV2):
         **kwargs,
     ) -> Any:
 
+        # If "obs" already in data, early out.
+        if SampleBatch.OBS in data:
+            return data
+
         for sa_episode in self.single_agent_episode_iterator(episodes):
             if self._as_learner_connector:
-                prev_n_o = []
-                for ts in range(len(sa_episode)):
-                    prev_n_o.append(sa_episode.get_observations(indices=ts, fill=0.0))
-                self.add_batch_item(
+                self.add_n_batch_items(
                     data,
                     SampleBatch.OBS,
-                    batch(prev_n_o),
-                    sa_episode,
+                    items_to_add=[
+                        sa_episode.get_observations(indices=ts)
+                        for ts in range(len(sa_episode))
+                    ],
+                    single_agent_episode=sa_episode,
                 )
             else:
                 assert not sa_episode.is_finalized
                 self.add_batch_item(
                     data,
                     SampleBatch.OBS,
-                    sa_episode.get_observations(indices=-1, fill=0.0),
-                    sa_episode,
+                    item_to_add=sa_episode.get_observations(indices=-1, fill=0.0),
+                    single_agent_episode=sa_episode,
                 )
         return data

@@ -230,33 +230,59 @@ class ConnectorV2(abc.ABC):
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 
-            # Simple single-agent case:
+            # Simple case (no episodes provided) -> Store data in a list directly under
+            # `column`:
             batch = {}
-            ConnectorV2.add_batch_item(batch, "test_col", 5)
-            ConnectorV2.add_batch_item(batch, "test_col", 6)
-            check(batch, {"test_col": [5]})
-            ConnectorV2.add_batch_item(batch, "test_col_2", -10)
+            ConnectorV2.add_batch_item(batch, "test_col", item_to_add=5)
+            ConnectorV2.add_batch_item(batch, "test_col", item_to_add=6)
+            check(batch, {"test_col": [5, 6]})
+            ConnectorV2.add_batch_item(batch, "test_col_2", item_to_add=-10)
             check(batch, {
                 "test_col": [5, 6],
                 "test_col_2": [-10],
             })
 
-            # Multi-agent case:
+            # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
+            # under the keys: `column` -> `([env vector index],)`:
+            batch = {}
+            episode = SingleAgentEpisode(
+                observations=[0, 1, 2, 3],
+                actions=[1, 2, 3],
+                rewards=[1.0, 2.0, 3.0],
+                env_vector_idx=1,
+            )
+            ConnectorV2.add_batch_item(batch, "test_col", 5, episode)
+            ConnectorV2.add_batch_item(batch, "test_col", 6, episode)
+            ConnectorV2.add_batch_item(batch, "test_col_2", -10, episode)
+            check(batch, {
+                "test_col": {(1,): [5, 6]},
+                "test_col_2": {(1,): [-10]},
+            })
+
+            # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
+            # `module_id` information) -> Store data in a list under the keys:
+            # `column` -> `([env vector index], [agent_id], [module_id])`:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 observations=[
-                    {"ag0", 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
+                    {"ag0": 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
                 ],
-                actions=[{"ag0", 0, "ag1": 1}],
-                rewards=[{"ag0", -0.1, "ag1": -0.2}],
+                actions=[{"ag0": 0, "ag1": 1}],
+                rewards=[{"ag0": -0.1, "ag1": -0.2}],
                 # ag0 maps to mod0, ag1 maps to mod1, etc..
                 agent_to_module_mapping_fn=lambda aid, eps: f"mod{aid[2:]}",
-                env_vector_idx=0,
+                env_vector_idx=0,  # <- vector index of this multi-agent episode
             )
             ConnectorV2.add_batch_item(
                 batch,
                 "test_col",
                 item_to_add=5,
+                single_agent_episode=ma_episode.agent_episodes["ag0"],
+            )
+            ConnectorV2.add_batch_item(
+                batch,
+                "test_col",
+                item_to_add=6,
                 single_agent_episode=ma_episode.agent_episodes["ag0"],
             )
             ConnectorV2.add_batch_item(
@@ -268,7 +294,7 @@ class ConnectorV2(abc.ABC):
             check(
                 batch,
                 {
-                    "test_col": {(0, "ag0", "mod0"): [5]},  # 0=env_vector_idx
+                    "test_col": {(0, "ag0", "mod0"): [5, 6]},  # 0=env_vector_idx
                     "test_col_2": {(0, "ag1", "mod1"): [10]},  # 0=env_vector_idx
                 },
             )
@@ -296,6 +322,8 @@ class ConnectorV2(abc.ABC):
                 single_agent_episode.agent_id,
                 single_agent_episode.module_id,
             )
+        elif single_agent_episode is not None:
+            sub_key = (single_agent_episode.env_vector_idx,)
 
         if column not in batch:
             batch[column] = [] if sub_key is None else {sub_key: []}
@@ -332,7 +360,8 @@ class ConnectorV2(abc.ABC):
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 
-            # Single-agent case.
+            # Simple case (no episodes provided) -> Store data in a list directly under
+            # `column`:
             batch = {}
             ConnectorV2.add_n_batch_items(
                 batch,
@@ -345,7 +374,6 @@ class ConnectorV2(abc.ABC):
                 batch["test_col"],
                 [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
             )
-
             ConnectorV2.add_n_batch_items(
                 batch,
                 "test_col_2",
@@ -360,6 +388,8 @@ class ConnectorV2(abc.ABC):
                     {"a": np.array(5), "b": np.array(6)},
                 ],
             )
+
+            TODO single agent case and multi agent case
 
         Args:
             batch: The batch to store n `items_to_add` in.
@@ -432,34 +462,41 @@ class ConnectorV2(abc.ABC):
         # under each column. Each item corresponds to one episode index meaning the
         # length of the list is the same as the number of (vectorized) envs.
         # AgentID and ModuleID are both None.
-        if isinstance(data_to_process[0], list):
-            # Make sure structures are the same.
-            assert all(len(d) == len(data_to_process[0]) for d in data_to_process[1:])
-            for env_vector_idx, data_tuple in enumerate(zip(*data_to_process)):
-                results = func(
-                    data_tuple[0] if isinstance(column, str) else data_tuple,
-                    env_vector_idx,
-                    None,
-                    None,
-                )
-                for i, r in enumerate(force_list(results)):
-                    data_to_process[i][env_vector_idx] = r
+        #if isinstance(data_to_process[0], list):
+        #    # Make sure structures are the same.
+        #    assert all(len(d) == len(data_to_process[0]) for d in data_to_process[1:])
+        #    for env_vector_idx, data_tuple in enumerate(zip(*data_to_process)):
+        #        results = func(
+        #            data_tuple[0] if isinstance(column, str) else data_tuple,
+        #            env_vector_idx,
+        #            None,
+        #            None,
+        #        )
+        #        for i, r in enumerate(force_list(results)):
+        #            data_to_process[i][env_vector_idx] = r
 
         # Multi-agent case: There is a dict mapping from a
         # (eps idx, AgentID, ModuleID)-tuples to lists of individual data items.
-        else:
-            for key, d0_list in data_to_process[0].items():
+        #else:
+
+
+
+        for key, d0_list in data_to_process[0].items():
+            if len(key) == 3:
                 env_vector_idx, agent_id, module_id = key
-                other_lists = [d[key] for d in data_to_process[1:]]
-                for i, data_tuple in enumerate(zip(d0_list, *other_lists)):
-                    results = func(
-                        data_tuple[0] if isinstance(column, str) else data_tuple,
-                        env_vector_idx,
-                        agent_id,
-                        module_id,
-                    )
-                    for i, r in enumerate(force_list(results)):
-                        data_to_process[i][key] = r
+            else:
+                env_vector_idx = key[0]
+                agent_id = module_id = None
+            other_lists = [d[key] for d in data_to_process[1:]]
+            for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
+                results = func(
+                    data_tuple[0] if isinstance(column, str) else data_tuple,
+                    env_vector_idx,
+                    agent_id,
+                    module_id,
+                )
+                for col_slot, result in enumerate(force_list(results)):
+                    data_to_process[col_slot][key][list_pos] = result
 
     @staticmethod
     def switch_batch_from_column_to_module_ids(

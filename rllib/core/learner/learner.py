@@ -1370,18 +1370,6 @@ class Learner:
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         self._check_is_built()
 
-        # If a (multi-agent) batch is provided, check, whether our RLModule
-        # contains all ModuleIDs found in this batch. If not, throw an error.
-        if batch is not None:
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains module ids that are not in the learner: "
-                    f"{unknown_module_ids}"
-                )
-
         if num_iters < 1:
             # We must do at least one pass on the batch for training.
             raise ValueError("`num_iters` must be >= 1")
@@ -1392,6 +1380,17 @@ class Learner:
                 rl_module=self.module,
                 data=batch,
                 episodes=episodes,
+            )
+
+        # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+        # found in this batch. If not, throw an error.
+        unknown_module_ids = set(batch.policy_batches.keys()) - set(
+            self.module.keys()
+        )
+        if len(unknown_module_ids) > 0:
+            raise ValueError(
+                "Batch contains module ids that are not in the learner: "
+                f"{unknown_module_ids}"
             )
 
         # Filter out those RLModules from the final train batch that should not be

@@ -1,10 +1,7 @@
-from collections import defaultdict
 from typing import Any, List, Optional
 
 import gymnasium as gym
-import numpy as np
 
-import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -12,7 +9,6 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import convert_to_tensor
-from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -67,7 +63,8 @@ class DefaultEnvToModule(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
+        raise NotImplementedError
+        #is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
 
         # TODO (sven): Prepare for case where user already did the agent to module
         #  mapping and our data arrives here with top-level keys: "module1", "module2",
@@ -75,30 +72,30 @@ class DefaultEnvToModule(ConnectorV2):
 
         # If observations cannot be found in `input`, add the most recent ones (from all
         # episodes).
-        if SampleBatch.OBS not in data:
-            data = self._add_most_recent_obs_to_data(data, episodes, rl_module)
+        #if SampleBatch.OBS not in data:
+        #    data = self._add_most_recent_obs_to_data(data, episodes, rl_module)
 
         # If our module is stateful AND uses has not provided a STATE_IN yet:
         # - Add the most recent STATE_OUTs to `data`.
         # - Later (after everything has been numpyf'ied): Make all data in `data`
         # have a time rank (T=1).
         #added_state = None
-        if rl_module.is_stateful() and STATE_IN not in data:
-            data = self._add_most_recent_states_to_data(data, episodes, rl_module)
+        #if rl_module.is_stateful() and STATE_IN not in data:
+        #    data = self._add_most_recent_states_to_data(data, episodes, rl_module)
             #added_state = data[STATE_IN]
 
             # Only after everything has been batched and there are not more lists
             # underneath the column names:
             # Make all inputs (other than STATE_IN) have an additional T=1 axis.
             #if added_state is not None:
-            data = tree.map_structure_with_path(
-                #TODO: if we DO batch above, axis must be 1!!!
-                lambda p, s: np.expand_dims(s, axis=0) if STATE_IN not in p else s,
-                data,
-            )
+        #    data = tree.map_structure_with_path(
+        #        #TODO: if we DO batch above, axis must be 1!!!
+        #        lambda p, s: np.expand_dims(s, axis=0) if STATE_IN not in p else s,
+        #        data,
+        #    )
 
         # Perform AgentID to ModuleID mapping.
-        if is_multi_agent:
+        #if is_multi_agent:
         #    # TODO (sven): Prepare for case where user already did the agent to module
         #    #  mapping (see TODO comment above).
         #    # Make sure user has not already done the mapping themselves.
@@ -117,17 +114,42 @@ class DefaultEnvToModule(ConnectorV2):
                 #data = self._perform_agent_to_module_mapping(
                 #    data, episodes, shared_data
                 #)
-                # Convert lists of items into properly stacked (batched) data.
-                for column, column_data in data.items():
-                    for env_idx_agent_module_key, items in column_data.items():
-                        if isinstance(items, list):
-                            data[column][env_idx_agent_module_key] = batch(items)
 
-        # Convert lists of items into properly stacked (batched) data.
-        else:
-            for column, items in data.items():
-                if isinstance(items, list):
-                    data[column] = batch(items)
+
+        # Convert lists of individual items into properly batched data.
+        #for column, column_data in data.copy().items():
+        #    # If `column` is a ModuleID, skip it (user has already provided (some)
+        #    # data for this module and we should NOT touch this data anymore).
+        #    if is_multi_agent and column in rl_module:
+        #        continue
+
+        #    # Simple case: There is a list directly under `column`:
+        #    # Batch the list.
+        #    if isinstance(column_data, list):
+        #        data[column] = batch(column_data)
+        #    # Single-agent case: There is a dict under `column` mapping
+        #    # `env_vector_idx` to lists of items:
+        #    # Sort by env_vector_idx, concat all these lists, then batch.
+        #    elif not is_multi_agent:
+        #        data[column] = batch([
+        #            v
+        #            for k in sorted(column_data.keys())
+        #            for v in column_data[k]
+        #        ])
+            # Multi-agent case: There is a dict under `column` mapping
+            # (env_vector_idx, agent_id, module_id)-tuples to lists of items:
+            # Sort by env_vector_idx, concat all these lists, then batch.
+        #    else:
+                
+        #    for (env_idx, agent_id, module_id), items in column_data.items():
+        #        if isinstance(items, list):
+        #            data[column][env_idx_agent_module_key] = batch(items)
+
+        ## Convert lists of items into properly stacked (batched) data.
+        #else:
+        #    for column, items in data.items():
+        #        if isinstance(items, list):
+        #            data[column] = batch(items)
 
         # Convert data to proper tensor formats, depending on framework used by the
         # RLModule.
@@ -135,7 +157,7 @@ class DefaultEnvToModule(ConnectorV2):
         #  now we assume EnvRunners are always only on the CPU.
         #data = convert_to_tensor(data, rl_module.framework)
 
-        return data
+        #return data
 
     def _add_most_recent_obs_to_data(self, data, episodes, rl_module):
         for sa_episode in self.single_agent_episode_iterator(episodes):

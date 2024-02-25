@@ -13,7 +13,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class _FrameStackingConnector(ConnectorV2):
+class _FrameStacking(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
     @property
