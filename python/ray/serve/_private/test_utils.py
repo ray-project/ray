@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
 import pytest
@@ -381,3 +381,55 @@ class FakeGrpcContext:
 
     def invocation_metadata(self):
         return self._invocation_metadata
+
+
+class FakeGauge:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.value = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+        self.value = value
+        if tags:
+            self.tags.update(tags)
+
+    def get_value(self):
+        return self.value
+
+    def get_tags(self):
+        return self.tags
+
+
+class FakeCounter:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.count: int = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        self.count += value
+        if tags:
+            self.tags.update(tags)
+
+    def get_count(self) -> int:
+        return self.count
+
+    def get_tags(self):
+        return self.tags
