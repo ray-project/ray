@@ -87,10 +87,11 @@ def _tune_task_and_actor_launch_hook(
         available_bundles = cur_pg.bundle_specs[0:]
     else:
         available_bundles = cur_pg.bundle_specs[1:]
-
+    print(cur_pg.bundle_specs)
     # Check if the request can be fulfilled by the current placement group.
     if _valid_resource_shape(resources, available_bundles):
         return
+    print(resources, available_bundles)
 
     if fn.class_name:
         submitted = "actor"

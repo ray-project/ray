@@ -87,6 +87,19 @@ class ResourceRequest:
         else:
             self._head_bundle_is_empty = False
 
+        self.merge_bundles_by = None
+        if "merge_bundles_by" in kwargs:
+            self.merge_bundles_by = kwargs["merge_bundles_by"]
+            del kwargs["merge_bundles_by"]
+            merged_bundles = []
+            num_bundles = len(self._bundles)
+            if not self._head_bundle_is_empty:
+                merged_bundles.append(self._bundles[0])
+                num_bundles -= 1
+            for _ in range(num_bundles // self.merge_bundles_by):
+                merged_bundles.append({k: v*self.merge_bundles_by for k,v in self._bundles[-1].items()})
+            self._bundles = merged_bundles
+        print(self._head_bundle_is_empty, self._bundles)
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -221,9 +234,14 @@ class AcquiredResources(abc.ABC):
             entities: Remote Ray entities to annotate with the acquired resources.
         """
         bundles = self.resource_request.bundles
-
+        print(entities, bundles)
+        merge_bundles_by = self.resource_request.merge_bundles_by
         # Also count the empty head bundle as a bundle
-        num_bundles = len(bundles) + int(self.resource_request.head_bundle_is_empty)
+        num_bundles = int(self.resource_request.head_bundle_is_empty)
+        if merge_bundles_by:
+            num_bundles += (len(bundles)-num_bundles) * merge_bundles_by
+        else:
+            num_bundles += len(bundles)
 
         if len(entities) > num_bundles:
             raise RuntimeError(
@@ -239,14 +257,26 @@ class AcquiredResources(abc.ABC):
             annotated.append(
                 self._annotate_remote_entity(entities[0], {}, bundle_index=0)
             )
-
-            # Shift the remaining entities
-            entities = entities[1:]
-
-        for i, (entity, bundle) in enumerate(zip(entities, bundles)):
+        else:
             annotated.append(
-                self._annotate_remote_entity(entity, bundle, bundle_index=i)
+                self._annotate_remote_entity(entities[0], bundles[0], bundle_index=0)
             )
+            bundles = bundles[1:]
+        # Shift the remaining entities
+        entities = entities[1:]
+        if not merge_bundles_by:
+            for i, (entity, bundle) in enumerate(zip(entities, bundles)):
+                annotated.append(
+                    self._annotate_remote_entity(entity, bundle, bundle_index=i)
+                )
+        else:
+            if entities:
+                for i, bundle in enumerate(bundles):
+                    for j in range(merge_bundles_by):
+                        real_bundle = {k: v / merge_bundles_by for k,v in bundle.items()}
+                        annotated.append(
+                            self._annotate_remote_entity(entities[i*merge_bundles_by+j], real_bundle, i)
+                        )
 
         return annotated
 
