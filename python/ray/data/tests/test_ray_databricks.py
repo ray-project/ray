@@ -111,15 +111,16 @@ def test_from_simple_databricks_spark_dataframe(tmp_path, monkeypatch):
     ):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
+        print(f"DBG: files: {[file.name for file in tmp_path.iterdir()]}")
         del ray_ds
+        gc.collect()
+        time.sleep(1)  # waiting for ray_ds GC
+        print(f"DBG: files: {[file.name for file in tmp_path.iterdir()]}")
+
+        # assert all chunk data files are removed from the tmp dir.
+        assert [file.name for file in tmp_path.iterdir()] == ["read_chunk_fn.pkl"]
 
     pd.testing.assert_frame_equal(result, fake_spark_df)
-
-    gc.collect()
-    time.sleep(1)  # waiting for ray_ds GC
-
-    # assert all chunk data files are removed from the tmp dir.
-    assert [file.name for file in tmp_path.iterdir()] == ["read_chunk_fn.pkl"]
 
 
 def test_from_mul_cols_databricks_spark_dataframe(tmp_path, monkeypatch):

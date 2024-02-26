@@ -138,4 +138,7 @@ class SparkDatasource(Datasource):
         _unpersist_chunks([chunk_meta.id for chunk_meta in self.chunk_meta_list])
 
     def __del__(self):
-        self.dispose_spark_cache()
+        try:
+            self.dispose_spark_cache()
+        except Exception:
+            pass
