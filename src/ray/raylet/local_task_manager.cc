@@ -973,7 +973,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
 
     // For PG, there may be two cpu resources: wildcard and indexed.
     std::vector<ResourceID> cpu_resource_ids;
-    for (const auto resource_id : allocated_instances->ResourceIds()) {
+    for (const auto &resource_id : allocated_instances->ResourceIds()) {
       if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
         cpu_resource_ids.emplace_back(resource_id);
       }
