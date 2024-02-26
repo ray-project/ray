@@ -133,7 +133,7 @@ class BlockExecStats:
         self.start_time_s: Optional[float] = None
         self.end_time_s: Optional[float] = None
         self.wall_time_s: Optional[float] = None
-        self.udf_time_s: Optional[float] = None
+        self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
         # Max memory usage. May be an overestimate since we do not
