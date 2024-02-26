@@ -355,7 +355,6 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # | op3 | 0/125            | 0/125            | 0            |
         # +-----+------------------+------------------+--------------+
-        # remaining shared = 500
         # o1 and o4 are not handled.
         assert o1 not in allocator._op_reserved
         assert o4 not in allocator._op_reserved
@@ -382,9 +381,9 @@ class TestReservationOpResourceAllocator:
         pending_task_outputs_usages[o2] = 400
         op_outputs_usages[o2] = 100
         op_usages[o3] = ExecutionResources(2, 0, 125)
-        pending_task_outputs_usages[o3] = 100
+        pending_task_outputs_usages[o3] = 30
         op_outputs_usages[o3] = 25
-        op_usages[o4] = ExecutionResources(0, 0, 75)
+        op_usages[o4] = ExecutionResources(0, 0, 50)
 
         allocator.update_usages()
         # +-----+------------------+------------------+--------------+
@@ -392,33 +391,37 @@ class TestReservationOpResourceAllocator:
         # |     | (used/remaining) | _op_outputs      | resources    |
         # |     |                  | (used/remaining) |              |
         # +-----+------------------+------------------+--------------+
-        # | op2 | 125/0            | 100/25           | 400 - 125    |
+        # | op2 | 125/0            | 100/25           | 400-125=275  |
         # +-----+------------------+------------------+--------------+
-        # | op3 | 100/25           | 25/100           | 0            |
+        # | op3 | (30+50)/45       | 25/100           | 0            |
         # +-----+------------------+------------------+--------------+
-        # remaining shared = 500 - 275 - 75 = 150
+        # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
-        assert allocator._op_budgets[o2] == ExecutionResources(3, float("inf"), 75)
-        assert allocator._op_budgets[o3] == ExecutionResources(5, float("inf"), 100)
+        # memory_budget[o2] = 0 + 225/2 = 112.5
+        assert allocator._op_budgets[o2] == ExecutionResources(3, float("inf"), 112.5)
+        # memory_budget[o3] = 45 + 225/2 = 157.5
+        assert allocator._op_budgets[o3] == ExecutionResources(5, float("inf"), 157.5)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
-        assert allocator.max_task_output_bytes_to_read(o2) == 100
-        assert allocator.max_task_output_bytes_to_read(o3) == 200
+        # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 137.5
+        assert allocator.max_task_output_bytes_to_read(o2) == 137.5
+        # max_task_output_bytes_to_read(o3) = 157.5 + 100 = 257.5
+        assert allocator.max_task_output_bytes_to_read(o3) == 257.5
 
         # Test global_limits updated.
+        global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
+        allocator.update_usages()
         # +-----+------------------+------------------+--------------+
         # |     | _op_reserved     | _reserved_for    | used shared  |
         # |     | (used/remaining) | _op_outputs      | resources    |
         # |     |                  | (used/remaining) |              |
         # +-----+------------------+------------------+--------------+
-        # | op2 | 100/0            | 100/0            | 400 - 100    |
+        # | op2 | 100/0            | 100/0            | 400-100=300  |
         # +-----+------------------+------------------+--------------+
-        # | op3 | 100/ 0           | 25/75            | 0            |
+        # | op3 | (30+50)/20       | 25/75            | 0            |
         # +-----+------------------+------------------+--------------+
-        # remaining shared = 400 - 300 - 75 = 25
-        global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
-        allocator.update_usages()
+        # remaining shared = 800/2 - 300 = 100
         # Test reserved resources for o2 and o3.
         assert allocator._op_reserved[o2] == ExecutionResources(3, 0, 100)
         assert allocator._op_reserved[o3] == ExecutionResources(3, 0, 100)
@@ -428,13 +431,17 @@ class TestReservationOpResourceAllocator:
         assert allocator._total_shared == ExecutionResources(6, 0, 400)
 
         # Test budgets.
-        assert allocator._op_budgets[o2] == ExecutionResources(1.5, float("inf"), 12.5)
-        assert allocator._op_budgets[o3] == ExecutionResources(2.5, float("inf"), 12.5)
+        # memory_budget[o2] = 0 + 100/2 = 50
+        assert allocator._op_budgets[o2] == ExecutionResources(1.5, float("inf"), 50)
+        # memory_budget[o3] = 20 + 100/2 = 70
+        assert allocator._op_budgets[o3] == ExecutionResources(2.5, float("inf"), 70)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert not allocator.can_submit_new_task(o2)
+        assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
-        assert allocator.max_task_output_bytes_to_read(o2) == 12.5
-        assert allocator.max_task_output_bytes_to_read(o3) == 87.5
+        # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
+        assert allocator.max_task_output_bytes_to_read(o2) == 50
+        # max_task_output_bytes_to_read(o3) = 70 + 75 = 145
+        assert allocator.max_task_output_bytes_to_read(o3) == 145
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
