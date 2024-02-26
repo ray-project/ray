@@ -504,21 +504,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Remaining of shared resources.
         remaining_shared = self._total_shared
         for op in eligible_ops:
-            # Op resource usage without considering `_reserved_for_op_outputs`.
-            mem_wo_reseved_for_op_outputs = (
-                self._resource_manager._mem_pending_task_outputs[op]
-                + max(
-                    self._resource_manager._mem_op_outputs[op]
-                    - self._reserved_for_op_outputs[op],
-                    0,
-                )
+            # Calculate the memory usage of the operator.
+            op_mem_usage = 0
+            # Add the memory usage of the operator itself,
+            # excluding `_reserved_for_op_outputs`.
+            op_mem_usage += self._resource_manager._mem_pending_task_outputs[op] + max(
+                self._resource_manager._mem_op_outputs[op]
+                - self._reserved_for_op_outputs[op],
+                0,
             )
-            downstream_mem = self._get_downstream_non_map_op_memory_usage(op)
+            # Also account the downstream non-Map operators' memory usage
+            # to the current Map operator.
+            # This is because we don't throttle non-Map operators. So we
+            # should throttle the current Map operator, based on its downstream
+            # non-Map operators' memory usage.
+            op_mem_usage += self._get_downstream_non_map_op_memory_usage(op)
             op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
-            op_usage.object_store_memory = (
-                mem_wo_reseved_for_op_outputs + downstream_mem
-            )
-
+            op_usage.object_store_memory = op_mem_usage
             op_reserved = self._op_reserved[op]
             # How much of the reserved resources are remaining.
             op_reserved_remaining = op_reserved.subtract(op_usage).max(
