@@ -198,7 +198,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
         _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
-        compute_strategy=ActorPoolStrategy(min_size=2, max_size=10),
+        compute_strategy=ActorPoolStrategy(
+            min_size=2, max_size=10, max_tasks_in_flight_per_actor=2
+        ),
     )
     op.start(ExecutionOptions())
 
@@ -241,7 +243,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(3200, rel=0.5)
     assert op.metrics.obj_store_mem_pending_task_outputs == pytest.approx(
-        4  # Number of active tasks (with two tasks in flight per actor)
+        2  # We launched 4 tasks across 2 actor, but only 2 tasks run at a time
         * ctx._max_num_blocks_in_streaming_gen_buffer
         * ctx.target_max_block_size,
         rel=0.5,
