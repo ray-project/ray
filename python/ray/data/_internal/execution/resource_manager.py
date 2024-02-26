@@ -338,16 +338,17 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         assert 0.0 <= self._reservation_ratio <= 1.0
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Memory reserved for the outputs of each operator, including the operator's
-        # internal and external output buffers and next operator's input buffers, but
-        # not including the pending task outputs.
-        # Note, if we don't reserve memory for outputs, all the budget may be used by
+        # Memory reserved exclusively for the outputs of each operator.
+        # "Op outputs" refer to the operator's internal and external output buffers
+        # and next operator's input buffers, but not including the pending task outputs.
+        #
+        # Note, if we don't reserve memory for op outputs, all the budget may be used by
         # by the pending task outputs. Then we'll have no budget to pull the outputs
         # from the running tasks.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
-        # Resource budgets for each operator.
+        # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
         # Whether each operator has reserved the minimum resources to run
         # at least one task.
@@ -509,7 +510,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_mem_usage = 0
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += self._resource_manager._mem_pending_task_outputs[op] + max(
+            op_mem_usage += self._resource_manager._mem_pending_task_outputs[op]
+            op_mem_usage += max(
                 self._resource_manager._mem_op_outputs[op]
                 - self._reserved_for_op_outputs[op],
                 0,
