@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
+from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -22,6 +23,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
+from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.core.generated.autoscaler_pb2 import (
@@ -162,9 +164,10 @@ class Reconciler:
         cloud_provider: ICloudInstanceProvider,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-        cloud_provider_errors: List[CloudInstanceProviderError],
-        ray_install_errors: List[RayInstallError],
         autoscaling_config: AutoscalingConfig,
+        cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
+        ray_install_errors: Optional[List[RayInstallError]] = None,
+        ray_stop_errors: Optional[List[RayStopError]] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
@@ -189,8 +192,13 @@ class Reconciler:
                 the cloud provider.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
+            ray_stop_errors: The errors from RayStopper.
 
         """
+        cloud_provider_errors = cloud_provider_errors or []
+        ray_install_errors = ray_install_errors or []
+        ray_stop_errors = ray_stop_errors or []
+
         autoscaling_state = AutoscalingState()
         Reconciler._sync_from(
             instance_manager=instance_manager,
@@ -198,6 +206,7 @@ class Reconciler:
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             cloud_provider_errors=cloud_provider_errors,
             ray_install_errors=ray_install_errors,
+            ray_stop_errors=ray_stop_errors,
         )
 
         Reconciler._step_next(
@@ -219,6 +228,7 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
+        ray_stop_errors: List[RayStopError],
     ):
         """
         Reconcile the instance states of the instance manager from external states like
@@ -254,6 +264,9 @@ class Reconciler:
                 instance to RAY_STOPPED.
             7.  * -> RAY_INSTALL_FAILED:
                 When there's an error from RayInstaller.
+            8. RAY_STOP_REQUESTED -> RAY_RUNNING:
+                When requested to stop ray, but failed to stop/drain the ray node
+                (e.g. idle termination drain rejected by the node).
 
         Args:
             instance_manager: The instance manager to reconcile.
@@ -281,6 +294,8 @@ class Reconciler:
         )
 
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
+
+        Reconciler._handle_ray_stop_failed(instance_manager, ray_stop_errors, ray_nodes)
 
     @staticmethod
     def _step_next(
@@ -467,6 +482,69 @@ class Reconciler:
             )
         # No update.
         return None
+
+    @staticmethod
+    def _handle_ray_stop_failed(
+        instance_manager: InstanceManager,
+        ray_stop_errors: List[RayStopError],
+        ray_nodes: List[NodeState],
+    ):
+        """
+        The instance requested to stop ray, but failed to stop/drain the ray node.
+        E.g. connection errors, idle termination drain rejected by the node.
+
+        We will transition the instance back to RAY_RUNNING.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            ray_stop_errors: The errors from RayStopper.
+
+        """
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
+
+        ray_stop_errors_by_instance_id = {
+            error.im_instance_id: error for error in ray_stop_errors
+        }
+
+        ray_nodes_by_ray_node_id = {binary_to_hex(n.node_id): n for n in ray_nodes}
+
+        ray_stop_requested_instances = {
+            instance.instance_id: instance
+            for instance in instances
+            if instance.status == IMInstance.RAY_STOP_REQUESTED
+        }
+
+        for instance_id, instance in ray_stop_requested_instances.items():
+            stop_error = ray_stop_errors_by_instance_id.get(instance_id)
+            if not stop_error:
+                continue
+
+            assert instance.node_id
+            ray_node = ray_nodes_by_ray_node_id.get(instance.node_id)
+            assert ray_node is not None and ray_node.status in [
+                NodeStatus.RUNNING,
+                NodeStatus.IDLE,
+            ], (
+                "There should be a running ray node for instance with ray stop "
+                "requested failed."
+            )
+
+            updates[instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance_id,
+                new_instance_status=IMInstance.RAY_RUNNING,
+                details="Failed to stop/drain ray.",
+                ray_node_id=instance.node_id,
+            )
+            logger.debug(
+                "Updating {}({}) with {}".format(
+                    instance_id,
+                    IMInstance.InstanceStatus.Name(instance.status),
+                    message_to_dict(updates[instance_id]),
+                )
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
     def _handle_ray_install_failed(
@@ -676,7 +754,7 @@ class Reconciler:
             else:
                 # This should only happen to a ray node that's not managed by us.
                 logger.warning(
-                    f"Ray node {n.node_id.decode()} has no instance id. "
+                    f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
                     "This only happens to a ray node that's not managed by autoscaler. "
                     "If not, please file a bug at https://github.com/ray-project/ray"
                 )
@@ -687,8 +765,8 @@ class Reconciler:
                 # or we haven't discovered the instance yet. There's nothing
                 # much we could do here.
                 logger.info(
-                    f"Ray node {ray_node.node_id.decode()} has no matching instance in "
-                    f"instance manager with cloud instance id={cloud_instance_id}."
+                    f"Ray node {binary_to_hex(ray_node.node_id)} has no matching "
+                    f"instance with cloud instance id={cloud_instance_id}."
                 )
                 continue
 
@@ -703,8 +781,8 @@ class Reconciler:
                     new_instance_status=reconciled_im_status,
                     details="Reconciled from ray node status "
                     f"{NodeStatus.Name(ray_node.status)} "
-                    f"for ray node {ray_node.node_id.decode()}",
-                    ray_node_id=ray_node.node_id.decode(),
+                    f"for ray node {binary_to_hex(ray_node.node_id)}",
+                    ray_node_id=binary_to_hex(ray_node.node_id),
                 )
                 logger.debug(
                     "Updating {}({}) with {}.".format(
@@ -1065,7 +1143,7 @@ class Reconciler:
 
         autoscaler_instances = []
         ray_nodes_by_id = {
-            node.node_id.decode(): node for node in ray_state.node_states
+            binary_to_hex(node.node_id): node for node in ray_state.node_states
         }
 
         for im_instance in im_instances:

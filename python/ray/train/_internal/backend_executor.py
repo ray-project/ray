@@ -73,12 +73,9 @@ class BackendExecutor:
         backend_config: The configurations for this
             specific backend.
         num_workers: Number of workers to use for training.
-        num_cpus_per_worker: Number of CPUs to use per worker.
-        num_gpus_per_worker: Number of GPUs to use per worker.
-        additional_resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the extra resources that will be
-            requested for each worker in addition to ``num_cpus_per_worker``
-            and ``num_gpus_per_worker``.
+        resources_per_worker (Optional[Dict[str, float]]):
+            Dictionary specifying the resources that will be
+            requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
@@ -89,17 +86,17 @@ class BackendExecutor:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         num_workers: int = 1,
-        num_cpus_per_worker: float = 1,
-        num_gpus_per_worker: float = 0,
-        additional_resources_per_worker: Optional[Dict[str, float]] = None,
+        resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
     ):
+        if resources_per_worker is None:
+            self._resources_per_worker = {"CPU": 1}
+        else:
+            self._resources_per_worker = resources_per_worker.copy()
+
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
-        self._num_cpus_per_worker = num_cpus_per_worker
-        self._num_gpus_per_worker = num_gpus_per_worker
-        self._additional_resources_per_worker = additional_resources_per_worker
         self._max_failures = max_retries
         if self._max_failures < 0:
             self._max_failures = float("inf")
@@ -133,9 +130,7 @@ class BackendExecutor:
         placement_group = self._placement_group or "default"
         self.worker_group = WorkerGroup(
             num_workers=self._num_workers,
-            num_cpus_per_worker=self._num_cpus_per_worker,
-            num_gpus_per_worker=self._num_gpus_per_worker,
-            additional_resources_per_worker=self._additional_resources_per_worker,
+            resources_per_worker=self._resources_per_worker,
             actor_cls=train_cls,
             actor_cls_args=train_cls_args,
             actor_cls_kwargs=train_cls_kwargs,
@@ -175,18 +170,20 @@ class BackendExecutor:
                 )
             )
 
-            if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
+            if (
+                self._resources_per_worker.get("GPU", 0) > 0
+                and share_cuda_visible_devices_enabled
+            ):
                 self._share_cuda_visible_devices()
-            elif self._additional_resources_per_worker:
-                for resource_config in self._resource_configs:
-                    if self._is_share_resources_enabled(
+            for resource_config in self._resource_configs:
+                if self._is_share_resources_enabled(
+                    resource_config.resource_name,
+                    resource_config.resource_enable_sharing_env_var,
+                ):
+                    self._share_resource_ids(
                         resource_config.resource_name,
-                        resource_config.resource_enable_sharing_env_var,
-                    ):
-                        self._share_resource_ids(
-                            resource_config.resource_name,
-                            resource_config.share_resource_ids_env_var,
-                        )
+                        resource_config.share_resource_ids_env_var,
+                    )
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
@@ -221,15 +218,9 @@ class BackendExecutor:
         )
 
         if should_create_placement_group:
-            additional_resources_per_worker = (
-                self._additional_resources_per_worker or {}
-            )
-            bundle = {
-                "CPU": self._num_cpus_per_worker,
-                "GPU": self._num_gpus_per_worker,
-                **additional_resources_per_worker,
-            }
-            bundles = [bundle.copy() for _ in range(self._num_workers)]
+            bundles = [
+                self._resources_per_worker.copy() for _ in range(self._num_workers)
+            ]
 
             use_spread = bool(env_integer(TRAIN_ENABLE_WORKER_SPREAD_ENV, 0))
             strategy = "SPREAD" if use_spread else "PACK"
@@ -348,9 +339,7 @@ class BackendExecutor:
             enable_sharing_env: The name of the environment variable
                 to check.
         """
-        has_resource_requested = (
-            self._additional_resources_per_worker.get(resource_name, 0) > 0
-        )
+        has_resource_requested = self._resources_per_worker.get(resource_name, 0) > 0
         return has_resource_requested and ray_constants.env_bool(
             enable_sharing_env, True
         )
