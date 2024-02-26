@@ -43,87 +43,10 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
   assert not psutil.pid_exists(pid)
 
 
-Disabling Killing of User-Spawned Processes on Worker Exit
-----------------------------------------------------------
-
-To disable the feature, set the environment variable `RAY_kill_child_processes_on_worker_exit` to `false` **when starting the Ray cluster**, for example in  If a Ray cluster is already running, you need to restart the Ray cluster to apply the change. Setting `env_var` in a runtime environment will NOT work.
-
-.. code-block:: bash
-
-  RAY_kill_child_processes_on_worker_exit=false ray start --head
-
-
-Platform support
--------------------------
-
-The feature is supported on Linux 3.4 or newer. On other platforms, the flag is ignored, and the user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run, as if the flag is always disabled.
-
-If user uses Linux < 3.4, the flag is not present and the Raylet crashes. The user can upgrade the kernel to use this feature, or disable the feature by setting the environment variable `RAY_kill_child_processes_on_worker_exit` to `false`.
-
-CAVEAT: daemon user processes may be killed
--------------------------------------------
-
-Note that, if a user process exits, all its subprocess are killed immediately. For example if user spawns a "launcher" process which spawns a "daemon" process, and then the launcher exits, the daemon is killed immediately, even if the **Ray task or actor is still alive**.
-
-.. code-block:: python
-
-  import ray
-  import time
-  import subprocess
-
-  @ray.remote
-  def spawn_daemon():
-    # Start the bash script that spawns the daemon process
-    subprocess.Popen(["bash", "-c", "nohup ./daemon &"])
-    # sleep loop
-    while True:
-        time.sleep(1000)
-
-  # Spawn the bash script that spawns the daemon process
-  task = spawn_daemon.remote()
-
-  # Infinite wait
-  ray.get(daemon_actor)
-
-In this example, The user starts multiple processes:
-
-User-Spawned Process Killed on Worker Exit
-------------------------------------------
-
-In the following example, we use Ray Actor to spawn a user process. The user process is a long running process that prints "Hello, world!" every second. The user process is killed when the actor is killed.
-
-.. code-block:: python
-
-  import ray
-  import psutil
-  import subprocess
-
-  @ray.remote
-  class MyActor:
-    def __init__(self):
-      pass
-      
-    def start(self):
-      # Start a user process
-      self.process = subprocess.Popen(["python", "-c", "import time; while True: print('Hello, world!'); time.sleep(1)"])
-      return self.process.pid
-
-  actor = MyActor.remote()
-
-  pid = ray.get(actor.start.remote())
-  # The user process is running
-  assert psutil.pid_exists(pid)
-
-  ray.kill(actor)
-  time.sleep(1)
-  # The user process is killed when the actor is killed
-  assert not psutil.pid_exists(pid)
-
-
 Disabling the feature
 -------------------------
 
-To disable the feature, set the environment variable `RAY_kill_child_processes_on_worker_exit` to `false` **when starting the Ray cluster**, for example in  If a Ray cluster is already running, you need to restart the Ray cluster to apply the change. Setting `env_var` in a runtime environment will NOT work.
+To disable the feature, set the environment variable ``RAY_kill_child_processes_on_worker_exit`` to ``false`` **when starting the Ray cluster**, for example in  If a Ray cluster is already running, you need to restart the Ray cluster to apply the change. Setting ``env_var`` in a runtime environment will NOT work.
 
 .. code-block:: bash
 
@@ -135,10 +58,11 @@ Platform support
 
 The feature is supported on Linux 3.4 or newer. On other platforms, the flag is ignored, and the user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run, as if the flag is always disabled.
 
-If user uses Linux < 3.4, the flag is not present and the Raylet crashes. The user can upgrade the kernel to use this feature, or disable the feature by setting the environment variable `RAY_kill_child_processes_on_worker_exit` to `false`.
+If user uses Linux < 3.4, the flag is not present and the Raylet crashes. The user can upgrade the kernel to use this feature, or disable the feature by setting the environment variable ``RAY_kill_child_processes_on_worker_exit`` to ``false``.
+
 
 ⚠️ CAVEAT: daemon user processes may be killed
--------------------------
+---------------------------------------------
 
 Note that, if a user process exits, all its subprocess are killed immediately. For example if user spawns a "launcher" process which spawns a "daemon" process, and then the launcher exits, the daemon is killed immediately, even if the **Ray task or actor is still alive**.
 
