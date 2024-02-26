@@ -18,6 +18,10 @@ def get_databricks_function(func_name):
     return ip_shell.ns_table["user_global"][func_name]
 
 
+def get_databricks_display_html_function():
+    return get_databricks_function("displayHTML")
+
+
 def get_db_entry_point():
     """
     Return databricks entry_point instance, it is for calling some
@@ -36,8 +40,6 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     service binding on driver machine port, but user can visit it by a proxy URL with
     following format: "/driver-proxy/o/{orgId}/{clusterId}/{port}/".
     """
-    from dbruntime.display import displayHTML
-
     driverLocal = spark_context._jvm.com.databricks.backend.daemon.driver.DriverLocal
     commandContextTags = driverLocal.commandContext().get().toStringMap().apply("tags")
     orgId = commandContextTags.apply("orgId")
@@ -49,7 +51,7 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     print("To monitor and debug Ray from Databricks, view the dashboard at ")
     print(f" {proxy_url}")
 
-    displayHTML(
+    get_databricks_display_html_function()(
         f"""
       <div style="margin-bottom: 16px">
           <a href="{proxy_link}">
@@ -82,7 +84,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry = get_db_entry_point()
 
         try:
-            get_databricks_function("displayHTML")(
+            get_databricks_display_html_function()(
                 "<b style='background-color:yellow;'>When you are using Ray on Spark "
                 "cluster, you only pay for Spark cluster usage.</b>"
             )

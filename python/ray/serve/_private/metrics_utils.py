@@ -42,9 +42,7 @@ class MetricsPusher:
     # registered).
     NO_TASKS_REGISTERED_INTERVAL_S = 1
 
-    def __init__(
-        self,
-    ):
+    def __init__(self):
         self.tasks: Dict[str, _MetricTask] = dict()
         self.pusher_thread: Union[threading.Thread, None] = None
         self.stop_event = threading.Event()
