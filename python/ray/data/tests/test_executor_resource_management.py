@@ -15,17 +15,41 @@ from ray.data.tests.util import run_op_tasks_sync
 SMALL_STR = "hello" * 120
 
 
-def test_resource_utils(ray_start_10_cpus_shared):
+def test_execution_resources(ray_start_10_cpus_shared):
+    """Unit test for ExecutionResources."""
     r1 = ExecutionResources()
     r2 = ExecutionResources(cpu=1)
     r3 = ExecutionResources(gpu=1)
     r4 = ExecutionResources(cpu=1, gpu=1, object_store_memory=100 * 1024 * 1024)
     r5 = ExecutionResources(cpu=1, gpu=1, object_store_memory=1024 * 1024 * 1024)
+    unlimited = ExecutionResources.for_limits()
 
-    # Test str.
-    assert r3.object_store_memory_str() == "None"
-    assert r4.object_store_memory_str() == "100.0 MiB"
-    assert r5.object_store_memory_str() == "1.0 GiB"
+    # Test __eq__.
+    assert r1 == ExecutionResources(0, 0, 0)
+    assert r2 == ExecutionResources(1, 0, 0)
+    assert r3 == ExecutionResources(0, 1, 0)
+    assert r4 == ExecutionResources(1, 1, 100 * 1024 * 1024)
+    assert r5 == ExecutionResources(1, 1, 1024 * 1024 * 1024)
+    assert unlimited == ExecutionResources(float("inf"), float("inf"), float("inf"))
+
+    # Test __repr__.
+    assert repr(r1) == "ExecutionResources(cpu=0.0, gpu=0.0, object_store_memory=0.0B)"
+    assert repr(r2) == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B)"
+    assert repr(r3) == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B)"
+    assert (
+        repr(r4) == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB)"
+    )
+    assert repr(r5) == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB)"
+    assert (
+        repr(unlimited)
+        == "ExecutionResources(cpu=inf, gpu=inf, object_store_memory=inf)"
+    )
+
+    # Test object_store_memory_str.
+    assert r3.object_store_memory_str() == "0.0B"
+    assert r4.object_store_memory_str() == "100.0MB"
+    assert r5.object_store_memory_str() == "1.0GB"
+    assert unlimited.object_store_memory_str() == "inf"
 
     # Test add.
     assert r1.add(r1) == r1
@@ -36,12 +60,31 @@ def test_resource_utils(ray_start_10_cpus_shared):
         cpu=2, gpu=2, object_store_memory=200 * 1024 * 1024
     )
 
+    # Test subtract.
+    assert r2.subtract(r1) == r2
+    assert r2.subtract(r2) == r1
+    assert r4.subtract(r2) == ExecutionResources(
+        gpu=1, object_store_memory=100 * 1024 * 1024
+    )
+    assert r5.subtract(r4) == ExecutionResources(object_store_memory=924 * 1024 * 1024)
+    assert r4.subtract(r5) == ExecutionResources(object_store_memory=-924 * 1024 * 1024)
+
+    # Test scale.
+    assert r1.scale(2) == r1
+    assert r2.scale(2) == ExecutionResources(cpu=2)
+    assert r3.scale(0.5) == ExecutionResources(gpu=0.5)
+    assert r4.scale(0.5) == ExecutionResources(
+        cpu=0.5, gpu=0.5, object_store_memory=50 * 1024 * 1024
+    )
+    assert r5.scale(0) == r1
+    assert unlimited.scale(0) == r1
+
     # Test limit.
     for r in [r1, r2, r3, r4, r5]:
         assert r.satisfies_limit(r)
-        assert r.satisfies_limit(ExecutionResources())
-    assert r2.satisfies_limit(r3)
-    assert r3.satisfies_limit(r2)
+        assert r.satisfies_limit(unlimited)
+    assert r2.satisfies_limit(ExecutionResources.for_limits(gpu=1))
+    assert r3.satisfies_limit(ExecutionResources.for_limits(cpu=1))
     assert r4.satisfies_limit(r5)
     assert not r5.satisfies_limit(r4)
 
