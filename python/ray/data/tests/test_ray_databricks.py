@@ -91,7 +91,8 @@ def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
         "ray.util.spark.utils.is_in_databricks_runtime",
         return_value=True,
     ), mock.patch(
-        "ray.data.read_api._DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES", default_chunk_bytes
+        "ray.data.datasource.spark_datasource._DEFAULT_SPARK_DATAFRAME_CHUNK_BYTES",
+        default_chunk_bytes,
     ):
         monkeypatch.setenv(MOCK_ENV, read_chunk_fn_path.as_posix())
         yield
@@ -111,11 +112,9 @@ def test_from_simple_databricks_spark_dataframe(tmp_path, monkeypatch):
     ):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
-        print(f"DBG: files: {[file.name for file in tmp_path.iterdir()]}")
         del ray_ds
         gc.collect()
         time.sleep(1)  # waiting for ray_ds GC
-        print(f"DBG: files: {[file.name for file in tmp_path.iterdir()]}")
 
         # assert all chunk data files are removed from the tmp dir.
         assert [file.name for file in tmp_path.iterdir()] == ["read_chunk_fn.pkl"]
