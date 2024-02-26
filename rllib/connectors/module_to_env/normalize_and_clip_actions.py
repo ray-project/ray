@@ -102,19 +102,19 @@ class NormalizeAndClipActions(ConnectorV2):
                     )
                 else:
                     return clip_action(
-                       data[SampleBatch.ACTIONS], self._action_space_struct
+                       action, self._action_space_struct
                     )
             return action
 
-        # Create a duplicate "actions" entry, just to be sent to the ENV.
-        # The original actions (non-normalized, non-clipped) will be the ones
-        # stored in the Episode (and then possibly used for learning).
-        data[SampleBatch.ACTIONS_FOR_ENV] = data[SampleBatch.ACTIONS]
+        ## Create a duplicate "actions" entry, just to be sent to the ENV.
+        ## The original actions (non-normalized, non-clipped) will be the ones
+        ## stored in the Episode (and then possibly used for learning).
+        #data[SampleBatch.ACTIONS_FOR_ENV] = data[SampleBatch.ACTIONS]
 
         # Normalize or clip actions.
         self.foreach_batch_item_change_in_place(
             batch=data,
-            column=SampleBatch.ACTIONS_FOR_ENV,
+            column=SampleBatch.ACTIONS,
             func=_unsquash_or_clip,
         )
 

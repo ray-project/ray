@@ -75,7 +75,6 @@ class MultiAgentEpisode:
         env_t_started: Optional[int] = None,
         agent_t_started: Optional[Dict[AgentID, int]] = None,
         len_lookback_buffer: Union[int, str] = "auto",
-        env_vector_idx: Optional[int] = None,
         agent_episode_ids: Optional[Dict[AgentID, str]] = None,
         agent_module_ids: Optional[Dict[AgentID, ModuleID]] = None,
         agent_to_module_mapping_fn: Optional[
@@ -149,7 +148,6 @@ class MultiAgentEpisode:
                 chunk's data.
                 If `len_lookback_buffer` is "auto" (default), will interpret all
                 provided data in the constructor as part of the lookback buffers.
-            env_vector_idx: TODO
             agent_episode_ids: An optional dict mapping AgentIDs
                 to their corresponding `SingleAgentEpisode`. If None, each
                 `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
@@ -177,8 +175,6 @@ class MultiAgentEpisode:
                 AlgorithmConfig.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
             )
         self.agent_to_module_mapping_fn = agent_to_module_mapping_fn
-
-        self.env_vector_idx = env_vector_idx
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
@@ -308,7 +304,7 @@ class MultiAgentEpisode:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
                     module_id=self.agent_to_module_mapping_fn(agent_id, self),
-                    env_vector_idx=self.env_vector_idx,
+                    multi_agent_episode_id=self.id_,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -411,7 +407,7 @@ class MultiAgentEpisode:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
                     module_id=self.agent_to_module_mapping_fn(agent_id, self),
-                    env_vector_idx=self.env_vector_idx,
+                    multi_agent_episode_id=self.id_,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
@@ -1579,7 +1575,7 @@ class MultiAgentEpisode:
                 ),
                 agent_id=agent_id,
                 module_id=module_id,
-                env_vector_idx=self.env_vector_idx,
+                multi_agent_episode_id=self.id_,
                 observations=agent_obs,
                 observation_space=self.observation_space.get(agent_id),
                 infos=infos_per_agent[agent_id],

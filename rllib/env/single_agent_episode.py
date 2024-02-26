@@ -146,7 +146,7 @@ class SingleAgentEpisode:
         "id_",
         "agent_id",
         "module_id",
-        "env_vector_idx",
+        "multi_agent_episode_id",
         "_observation_space",
         "_action_space",
         "observations",
@@ -179,7 +179,7 @@ class SingleAgentEpisode:
         len_lookback_buffer: Union[int, str] = "auto",
         agent_id: Optional[AgentID] = None,
         module_id: Optional[ModuleID] = None,
-        env_vector_idx: Optional[int] = None,
+        multi_agent_episode_id: Optional[int] = None,
     ):
         """Initializes a SingleAgentEpisode instance.
 
@@ -247,12 +247,14 @@ class SingleAgentEpisode:
                 belongs to. Normally, this information is obtained by querying an
                 `agent_to_module_mapping_fn` with a given agent ID. This information
                 is stored under `self.module_id` and only serves reference purposes.
+            multi_agent_episode_id: An optional EpisodeID of the encapsulating
+                `MultiAgentEpisode` that this `SingleAgentEpisode` belongs to.
         """
         self.id_ = id_ or uuid.uuid4().hex
 
         self.agent_id = agent_id
         self.module_id = module_id
-        self.env_vector_idx = env_vector_idx
+        self.multi_agent_episode_id = multi_agent_episode_id
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.

@@ -1,6 +1,9 @@
 from ray.rllib.connectors.common.tensor_to_numpy import TensorToNumpy
 from ray.rllib.connectors.common.module_to_agent_unmapping import ModuleToAgentUnmapping
 from ray.rllib.connectors.module_to_env.get_actions import GetActions
+from ray.rllib.connectors.module_to_env.listify_data_for_vector_env import (
+    ListifyDataForVectorEnv
+)
 from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
     ModuleToEnvPipeline
 )
@@ -17,6 +20,7 @@ from ray.rllib.connectors.module_to_env.unbatch_to_individual_items import (
 
 __all__ = [
     "GetActions",
+    "ListifyData",
     "ModuleToAgentUnmapping",
     "ModuleToEnvPipeline",
     "NormalizeAndClipActions",

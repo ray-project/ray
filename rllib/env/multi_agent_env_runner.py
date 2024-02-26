@@ -198,7 +198,7 @@ class MultiAgentEnvRunner(EnvRunner):
         # Have to reset the env.
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episode = self._new_episode(0)
+            self._episode = self._new_episode()
             self._make_on_episode_callback("on_episode_created")
 
             # Reset the environment.
@@ -359,7 +359,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 self._make_on_episode_callback("on_episode_end")
 
                 # Create a new episode instance.
-                self._episode = self._new_episode(0)
+                self._episode = self._new_episode()
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
@@ -430,7 +430,7 @@ class MultiAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
 
         # Create a new multi-agent episode.
-        _episode = self._new_episode(0)
+        _episode = self._new_episode()
         self._make_on_episode_callback("on_episode_created", _episode)
         _shared_data = {
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
@@ -567,7 +567,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     break
 
                 # Create a new episode instance.
-                _episode = self._new_episode(0)
+                _episode = self._new_episode()
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
@@ -712,12 +712,11 @@ class MultiAgentEnvRunner(EnvRunner):
         except NotImplementedError:
             return None
 
-    def _new_episode(self, env_vector_idx):
+    def _new_episode(self):
         return MultiAgentEpisode(
             observation_space=self.env.observation_space,
             action_space=self.env.action_space,
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
-            env_vector_idx=env_vector_idx,
         )
 
     def _make_on_episode_callback(self, which: str, episode=None):

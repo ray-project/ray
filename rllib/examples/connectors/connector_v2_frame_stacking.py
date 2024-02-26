@@ -113,6 +113,7 @@ if __name__ == "__main__":
                 else _make_env_to_module_connector
             ),
             num_rollout_workers=args.num_env_runners,
+            num_envs_per_worker=2, # TODO: test
             # Set up the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(

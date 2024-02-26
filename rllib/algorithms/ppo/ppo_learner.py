@@ -106,6 +106,7 @@ class PPOLearner(Learner):
             rl_module=self.module,
             data={},
             episodes=episodes,
+            shared_data={},
         )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))

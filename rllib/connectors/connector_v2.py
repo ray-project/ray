@@ -196,7 +196,7 @@ class ConnectorV2(abc.ABC):
                 sa_episode = episode.agent_episodes[agent_id]
                 # for sa_episode in episode.agent_episodes.values():
                 if zip_with_batch_column is not None:
-                    key = (sa_episode.env_vector_idx, sa_episode.agent_id, sa_episode.module_id)
+                    key = (sa_episode.id_, sa_episode.agent_id, sa_episode.module_id)
                     if len(zip_with_batch_column[key]) <= list_indices[key]:
                         raise ValueError(
                             "Invalid `zip_with_batch_column` data: Must structurally "
@@ -318,12 +318,12 @@ class ConnectorV2(abc.ABC):
             and single_agent_episode.agent_id is not None
         ):
             sub_key = (
-                single_agent_episode.env_vector_idx,
+                single_agent_episode.multi_agent_episode_id,
                 single_agent_episode.agent_id,
                 single_agent_episode.module_id,
             )
         elif single_agent_episode is not None:
-            sub_key = (single_agent_episode.env_vector_idx,)
+            sub_key = (single_agent_episode.id_,)
 
         if column not in batch:
             batch[column] = [] if sub_key is None else {sub_key: []}
@@ -437,13 +437,13 @@ class ConnectorV2(abc.ABC):
             single_agent_episode=single_agent_episode,
         )
 
-    @staticmethod
-    def get_batch_item(batch, column, env_vector_idx, agent_id, module_id):
-        if isinstance(batch[column], list):
-            assert agent_id is None and module_id is None
-            return batch[column][env_vector_idx]
-        else:
-            return batch[column][(env_vector_idx, agent_id, module_id)]
+    #@staticmethod
+    #def get_batch_item(batch, column, env_vector_idx, agent_id, module_id):
+    #    if isinstance(batch[column], list):
+    #        assert agent_id is None and module_id is None
+    #        return batch[column][(env_vector_idx,)]
+    #    else:
+    #        return batch[column][(env_vector_idx, agent_id, module_id)]
 
     @staticmethod
     def foreach_batch_item_change_in_place(
@@ -483,15 +483,15 @@ class ConnectorV2(abc.ABC):
 
         for key, d0_list in data_to_process[0].items():
             if len(key) == 3:
-                env_vector_idx, agent_id, module_id = key
+                eps_id, agent_id, module_id = key
             else:
-                env_vector_idx = key[0]
+                eps_id = key[0]
                 agent_id = module_id = None
             other_lists = [d[key] for d in data_to_process[1:]]
             for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
                 results = func(
                     data_tuple[0] if isinstance(column, str) else data_tuple,
-                    env_vector_idx,
+                    eps_id,
                     agent_id,
                     module_id,
                 )

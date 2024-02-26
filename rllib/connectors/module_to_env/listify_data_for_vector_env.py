@@ -3,11 +3,13 @@ from typing import Any, List, Optional
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
-class ListifyData(ConnectorV2):
+class ListifyDataForVectorEnv(ConnectorV2):
     """Performs conversion from ConnectorV2-style format to env/episode insertion.
 
     Single agent case:
@@ -34,9 +36,10 @@ class ListifyData(ConnectorV2):
             shared_data: Optional[dict] = None,
             **kwargs,
     ) -> Any:
-        # Multi-agent case: Create lists of multi-agent dicts under each column.
-        if isinstance(episodes[0], MultiAgentEpisode):
-            for column, column_data in data.copy().items():
+
+        for column, column_data in data.copy().items():
+            # Multi-agent case: Create lists of multi-agent dicts under each column.
+            if isinstance(episodes[0], MultiAgentEpisode):
                 new_column_data = []
                 for key, value in sorted(data[column].items()):
                     env_vector_idx, agent_id, module_id = key
@@ -44,12 +47,15 @@ class ListifyData(ConnectorV2):
                         new_column_data.append({})
                     new_column_data[env_vector_idx][agent_id] = value
                 data[column] = new_column_data
-        # Single-agent case: Create simple lists under each column.
-        else:
-            for column, column_data in data.copy().items():
+            # Single-agent case: Create simple lists under each column.
+            else:
                 data[column] = [
                     d
                     for key in sorted(data[column].keys())
                     for d in data[column][key]
                 ]
+                # Batch data for (single-agent) gym.vector.Env.
+                if column == SampleBatch.ACTIONS:
+                    data[column] = batch(data[column])
+
         return data

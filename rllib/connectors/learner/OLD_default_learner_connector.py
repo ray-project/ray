@@ -161,28 +161,28 @@ class DefaultLearnerConnector(ConnectorV2):
 
             # Extract all data from the episodes and add to `data`, if not already in
             # `data`.
-            for key in [
-                SampleBatch.OBS,
-                SampleBatch.ACTIONS,
-                SampleBatch.REWARDS,
-                SampleBatch.TERMINATEDS,
-                SampleBatch.TRUNCATEDS,
-                SampleBatch.T,  # TODO: remove (normally not needed in train batch)
-                *episode_list[0].extra_model_outputs.keys(),
-            ]:
-                if key not in sa_data and key != STATE_OUT:
-                    # Concatenate everything together (along B-axis=0).
-                    sa_data[key] = tree.map_structure(
-                        lambda *s: reduce_fn(s),
-                        *[d[key] for d in data_dicts],
-                    )
+            #for key in [
+            #    SampleBatch.OBS,
+            #    SampleBatch.ACTIONS,
+            #    SampleBatch.REWARDS,
+            #    SampleBatch.TERMINATEDS,
+            #    SampleBatch.TRUNCATEDS,
+            #    SampleBatch.T,  # TODO: remove (normally not needed in train batch)
+            #    *episode_list[0].extra_model_outputs.keys(),
+            #]:
+            #    if key not in sa_data and key != STATE_OUT:
+            #        # Concatenate everything together (along B-axis=0).
+            #        sa_data[key] = tree.map_structure(
+            #            lambda *s: reduce_fn(s),
+            #            *[d[key] for d in data_dicts],
+            #        )
 
-            # Handle infos (always lists, not numpy arrays).
-            if SampleBatch.INFOS not in sa_data:
-                sa_data[SampleBatch.INFOS] = sum(
-                    [d[SampleBatch.INFOS] for d in data_dicts],
-                    [],
-                )
+            ## Handle infos (always lists, not numpy arrays).
+            #if SampleBatch.INFOS not in sa_data:
+            #    sa_data[SampleBatch.INFOS] = sum(
+            #        [d[SampleBatch.INFOS] for d in data_dicts],
+            #        [],
+            #    )
 
             # Now that all "normal" fields are time-dim'd and zero-padded, add
             # the STATE_IN column to `data`.

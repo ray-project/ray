@@ -111,6 +111,7 @@ class AddObservationFromEpisodeToBatch(ConnectorV2):
                         sa_episode.get_observations(indices=ts)
                         for ts in range(len(sa_episode))
                     ],
+                    num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
             else:

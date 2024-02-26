@@ -28,9 +28,9 @@ class AgentToModuleMapping(ConnectorV2):
         Note that before the mapping, the batch is expected to have the following
         structure:
         [col0]:
-            (env_vector_idx0, ag0, mod0): [list of individual batch items]
-            (env_vector_idx0, ag1, mod2): [list of individual batch items]
-            (env_vector_idx1, ag0, mod1): [list of individual batch items]
+            (eps_id0, ag0, mod0): [list of individual batch items]
+            (eps_id0, ag1, mod2): [list of individual batch items]
+            (eps_id1, ag0, mod1): [list of individual batch items]
         [col1]:
             etc..
 
@@ -44,7 +44,7 @@ class AgentToModuleMapping(ConnectorV2):
 
         Mapping happens in the following stages:
 
-        1) Under each column name, sort keys first by env_vector_idx, then AgentID.
+        1) Under each column name, sort keys first by EpisodeID, then AgentID.
         2) Add ModuleID keys under each column name (no cost/extra memory) and map these
         new keys to empty lists.
         [col0] -> [mod0] -> []: Then push items that belong to mod0 into these lists.
@@ -69,8 +69,8 @@ class AgentToModuleMapping(ConnectorV2):
         # that the module-to-env pipeline can map the data back to agents.
         memorized_map_structure = defaultdict(list)
         for column, column_data in data.items():
-            for env_vector_idx, agent_id, module_id in column_data.keys():
-                memorized_map_structure[module_id].append((env_vector_idx, agent_id))
+            for eps_id, agent_id, module_id in column_data.keys():
+                memorized_map_structure[module_id].append((eps_id, agent_id))
             # TODO (sven): We should check that all columns have the same struct.
             break
 
@@ -91,8 +91,9 @@ class AgentToModuleMapping(ConnectorV2):
 
         # Iterating over each column in the original data:
         for column, agent_data in data.items():
-            for (env_vector_idx, agent_id, module_id), values_batch_or_list in agent_data.items():
+            for (eps_id, agent_id, module_id), values_batch_or_list in agent_data.items():
                 if not isinstance(values_batch_or_list, list):
+                    assert False
                     values_batch_or_list = unbatch(values_batch_or_list)
                 for value in values_batch_or_list:
                     if module_id not in data_by_module:
@@ -104,8 +105,8 @@ class AgentToModuleMapping(ConnectorV2):
                     data_by_module[module_id][column].append(value)
 
         # Batch all (now restructured) data again.
-        for module_id, module_data in data_by_module.items():
-            for column, l in module_data.copy().items():
-                module_data[column] = batch(l)
+        #for module_id, module_data in data_by_module.items():
+        #    for column, l in module_data.copy().items():
+        #        module_data[column] = batch(l)
 
         return data_by_module

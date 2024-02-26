@@ -58,7 +58,7 @@ class ModuleToAgentUnmapping(ConnectorV2):
                 #    agent_data[column] = [{} for _ in range(len(episodes))]
                 individual_items = unbatch(values_batch)
                 assert len(individual_items) == len(memorized_map_structure[module_id])
-                for individual_item, (env_vector_idx, agent_id) in zip(
+                for individual_item, (eps_id, agent_id) in zip(
                     individual_items, memorized_map_structure[module_id]
                 ):
                 #for i, val in enumerate():
@@ -70,7 +70,7 @@ class ModuleToAgentUnmapping(ConnectorV2):
                     ##  here is a temporary fix for this issue.
                     #if episodes[eps_idx].agent_episodes[agent_id].is_done:
                     #    continue
-                    key = (env_vector_idx, agent_id, module_id)
+                    key = (eps_id, agent_id, module_id)
                     if key not in agent_data[column]:
                         agent_data[column][key] = []
                     agent_data[column][key].append(individual_item)

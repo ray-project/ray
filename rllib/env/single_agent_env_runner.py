@@ -219,7 +219,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Create n new episodes and make the `on_episode_created` callbacks.
             self._episodes = []
             for env_index in range(self.num_envs):
-                self._episodes.append(self._new_episode(env_index))
+                self._episodes.append(self._new_episode())
                 self._make_on_episode_callback("on_episode_created", env_index)
             self._shared_data = {}
 
@@ -287,9 +287,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # already clipped) to be sent to the environment) and might not be
             # identical to the actions produced by the RLModule/distribution, which are
             # the ones stored permanently in the episode objects.
-            actions = to_env.pop(
-                SampleBatch.ACTIONS_FOR_ENV, to_env.get(SampleBatch.ACTIONS)
-            )
+            actions = to_env.pop(SampleBatch.ACTIONS)
             # Step the environment.
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             obs, actions = unbatch(obs), unbatch(actions)
@@ -300,7 +298,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 #  certain env parameter during different episodes (for example for
                 #  benchmarking).
-                extra_model_output = {k: v[(env_index,)] for k, v in to_env.items()}
+                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
 
                 # In inference, we have only the action logits.
                 if terminateds[env_index] or truncateds[env_index]:
@@ -329,6 +327,7 @@ class SingleAgentEnvRunner(EnvRunner):
                             episodes=[self._episodes[env_index]],
                             explore=explore,
                             rl_module=self.module,
+                            shared_data=self._shared_data,
                         )
                     # Make the `on_episode_step` callback (before finalizing the
                     # episode object).
@@ -345,7 +344,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos=[infos[env_index]],
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
-                        env_vector_idx=env_index,
                     )
 
                     # Make the `on_episode_start` callback.
@@ -424,7 +422,7 @@ class SingleAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
         episodes = []
         for env_index in range(self.num_envs):
-            episodes.append(self._new_episode(env_index))
+            episodes.append(self._new_episode())
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
         _shared_data = {}
 
@@ -488,9 +486,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # already clipped) to be sent to the environment) and might not be
             # identical to the actions produced by the RLModule/distribution, which are
             # the ones stored permanently in the episode objects.
-            actions = to_env.pop(
-                SampleBatch.ACTIONS_FOR_ENV, to_env.get(SampleBatch.ACTIONS)
-            )
+            actions = to_env.pop(SampleBatch.ACTIONS)
             # Step the environment.
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             obs, actions = unbatch(obs), unbatch(actions)
@@ -540,7 +536,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         else [render_images[env_index]],
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
-                        env_vector_idx=env_index,
                     )
                     # Make `on_episode_start` callback.
                     self._make_on_episode_callback(
@@ -648,11 +643,10 @@ class SingleAgentEnvRunner(EnvRunner):
         # Close our env object via gymnasium's API.
         self.env.close()
 
-    def _new_episode(self, env_index):
+    def _new_episode(self):
         return SingleAgentEpisode(
             observation_space=self.env.single_observation_space,
             action_space=self.env.single_action_space,
-            env_vector_idx=env_index,
         )
 
     def _make_on_episode_callback(self, which: str, idx: int, episodes=None):

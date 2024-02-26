@@ -1380,6 +1380,7 @@ class Learner:
                 rl_module=self.module,
                 data=batch,
                 episodes=episodes,
+                shared_data={},
             )
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs

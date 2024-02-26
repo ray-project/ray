@@ -54,7 +54,7 @@ class ConnectorPipelineV2(ConnectorV2):
                 self.input_action_space = self.connectors[0].input_action_space
         self._fix_input_output_types()
 
-        self.timers = defaultdict(_Timer)
+        #self.timers = defaultdict(_Timer)
 
     def __len__(self):
         return len(self.connectors)
@@ -77,16 +77,16 @@ class ConnectorPipelineV2(ConnectorV2):
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
-            timer = self.timers[str(connector)]
-            with timer:
-                data = connector(
-                    rl_module=rl_module,
-                    data=data,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=shared_data,
-                    **kwargs,
-                )
+            #timer = self.timers[str(connector)]
+            #with timer:
+            data = connector(
+                rl_module=rl_module,
+                data=data,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+                **kwargs,
+            )
         return data
 
     def remove(self, name_or_class: Union[str, Type]):
