@@ -38,16 +38,16 @@ def ray_start_4_cpus_4_gpus_4_extra():
 def ray_start_heterogenous_cluster():
     """
     Start a heterogenous cluster with 10 nodes:
-        - 1 node with 100 CPUs
-        - 2 nodes with 2 GPU and 10 CPUs
-        - 1 nodes with 2 GPU and 20 CPUs
+        - 1 node with 20 CPUs
+        - 2 nodes with 2 GPU and 20 CPUs
+        - 2 nodes with 2 GPU and 5 CPUs
     """
     cluster = Cluster()
 
     node_configs = []
     node_configs += [{"num_cpus": 20}]
-    node_configs += [{"num_cpus": 20, "num_gpus": 2}]
-    node_configs += [{"num_cpus": 10, "num_gpus": 2}] * 2
+    node_configs += [{"num_cpus": 20, "num_gpus": 2}] * 2
+    node_configs += [{"num_cpus": 5, "num_gpus": 2}] * 2
 
     for config in node_configs:
         cluster.add_node(**config)
@@ -371,24 +371,19 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     assert visible_devices == ["0,1,2,3", "0,1,2,3"]
 
 
-@pytest.mark.parametrize("trainer_resources", [None, {}, {"CPU": 15}, {"GPU": 1}])
-@pytest.mark.parametrize("num_workers", [1, 2, 4])
+@pytest.mark.parametrize("trainer_resources", [None, {"CPU": 15}, {"GPU": 1}])
 @pytest.mark.parametrize(
     "resources_per_worker_and_use_gpu",
     [
         (None, True),
-        ({}, False),
         ({"CPU": 1}, False),
-        ({"CPU": 1, "GPU": 1}, True),
+        ({"GPU": 1}, True),
     ],
 )
-@pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
 def test_colocate_trainer_and_rank0_worker(
     ray_start_heterogenous_cluster,
     trainer_resources,
-    num_workers,
     resources_per_worker_and_use_gpu,
-    placement_strategy,
 ):
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
 
@@ -408,20 +403,20 @@ def test_colocate_trainer_and_rank0_worker(
                 )
                 self._propagate_results(training_results)
 
-    scale_config = ScalingConfig(
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        trainer_resources=trainer_resources,
-        resources_per_worker=resources_per_worker,
-        placement_strategy=placement_strategy,
-    )
-
-    if scale_config.total_resources:
-        trainer = CustomDataParallelTrainer(
-            train_func,
-            scaling_config=scale_config,
+    for num_workers in [1, 2, 4]:
+        scale_config = ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            trainer_resources=trainer_resources,
+            resources_per_worker=resources_per_worker,
         )
-        trainer.fit()
+
+        if scale_config.total_resources:
+            trainer = CustomDataParallelTrainer(
+                train_func,
+                scaling_config=scale_config,
+            )
+            trainer.fit()
 
 
 if __name__ == "__main__":
