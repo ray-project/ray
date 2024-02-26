@@ -115,6 +115,7 @@ class ExperimentalMutableObjectManager {
 
  private:
   struct WriterChannel {
+#ifdef __linux__
     WriterChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : mutable_object(std::move(mutable_object_ptr)) {}
 
@@ -122,10 +123,12 @@ class ExperimentalMutableObjectManager {
     /// to call WriteRelease.
     bool is_sealed = true;
     std::unique_ptr<plasma::MutableObject> mutable_object;
+#endif
   };
 
   // Thread-safe for multiple ReadAcquire threads and one ReadRelease thread.
   struct ReaderChannel {
+#ifdef __linux__
     ReaderChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : mutable_object(std::move(mutable_object_ptr)) {
       RAY_CHECK(sem_init(&reader_semaphore, /*pshared=*/0, /*value=*/1) == 0);
@@ -141,6 +144,7 @@ class ExperimentalMutableObjectManager {
     /// then it is safe to read the value of the object.
     bool read_acquired = false;
     std::unique_ptr<plasma::MutableObject> mutable_object;
+#endif
   };
 
   // TODO(swang): Access to these maps is not threadsafe. This is fine in the
