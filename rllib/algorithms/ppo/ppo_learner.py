@@ -5,7 +5,6 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -208,12 +207,8 @@ class PPOLearner(Learner):
         return {
             module_id: self.module[module_id]._compute_values(
                 {
-                    SampleBatch.OBS: module_batch[SampleBatch.OBS],
-                    **(
-                        {STATE_IN: module_batch[STATE_IN]}
-                        if self.module[module_id].is_stateful()
-                        else {}
-                    ),
+                    specs_key: module_batch[specs_key]
+                    for specs_key in self.module[module_id].input_specs_inference()
                 },
                 self._device,
             )
