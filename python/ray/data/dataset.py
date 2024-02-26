@@ -5010,13 +5010,6 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if cleanup_hook := getattr(self, "_cleanup_hook", None):
-            # SparkDatasource installs _cleanup_hook for generated dataset.
-            try:
-                cleanup_hook()
-            except Exception:
-                pass
-
         if not self._current_executor:
             return
 

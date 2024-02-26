@@ -2535,11 +2535,6 @@ def from_spark(
             override_num_blocks=parallelism,
         )
 
-        def cleanup_hook():
-            datasource.dispose_spark_cache()
-
-        dataset._cleanup_hook = cleanup_hook
-
         try:
             get_databricks_function("displayHTML")(
                 "<b style='background-color:yellow;'>The Ray dataset converted from "

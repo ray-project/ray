@@ -128,3 +128,6 @@ class SparkDatasource(Datasource):
             chunk_meta.id
             for chunk_meta in self.chunk_meta_list
         ])
+
+    def __del__(self):
+        self.dispose_spark_cache()

@@ -1,3 +1,4 @@
+import gc
 import os
 import time
 import pytest
@@ -116,6 +117,7 @@ def test_from_simple_databricks_spark_dataframe(tmp_path, monkeypatch):
 
     pd.testing.assert_frame_equal(result, fake_spark_df)
 
+    gc.collect()
     time.sleep(1)  # waiting for ray_ds GC
 
     # assert all chunk data files are removed from the tmp dir.
