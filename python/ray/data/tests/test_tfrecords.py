@@ -339,7 +339,7 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
 
 
 @pytest.mark.parametrize(
-    "with_tf_schema,fast_read,compression",
+    "with_tf_schema,tfx_read,compression",
     [
         (True, True, None),
         (True, True, "GZIP"),
@@ -351,7 +351,7 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
 )
 def test_read_tfrecords(
     with_tf_schema,
-    fast_read,
+    tfx_read,
     compression,
     ray_start_regular_shared,
     tmp_path,
@@ -378,7 +378,7 @@ def test_read_tfrecords(
     ds = read_tfrecords_with_tfx_read_override(
         path,
         tf_schema=tf_schema,
-        tfx_read=fast_read,
+        tfx_read=tfx_read,
         arrow_open_stream_args=arrow_open_stream_args,
     )
 
@@ -670,8 +670,8 @@ def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
         ds.write_tfrecords(tmp_path)
 
 
-@pytest.mark.parametrize("fast_read", (True, False))
-def test_read_invalid_tfrecords(ray_start_regular_shared, fast_read, tmp_path):
+@pytest.mark.parametrize("tfx_read", (True, False))
+def test_read_invalid_tfrecords(ray_start_regular_shared, tfx_read, tmp_path):
     file_path = os.path.join(tmp_path, "file.json")
     with open(file_path, "w") as file:
         json.dump({"number": 0, "string": "foo"}, file)
@@ -679,7 +679,7 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, fast_read, tmp_path):
     # Expect RuntimeError raised when reading JSON as TFRecord file.
     with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
         read_tfrecords_with_tfx_read_override(
-            file_path, tfx_read=fast_read, fast_read_auto_infer_schema=False
+            file_path, tfx_read=tfx_read, tfx_read_auto_infer_schema=False
         ).schema()
 
 
@@ -751,11 +751,11 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
 def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
     infer_schema = read_opts.pop("tfx_read_auto_infer_schema", tfx_read)
     tf_ds = ray.data.read_tfrecords(
-        paths=paths, fast_read_auto_infer_schema=infer_schema, **read_opts
+        paths=paths, tfx_read_auto_infer_schema=infer_schema, **read_opts
     )
 
-    # if fast read is enaled, we just return the dataset because, by default
-    # fast_read will be used in unit tests given that tfx-bsl dependency is
+    # if tfx read is enaled, we just return the dataset because, by default
+    # tfx_read will be used in unit tests given that tfx-bsl dependency is
     # installed
     if tfx_read:
         return tf_ds
