@@ -38,10 +38,12 @@ def compute_additional_split_factor(
     if cur_additional_split_factor:
         size_based_splits *= cur_additional_split_factor
     logger.get_logger(log_to_stdout=False).debug(
-        f"Size based split factor {size_based_splits}")
+        f"Size based split factor {size_based_splits}"
+    )
     estimated_num_blocks = num_read_tasks * size_based_splits
     logger.get_logger(log_to_stdout=False).debug(
-        f"Blocks after size splits {estimated_num_blocks}")
+        f"Blocks after size splits {estimated_num_blocks}"
+    )
 
     available_cpu_slots = ray_available_resources().get("CPU", 1)
     if (
@@ -130,4 +132,5 @@ class SetReadParallelismRule(Rule):
             op.set_additional_split_factor(k)
 
         logger.get_logger(log_to_stdout=False).debug(
-            f"Estimated num output blocks {estimated_num_blocks}")
+            f"Estimated num output blocks {estimated_num_blocks}"
+        )

@@ -262,7 +262,8 @@ class FileBasedDatasource(Datasource):
                     )
                 else:
                     logger.get_logger(log_to_stdout=False).debug(
-                        f"Reading {len(read_paths)} files.")
+                        f"Reading {len(read_paths)} files."
+                    )
                     yield from read_files(read_paths)
 
             return read_task_fn

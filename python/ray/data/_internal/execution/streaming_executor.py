@@ -109,16 +109,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if not isinstance(dag, InputDataBuffer):
             stdout_logger = logger.get_logger()
             log_path = logger.get_datasets_log_path()
-            message = (
-                "Starting execution of Dataset. Monitor progress on Ray "
-                "Dashboard."
-            )
+            message = "Starting execution of Dataset."
             if log_path is not None:
                 message += f" Full log is in {log_path}"
             stdout_logger.info(message)
             stdout_logger.info("Execution plan of Dataset: %s\n", dag)
             logger.get_logger(log_to_stdout=False).info(
-                "Execution config: %s", self._options)
+                "Execution config: %s", self._options
+            )
             if not self._options.verbose_progress:
                 logger.get_logger(log_to_stdout=False).info(
                     "Tip: For detailed progress reporting, run "

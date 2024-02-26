@@ -443,7 +443,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         _debug_limit_execution_to_num_blocks: int = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
         logger.get_logger(log_to_stdout=False).info(
-            "Using experimental push-based shuffle.")
+            "Using experimental push-based shuffle."
+        )
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
         # map-merge stage.
@@ -497,7 +498,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # verbosely for now.
         # See https://github.com/ray-project/ray/issues/42002.
         logger.get_logger(log_to_stdout=False).info(
-            f"Push-based shuffle schedule:\n{stage}")
+            f"Push-based shuffle schedule:\n{stage}"
+        )
 
         map_fn = self._map_partition
         merge_fn = self._merge
