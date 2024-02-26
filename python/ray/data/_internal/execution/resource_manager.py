@@ -483,6 +483,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             res = 1
         return res
 
+    def _get_downstream_non_map_op_memory_usage(self, op: PhysicalOperator) -> int:
+        usage = 0
+        for next_op in op.output_dependencies:
+            if not isinstance(next_op, MapOperator):
+                usage += self._resource_manager.get_op_usage(
+                    next_op
+                ).object_store_memory
+                usage += self._get_downstream_non_map_op_memory_usage(next_op)
+        return usage
+
     def update_usages(self):
         self._update_reservation()
 
@@ -493,36 +503,34 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         # Remaining of shared resources.
         remaining_shared = self._total_shared
-        for op in self._resource_manager._topology:
-            op_usage = self._resource_manager.get_op_usage(op)
-            if op in eligible_ops:
-                # Op resource usage without considering `_reserved_for_op_outputs`.
-                op_usage_wo_op_outputs_reserved = ExecutionResources(
-                    op_usage.cpu,
-                    op_usage.gpu,
-                    self._resource_manager._mem_pending_task_outputs[op]
-                    + max(
-                        self._resource_manager._mem_op_outputs[op]
-                        - self._reserved_for_op_outputs[op],
-                        0,
-                    ),
+        for op in eligible_ops:
+            # Op resource usage without considering `_reserved_for_op_outputs`.
+            mem_wo_reseved_for_op_outputs = (
+                self._resource_manager._mem_pending_task_outputs[op]
+                + max(
+                    self._resource_manager._mem_op_outputs[op]
+                    - self._reserved_for_op_outputs[op],
+                    0,
                 )
-                op_reserved = self._op_reserved[op]
-                # How much of the reserved resources are remaining.
-                op_reserved_remaining = op_reserved.subtract(
-                    op_usage_wo_op_outputs_reserved
-                ).max(ExecutionResources.zero())
-                self._op_budgets[op] = op_reserved_remaining
-                # How much of the reserved resources are exceeded.
-                # If exceeded, we need to subtract from the remaining shared resources.
-                op_reserved_exceeded = op_usage_wo_op_outputs_reserved.subtract(
-                    op_reserved
-                ).max(ExecutionResources.zero())
-                remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
-            else:
-                # For non-eligible ops, we still need to subtract
-                # their usage from the remaining shared resources.
-                remaining_shared = remaining_shared.subtract(op_usage)
+            )
+            downstream_mem = self._get_downstream_non_map_op_memory_usage(op)
+            op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
+            op_usage.object_store_memory = (
+                mem_wo_reseved_for_op_outputs + downstream_mem
+            )
+
+            op_reserved = self._op_reserved[op]
+            # How much of the reserved resources are remaining.
+            op_reserved_remaining = op_reserved.subtract(op_usage).max(
+                ExecutionResources.zero()
+            )
+            self._op_budgets[op] = op_reserved_remaining
+            # How much of the reserved resources are exceeded.
+            # If exceeded, we need to subtract from the remaining shared resources.
+            op_reserved_exceeded = op_usage.subtract(op_reserved).max(
+                ExecutionResources.zero()
+            )
+            remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
 
