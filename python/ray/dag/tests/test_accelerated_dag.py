@@ -288,7 +288,7 @@ def test_dag_teardown_while_running(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio(ray_start_regular, max_queue_size):
+def test_asyncio(ray_start_regular_shared, max_queue_size):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.echo.bind(i)
@@ -304,6 +304,47 @@ def test_asyncio(ray_start_regular, max_queue_size):
             assert result == i
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("max_queue_size", [None, 2])
+def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
+    a = Actor.remote(0, fail_after=100)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(
+        enable_asyncio=True, async_max_queue_size=max_queue_size
+    )
+
+    async def main():
+        for i in range(99):
+            output_channel = await compiled_dag.execute_async(1)
+            async with output_channel as result:
+                assert result == i + 1
+
+        exc = None
+        for i in range(99):
+            output_channel = await compiled_dag.execute_async(1)
+            async with output_channel as result:
+                if isinstance(result, Exception):
+                    exc = result
+        assert isinstance(exc, ValueError), exc
+
+        exc = None
+        for i in range(99):
+            output_channel = await compiled_dag.execute_async(1)
+            try:
+                result = await output_channel.begin_read()
+            except Exception as e:
+                exc = e
+            output_channel.end_read()
+        assert isinstance(exc, ValueError), exc
+
+    loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()

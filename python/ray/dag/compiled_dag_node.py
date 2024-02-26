@@ -121,14 +121,17 @@ class AwaitableDAGOutput:
         self._fut = fut
         self._reader = ReaderInterface
 
-    def begin_read(self):
-        return self._fut
+    async def begin_read(self):
+        ret = await self._fut
+        if isinstance(ret, Exception):
+            raise ret
 
     def end_read(self):
         self._reader.end_read()
 
     async def __aenter__(self):
-        return await self.begin_read()
+        ret = await self._fut
+        return ret
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         self.end_read()
