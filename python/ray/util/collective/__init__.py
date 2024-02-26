@@ -3,6 +3,7 @@ from ray.util.collective.collective import (
     gloo_available,
     is_group_initialized,
     init_collective_group,
+    create_and_init_collective_group,
     destroy_collective_group,
     create_collective_group,
     get_rank,
@@ -22,6 +23,7 @@ from ray.util.collective.collective import (
     send_multigpu,
     recv,
     recv_multigpu,
+    teardown_collective_group,
 )
 
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "gloo_available",
     "is_group_initialized",
     "init_collective_group",
+    "create_and_init_collective_group",
     "destroy_collective_group",
     "create_collective_group",
     "get_rank",
@@ -48,4 +51,5 @@ __all__ = [
     "send_multigpu",
     "recv",
     "recv_multigpu",
+    "teardown_collective_group",
 ]

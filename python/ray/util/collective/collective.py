@@ -1,7 +1,8 @@
 """APIs exposed under the namespace ray.util.collective."""
 import logging
 import os
-from typing import List
+from typing import List, Optional
+from datetime import timedelta
 
 import numpy as np
 
@@ -12,16 +13,6 @@ _NCCL_AVAILABLE = True
 _GLOO_AVAILABLE = True
 
 logger = logging.getLogger(__name__)
-
-try:
-    from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
-except ImportError:
-    _NCCL_AVAILABLE = False
-    logger.warning(
-        "NCCL seems unavailable. Please install Cupy "
-        "following the guide at: "
-        "https://docs.cupy.dev/en/stable/install.html."
-    )
 
 try:
     from ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
@@ -70,6 +61,17 @@ class GroupManager(object):
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
+            try:
+                from ray.util.collective.collective_group.nccl_collective_group import (
+                    NCCLGroup,
+                )  # noqa
+            except ImportError:
+                _NCCL_AVAILABLE = False
+                logger.warning(
+                    "NCCL seems unavailable. Please install Cupy "
+                    "following the guide at: "
+                    "https://docs.cupy.dev/en/stable/install.html."
+                )
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
@@ -106,6 +108,7 @@ class GroupManager(object):
             store = ray.get_actor(name)
             ray.kill(store)
         except ValueError:
+            # Actor is already killed.
             pass
 
 
@@ -131,7 +134,8 @@ def init_collective_group(
     Returns:
         None
     """
-    _check_inside_actor()
+    # _check_inside_actor()
+    logger.info(f"initialize the collective group on a rank {rank}")
     backend = types.Backend(backend)
     _check_backend_availability(backend)
     global _group_mgr
@@ -148,12 +152,56 @@ def init_collective_group(
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 
+# TODO(sang): Add unit tests for include_driver = True
+# Private APIs. But eventually we should make this
+# the default APIs.
+def create_and_init_collective_group(
+    actors,
+    backend=types.Backend.GLOO,
+    group_name: str = "default",
+    include_driver: bool = False,
+):
+    world_size = len(actors)
+    if include_driver:
+        world_size += 1
+
+    ranks = [i for i in range(world_size)]
+    futures = []
+    for rank, actor in enumerate(actors):
+        if include_driver:
+            # The first rank is reserved for a driver.
+            rank += 1
+        fn = actor.__ray_call__
+        futures.append(
+            fn.remote(
+                lambda self: init_collective_group(
+                    world_size, rank, backend=backend, group_name=group_name
+                )
+            )
+        )
+
+    if include_driver:
+        init_collective_group(world_size, 0, backend=backend, group_name=group_name)
+
+    ray.get(futures)
+
+    create_collective_group(
+        actors,
+        world_size,
+        ranks,
+        backend=backend,
+        group_name=group_name,
+        include_driver=include_driver,
+    )
+
+
 def create_collective_group(
     actors,
     world_size: int,
     ranks: List[int],
     backend=types.Backend.NCCL,
     group_name: str = "default",
+    include_driver: bool = False,
 ):
     """Declare a list of actors as a collective group.
 
@@ -165,6 +213,8 @@ def create_collective_group(
         ranks (List[int]): the rank of each actor.
         backend: the CCL backend to use, NCCL or GLOO.
         group_name: the name of the collective group.
+        include_driver: If true, the driver is included in the
+            collective group and become rank 0.
 
     Returns:
         None
@@ -179,7 +229,8 @@ def create_collective_group(
     except ValueError:
         pass
 
-    if len(ranks) != len(actors):
+    if len(ranks) != world_size:
+        # TODO(sang): Improve the error message.
         raise RuntimeError(
             "Each actor should correspond to one rank. Got '{}' "
             "ranks but '{}' actors".format(len(ranks), len(actors))
@@ -207,17 +258,42 @@ def create_collective_group(
     # store the information into a NamedActor that can be accessed later.
     name = "info_" + group_name
     actors_id = [a._ray_actor_id for a in actors]
-    # TODO (Dacheng): how do we recycle this name actor?
+    # TODO(sang): use a single named actor to manage all info.
     info = Info.options(name=name, lifetime="detached").remote()
-    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend)])
+    ray.get(
+        [
+            info.set_info.remote(
+                actors_id, world_size, ranks, backend, include_driver=include_driver
+            )
+        ]
+    )
 
 
-# TODO (we need a declarative destroy() API here.)
+# TODO(sang) (we need a declarative destroy() API here.)
+# ray::glooQueue and ray::Info are leaked whenever workload finishes.
 def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
-    _check_inside_actor()
+    # _check_inside_actor()
+
     global _group_mgr
     _group_mgr.destroy_collective_group(group_name)
+
+
+# PrivateAPI
+def teardown_collective_group(
+    actors, include_driver: bool = False, group_name: str = "default"
+):
+    """It is same as calling destroy_collective_group on all workers.
+
+    Private API just for accerlated DAG. But we should make it public someday.
+    """
+    futures = []
+    for actor in actors:
+        fn = actor.__ray_call__
+        futures.append(fn.remote(lambda self: destroy_collective_group(group_name)))
+    if include_driver:
+        destroy_collective_group(group_name)
+    ray.get(futures)
 
 
 def get_rank(group_name: str = "default") -> int:
@@ -231,7 +307,7 @@ def get_rank(group_name: str = "default") -> int:
         -1 if the group does not exist or the process does
         not belong to the group.
     """
-    _check_inside_actor()
+    # _check_inside_actor()
     if not is_group_initialized(group_name):
         return -1
     g = _group_mgr.get_group_by_name(group_name)
@@ -248,7 +324,7 @@ def get_collective_group_size(group_name: str = "default") -> int:
         The world size of the collective group, -1 if the group does
             not exist or the process does not belong to the group.
     """
-    _check_inside_actor()
+    # _check_inside_actor()
     if not is_group_initialized(group_name):
         return -1
     g = _group_mgr.get_group_by_name(group_name)
@@ -528,16 +604,29 @@ def reducescatter_multigpu(
     g.reducescatter(output_tensor_list, input_tensor_lists, opts)
 
 
-def send(tensor, dst_rank: int, group_name: str = "default"):
+# TODO(sang): Support tag.
+def send(
+    tensor,
+    dst_rank: int,
+    group_name: str = "default",
+    timeout_ms: Optional[int] = None,
+    async_op: bool = False,
+):
     """Send a tensor to a remote process synchronously.
 
     Args:
         tensor: the tensor to send.
         dst_rank: the rank of the destination process.
         group_name: the name of the collective group.
+        timeout_ms: The maximum time the operation is blocked
+            before it completes. If async_op is True, it is
+            not used.
+        async_op: If True, it returns the future that can call
+            Wait() API.
 
     Returns:
-        None
+        Pygloo future if recv_options.async_op is True.
+        None otherwise.
     """
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
@@ -546,7 +635,10 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
-    g.send([tensor], opts)
+    opts.async_op = async_op
+    if timeout_ms is not None:
+        opts.timeout_ms = timedelta(milliseconds=timeout_ms)
+    return g.send([tensor], opts)
 
 
 def send_multigpu(
@@ -591,16 +683,28 @@ def send_multigpu(
     g.send([tensor], opts)
 
 
-def recv(tensor, src_rank: int, group_name: str = "default"):
+def recv(
+    tensor,
+    src_rank: int,
+    group_name: str = "default",
+    timeout_ms: Optional[int] = None,
+    async_op: bool = False,
+):
     """Receive a tensor from a remote process synchronously.
 
     Args:
         tensor: the received tensor.
         src_rank: the rank of the source process.
         group_name: the name of the collective group.
+        timeout_ms: The maximum time the operation is blocked
+            before it completes. If async_op is True, it is
+            not used.
+        async_op: If True, it returns the future that can call
+            Wait() API.
 
     Returns:
-        None
+        Pygloo future if recv_options.async_op is True.
+        None otherwise.
     """
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
@@ -609,7 +713,11 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
-    g.recv([tensor], opts)
+    if timeout_ms is not None:
+        opts.timeout_ms = timedelta(milliseconds=timeout_ms)
+    opts.async_op = async_op
+
+    return g.recv([tensor], opts)
 
 
 def recv_multigpu(
@@ -670,7 +778,7 @@ def synchronize(gpu_id: int):
 
 def _check_and_get_group(group_name):
     """Check the existence and return the group handle."""
-    _check_inside_actor()
+    # _check_inside_actor()
     global _group_mgr
     if not is_group_initialized(group_name):
         # try loading from remote info store
@@ -679,7 +787,7 @@ def _check_and_get_group(group_name):
             # get and create the group.
             name = "info_" + group_name
             mgr = ray.get_actor(name=name)
-            ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
+            ids, world_size, rank, backend, _ = ray.get(mgr.get_info.remote())
             worker = ray._private.worker.global_worker
             id_ = worker.core_worker.get_actor_id()
             r = rank[ids.index(id_)]

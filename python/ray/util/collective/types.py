@@ -105,6 +105,8 @@ class SendOptions:
     dst_gpu_index = 0
     n_elements = 0
     timeout_ms = unset_timeout_ms
+    tag: int = 0
+    async_op: bool = False
 
 
 @dataclass
@@ -112,4 +114,6 @@ class RecvOptions:
     src_rank = 0
     src_gpu_index = 0
     n_elements = 0
-    unset_timeout_ms = unset_timeout_ms
+    timeout_ms = unset_timeout_ms
+    tag: int = 0
+    async_op: bool = False

@@ -1,33 +1,78 @@
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional
 import logging
+import os
 import threading
 import traceback
+import time
 
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import Channel
+from ray.experimental.torch_channel import TorchChannel
+from ray.experimental.collective_channel import RayCollectiveChannel
 from ray.util.annotations import DeveloperAPI
+import ray.util.collective as col
 
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+
+# Experimental support for using gloo as the channel backend.
+USE_TORCH_CHANNEL = bool(int(os.environ.get("USE_TORCH_CHANNEL", "0")))
+USE_COLLECTIVE_CHANNEL = bool(int(os.environ.get("USE_COLLECTIVE_CHANNEL", "0")))
+USE_ISEND = bool(int(os.environ.get("USE_ISEND", "1")))
+USE_TORCH_BROADCAST = bool(int(os.environ.get("USE_TORCH_BROADCAST", "1")))
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(
+    self, buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
-        buffer_size_bytes: The maximum size of messages in the channel.
-        num_readers: The number of readers per message.
+        SANG-TODO
 
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
+    self._output_channel = _make_channel(
+        buffer_size_bytes, reader_ranks, writer_rank, strategy
+    )
     return self._output_channel
+
+
+def _make_channel(
+    buffer_size_bytes: int, reader_ranks: int, writer_rank: int, strategy: str
+):
+    logger.info(
+        f"Created channel with buffer_size_bytes={buffer_size_bytes}, "
+        f"reader_ranks={reader_ranks}, writer_rank={writer_rank}, "
+        f"strategy={strategy}"
+    )
+    if USE_TORCH_CHANNEL:
+        return TorchChannel(buffer_size_bytes, reader_ranks, writer_rank, strategy)
+    elif USE_COLLECTIVE_CHANNEL:
+        strategy = "isend" if USE_ISEND else "send"
+        return RayCollectiveChannel(
+            buffer_size_bytes, reader_ranks, writer_rank, strategy
+        )
+    else:
+        return Channel(buffer_size_bytes, len(reader_ranks))
+
+
+def torch_init(self, rank, world_size):
+    import torch
+
+    if not torch.distributed.is_initialized():
+        # TODO(sang): assign these in a better way
+        os.environ["MASTER_ADDR"] = ray._private.services.get_node_ip_address()
+        os.environ["MASTER_PORT"] = "26254"
+        torch.distributed.init_process_group(
+            backend="gloo", world_size=world_size, rank=rank
+        )
 
 
 @DeveloperAPI
@@ -53,6 +98,7 @@ def do_exec_compiled_task(
 
     try:
         self._input_channels = [i for i in inputs if isinstance(i, Channel)]
+
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
@@ -66,11 +112,15 @@ def do_exec_compiled_task(
                 resolved_inputs.append(inp)
 
         while True:
+            # s = time.time()
             for idx, channel in input_channel_idxs:
                 resolved_inputs[idx] = channel.begin_read()
+            # logger.debug(f"read took {(time.time() - s) * 1000 * 1000} us")
 
             try:
+                # s = time.time()
                 output_val = method(*resolved_inputs)
+                # print("execution took ", (time.time() - s) * 1000 * 1000, "us")
             except Exception as exc:
                 backtrace = ray._private.utils.format_error_message(
                     "".join(
@@ -87,13 +137,21 @@ def do_exec_compiled_task(
             else:
                 if self._dag_cancelled:
                     raise RuntimeError("DAG execution cancelled")
+
+                # s = time.time()
                 self._output_channel.write(output_val)
+                # print("write took ", (time.time() - s) * 1000 * 1000, "us")
 
             for _, channel in input_channel_idxs:
                 channel.end_read()
 
-    except Exception:
-        logging.exception("Compiled DAG task exited with exception")
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            if not "Application timeout caused pair" in str(
+                e
+            ) or "DAG execution cancelled" in str(e):
+                # Unexpected exception should be logged.
+                logging.exception("Compiled DAG task exited with exception")
         raise
 
 
@@ -180,6 +238,7 @@ class CompiledDAG:
         self.worker_task_refs: List["ray.ObjectRef"] = []
         # Set of actors present in the DAG.
         self.actor_refs = set()
+        self.actor_ranks = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -320,27 +379,49 @@ class CompiledDAG:
 
             task = self.idx_to_task[cur_idx]
             # Create an output buffer on the actor.
-            assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
                 fn = task.dag_node._get_remote_method("__ray_call__")
+                output_indices = []
+                for idx in task.downstream_node_idxs:
+                    if isinstance(self.idx_to_task[idx].dag_node, MultiOutputNode):
+                        output_indices.append(self.input_task_idx)
+                    else:
+                        output_indices.append(idx)
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
-                        num_readers=task.num_readers,
+                        reader_ranks=output_indices,
+                        writer_rank=task.idx,
+                        strategy="isend",
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
+                self.actor_ranks[task.dag_node._get_actor_handle()] = task.idx
             elif isinstance(task.dag_node, InputNode):
-                task.output_channel = Channel(
+                if len(task.downstream_node_idxs) > 1 and USE_TORCH_BROADCAST:
+                    # TODO(sang): It should be automatically detected.
+                    strategy = "broadcast"
+                else:
+                    strategy = "isend"
+                task.output_channel = _make_channel(
                     buffer_size_bytes=self._buffer_size_bytes,
-                    num_readers=task.num_readers,
+                    reader_ranks=list(task.downstream_node_idxs),
+                    writer_rank=self.input_task_idx,
+                    strategy=strategy,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
+
+        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
+
+        if USE_TORCH_CHANNEL:
+            self._torch_init()
+        elif USE_COLLECTIVE_CHANNEL:
+            self._ray_collective_init()
 
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
@@ -380,7 +461,7 @@ class CompiledDAG:
                 )
             )
 
-        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
+        # self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -400,9 +481,34 @@ class CompiledDAG:
             assert len(self.dag_output_channels) == 1
             self.dag_output_channels = self.dag_output_channels[0]
 
-        # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
         return (self.dag_input_channel, self.dag_output_channels, self._monitor)
+
+    def _torch_init(self):
+        futs = []
+        logger.debug(f"Actor ranks {self.actor_ranks}")
+        logger.debug(f"Driver ranks {self.input_task_idx}")
+        world_size = len(self.actor_ranks) + 1
+        for actor, rank in self.actor_ranks.items():
+            fn = actor.__ray_call__
+            futs.append(fn.remote(torch_init, rank=rank, world_size=world_size))
+        torch_init(self, rank=self.input_task_idx, world_size=world_size)
+        ray.get(futs)
+
+    def _ray_collective_init(self):
+        # logger.info(f"Actor ranks {self.actor_ranks}")
+        # logger.info(f"Driver ranks {self.input_task_idx}")
+        # logger.info(f"actor refs: {self.actor_refs}")
+        # Convert a rank dict to a list of actors starting from
+        # rank 0
+        actors = [i for i in range(len(self.actor_ranks))]
+        for actor, rank in self.actor_ranks.items():
+            actors[rank - 1] = actor
+        for actor in actors:
+            assert not isinstance(actor, int)
+        col.create_and_init_collective_group(
+            actors, backend="gloo", include_driver=True
+        )
 
     def _monitor_failures(self):
         outer = self
@@ -418,13 +524,13 @@ class CompiledDAG:
                 logger.info("Tearing down compiled DAG")
                 self.in_teardown = True
                 for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # logger.info(f"Cancelling compiled worker on actor: {actor}")
                     try:
                         ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
                     except Exception:
-                        logger.exception("Error cancelling worker task")
+                        # logger.exception("Error cancelling worker task")
                         pass
-                logger.info("Waiting for worker tasks to exit")
+                # logger.info("Waiting for worker tasks to exit")
                 for ref in outer.worker_task_refs:
                     try:
                         ray.get(ref)
@@ -475,9 +581,12 @@ class CompiledDAG:
         input_channel.write(args[0])
         return output_channels
 
+    # TODO(sang): Currently teardown is very noisy. Fix it.
     def teardown(self):
         """Teardown and cancel all worker tasks for this DAG."""
         self._monitor.teardown()
+        if USE_COLLECTIVE_CHANNEL:
+            col.teardown_collective_group(self.actor_refs, include_driver=True)
 
     def __del__(self):
         self.teardown()

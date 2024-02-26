@@ -6,6 +6,7 @@ import time
 
 import numpy
 import pygloo
+from typing import Optional
 
 import ray
 from ray._private import ray_constants
@@ -22,9 +23,23 @@ from ray.util.collective.types import (
     ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
+    unset_timeout_ms,
 )
 
 logger = logging.getLogger(__name__)
+
+SEND_DEFAULT_TIMEOUT = datetime.timedelta(seconds=30)
+
+
+class PyGlooAsyncFutureWrapper:
+    def __init__(self, fut):
+        self.fut_ = fut
+
+    def wait(self, timeout: Optional[datetime.timedelta] = None):
+        if timeout is None:
+            timeout = SEND_DEFAULT_TIMEOUT
+
+        return self.fut_.Wait(timeout)
 
 
 class Rendezvous:
@@ -197,7 +212,7 @@ class GLOOGroup(BaseGroup):
             rank: The id of process
             group_name: The unique user-specified group name.
             store_type: The store type. Optional: "redis",
-                              "file", "hash".
+                              "file", "hash", "ray_internal_kv".
             device_type: The device type to transport.
                                Optional: "tcp", "uv".
         """
@@ -213,7 +228,12 @@ class GLOOGroup(BaseGroup):
         self._rendezvous.destroy()
 
         if self._gloo_context is not None:
-            pygloo.barrier(self._gloo_context)
+            try:
+                pygloo.barrier(self._gloo_context)
+            except RuntimeError:
+                # Since the context is destroyed, it can
+                # fail.
+                pass
             # destroy the communicator
             self._gloo_context = None
 
@@ -223,6 +243,17 @@ class GLOOGroup(BaseGroup):
             if os.path.exists(store_path):
                 shutil.rmtree(store_path)
         super(GLOOGroup, self).destroy_group()
+
+        def get_and_kill_actor(name: str):
+            try:
+                actor = ray.get_actor(name)
+                ray.kill(actor)
+            except ValueError:
+                pass
+
+        # TODO(sang) Figure out a way to make it multi tenant & clean way to kill.
+        get_and_kill_actor("gloo_queue")
+        get_and_kill_actor(f"gloo_{self._group_name}_signal")
 
     @classmethod
     def backend(cls):
@@ -402,19 +433,33 @@ class GLOOGroup(BaseGroup):
             send_options: send options.
 
         Returns:
-            None
+            Pygloo future if recv_options.async_op is True.
+            None otherwise.
         """
 
         def p2p_fn(tensor, context, peer):
-            pygloo.send(
-                context,
-                gloo_util.get_tensor_ptr(tensor),
-                gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_gloo_tensor_dtype(tensor),
-                peer,
+            # NOTE: isend & Wait and send has the same performance.
+            fut = PyGlooAsyncFutureWrapper(
+                pygloo.isend(
+                    context,
+                    gloo_util.get_tensor_ptr(tensor),
+                    gloo_util.get_tensor_n_elements(tensor),
+                    gloo_util.get_gloo_tensor_dtype(tensor),
+                    peer,
+                    tag=0,
+                )
             )
+            if send_options.async_op:
+                return fut
+            else:
+                timeout = send_options.timeout_ms
+                if send_options.timeout_ms == unset_timeout_ms:
+                    # Use default.
+                    timeout = None
+                fut.wait(timeout)
+                return None
 
-        self._point2point(tensors, p2p_fn, send_options.dst_rank)
+        return self._point2point(tensors, p2p_fn, send_options.dst_rank)
 
     def recv(self, tensors, recv_options=RecvOptions()):
         """Receive a tensor from a source rank in the group.
@@ -424,19 +469,32 @@ class GLOOGroup(BaseGroup):
             recv_options: Receive options.
 
         Returns:
-            None
+            Pygloo future if recv_options.async_op is True.
+            None otherwise.
         """
 
         def p2p_fn(tensor, context, peer):
-            pygloo.recv(
-                context,
-                gloo_util.get_tensor_ptr(tensor),
-                gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_gloo_tensor_dtype(tensor),
-                peer,
+            # NOTE: irecv & Wait and recv has the same performance.
+            fut = PyGlooAsyncFutureWrapper(
+                pygloo.irecv(
+                    context,
+                    gloo_util.get_tensor_ptr(tensor),
+                    gloo_util.get_tensor_n_elements(tensor),
+                    gloo_util.get_gloo_tensor_dtype(tensor),
+                    peer,
+                )
             )
+            if recv_options.async_op:
+                return fut
+            else:
+                timeout = recv_options.timeout_ms
+                if recv_options.timeout_ms == unset_timeout_ms:
+                    # Use default.
+                    timeout = None
+                fut.wait(recv_options.timeout_ms)
+                return None
 
-        self._point2point(tensors, p2p_fn, recv_options.src_rank)
+        return self._point2point(tensors, p2p_fn, recv_options.src_rank)
 
     def _collective(
         self,
@@ -476,11 +534,11 @@ class GLOOGroup(BaseGroup):
             peer_rank: the rank of the peer process.
 
         Returns:
-            None
+            Pygloo Future or None (if it is not async).
         """
         _check_cpu_tensors(tensors)
 
-        p2p_fn(tensors[0], self._gloo_context, peer_rank)
+        return p2p_fn(tensors[0], self._gloo_context, peer_rank)
 
 
 def _check_cpu_tensors(tensors):
