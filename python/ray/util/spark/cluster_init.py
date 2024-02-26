@@ -1235,12 +1235,12 @@ def _setup_ray_cluster_internal(
 
     if num_gpus_head_node is None:
         if is_global:
-            num_gpus_head_node = 0
-        else:
             try:
                 num_gpus_head_node = _get_num_physical_gpus()
             except Exception:
                 num_gpus_head_node = 0
+        else:
+            num_gpus_head_node = 0
     else:
         if num_gpus_head_node < 0:
             raise ValueError(
