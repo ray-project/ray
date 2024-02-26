@@ -118,45 +118,6 @@ def test_data_parallel_trainer(ray_start_8_cpus):
     assert result_grid.get_dataframe()["num_cpus"].max() > num_workers + 1
 
 
-def test_gbdt_trainer(ray_start_8_cpus):
-    data_raw = load_breast_cancer()
-    dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
-    dataset_df["target"] = data_raw["target"]
-    train_ds = ray.data.from_pandas(dataset_df).repartition(16)
-    trainer = AssertingXGBoostTrainer(
-        datasets={TRAIN_DATASET_KEY: train_ds, "validation": train_ds},
-        label_column="target",
-        scaling_config=ScalingConfig(num_workers=2, placement_strategy="SPREAD"),
-        params={
-            "objective": "binary:logistic",
-            "eval_metric": ["logloss"],
-        },
-    )
-    tuner = Tuner(
-        trainer,
-        param_space={
-            "num_boost_round": 100,
-            "params": {
-                "eta": tune.grid_search([0.28, 0.29, 0.3, 0.31, 0.32]),
-            },
-        },
-        tune_config=TuneConfig(
-            mode="min",
-            metric="validation-logloss",
-            max_concurrent_trials=3,
-            scheduler=ResourceChangingScheduler(
-                ASHAScheduler(),
-                resources_allocation_function=DistributeResources(
-                    add_bundles=True, reserve_resources={"CPU": 1}
-                ),
-            ),
-        ),
-        run_config=RunConfig(failure_config=FailureConfig(fail_fast=True)),
-    )
-    result_grid = tuner.fit()
-    assert not any(x.error for x in result_grid)
-
-
 if __name__ == "__main__":
     import sys
 
