@@ -163,6 +163,15 @@ class ScalingConfig:
                     "`resources_per_worker."
                 )
 
+            if self.num_workers is None:
+                self.num_workers = 1
+
+            if isinstance(self.num_workers, int) and self.num_workers <= 0:
+                raise ValueError(
+                    "Expected `num_workers` to be greater than 0, "
+                    f"received: `num_workers={self.num_workers}`."
+                )
+
     def __repr__(self):
         return _repr_dataclass(self)
 
@@ -219,9 +228,8 @@ class ScalingConfig:
     def total_resources(self):
         """Map of total resources required for the trainer."""
         total_resource_map = defaultdict(float, self._trainer_resources_not_none)
-        num_workers = self.num_workers or 0
         for k, value in self._resources_per_worker_not_none.items():
-            total_resource_map[k] += value * num_workers
+            total_resource_map[k] += value * self.num_workers
         return dict(total_resource_map)
 
     @property
@@ -250,47 +258,37 @@ class ScalingConfig:
         trainer_bundle = self._trainer_resources_not_none
         worker_bundle = self._resources_per_worker_not_none
 
-        if self.num_workers:
-            # Colocate Trainer and rank0 worker by merging their bundles
-            combined_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
-            bundles = [{}, combined_bundle] + [worker_bundle] * (self.num_workers - 1)
-        else:
-            bundles = [trainer_bundle]
+        # Colocate Trainer and rank0 worker by merging their bundles
+        combined_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
+        bundles = [{}, combined_bundle] + [worker_bundle] * (self.num_workers - 1)
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
     def from_placement_group_factory(
         cls, pgf: "PlacementGroupFactory"
     ) -> "ScalingConfig":
-        """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
-        if pgf.head_bundle_is_empty:
-            trainer_bundle = {}
-            worker_bundles = pgf.bundles
-        else:
-            trainer_bundle = pgf.bundles[0]
-            worker_bundles = pgf.bundles[1:]
+        """Create a ScalingConfig from a Tune's PlacementGroupFactory
 
-        use_gpu = False
+        Note that this is only needed for ResourceChangingScheduler, which
+        modifies a Trainables' PlacementGroupFactory but doesn't propagate
+        the changes to ScalingConfig.
+        """
+
+        # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]
+        num_workers = len(pgf.bundles)
+        combined_resources = pgf.bundles[0]
+        resources_per_worker = pgf.bundles[-1]
+        use_gpu = bool(resources_per_worker.get("GPU", False))
         placement_strategy = pgf.strategy
-        resources_per_worker = None
-        num_workers = None
 
-        if worker_bundles:
-            # In TrainTrainer, we merged the trainer resource into the first worker
-            # resources bundle. Need to extract trainer resource by calculating the
-            # resources diff.
-            # Note: If there's only one worker, we won't be able to calculate the diff.
-            # We'll have empty trainer bundle and assign all resources to the worker.
-            worker_bundle = worker_bundles[-1]
-            combined_bundle = worker_bundles[0]
-            trainer_resources = Counter(combined_bundle) - Counter(worker_bundle)
-            trainer_resources = dict(Counter(trainer_bundle) + trainer_resources)
-
-            use_gpu = bool(worker_bundle.get("GPU"))
-            num_workers = len(worker_bundles)
-            resources_per_worker = worker_bundle
-        else:
-            trainer_resources = trainer_bundle
+        # In TrainTrainer, we merged the trainer resource into the first worker
+        # resources bundle. Need to extract trainer resource by calculating the
+        # resources diff.
+        # Note: If there's only one worker, we won't be able to calculate the diff.
+        # We'll have empty trainer bundle and assign all resources to the worker.
+        trainer_resources = dict(
+            Counter(combined_resources) - Counter(resources_per_worker)
+        )
 
         return ScalingConfig(
             trainer_resources=trainer_resources,
