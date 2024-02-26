@@ -2488,21 +2488,18 @@ def from_arrow_refs(
     )
 
 
-_DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES = 32 * 1024 * 1024
-
-
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame",
     *,
     parallelism: int = -1,
     override_num_blocks: Optional[int] = None,
-) -> MaterializedDataset:
+) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
 
     Args:
-        df: Any `Spark DataFrame` if you run Ray application with Ray on spark,
+        df: Any `Spark DataFrame`_ if you run Ray application with Ray-on-Spark,
             or a `Spark DataFrame`_ which must be created by RayDP (Spark-on-Ray).
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         override_num_blocks: Override the number of output blocks from all read tasks.
@@ -2511,22 +2508,25 @@ def from_spark(
             value in most cases.
 
     Returns:
-        If you run Ray application with Ray on spark, it returns a ray dataset, the
-        data is cached in spark distributed cache system, but is not cached
-        in ray object store, otherwise it returns
+        If you run Ray application with Ray-on-Spark, it returns a
+        :class:`~ray.data.Dataset`, the data is cached in the Spark distributed cache
+        system, but is not cached in Ray object store, otherwise it returns
         a :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     from ray.util.spark.utils import is_in_databricks_runtime
 
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
-    if is_in_databricks_runtime():
-        from ray.data.datasource.spark_datasource import validate_requirements, SparkDatasource
+    if is_in_databricks_runtime():  # Ray-on-Spark
+        from ray.data.datasource.spark_datasource import (
+            validate_requirements,
+            SparkDatasource,
+            _DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES,
+        )
         from ray.util.spark.databricks_hook import get_databricks_function
 
         validate_requirements()
 
-        # Ray on spark
         datasource = SparkDatasource(df, _DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES)
         if parallelism == -1:
             parallelism = datasource.num_chunks
@@ -2536,18 +2536,20 @@ def from_spark(
         )
 
         try:
+            # The following tip is displayed in an HTML widget
+            # in the Databricks notebook command output box.
             get_databricks_function("displayHTML")(
                 "<b style='background-color:yellow;'>The Ray dataset converted from "
-                "spark dataset puts cached data in spark distributed cache system, "
+                "Spark dataset puts cached data in Spark distributed cache system, "
                 "when you don't use this Ray dataset instance any more, please "
                 "remember to call `del this_ray_dataset` in order to release the "
-                "cached data in spark side.</b>"
+                "cached data in Spark side.</b>"
             )
         except Exception:
             pass
 
         return dataset
-    else:
+    else:  # Spark-on-Ray (RayDP)
         import raydp
 
         if parallelism == -1:

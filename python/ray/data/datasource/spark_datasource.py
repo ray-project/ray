@@ -1,4 +1,3 @@
-import logging
 import os
 from typing import Iterator, List, Optional
 import numpy as np
@@ -7,6 +6,9 @@ import pyarrow
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
+
+
+_DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES = 32 * 1024 * 1024
 
 
 def validate_requirements():
@@ -66,6 +68,12 @@ def _unpersist_chunks(chunk_ids):
 class SparkDatasource(Datasource):
 
     def __init__(self, spark_dataframe, bytes_per_chunk):
+        """
+        Args:
+            spark_dataframe: A `Spark DataFrame`_
+            bytes_per_chunk: The chunk size to use when the Spark dataframe
+                is split into chunks.
+        """
         self.chunk_meta_list = _persist_dataframe_as_chunks(spark_dataframe, bytes_per_chunk)
         self.num_chunks = len(self.chunk_meta_list)
 
