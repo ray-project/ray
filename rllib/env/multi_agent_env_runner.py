@@ -290,9 +290,7 @@ class MultiAgentEnvRunner(EnvRunner):
             # already clipped) to be sent to the environment) and might not be
             # identical to the actions produced by the RLModule/distribution, which are
             # the ones stored permanently in the episode objects.
-            actions = to_env.pop(
-                SampleBatch.ACTIONS_FOR_ENV, to_env.get(SampleBatch.ACTIONS)
-            )
+            actions = to_env.pop(SampleBatch.ACTIONS, None)
 
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.

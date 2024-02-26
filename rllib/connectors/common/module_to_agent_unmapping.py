@@ -44,23 +44,18 @@ class ModuleToAgentUnmapping(ConnectorV2):
         # This Connector should only be used in a multi-agent setting.
         assert isinstance(episodes[0], MultiAgentEpisode)
 
-        memorized_map_structure = shared_data["memorized_map_structure"]
-
         agent_data = defaultdict(dict)
         for module_id, module_data in data.items():
-            if module_id not in memorized_map_structure:
-                raise KeyError(
-                    f"ModuleID={module_id} not found in `memorized_map_structure`!"
-                )
-
-            for column, values_batch in module_data.items():
+            for column, values_dict in module_data.items():
                 #if column not in agent_data:
                 #    agent_data[column] = [{} for _ in range(len(episodes))]
-                individual_items = unbatch(values_batch)
-                assert len(individual_items) == len(memorized_map_structure[module_id])
-                for individual_item, (eps_id, agent_id) in zip(
-                    individual_items, memorized_map_structure[module_id]
-                ):
+                #individual_items = unbatch(values_batch)
+                #assert len(individual_items) == len(memorized_map_structure[module_id])
+                agent_data[column].update(values_dict)
+                
+                #for individual_item, (eps_id, agent_id) in zip(
+                #    individual_items, memorized_map_structure[module_id]
+                #):
                 #for i, val in enumerate():
                     ## TODO (sven): If one agent is terminated, we should NOT perform
                     ##  another forward pass on its (obs) data anymore, which we
@@ -70,9 +65,9 @@ class ModuleToAgentUnmapping(ConnectorV2):
                     ##  here is a temporary fix for this issue.
                     #if episodes[eps_idx].agent_episodes[agent_id].is_done:
                     #    continue
-                    key = (eps_id, agent_id, module_id)
-                    if key not in agent_data[column]:
-                        agent_data[column][key] = []
-                    agent_data[column][key].append(individual_item)
+                    #key = (eps_id, agent_id, module_id)
+                    #if key not in agent_data[column]:
+                    #    agent_data[column][key] = []
+                    #agent_data[column][key].append(individual_item)
 
         return dict(agent_data)

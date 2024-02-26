@@ -33,6 +33,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
+    SampleBatch,
 )
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -1381,6 +1382,11 @@ class Learner:
                 data=batch,
                 episodes=episodes,
                 shared_data={},
+            )
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {mid: SampleBatch(v) for mid, v in batch.items()},
+                env_steps=sum(len(e) for e in episodes),
             )
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs

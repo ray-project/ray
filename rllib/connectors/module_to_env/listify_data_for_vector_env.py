@@ -40,12 +40,14 @@ class ListifyDataForVectorEnv(ConnectorV2):
         for column, column_data in data.copy().items():
             # Multi-agent case: Create lists of multi-agent dicts under each column.
             if isinstance(episodes[0], MultiAgentEpisode):
-                new_column_data = []
+                # TODO (sven): Support vectorized MultiAgentEnv
+                assert len(episodes) == 1
+                new_column_data = [{}]
+
                 for key, value in sorted(data[column].items()):
-                    env_vector_idx, agent_id, module_id = key
-                    if len(new_column_data) <= env_vector_idx:
-                        new_column_data.append({})
-                    new_column_data[env_vector_idx][agent_id] = value
+                    assert len(value) == 1
+                    eps_id, agent_id, module_id = key
+                    new_column_data[0][agent_id] = value[0]
                 data[column] = new_column_data
             # Single-agent case: Create simple lists under each column.
             else:
@@ -54,7 +56,8 @@ class ListifyDataForVectorEnv(ConnectorV2):
                     for key in sorted(data[column].keys())
                     for d in data[column][key]
                 ]
-                # Batch data for (single-agent) gym.vector.Env.
+                # Batch actions for (single-agent) gym.vector.Env.
+                # All other columns, leave listify'ed.
                 if column == SampleBatch.ACTIONS:
                     data[column] = batch(data[column])
 

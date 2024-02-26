@@ -30,28 +30,26 @@ class BatchIndividualItems(ConnectorV2):
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
         is_marl_module = isinstance(rl_module, MultiAgentRLModule)
 
-        # TODO
-        assert not is_multi_agent
-
-        # TODO: only really need this in non-Learner connector pipeline
-        memorized_map_structure = []
-
         # Convert lists of individual items into properly batched data.
         for column, column_data in data.copy().items():
 
-            # If `column` is a ModuleID, skip it (user has already provided (some)
-            # data for this module and we should NOT touch this data anymore).
+            # If `column` is a ModuleID, search in columns under it and try to batch
+            # these as well (if not already done).
             if is_marl_module and column in rl_module:
-                continue
-
+                module_data = column_data
+                for col, col_data in module_data.copy().items():
+                    if isinstance(col_data, list):
+                        module_data[col] = batch(col_data)
             # Simple case: There is a list directly under `column`:
             # Batch the list.
-            if isinstance(column_data, list):
+            elif isinstance(column_data, list):
                 data[column] = batch(column_data)
             # Single-agent case: There is a dict under `column` mapping
             # `eps_id` to lists of items:
             # Sort by eps_id, concat all these lists, then batch.
             elif not is_multi_agent:
+                # TODO: only really need this in non-Learner connector pipeline
+                memorized_map_structure = []
                 list_to_be_batched = []
                 for (eps_id,) in sorted(column_data.keys()):
                     for item in column_data[(eps_id,)]:
@@ -69,6 +67,10 @@ class BatchIndividualItems(ConnectorV2):
                     if DEFAULT_POLICY_ID not in data:
                         data[DEFAULT_POLICY_ID] = {}
                     data[DEFAULT_POLICY_ID][column] = data.pop(column)
+
+                # Only record structure for OBS column.
+                if column == SampleBatch.OBS:
+                    shared_data["memorized_map_structure"] = memorized_map_structure
             # Multi-agent case: There is a dict under `column` mapping
             # (eps_id, agent_id, module_id)-tuples to lists of items:
             # Sort by eps_id, concat all these lists, then batch.
@@ -77,14 +79,5 @@ class BatchIndividualItems(ConnectorV2):
             #for (eps_id, agent_id, module_id), items in column_data.items():
             #    if isinstance(items, list):
             #        data[column][env_idx_agent_module_key] = batch(items)
-
-        shared_data["memorized_map_structure"] = memorized_map_structure
-
-        # TODO (sven): Try to not require MultiAgentBatch anymore.
-        if is_marl_module:
-            return MultiAgentBatch(
-                {mid: SampleBatch(v) for mid, v in data.items()},
-                env_steps=sum(len(e) for e in episodes),
-            )
 
         return data

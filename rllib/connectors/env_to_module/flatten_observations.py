@@ -181,8 +181,10 @@ class FlattenObservations(ConnectorV2):
         # allowing us to not worry about multi- or single-agent setups and returning
         # the new version of each item we are iterating over.
         self.foreach_batch_item_change_in_place(
+            batch=data,
+            column=SampleBatch.OBS,
             func=(
-                lambda item, agent_id, module_id: flatten_inputs_to_1d_tensor(
+                lambda item, eps_id, agent_id, module_id: flatten_inputs_to_1d_tensor(
                     item,
                     # In the multi-agent case, we need to use the specific agent's space
                     # struct, not the multi-agent observation space dict.
@@ -195,7 +197,5 @@ class FlattenObservations(ConnectorV2):
                     batch_axis=False,
                 )
             ),
-            batch=data,
-            column=SampleBatch.OBS,
         )
         return data

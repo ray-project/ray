@@ -76,46 +76,22 @@ class NormalizeAndClipActions(ConnectorV2):
             self._action_space_struct = get_base_struct_from_space(self.action_space)        
         
         def _unsquash_or_clip(action, env_vector_idx, agent_id, module_id):
-            if self.normalize_actions:
-                if agent_id is not None and module_id is not None:
-                    return unsquash_action(
-                        action,
-                        {
-                            k: v
-                            for k, v in self._action_space_struct.items()
-                            if k in action
-                        },
-                    )
-                else:
-                    return unsquash_action(
-                        action, self._action_space_struct
-                    )
-            elif self.clip_actions:
-                if agent_id is not None and module_id is not None:
-                    return clip_action(
-                        action,
-                        {
-                            k: v
-                            for k, v in self._action_space_struct.items()
-                            if k in action
-                        },
-                    )
-                else:
-                    return clip_action(
-                       action, self._action_space_struct
-                    )
-            return action
+            if agent_id is not None:
+                struct = self._action_space_struct[agent_id]
+            else:
+                struct = self._action_space_struct
 
-        ## Create a duplicate "actions" entry, just to be sent to the ENV.
-        ## The original actions (non-normalized, non-clipped) will be the ones
-        ## stored in the Episode (and then possibly used for learning).
-        #data[SampleBatch.ACTIONS_FOR_ENV] = data[SampleBatch.ACTIONS]
+            if self.normalize_actions:
+                return unsquash_action(action, struct)
+            else:
+                return clip_action(action, struct)
 
         # Normalize or clip actions.
-        self.foreach_batch_item_change_in_place(
-            batch=data,
-            column=SampleBatch.ACTIONS,
-            func=_unsquash_or_clip,
-        )
+        if self.normalize_actions or self.clip_actions:
+            self.foreach_batch_item_change_in_place(
+                batch=data,
+                column=SampleBatch.ACTIONS,
+                func=_unsquash_or_clip,
+            )
 
         return data

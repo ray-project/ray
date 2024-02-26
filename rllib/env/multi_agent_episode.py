@@ -1275,6 +1275,16 @@ class MultiAgentEpisode:
         )
         return self.env_t - self.env_t_started
 
+    def __repr__(self):
+        sa_eps = {
+            aid: sa_eps.get_return()
+            for aid, sa_eps in self.agent_episodes.items()
+        }
+        return (
+            f"MAEps(len={len(self)} done={self.is_done} "
+            f"Rs={sa_eps} id_={self.id_})"
+        )
+
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
 

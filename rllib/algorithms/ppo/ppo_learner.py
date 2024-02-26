@@ -108,6 +108,11 @@ class PPOLearner(Learner):
             episodes=episodes,
             shared_data={},
         )
+        # TODO (sven): Try to not require MultiAgentBatch anymore.
+        batch_for_vf = MultiAgentBatch(
+            {mid: SampleBatch(v) for mid, v in batch_for_vf.items()},
+            env_steps=sum(len(e) for e in episodes),
+        )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
 

@@ -79,7 +79,9 @@ class _FrameStacking(ConnectorV2):
         # Learner connector pipeline. Episodes have been finalized/numpy'ized.
         if self._as_learner_connector:
 
-            for sa_episode in self.single_agent_episode_iterator(episodes):
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes, agents_that_stepped_only=False
+            ):
 
                 def _map_fn(s):
                     # Squeeze out last dim.

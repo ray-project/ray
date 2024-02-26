@@ -28,21 +28,40 @@ class UnBatchToIndividualItems(ConnectorV2):
         # Simple case (no structure stored): Just unbatch.
         if memorized_map_structure is None:
             return tree.map_structure(lambda s: unbatch(s), data)
-        # Single agent case: Stored structure is a list, whose indices map to
-        # env_vector_idx values.
+        # Single agent case: Memorized structure is a list, whose indices map to
+        # eps_id values.
         elif isinstance(memorized_map_structure, list):
             for column, column_data in data.copy().items():
                 column_data = unbatch(column_data)
                 new_column_data = {}
-                for i, env_vector_idx in enumerate(memorized_map_structure):
-                    key = (env_vector_idx,)
+                for i, eps_id in enumerate(memorized_map_structure):
+                    key = (eps_id,)
                     if key not in new_column_data:
                         new_column_data[key] = []
                     new_column_data[key].append(column_data[i])
                 data[column] = new_column_data
-        # Multi-agent case: 
+        # Multi-agent case:
         else:
-            # TODO(sven)
-            raise NotImplementedError
+            for module_id, module_data in data.copy().items():
+                if module_id not in memorized_map_structure:
+                    raise KeyError(
+                        f"ModuleID={module_id} not found in `memorized_map_structure`!"
+                    )
+                for column, column_data in module_data.items():
+                    column_data = unbatch(column_data)
+                    new_column_data = {}
+                    for i, (eps_id, agent_id) in enumerate(memorized_map_structure[module_id]):
+                        key = (eps_id, agent_id, module_id)
+                        # TODO (sven): Support vectorization for MultiAgentEnvRunner.
+                        # AgentIDs whose SingleAgentEpisodes are already done, should
+                        # not send any data back to the EnvRunner for further
+                        # processing.
+                        if episodes[0].agent_episodes[agent_id].is_done:
+                            continue
+
+                        if key not in new_column_data:
+                            new_column_data[key] = []
+                        new_column_data[key].append(column_data[i])
+                    module_data[column] = new_column_data
 
         return data

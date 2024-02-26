@@ -1,6 +1,8 @@
 from collections import defaultdict
 from typing import Any, List, Optional
 
+import gymnasium as gym
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -11,6 +13,29 @@ from ray.rllib.utils.typing import EpisodeType
 
 class AgentToModuleMapping(ConnectorV2):
     """TODO"""
+
+    @property
+    @override(ConnectorV2)
+    def observation_space(self):
+        return self._map_space_if_necessary(self.input_observation_space)
+
+    @property
+    @override(ConnectorV2)
+    def action_space(self):
+        return self._map_space_if_necessary(self.input_action_space)
+
+    def __init__(
+        self,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
+        *,
+        modules,
+        agent_to_module_mapping_fn,
+    ):
+        super().__init__(input_observation_space, input_action_space)
+
+        self._modules = modules
+        self._agent_to_module_mapping_fn = agent_to_module_mapping_fn
 
     @override(ConnectorV2)
     def __call__(
@@ -69,6 +94,8 @@ class AgentToModuleMapping(ConnectorV2):
         # that the module-to-env pipeline can map the data back to agents.
         memorized_map_structure = defaultdict(list)
         for column, column_data in data.items():
+            if column in rl_module:
+                continue
             for eps_id, agent_id, module_id in column_data.keys():
                 memorized_map_structure[module_id].append((eps_id, agent_id))
             # TODO (sven): We should check that all columns have the same struct.
@@ -76,21 +103,17 @@ class AgentToModuleMapping(ConnectorV2):
 
         shared_data["memorized_map_structure"] = dict(memorized_map_structure)
 
-        # for episode_idx, ma_episode in enumerate(episodes):
-        #    for agent_id in ma_episode.get_agents_that_stepped():
-        #        module_id = ma_episode.agent_episodes[agent_id].module_id
-        #        if module_id is None:
-        #            raise NotImplementedError
-        # module_id = agent_to_module_mapping_fn(agent_id, ma_episode)
-        # ma_episode.agent_episodes[agent_id].module_id = module_id
-        # Store (in the correct order) which episode+agentID belongs to which
-        # batch item in a module IDs forward batch.
-
         # Mapping from ModuleID to column data.
         data_by_module = {}
 
         # Iterating over each column in the original data:
         for column, agent_data in data.items():
+            if column in rl_module:
+                if column in data_by_module:
+                    data_by_module[column].update(agent_data)
+                else:
+                    data_by_module[column] = agent_data
+                continue
             for (eps_id, agent_id, module_id), values_batch_or_list in agent_data.items():
                 if not isinstance(values_batch_or_list, list):
                     assert False
@@ -104,9 +127,49 @@ class AgentToModuleMapping(ConnectorV2):
                     # Append the data.
                     data_by_module[module_id][column].append(value)
 
-        # Batch all (now restructured) data again.
-        #for module_id, module_data in data_by_module.items():
-        #    for column, l in module_data.copy().items():
-        #        module_data[column] = batch(l)
-
         return data_by_module
+
+    def _map_space_if_necessary(self, space):
+        if space is None:
+            return None
+        # Analyze input observation space to check, whether the user has already taken
+        # care of the agent to module mapping.
+        elif set(self._modules) == set(space.spaces.keys()):
+            return space
+
+        # We need to take care of agent to module mapping. Figure out the resulting
+        # observation space here.
+        dummy_eps = MultiAgentEpisode()
+
+        ret_space = {}
+        for module_id in self._modules:
+            # Need to reverse map spaces (for the different agents) to certain
+            # module IDs (using a dummy MultiAgentEpisode).
+            one_space = next(iter(space.spaces.values()))
+            # If all obs spaces are the same anyway, just use the first
+            # single-agent space.
+            if all(s == one_space for s in space.spaces.values()):
+                ret_space[module_id] = one_space
+            # Otherwise, we have to match the policy ID with all possible
+            # agent IDs and find the agent ID that matches.
+            else:
+                match_aid = None
+                for aid in space.spaces.keys():
+                    # Match: Assign spaces for this agentID to the PolicyID.
+                    if self._agent_to_module_mapping_fn(aid, dummy_eps) == module_id:
+                        # Make sure, different agents that map to the same
+                        # policy don't have different spaces.
+                        if (
+                            module_id in ret_space
+                            and space[aid] != ret_space[module_id]
+                        ):
+                            raise ValueError(
+                                f"Two agents ({aid} and {match_aid}) in your "
+                                "environment map to the same ModuleID (as per your "
+                                "`agent_to_module_mapping_fn`), however, these agents "
+                                "also have different observation spaces as per the env!"
+                            )
+                        ret_space[module_id] = space[aid]
+                        match_aid = aid
+
+        return gym.spaces.Dict(ret_space)

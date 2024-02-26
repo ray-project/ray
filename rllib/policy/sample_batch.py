@@ -116,10 +116,10 @@ class SampleBatch(dict):
     OBS = "obs"
     # Action computed/sampled by the RLModule.
     ACTIONS = "actions"
-    # Action actually sent to the (gymnasium) env. Note that we usually do not store
-    # this information anywhere (e.g. in Single/MultiAgentEpisodes), but normally only
-    # keep the RLModule-computed or connector-sampled actions around.
-    ACTIONS_FOR_ENV = "actions_sent_to_env"
+    ## Action actually sent to the (gymnasium) env. Note that we usually do not store
+    ## this information anywhere (e.g. in Single/MultiAgentEpisodes), but normally only
+    ## keep the RLModule-computed or connector-sampled actions around.
+    #ACTIONS_FOR_ENV = "actions_sent_to_env"
     # Reward returned after stepping.
     REWARDS = "rewards"
     # Action chosen before SampleBatch.ACTIONS.

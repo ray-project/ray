@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
@@ -24,7 +25,10 @@ class AddColumnsToTrainBatch(ConnectorV2):
 
         # Infos.
         if SampleBatch.INFOS not in data:
-            for sa_episode in self.single_agent_episode_iterator(episodes):
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 self.add_n_batch_items(
                     data,
                     SampleBatch.INFOS,
@@ -38,7 +42,10 @@ class AddColumnsToTrainBatch(ConnectorV2):
 
         # Actions.
         if SampleBatch.ACTIONS not in data:
-            for sa_episode in self.single_agent_episode_iterator(episodes):
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 self.add_n_batch_items(
                     data,
                     SampleBatch.ACTIONS,
@@ -51,7 +58,10 @@ class AddColumnsToTrainBatch(ConnectorV2):
                 )
         # Rewards.
         if SampleBatch.REWARDS not in data:
-            for sa_episode in self.single_agent_episode_iterator(episodes):
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 self.add_n_batch_items(
                     data,
                     SampleBatch.REWARDS,
@@ -64,7 +74,10 @@ class AddColumnsToTrainBatch(ConnectorV2):
                 )
         # Terminateds.
         if SampleBatch.TERMINATEDS not in data:
-            for sa_episode in self.single_agent_episode_iterator(episodes):
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 self.add_n_batch_items(
                     data,
                     SampleBatch.TERMINATEDS,
@@ -76,7 +89,10 @@ class AddColumnsToTrainBatch(ConnectorV2):
                 )
         # Truncateds.
         if SampleBatch.TRUNCATEDS not in data:
-            for sa_episode in self.single_agent_episode_iterator(episodes):
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 self.add_n_batch_items(
                     data,
                     SampleBatch.TRUNCATEDS,
@@ -88,9 +104,16 @@ class AddColumnsToTrainBatch(ConnectorV2):
                 )
         # Extra model outputs (except for STATE_OUT, which will be handled by another
         # default connector piece).
-        for column in episodes[0].extra_model_outputs.keys():
+        ref_sa_eps = (
+            episodes[0] if isinstance(episodes[0], SingleAgentEpisode)
+            else next(iter(episodes[0].agent_episodes.values()))
+        )
+        for column in ref_sa_eps.extra_model_outputs.keys():
             if column != STATE_OUT and column not in data:
-                for sa_episode in self.single_agent_episode_iterator(episodes):
+                for sa_episode in self.single_agent_episode_iterator(
+                        episodes,
+                        agents_that_stepped_only=False,
+                ):
                     self.add_n_batch_items(
                         data,
                         column,
