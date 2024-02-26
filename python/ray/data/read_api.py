@@ -1583,12 +1583,17 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    fast_read_batch_size: Optional[int] = None,
-    fast_read_auto_infer_schema: bool = True,
+    tfx_read_batch_size: Optional[int] = None,
+    tfx_read_auto_infer_schema: bool = True,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
+
+    .. info:
+        Using tfx-bsl for reading tfrecord files is prefered, When reading large
+        datasets in production use cases. To use this implementation you should
+        install tfx-bsl with: `pip install tfx_bsl --no-dependencies`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -1661,10 +1666,11 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        fast_read_batch_size: An int representing the number of consecutive elements of
-            this dataset to combine in a single batch when fast_read is used.
-        fast_read_auto_infer_schema: Toggles the schema inference applied; applicable
-            only if fast_read is used and tf_schema argument is missing.
+        tfx_read_batch_size: An int representing the number of consecutive elements of
+            this dataset to combine in a single batch when tfx-bsl is used to read
+            the tfrecord files.
+        tfx_read_auto_infer_schema: Toggles the schema inference applied; applicable
+            only if tfx-bsl is used and tf_schema argument is missing.
             Defaults to True.
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1674,30 +1680,21 @@ def read_tfrecords(
     """
     import platform
 
-    fast_read = False
+    tfx_read = False
 
-    try:
-        from tfx_bsl.cc.tfx_bsl_extension.coders import (  # noqa: F401
-            ExamplesToRecordBatchDecoder,
-        )
+    if platform.processor() != "arm":
+        try:
+            from tfx_bsl.cc.tfx_bsl_extension.coders import (  # noqa: F401
+                ExamplesToRecordBatchDecoder,
+            )
 
-        fast_read = True
-    except ModuleNotFoundError:
-        if platform.processor() == "arm":
+            tfx_read = True
+        except ModuleNotFoundError:
             logger.warning(
-                "The fast strategy of this function depends on tfx-bsl, which is "
-                "currently not supported on devices with Apple silicon "
-                "(e.g. M1) and requires an environment with x86 CPU architecture."
+                "Please install tfx-bsl package with"
+                " `pip install tfx_bsl --no-dependencies`."
+                " This can help speed up the reading of large TFRecord files."
             )
-        else:
-            logger.warning(
-                "To use TFRecordDatasource with large datasets, please install"
-                " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
-            )
-        logger.info(
-            "Falling back to slower strategy for reading tf.records. This "
-            "reading strategy should be avoided when reading large datasets."
-        )
 
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
@@ -1715,8 +1712,8 @@ def read_tfrecords(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        fast_read=fast_read,
-        batch_size=fast_read_batch_size,
+        tfx_read=tfx_read,
+        tfx_batch_size=tfx_read_batch_size,
     )
     ds = read_datasource(
         datasource,
@@ -1725,7 +1722,7 @@ def read_tfrecords(
         override_num_blocks=override_num_blocks,
     )
 
-    if fast_read_auto_infer_schema and fast_read and not tf_schema:
+    if tfx_read_auto_infer_schema and tfx_read and not tf_schema:
         from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
 
         return _infer_schema_and_transform(ds)

@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
+# Default batch size to be used when using TFX BSL for reading tfrecord files
+# Ray will use this parameter by default to read the tf.examples in batches.
 DEFAULT_BATCH_SIZE = 2048
 
 logger = DatasetLogger(__name__)
@@ -33,23 +35,36 @@ class TFRecordDatasource(FileBasedDatasource):
         self,
         paths: Union[str, List[str]],
         tf_schema: Optional["schema_pb2.Schema"] = None,
-        fast_read: bool = False,
-        batch_size: Optional[int] = None,
+        tfx_read: bool = False,
+        tfx_batch_size: Optional[int] = None,
         **file_based_datasource_kwargs,
     ):
+        """
+        Args:
+            tf_schema: Optional TensorFlow Schema which is used to explicitly set
+                the schema of the underlying Dataset.
+            tfx_read: Whether to use tfx-bsl to read the tfrecord files. This
+                option should be favour for reading large tfrecord datasets.
+            tfx_batch_size: Optional int representing the number of consecutive
+                elements of this dataset to combine in a single batch when tfx-bsl
+                is used to read the tfrecord files. Defaults to 2048.
+
+        """
         super().__init__(paths, **file_based_datasource_kwargs)
 
         self._tf_schema = tf_schema
-        self._fast_read = fast_read
-        self._batch_size = batch_size or DEFAULT_BATCH_SIZE
+        self._tfx_read = tfx_read
+        self._tfx_batch_size = tfx_batch_size or DEFAULT_BATCH_SIZE
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
-        if self._fast_read:
-            yield from self._fast_read_stream(f, path)
+        if self._tfx_read:
+            yield from self._tfx_read_stream(f, path)
         else:
-            yield from self._slow_read_stream(f, path)
+            yield from self._default_read_stream(f, path)
 
-    def _slow_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+    def _default_read_stream(
+        self, f: "pyarrow.NativeFile", path: str
+    ) -> Iterator[Block]:
         import pyarrow as pa
         import tensorflow as tf
         from google.protobuf.message import DecodeError
@@ -69,7 +84,7 @@ class TFRecordDatasource(FileBasedDatasource):
                 _convert_example_to_dict(example, self._tf_schema)
             )
 
-    def _fast_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+    def _tfx_read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import tensorflow as tf
         from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
 
@@ -89,7 +104,7 @@ class TFRecordDatasource(FileBasedDatasource):
         try:
             for record in tf.data.TFRecordDataset(
                 full_path, compression_type=compression
-            ).batch(self._batch_size):
+            ).batch(self._tfx_batch_size):
                 yield _cast_large_list_to_list(
                     pyarrow.Table.from_batches([decoder.DecodeBatch(record.numpy())])
                 )

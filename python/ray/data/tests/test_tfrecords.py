@@ -375,10 +375,10 @@ def test_read_tfrecords(
     if compression:
         arrow_open_stream_args = {"compression": compression}
 
-    ds = read_tfrecords_with_fast_read_override(
+    ds = read_tfrecords_with_tfx_read_override(
         path,
         tf_schema=tf_schema,
-        fast_read=fast_read,
+        tfx_read=fast_read,
         arrow_open_stream_args=arrow_open_stream_args,
     )
 
@@ -468,13 +468,13 @@ def test_read_tfrecords_ignore_missing_paths(
     ]
 
     if ignore_missing_paths:
-        ds = read_tfrecords_with_fast_read_override(
+        ds = read_tfrecords_with_tfx_read_override(
             path, ignore_missing_paths=ignore_missing_paths
         )
         assert ds.input_files() == [path]
     else:
         with pytest.raises(FileNotFoundError):
-            ds = read_tfrecords_with_fast_read_override(
+            ds = read_tfrecords_with_tfx_read_override(
                 paths, ignore_missing_paths=ignore_missing_paths
             )
             ds.materialize()
@@ -615,7 +615,7 @@ def test_readback_tfrecords(
     # Write the TFRecords.
     ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
     # Read the TFRecords.
-    readback_ds = read_tfrecords_with_fast_read_override(
+    readback_ds = read_tfrecords_with_tfx_read_override(
         tmp_path, tf_schema=tf_schema, parallelism=1
     )
     _ds_eq_streaming(ds, readback_ds)
@@ -650,7 +650,7 @@ def test_readback_tfrecords_empty_features(
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
 
         # Read the TFRecords.
-        readback_ds = read_tfrecords_with_fast_read_override(
+        readback_ds = read_tfrecords_with_tfx_read_override(
             tmp_path,
             tf_schema=tf_schema,
             parallelism=1,
@@ -678,8 +678,8 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, fast_read, tmp_path):
 
     # Expect RuntimeError raised when reading JSON as TFRecord file.
     with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
-        read_tfrecords_with_fast_read_override(
-            file_path, fast_read=fast_read, fast_read_auto_infer_schema=False
+        read_tfrecords_with_tfx_read_override(
+            file_path, tfx_read=fast_read, fast_read_auto_infer_schema=False
         ).schema()
 
 
@@ -722,13 +722,13 @@ def test_read_with_invalid_schema(
     # which should raise a `ValueError`.
     ds.write_tfrecords(tmp_path)
     with pytest.raises(ValueError) as e:
-        read_tfrecords_with_fast_read_override(
+        read_tfrecords_with_tfx_read_override(
             tmp_path, tf_schema=tf_schema_wrong_name
         ).materialize()
     assert "Found extra unexpected feature" in str(e.value.args[0])
 
     with pytest.raises(ValueError) as e:
-        read_tfrecords_with_fast_read_override(
+        read_tfrecords_with_tfx_read_override(
             tmp_path, tf_schema=tf_schema_wrong_type
         ).materialize()
     assert str(e.value.args[0]) == (
@@ -748,8 +748,8 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
         assert len(list(dataset)) == num_rows_per_file
 
 
-def read_tfrecords_with_fast_read_override(paths, fast_read=False, **read_opts):
-    infer_schema = read_opts.pop("fast_read_auto_infer_schema", fast_read)
+def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
+    infer_schema = read_opts.pop("tfx_read_auto_infer_schema", tfx_read)
     tf_ds = ray.data.read_tfrecords(
         paths=paths, fast_read_auto_infer_schema=infer_schema, **read_opts
     )
@@ -757,12 +757,12 @@ def read_tfrecords_with_fast_read_override(paths, fast_read=False, **read_opts):
     # if fast read is enaled, we just return the dataset because, by default
     # fast_read will be used in unit tests given that tfx-bsl dependency is
     # installed
-    if fast_read:
+    if tfx_read:
         return tf_ds
 
     read_op = tf_ds._plan._logical_plan.dag
     datasource_override = read_op._datasource
-    datasource_override._fast_read = fast_read
+    datasource_override._tfx_read = tfx_read
     parallelism = read_opts.pop("parallelism", -1)
     ds = ray.data.read_datasource(datasource_override, parallelism=parallelism)
 
