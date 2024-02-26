@@ -1535,7 +1535,7 @@ def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplo
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, parallelism=5000).materialize()
     assert (
-        "The requested parallelism of 5000 is "
+        "The requested number of read blocks of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
     ), caplog.text
 
