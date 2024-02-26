@@ -484,6 +484,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return res
 
     def _get_downstream_non_map_op_memory_usage(self, op: PhysicalOperator) -> int:
+        """Get the total memory usage of the downstream non-Map operators."""
         usage = 0
         for next_op in op.output_dependencies:
             if not isinstance(next_op, MapOperator):
@@ -515,9 +516,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             # Also account the downstream non-Map operators' memory usage
             # to the current Map operator.
-            # This is because we don't throttle non-Map operators. So we
-            # should throttle the current Map operator, based on its downstream
-            # non-Map operators' memory usage.
+            # This is because we don't directly throttle non-Map operators.
+            # So if they are using too much memory, we should throttle their
+            # upstream Map operator.
             op_mem_usage += self._get_downstream_non_map_op_memory_usage(op)
             op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
             op_usage.object_store_memory = op_mem_usage
