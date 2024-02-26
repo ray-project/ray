@@ -1495,8 +1495,7 @@ class ActorHandle:
             False,  # retry_exceptions
             False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
-            # TODO(rickyx): how to determinte the defautls here?
-            False,  # enable_task_events
+            True,  # enable_task_events
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
