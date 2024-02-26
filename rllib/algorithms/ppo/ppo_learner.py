@@ -206,7 +206,7 @@ class PPOLearner(Learner):
         """
         return {
             module_id: self.module[module_id]._compute_values(
-                module_batch, self._device
+                {SampleBatch.OBS: module_batch[SampleBatch.OBS]}, self._device
             )
             for module_id, module_batch in batch_for_vf.policy_batches.items()
             if self.should_module_be_updated(module_id, module_batch)
