@@ -52,7 +52,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     # schedules with epsilon greedy.
     @override(RLModule)
     def _forward_exploration(
-        self, batch: Dict[str, TensorType]
+        self, batch: Dict[str, TensorType], t: int
     ) -> Dict[str, TensorType]:
         output = {}
 
@@ -66,28 +66,35 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # outputs directly the `argmax` of the logits.
         exploit_actions = action_dist.to_deterministic().sample()
 
-        # Apply epsilon-greedy exploration.
-        # TODO (simon): Implement sampling for nested spaces.
-        # TODO (simon): Implement different epsilon and schedules.
-        epsilon = 0.1
-        B = qf_outs[QF_PREDS].shape[0]
-        random_actions = torch.squeeze(
-            torch.multinomial(
-                (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0).float(),
-                num_samples=1,
-            ),
-            dim=1,
-        )
-        output[SampleBatch.ACTIONS] = torch.where(
-            torch.rand((B,)) < epsilon,
-            random_actions,
-            exploit_actions,
-        )
+        # In case of noisy networks the parameter noise is sufficient for
+        # variation in exploration.
+        if self.uses_noisy:
+            # Use the exploitation action (coming from the noisy network).
+            output[SampleBatch.ACTIONS] = exploit_actions
+        # Otherwise we need epsilon greedy to support exploration.
+        else:
+            # TODO (simon): Implement sampling for nested spaces.
+            # Update scheduler.
+            self.epsilon_schedule.update(t)
+            # Get the actual epsilon,
+            epsilon = self.epsilon_scheduler.get_current_value()
+            # Apply epsilon-greedy exploration.
+            B = qf_outs[QF_PREDS].shape[0]
+            random_actions = torch.squeeze(
+                torch.multinomial(
+                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0).float(),
+                    num_samples=1,
+                ),
+                dim=1,
+            )
+            output[SampleBatch.ACTIONS] = torch.where(
+                torch.rand((B,)) < epsilon,
+                random_actions,
+                exploit_actions,
+            )
 
         return output
 
-    # TODO (simon): Maybe returning results in a dict of dicts:
-    # ("obs": {QF_PREDS: ..., QF_LOGITS}, "new_obs": {}, "atoms": ...)
     @override(RLModule)
     def _forward_train(
         self, batch: Dict[str, TensorType]

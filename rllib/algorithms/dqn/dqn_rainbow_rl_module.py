@@ -15,6 +15,7 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import TensorType
 
 ATOMS = "atoms"
@@ -41,6 +42,13 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if self.num_atoms > 1:
             self.v_min: float = self.config.model_config_dict.get("v_min")
             self.v_max: float = self.config.model_config_dict.get("v_max")
+        # In case of noisy networks no need for epsilon greedy (see DQN Rainbow
+        # paper).
+        if not self.uses_noisy:
+            # The epsilon scheduler for epsilon greedy exploration.
+            self.epsilon_schedule = Scheduler(
+                self.config.model_config_dict["epsilon"], framework=self.framework
+            )
 
         # Build the encoder for the advantage and value streams. Note,
         # the same encoder is used.
@@ -85,7 +93,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return [SampleBatch.OBS]
+        return [SampleBatch.OBS, SampleBatch.T]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:

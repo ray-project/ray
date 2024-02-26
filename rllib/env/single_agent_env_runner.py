@@ -265,7 +265,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 self._cached_to_module = None
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(to_module, t=ts)
                 else:
                     to_env = self.module.forward_inference(to_module)
 
@@ -439,6 +439,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Loop over episodes.
         eps = 0
+        ts = 0
         while eps < num_episodes:
             # Act randomly.
             if random_actions:
@@ -454,7 +455,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 )
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(to_module, t=ts)
                 else:
                     to_env = self.module.forward_inference(to_module)
 
@@ -536,6 +537,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+            ts += self.num_envs
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 

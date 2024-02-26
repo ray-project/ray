@@ -245,10 +245,10 @@ class DQNRainbowCatalog(Catalog):
             input_dims=self.latent_dims,
             hidden_layer_dims=self._model_config_dict["post_fcnet_hiddens"],
             hidden_layer_activation=self.af_and_vf_head_activation,
-            # TODO (simon): No clue where we get this from.
-            # hidden_layer_use_layernorm=self._model_config_dict
-            # ["hidden_layer_use_layernorm"],
-            # hidden_layer_use_bias=self._model_config_dict["hidden_layer_use_bias"],
+            hidden_layer_use_layernorm=self._model_config_dict[
+                "hidden_layer_use_layernorm"
+            ],
+            hidden_layer_use_bias=self._model_config_dict["hidden_layer_use_bias"],
             hidden_layer_weights_initializer=self._model_config_dict[
                 "post_fcnet_weights_initializer"
             ],
@@ -263,8 +263,7 @@ class DQNRainbowCatalog(Catalog):
             ],
             output_layer_activation="linear",
             output_layer_dim=output_layer_dim,
-            # TODO (simon): CHeck where we get this from.
-            # output_layer_use_bias=self._model_config_dict["output_layer_use_bias"],
+            output_layer_use_bias=self._model_config_dict["output_layer_use_bias"],
             output_layer_weights_initializer=self._model_config_dict[
                 "post_fcnet_weights_initializer"
             ],
