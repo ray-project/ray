@@ -41,6 +41,7 @@ py_test(
     name = "test_update_version_lib",
     size = "small",
     srcs = ["test_update_version_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -66,6 +67,7 @@ py_library(
     srcs = ["docker_tags_lib.py"],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [
+        ci_require("requests"),
         "//ci/ray_ci:ray_ci_lib",
     ],
 )
@@ -74,6 +76,7 @@ py_test(
     name = "test_docker_tags_lib",
     size = "small",
     srcs = ["test_docker_tags_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "ci_unit",
         "team:ci",
