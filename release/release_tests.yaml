@@ -361,7 +361,6 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_xgboost_cuj_test.sh
     cluster_compute: compute_xgboost_aws.yaml
 
   run:
