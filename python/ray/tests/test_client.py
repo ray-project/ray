@@ -2,10 +2,11 @@ import _thread
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from typing import Type
 
 import numpy as np
@@ -671,8 +672,8 @@ def test_dataclient_server_drop(call_ray_start_shared):
     time.sleep(3)
 
 
-@patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
-def test_client_gpu_ids(call_ray_start_shared):
+@pytest.mark.parametrize("set_enable_auto_connect", [True], indirect=True)
+def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
     import ray
 
     with enable_client_mode():
@@ -902,6 +903,29 @@ def test_serialize_client_actor_handle(call_ray_start_shared):
         serialized = cloudpickle.dumps(handle)
         deserialized = cloudpickle.loads(serialized)
         assert ray.get(deserialized.get_value.remote()) == 1234
+
+
+def test_actor_streaming_returns_error_message(call_ray_start_shared):
+    """
+    num_returns="streaming" is not supported with Ray Client.
+    """
+
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+
+        @ray.remote
+        class Actor:
+            def stream(self):
+                yield "hi"
+
+        a = Actor.remote()
+        with pytest.raises(
+            RuntimeError,
+            match=re.escape(
+                'Streaming actor methods (num_returns="streaming") are '
+                "not currently supported when using Ray Client."
+            ),
+        ):
+            a.stream.options(num_returns="streaming").remote()
 
 
 def test_get_runtime_context_gcs_client(call_ray_start_shared):

@@ -70,7 +70,7 @@ class ImageObjectioner:
 
     async def __call__(self, request: starlette.requests.Request):
         uris = await request.json()
-        return self.predict(uris)
+        return await self.predict(uris)
 
 
 @serve.deployment(num_replicas=5)

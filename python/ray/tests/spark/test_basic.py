@@ -2,15 +2,22 @@ import os
 import shutil
 import tempfile
 import socket
+import threading
+import re
 import pytest
 import sys
-
+from unittest import mock
 from abc import ABC
 
 import ray
 
 import ray.util.spark.cluster_init
-from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
+from ray.util.spark import (
+    setup_ray_cluster,
+    shutdown_ray_cluster,
+    setup_global_ray_cluster,
+    MAX_NUM_WORKER_NODES,
+)
 from ray.util.spark.utils import (
     is_port_in_use,
     _calc_mem_per_ray_worker_node,
@@ -63,7 +70,9 @@ _logger = logging.getLogger(__name__)
 class RayOnSparkCPUClusterTestBase(ABC):
     spark = None
     num_total_cpus = None
+    num_total_gpus = None
     num_cpus_per_spark_task = None
+    num_gpus_per_spark_task = None
     max_spark_tasks = None
 
     @classmethod
@@ -82,7 +91,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         return wr_list
 
     def test_cpu_allocation(self):
-        for num_worker_nodes, num_cpus_worker_node, num_worker_nodes_arg in [
+        for max_worker_nodes, num_cpus_worker_node, max_worker_nodes_arg in [
             (
                 self.max_spark_tasks // 2,
                 self.num_cpus_per_spark_task,
@@ -111,16 +120,18 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
             with _setup_ray_cluster(
-                num_worker_nodes=num_worker_nodes_arg,
+                max_worker_nodes=max_worker_nodes_arg,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == num_worker_nodes
+                assert len(worker_res_list) == max_worker_nodes
                 for worker_res in worker_res_list:
                     assert (
                         worker_res["CPU"] == num_cpus_worker_node
@@ -136,7 +147,9 @@ class RayOnSparkCPUClusterTestBase(ABC):
             # Test the case that `collect_log_to_path` directory does not exist.
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
             setup_ray_cluster(
-                num_worker_nodes=MAX_NUM_WORKER_NODES,
+                max_worker_nodes=MAX_NUM_WORKER_NODES,
+                num_cpus_worker_node=1,
+                num_gpus_worker_node=0,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
@@ -184,7 +197,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
 
     def test_ray_cluster_shutdown(self):
-        with _setup_ray_cluster(num_worker_nodes=self.max_spark_tasks) as cluster:
+        with _setup_ray_cluster(
+            max_worker_nodes=self.max_spark_tasks,
+            num_cpus_worker_node=1,
+            num_gpus_worker_node=0,
+        ) as cluster:
             ray.init()
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
@@ -200,7 +217,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
         assert not is_port_in_use(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with _setup_ray_cluster(num_worker_nodes=self.max_spark_tasks) as cluster:
+        with _setup_ray_cluster(
+            max_worker_nodes=self.max_spark_tasks,
+            num_cpus_worker_node=1,
+            num_gpus_worker_node=0,
+        ) as cluster:
             ray.init()
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
@@ -212,9 +233,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert not is_port_in_use(hostname, int(port))
 
     def test_autoscaling(self):
-        for num_worker_nodes, num_cpus_worker_node in [
-            (self.max_spark_tasks, self.num_cpus_per_spark_task),
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
+        for max_worker_nodes, num_cpus_worker_node, min_worker_nodes in [
+            (self.max_spark_tasks, self.num_cpus_per_spark_task, 0),
+            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, 0),
+            (self.max_spark_tasks, self.num_cpus_per_spark_task, 1),
         ]:
             num_ray_task_slots = self.max_spark_tasks // (
                 num_cpus_worker_node // self.num_cpus_per_spark_task
@@ -227,19 +249,21 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_heap_memory_bytes=None,
                 configured_object_store_bytes=None,
             )
 
             with _setup_ray_cluster(
-                num_worker_nodes=num_worker_nodes,
+                max_worker_nodes=max_worker_nodes,
+                min_worker_nodes=min_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
-                autoscale=True,
                 autoscale_idle_timeout_minutes=0.1,
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == 0
+                assert len(worker_res_list) == min_worker_nodes
 
                 @ray.remote(num_cpus=num_cpus_worker_node)
                 def f(x):
@@ -254,20 +278,25 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 assert results == [i * i for i in range(8)]
 
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == num_worker_nodes and all(
+                assert len(worker_res_list) == max_worker_nodes and all(
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
                     and worker_res_list[i]["memory"] == mem_worker_node
                     and worker_res_list[i]["object_store_memory"]
                     == object_store_mem_worker_node
-                    for i in range(num_worker_nodes)
+                    for i in range(max_worker_nodes)
                 )
 
                 # Test scale down
                 wait_for_condition(
-                    lambda: len(self.get_ray_worker_resources_list()) == 0,
+                    lambda: len(self.get_ray_worker_resources_list())
+                    == min_worker_nodes,
                     timeout=60,
                     retry_interval_ms=1000,
                 )
+                if min_worker_nodes > 0:
+                    # Test scaling down keeps nodes number >= min_worker_nodes
+                    time.sleep(30)
+                    assert len(self.get_ray_worker_resources_list()) == min_worker_nodes
 
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
@@ -304,33 +333,36 @@ class TestSparkLocalCluster:
         cls.spark.stop()
 
     def test_basic(self):
-        setup_ray_cluster(
-            num_worker_nodes=2,
+        local_addr, remote_addr = setup_ray_cluster(
+            max_worker_nodes=2,
             head_node_options={"include_dashboard": False},
             collect_log_to_path="/tmp/ray_log_collect",
         )
 
-        ray.init()
+        for cluster_addr in [local_addr, remote_addr]:
+            ray.init(address=cluster_addr)
 
-        @ray.remote
-        def f(x):
-            return x * x
+            @ray.remote
+            def f(x):
+                return x * x
 
-        futures = [f.remote(i) for i in range(32)]
-        results = ray.get(futures)
-        assert results == [i * i for i in range(32)]
+            futures = [f.remote(i) for i in range(32)]
+            results = ray.get(futures)
+            assert results == [i * i for i in range(32)]
+
+            ray.shutdown()
 
         shutdown_ray_cluster()
 
     @pytest.mark.parametrize("autoscale", [False, True])
     def test_use_driver_resources(self, autoscale):
         setup_ray_cluster(
-            num_worker_nodes=1,
+            max_worker_nodes=1,
             num_cpus_head_node=3,
             num_gpus_head_node=2,
             object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
-            autoscale=autoscale,
+            min_worker_nodes=(0 if autoscale else 1),
         )
 
         ray.init()
@@ -343,6 +375,76 @@ class TestSparkLocalCluster:
         assert head_resources.get("GPU", 0) == 2
 
         shutdown_ray_cluster()
+
+    @pytest.mark.parametrize("autoscale", [False, True])
+    def test_setup_global_ray_cluster(self, autoscale):
+        shutil.rmtree("/tmp/ray", ignore_errors=True)
+
+        assert ray.util.spark.cluster_init._global_ray_cluster_cancel_event is None
+
+        def start_serve_thread():
+            def serve():
+                try:
+                    with mock.patch(
+                        "ray.util.spark.cluster_init.get_spark_session",
+                        return_value=self.spark,
+                    ):
+                        setup_global_ray_cluster(
+                            max_worker_nodes=1,
+                            min_worker_nodes=(0 if autoscale else 1),
+                        )
+                except BaseException:
+                    # For debugging testing failure.
+                    import traceback
+
+                    traceback.print_exc()
+                    raise
+
+            threading.Thread(target=serve, daemon=True).start()
+
+        start_serve_thread()
+
+        wait_for_condition(
+            (
+                lambda: ray.util.spark.cluster_init._global_ray_cluster_cancel_event
+                is not None
+            ),
+            timeout=120,
+            retry_interval_ms=10000,
+        )
+
+        # assert it uses default temp directory
+        assert os.path.exists("/tmp/ray")
+
+        # assert we can connect to it on client server port 10001
+        assert (
+            ray.util.spark.cluster_init._active_ray_cluster.ray_client_server_port
+            == 10001
+        )
+
+        with mock.patch("ray.util.spark.cluster_init._active_ray_cluster", None):
+            # assert we cannot create another global mode cluster at a time
+            with pytest.raises(
+                ValueError,
+                match=re.compile(
+                    "Acquiring global lock failed for setting up new global mode "
+                    "Ray on spark cluster"
+                ),
+            ):
+                setup_global_ray_cluster(
+                    max_worker_nodes=1,
+                    min_worker_nodes=(0 if autoscale else 1),
+                )
+
+        # shut down the cluster
+        ray.util.spark.cluster_init._global_ray_cluster_cancel_event.set()
+
+        # assert temp directory is deleted
+        wait_for_condition(
+            lambda: not os.path.exists("/tmp/ray"),
+            timeout=60,
+            retry_interval_ms=10000,
+        )
 
     def test_autoscaling_config_generation(self):
         from ray.util.spark.cluster_init import AutoscalingCluster

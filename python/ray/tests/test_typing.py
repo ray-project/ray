@@ -14,7 +14,8 @@ TYPING_BAD_PATH = "python/ray/tests/typing_files/check_typing_bad.py"
 
 def test_typing_good():
     typing_good_tmp_path = create_tmp_copy(TYPING_GOOD_PATH)
-    _, msg, status_code = mypy_api.run([typing_good_tmp_path])
+    out, msg, status_code = mypy_api.run([typing_good_tmp_path])
+    print(out)
     assert status_code == 0, msg
 
 

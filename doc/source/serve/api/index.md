@@ -43,8 +43,8 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-{mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` is now the default handle API.
-You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs using `handle.options(use_new_handle_api=False)` or `export RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, but this support will be removed in a future version.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
+See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}
@@ -56,8 +56,6 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
-   serve.handle.RayServeHandle
-   serve.handle.RayServeSyncHandle
 ```
 
 ### Running Applications
@@ -99,6 +97,7 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
+   serve.grpc_util.RayServegRPCContext
 ```
 
 (serve-cli)=
@@ -354,7 +353,6 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
-   :template: autosummary/class_with_inherited_members.rst
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
@@ -362,7 +360,8 @@ Content-Type: application/json
    schema.ReplicaDetails
 ```
 
-## Metrics API
+## Observability
+
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
@@ -371,4 +370,5 @@ Content-Type: application/json
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
+   schema.LoggingConfig
 ```

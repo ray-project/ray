@@ -1,17 +1,13 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Awaitable, Callable, List, NamedTuple, Optional
 
-import ray
 from ray.actor import ActorHandle
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
 )
-from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -23,6 +19,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
+from ray.serve.grpc_util import RayServegRPCContext
 
 
 class DeploymentID(NamedTuple):
@@ -64,6 +61,7 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
+    PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
 class ApplicationStatus(str, Enum):
@@ -122,6 +120,45 @@ class DeploymentStatusTrigger(str, Enum):
     DELETING = "DELETING"
 
 
+# Internal Enum used to manage deployment state machine
+class DeploymentStatusInternalTrigger(str, Enum):
+    HEALTHY = "HEALTHY"
+    CONFIG_UPDATE = "CONFIG_UPDATE"
+    AUTOSCALE_UP = "AUTOSCALE_UP"
+    AUTOSCALE_DOWN = "AUTOSCALE_DOWN"
+    MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
+    MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
+    REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+    DELETE = "DELETE"
+
+
+# List of states in ranked order.
+#
+# Each ranked state has the format of a tuple with either 1 or 2 items.
+# If 1 item: contains a single DeploymentStatus, representing states with
+#     that DeploymentStatus and any DeploymentStatusTrigger.
+# If 2 items: tuple contains a DeploymentStatus and a DeploymentStatusTrigger,
+#     representing a state with that status and status trigger.
+DEPLOYMENT_STATUS_RANKING_ORDER = {
+    # Status ranking order is defined in a following fashion:
+    #   1. (Highest) State signalling any failures in the system
+    (DeploymentStatus.UNHEALTHY,): 0,
+    #   2. States signaling the user updated the configuration.
+    (DeploymentStatus.UPDATING,): 1,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 1,
+    (
+        DeploymentStatus.DOWNSCALING,
+        DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+    ): 1,
+    #   3. Steady state or autoscaling.
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
+    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
+    (DeploymentStatus.HEALTHY,): 2,
+}
+
+
 @dataclass(eq=True)
 class DeploymentStatusInfo:
     name: str
@@ -129,21 +166,274 @@ class DeploymentStatusInfo:
     status_trigger: DeploymentStatusTrigger
     message: str = ""
 
+    @property
+    def rank(self) -> int:
+        """Get priority of state based on ranking_order().
+
+        The ranked order indicates what the status should be of a
+        hierarchically "higher" resource when derived from a group of
+        `DeploymentStatusInfo` sub-resources.
+        """
+
+        if (self.status,) in DEPLOYMENT_STATUS_RANKING_ORDER:
+            return DEPLOYMENT_STATUS_RANKING_ORDER[(self.status,)]
+        elif (self.status, self.status_trigger) in DEPLOYMENT_STATUS_RANKING_ORDER:
+            return DEPLOYMENT_STATUS_RANKING_ORDER[(self.status, self.status_trigger)]
+
     def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
-    def update(
+    def _updated_copy(
         self,
         status: DeploymentStatus = None,
         status_trigger: DeploymentStatusTrigger = None,
         message: str = "",
     ):
+        """Returns a copy of the current object with the passed in kwargs updated."""
+
         return DeploymentStatusInfo(
             name=self.name,
             status=status if status else self.status,
             status_trigger=status_trigger if status_trigger else self.status_trigger,
             message=message,
         )
+
+    def update_message(self, message: str):
+        return self._updated_copy(message=message)
+
+    def handle_transition(
+        self,
+        trigger: DeploymentStatusInternalTrigger,
+        message: str = "",
+    ) -> "DeploymentStatusInfo":
+        """Handles a transition from one state to next state.
+
+        Args:
+            trigger: A (internal) trigger that determines the state
+                transition.
+            message: The message to set in status info.
+
+        Returns: New instance of DeploymentStatusInfo representing the
+            next state to transition to.
+        """
+
+        # If there was an unexpected internal error during reconciliation, set
+        # status to unhealthy immediately and return
+        if trigger == DeploymentStatusInternalTrigger.INTERNAL_ERROR:
+            return self._updated_copy(
+                status=DeploymentStatus.UNHEALTHY,
+                status_trigger=DeploymentStatusTrigger.INTERNAL_ERROR,
+                message=message,
+            )
+
+        # If deployment is being deleted, set status immediately and return
+        elif trigger == DeploymentStatusInternalTrigger.DELETE:
+            return self._updated_copy(
+                status=DeploymentStatus.UPDATING,
+                status_trigger=DeploymentStatusTrigger.DELETING,
+                message=message,
+            )
+
+        # Otherwise, go through normal state machine transitions
+        elif self.status == DeploymentStatus.UPDATING:
+            # Finished updating configuration and transition to healthy
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self._updated_copy(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED,
+                    message=message,
+                )
+
+            # A new configuration has been deployed before deployment
+            # has finished updating
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Autoscaling.
+            elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPSCALING,
+                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
+                return self._updated_copy(
+                    status=DeploymentStatus.DOWNSCALING,
+                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                    message=message,
+                )
+
+            # Manually increasing or decreasing num replicas does not
+            # change the status while deployment is still updating.
+            elif trigger in {
+                DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS,
+                DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS,
+            }:
+                return self
+
+            # Failures occurred
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+
+        elif self.status in {DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING}:
+            # Deployment transitions to healthy
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self._updated_copy(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED
+                    if self.status == DeploymentStatus.UPSCALING
+                    else DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
+                    message=message,
+                )
+
+            # Configuration is updated before scaling is finished
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Upscale replicas before previous upscaling/downscaling has finished
+            elif (
+                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP
+            ) or (
+                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                and trigger
+                == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+            ):
+                return self._updated_copy(
+                    status=DeploymentStatus.UPSCALING, message=message
+                )
+
+            # Downscale replicas before previous upscaling/downscaling has finished
+            elif (
+                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN
+            ) or (
+                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+                and trigger
+                == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+            ):
+                return self._updated_copy(
+                    status=DeploymentStatus.DOWNSCALING, message=message
+                )
+
+            # Failures occurred
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+
+        elif self.status == DeploymentStatus.HEALTHY:
+            # Deployment remains healthy
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self
+
+            # New configuration is deployed
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Manually scaling / autoscaling num replicas
+            elif (
+                trigger
+                == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+            ):
+                return self._updated_copy(
+                    status=DeploymentStatus.UPSCALING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+            elif (
+                trigger
+                == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+            ):
+                return self._updated_copy(
+                    status=DeploymentStatus.DOWNSCALING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPSCALING,
+                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
+                return self._updated_copy(
+                    status=DeploymentStatus.DOWNSCALING,
+                    status_trigger=DeploymentStatusTrigger.AUTOSCALING,
+                    message=message,
+                )
+
+            # Health check for one or more replicas has failed
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+
+        elif self.status == DeploymentStatus.UNHEALTHY:
+            # The deployment recovered
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self._updated_copy(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+                    message=message,
+                )
+
+            # A new configuration is being deployed.
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Old failures keep getting triggered, or new failures occurred.
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+
+        # If it's any other transition, ignore it.
+        return self
 
     def to_proto(self):
         return DeploymentStatusInfoProto(
@@ -230,137 +520,6 @@ class StatusOverview:
             deployment_statuses=deployment_statuses,
             name=proto.name,
         )
-
-
-# Concurrency group used for operations that cannot be blocked by user code
-# (e.g., health checks and fetching queue length).
-CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
-REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 1}
-}
-
-
-class DeploymentInfo:
-    def __init__(
-        self,
-        deployment_config: DeploymentConfig,
-        replica_config: ReplicaConfig,
-        start_time_ms: int,
-        deployer_job_id: str,
-        actor_name: Optional[str] = None,
-        version: Optional[str] = None,
-        end_time_ms: Optional[int] = None,
-        route_prefix: str = None,
-        docs_path: str = None,
-        ingress: bool = False,
-    ):
-        self.deployment_config = deployment_config
-        self.replica_config = replica_config
-        # The time when .deploy() was first called for this deployment.
-        self.start_time_ms = start_time_ms
-        self.actor_name = actor_name
-        self.version = version
-        self.deployer_job_id = deployer_job_id
-        # The time when this deployment was deleted.
-        self.end_time_ms = end_time_ms
-
-        # ephermal state
-        self._cached_actor_def = None
-
-        self.route_prefix = route_prefix
-        self.docs_path = docs_path
-        self.ingress = ingress
-        if deployment_config.autoscaling_config is not None:
-            self.autoscaling_policy = BasicAutoscalingPolicy(
-                deployment_config.autoscaling_config
-            )
-        else:
-            self.autoscaling_policy = None
-        # Num replicas decided by the autoscaling policy. This is mutually exclusive
-        # from deployment_config.num_replicas. This value is updated through
-        # set_autoscaled_num_replicas()
-        self.autoscaled_num_replicas = None
-
-    def __getstate__(self) -> Dict[Any, Any]:
-        clean_dict = self.__dict__.copy()
-        del clean_dict["_cached_actor_def"]
-        return clean_dict
-
-    def __setstate__(self, d: Dict[Any, Any]) -> None:
-        self.__dict__ = d
-        self._cached_actor_def = None
-
-    def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
-        self.autoscaled_num_replicas = autoscaled_num_replicas
-
-    def update(
-        self,
-        deployment_config: DeploymentConfig = None,
-        replica_config: ReplicaConfig = None,
-        version: str = None,
-        route_prefix: str = None,
-    ) -> "DeploymentInfo":
-        return DeploymentInfo(
-            deployment_config=deployment_config or self.deployment_config,
-            replica_config=replica_config or self.replica_config,
-            start_time_ms=self.start_time_ms,
-            deployer_job_id=self.deployer_job_id,
-            actor_name=self.actor_name,
-            version=version or self.version,
-            end_time_ms=self.end_time_ms,
-            route_prefix=route_prefix or self.route_prefix,
-            docs_path=self.docs_path,
-            ingress=self.ingress,
-        )
-
-    @property
-    def actor_def(self):
-        # Delayed import as replica depends on this file.
-        from ray.serve._private.replica import create_replica_wrapper
-
-        if self._cached_actor_def is None:
-            assert self.actor_name is not None
-
-            self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
-                create_replica_wrapper(self.actor_name)
-            )
-
-        return self._cached_actor_def
-
-    @classmethod
-    def from_proto(cls, proto: DeploymentInfoProto):
-        deployment_config = (
-            DeploymentConfig.from_proto(proto.deployment_config)
-            if proto.deployment_config
-            else None
-        )
-        data = {
-            "deployment_config": deployment_config,
-            "replica_config": ReplicaConfig.from_proto(
-                proto.replica_config,
-                deployment_config.needs_pickle() if deployment_config else True,
-            ),
-            "start_time_ms": proto.start_time_ms,
-            "actor_name": proto.actor_name if proto.actor_name != "" else None,
-            "version": proto.version if proto.version != "" else None,
-            "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
-            "deployer_job_id": ray.get_runtime_context().get_job_id(),
-        }
-
-        return cls(**data)
-
-    def to_proto(self):
-        data = {
-            "start_time_ms": self.start_time_ms,
-            "actor_name": self.actor_name,
-            "version": self.version,
-            "end_time_ms": self.end_time_ms,
-        }
-        if self.deployment_config:
-            data["deployment_config"] = self.deployment_config.to_proto()
-        if self.replica_config:
-            data["replica_config"] = self.replica_config.to_proto()
-        return DeploymentInfoProto(**data)
 
 
 @dataclass
@@ -485,7 +644,7 @@ class ProxyStatus(str, Enum):
 
 
 class ServeComponentType(str, Enum):
-    DEPLOYMENT = "deployment"
+    REPLICA = "replica"
 
 
 @dataclass
@@ -500,7 +659,6 @@ class gRPCRequest:
     """Sent from the GRPC proxy to replicas on both unary and streaming codepaths."""
 
     grpc_user_request: bytes
-    grpc_proxy_handle: ActorHandle
 
 
 @dataclass
@@ -508,10 +666,57 @@ class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""
 
     pickled_asgi_scope: bytes
-    http_proxy_handle: ActorHandle
+    # Takes request_id, returns a pickled list of ASGI messages.
+    receive_asgi_messages: Callable[[str], Awaitable[bytes]]
 
 
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
     GRPC = "gRPC"
+
+
+@dataclass
+class RequestMetadata:
+    request_id: str
+    endpoint: str
+    call_method: str = "__call__"
+
+    # HTTP route path of the request.
+    route: str = ""
+
+    # Application name.
+    app_name: str = ""
+
+    # Multiplexed model ID.
+    multiplexed_model_id: str = ""
+
+    # If this request expects a streaming response.
+    is_streaming: bool = False
+
+    # The protocol to serve this request
+    _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+
+    # Serve's gRPC context associated with this request for getting and setting metadata
+    grpc_context: Optional[RayServegRPCContext] = None
+
+    @property
+    def is_http_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.HTTP
+
+    @property
+    def is_grpc_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.GRPC
+
+
+class TargetCapacityDirection(str, Enum):
+    """Determines what direction the target capacity is scaling."""
+
+    UP = "UP"
+    DOWN = "DOWN"
+
+
+@dataclass(frozen=True)
+class ReplicaQueueLengthInfo:
+    accepted: bool
+    num_ongoing_requests: int

@@ -56,7 +56,10 @@ class RayDockerContainer(DockerContainer):
         self.run_script(cmds)
 
     def _should_upload(self) -> bool:
-        return os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
+        return (
+            os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
+            and self.upload
+        )
 
     def _get_image_names(self) -> List[str]:
         ray_repo = f"rayproject/{self.image_type}"

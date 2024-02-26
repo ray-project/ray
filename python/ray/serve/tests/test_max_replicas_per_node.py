@@ -5,6 +5,8 @@ import pytest
 
 import ray
 from ray import serve
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
 from ray.util.state import list_actors
 
 
@@ -34,6 +36,13 @@ def get_node_to_deployment_to_num_replicas():
         )
 
     return node_to_deployment_to_num_replicas
+
+
+def check_alive_nodes(expected: int):
+    nodes = ray.nodes()
+    alive_nodes = [node for node in nodes if node["Alive"]]
+    assert len(alive_nodes) == expected
+    return True
 
 
 @pytest.mark.skipif(
@@ -131,7 +140,8 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
         name="app",
     )
 
-    assert len(ray.nodes()) == 3
+    # Head + 2 worker nodes
+    check_alive_nodes(expected=3)
     node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
 
     assert len(node_to_deployment_to_num_replicas) == 2
@@ -145,13 +155,24 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
         name="app",
     )
 
-    assert len(ray.nodes()) == 4
+    if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+        check_alive_nodes(expected=4)
     node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
 
     assert len(node_to_deployment_to_num_replicas) == 3
     for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
         # Every node has 1 replica.
         assert deployment_to_num_replicas["deploy1"] == 1
+
+    # Head + 3 worker nodes
+    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+        # We wait for this to be satisfied at the end because there may be
+        # more than 3 worker nodes after the deployment finishes deploying,
+        # since replicas are being started and stopped at the same time, and
+        # there is a strict max replicas per node requirement. However nodes
+        # that were hosting the replicas of the old version should eventually
+        # be removed from scale-down.
+        wait_for_condition(check_alive_nodes, expected=4)
 
 
 if __name__ == "__main__":

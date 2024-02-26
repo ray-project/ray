@@ -124,7 +124,7 @@ def test_gbdt_trainer(ray_start_8_cpus):
     dataset_df["target"] = data_raw["target"]
     train_ds = ray.data.from_pandas(dataset_df).repartition(16)
     trainer = AssertingXGBoostTrainer(
-        datasets={TRAIN_DATASET_KEY: train_ds},
+        datasets={TRAIN_DATASET_KEY: train_ds, "validation": train_ds},
         label_column="target",
         scaling_config=ScalingConfig(num_workers=2, placement_strategy="SPREAD"),
         params={
@@ -142,7 +142,7 @@ def test_gbdt_trainer(ray_start_8_cpus):
         },
         tune_config=TuneConfig(
             mode="min",
-            metric="train-logloss",
+            metric="validation-logloss",
             max_concurrent_trials=3,
             scheduler=ResourceChangingScheduler(
                 ASHAScheduler(),

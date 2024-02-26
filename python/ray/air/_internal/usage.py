@@ -30,7 +30,6 @@ TUNE_SEARCHERS = {
     "AxSearch",
     "BayesOptSearch",
     "TuneBOHB",
-    "DragonflySearch",
     "HEBOSearch",
     "HyperOptSearch",
     "NevergradSearch",

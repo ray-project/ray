@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -U pip \
     bayesian-optimization \
     hyperopt \
     ConfigSpace==0.4.10 \
-    sigopt \ 
     nevergrad \
     scikit-optimize \
     hpbandster \
@@ -27,7 +26,6 @@ RUN pip install --no-cache-dir -U pip \
     torch \
     torchvision \
     tensorboardX \
-    dragonfly-opt \
     zoopt \
     mlflow \
     pytest-remotedata>=0.3.1 \

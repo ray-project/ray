@@ -3,12 +3,12 @@ from typing import List
 import click
 
 from ci.ray_ci.builder_container import (
+    DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
     BUILD_TYPES,
     ARCHITECTURE,
     BuilderContainer,
 )
-from ci.ray_ci.doc_builder_container import DocBuilderContainer
 from ci.ray_ci.forge_container import ForgeContainer
 from ci.ray_ci.docker_container import PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
@@ -21,7 +21,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.argument(
     "artifact_type",
     required=True,
-    type=click.Choice(["wheel", "doc", "docker", "anyscale"]),
+    type=click.Choice(["wheel", "docker", "anyscale"]),
 )
 @click.option(
     "--image-type",
@@ -35,7 +35,7 @@ from ci.ray_ci.utils import logger, docker_login
 )
 @click.option(
     "--python-version",
-    default="3.8",
+    default=DEFAULT_PYTHON_VERSION,
     type=click.Choice(list(PYTHON_VERSIONS.keys())),
     help=("Python version to build the wheel with"),
 )
@@ -51,6 +51,19 @@ from ci.ray_ci.utils import logger, docker_login
     type=click.Choice(list(ARCHITECTURE)),
     help=("Platform to build the docker with"),
 )
+@click.option(
+    "--canonical-tag",
+    default=None,
+    type=str,
+    help=("Tag to use for the docker image"),
+)
+@click.option(
+    "--upload",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Upload the build artifacts"),
+)
 def main(
     artifact_type: str,
     image_type: str,
@@ -58,6 +71,8 @@ def main(
     python_version: str,
     platform: List[str],
     architecture: str,
+    canonical_tag: str,
+    upload: bool,
 ) -> None:
     """
     Build a wheel or jar artifact
@@ -70,19 +85,30 @@ def main(
 
     if artifact_type == "docker":
         logger.info(f"Building {image_type} docker for {python_version} on {platform}")
-        build_docker(image_type, python_version, build_type, platform, architecture)
+        build_docker(
+            image_type,
+            python_version,
+            build_type,
+            platform,
+            architecture,
+            canonical_tag,
+            upload,
+        )
         return
 
     if artifact_type == "anyscale":
         logger.info(
             f"Building {image_type} anyscale for {python_version} on {platform}"
         )
-        build_anyscale(image_type, python_version, build_type, platform, architecture)
-        return
-
-    if artifact_type == "doc":
-        logger.info("Building ray docs")
-        build_doc()
+        build_anyscale(
+            image_type,
+            python_version,
+            build_type,
+            platform,
+            architecture,
+            canonical_tag,
+            upload,
+        )
         return
 
     raise ValueError(f"Invalid artifact type {artifact_type}")
@@ -102,13 +128,17 @@ def build_docker(
     build_type: str,
     platform: List[str],
     architecture: str,
+    canonical_tag: str,
+    upload: bool,
 ) -> None:
     """
     Build a container artifact.
     """
     BuilderContainer(python_version, build_type, architecture).run()
     for p in platform:
-        RayDockerContainer(python_version, p, image_type, architecture).run()
+        RayDockerContainer(
+            python_version, p, image_type, architecture, canonical_tag, upload
+        ).run()
 
 
 def build_anyscale(
@@ -117,18 +147,17 @@ def build_anyscale(
     build_type: str,
     platform: List[str],
     architecture: str,
+    canonical_tag: str,
+    upload: bool,
 ) -> None:
     """
     Build an anyscale container artifact.
     """
     BuilderContainer(python_version, build_type, architecture).run()
     for p in platform:
-        RayDockerContainer(python_version, p, image_type, architecture).run()
-        AnyscaleDockerContainer(python_version, p, image_type, architecture).run()
-
-
-def build_doc() -> None:
-    """
-    Build a doc artifact.
-    """
-    DocBuilderContainer().run()
+        RayDockerContainer(
+            python_version, p, image_type, architecture, canonical_tag, upload=False
+        ).run()
+        AnyscaleDockerContainer(
+            python_version, p, image_type, architecture, canonical_tag, upload
+        ).run()

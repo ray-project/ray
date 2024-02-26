@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -6,7 +7,7 @@ from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Un
 
 import ray
 from ray import ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -79,13 +80,13 @@ class MapOperator(OneToOneOperator, ABC):
         # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
-        self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
+        self._finished_streaming_gens: List[ObjectRefGenerator] = []
         super().__init__(name, input_op, target_max_block_size)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
         # too-large blocks, which may reduce parallelism for
-        # the subsequent stage.
+        # the subsequent operator.
         self._additional_split_factor = None
 
     def get_additional_split_factor(self) -> int:
@@ -151,6 +152,7 @@ class MapOperator(OneToOneOperator, ABC):
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
+                concurrency=compute_strategy.size,
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
@@ -224,10 +226,12 @@ class MapOperator(OneToOneOperator, ABC):
         assert input_index == 0, input_index
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
+        self._metrics.on_input_queued(refs)
         if self._block_ref_bundler.has_bundle():
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue.
             bundle = self._block_ref_bundler.get_next_bundle()
+            self._metrics.on_input_dequeued(bundle)
             self._add_bundled_input(bundle)
 
     def _get_runtime_ray_remote_args(
@@ -274,7 +278,7 @@ class MapOperator(OneToOneOperator, ABC):
 
     def _submit_data_task(
         self,
-        gen: StreamingObjectRefGenerator,
+        gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
     ):
@@ -291,13 +295,14 @@ class MapOperator(OneToOneOperator, ABC):
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
-            self._metrics.on_output_generated(task_index, output)
+            self._metrics.on_task_output_generated(task_index, output)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
+            self._metrics.on_output_queued(output)
 
-        def _task_done_callback(task_index):
-            self._metrics.on_task_finished(task_index)
+        def _task_done_callback(task_index: int, exception: Optional[Exception]):
+            self._metrics.on_task_finished(task_index, exception)
 
             # Estimate number of tasks from inputs received and tasks submitted so far
             estimated_num_tasks = (
@@ -319,9 +324,10 @@ class MapOperator(OneToOneOperator, ABC):
                 task_done_callback()
 
         self._data_tasks[task_index] = DataOpTask(
+            task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
-            lambda: _task_done_callback(task_index),
+            functools.partial(_task_done_callback, task_index),
         )
 
     def _submit_metadata_task(
@@ -337,7 +343,7 @@ class MapOperator(OneToOneOperator, ABC):
             task_done_callback()
 
         self._metadata_tasks[task_index] = MetadataOpTask(
-            result_ref, _task_done_callback
+            task_index, result_ref, _task_done_callback
         )
 
     def get_active_tasks(self) -> List[OpTask]:
@@ -358,6 +364,7 @@ class MapOperator(OneToOneOperator, ABC):
     def _get_next_inner(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
+        self._metrics.on_output_dequeued(bundle)
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         return bundle
@@ -381,7 +388,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._finished_streaming_gens.clear()
 
     @abstractmethod
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
@@ -417,6 +424,7 @@ def _map_task(
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()
+        m_out.exec_stats.task_idx = ctx.task_idx
         yield b_out
         yield m_out
         stats = BlockExecStats.builder()

@@ -647,6 +647,8 @@ class WorkerState(StateSchema):
     )
     # the debugger port of the worker
     debugger_port: Optional[int] = state_column(filterable=True, detail=True)
+    # the number of threads paused in this worker
+    num_paused_threads: Optional[int] = state_column(filterable=True, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1504,7 +1506,7 @@ def protobuf_message_to_dict(
     return dashboard_utils.message_to_dict(
         message,
         fields_to_decode,
-        including_default_value_fields=True,
+        always_print_fields_with_no_presence=True,
         preserving_proto_field_name=preserving_proto_field_name,
     )
 

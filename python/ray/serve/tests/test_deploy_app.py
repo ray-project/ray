@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from copy import copy
 from functools import partial
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import pytest
 import requests
@@ -17,8 +17,18 @@ import ray.actor
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
+from ray.serve._private.common import (
+    ApplicationStatus,
+    DeploymentID,
+    DeploymentStatus,
+    ReplicaName,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.test_utils import (
+    check_num_replicas_eq,
+    check_num_replicas_gte,
+    check_num_replicas_lte,
+)
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema, ServeInstanceDetails
 from ray.serve.tests.common.remote_uris import (
@@ -78,11 +88,17 @@ def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
     yield _get_global_client()
 
 
-def check_running(_client: ServeControllerClient):
+def check_running():
     assert (
         serve.status().applications[SERVE_DEFAULT_APP_NAME].status
         == ApplicationStatus.RUNNING
     )
+    return True
+
+
+def check_endpoint(endpoint: str, json: Union[List, Dict], expected: str):
+    resp = requests.post(f"http://localhost:8000/{endpoint}", json=json)
+    assert resp.text == expected
     return True
 
 
@@ -96,18 +112,6 @@ def check_deployments_dead(deployment_ids: List[DeploymentID]):
 
 def get_test_config() -> Dict:
     return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
-
-
-def check_single_app():
-    """Checks the application deployed through the config from get_test_config()"""
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
-        == "4 pizzas please!"
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).text
-        == "9 pizzas please!"
-    )
 
 
 def get_test_deploy_config() -> Dict:
@@ -148,21 +152,29 @@ def check_multi_app():
     """
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["ADD", 2],
+        expected="4 pizzas please!",
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).text
-        == "9 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["MUL", 3],
+        expected="9 pizzas please!",
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "5 pizzas please!"
+        check_endpoint,
+        endpoint="app2",
+        json=["ADD", 2],
+        expected="5 pizzas please!",
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).text
-        == "12 pizzas please!"
+        check_endpoint,
+        endpoint="app2",
+        json=["MUL", 3],
+        expected="12 pizzas please!",
     )
 
 
@@ -482,7 +494,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
             actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
         }
         expected_actor_name_prefixes = {
-            "SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR",
+            "SERVE_PROXY_ACTOR",
             "SERVE_CONTROLLER_ACTOR",
         }.union({f"SERVE_REPLICA::app1#{deployment}" for deployment in deployments})
         for prefix in expected_actor_name_prefixes:
@@ -577,7 +589,7 @@ def test_deploy_config_update_heavyweight(
     }
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
     pid1, _ = requests.get("http://localhost:8000/f").json()
 
     if field_to_update == "import_path":
@@ -594,7 +606,7 @@ def test_deploy_config_update_heavyweight(
         }
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     pids = []
     for _ in range(4):
@@ -612,7 +624,7 @@ def test_update_config_user_config(client: ServeControllerClient):
 
     # Deploy first time
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     # Query
     pid1, res = requests.get("http://localhost:8000/f").json()
@@ -644,7 +656,7 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
 
     # Deploy first time
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
     # Start off with signal ready, and send query
@@ -655,7 +667,7 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     # Redeploy with shutdown timeout set to 5 seconds
     config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     pid2 = handle.remote().result()[0]
     assert pid1 == pid2
@@ -683,7 +695,7 @@ def test_update_config_max_concurrent_queries(client: ServeControllerClient):
 
     # Deploy first time, max_concurent_queries set to 1000.
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     all_replicas = ray.get(client._controller._all_running_replicas.remote())
     assert len(all_replicas) == 1
@@ -698,7 +710,7 @@ def test_update_config_max_concurrent_queries(client: ServeControllerClient):
     # Redeploy with max concurrent queries set to 2.
     config_template["deployments"][0]["max_concurrent_queries"] = 2
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     # Verify that the PID of the replica didn't change.
     refs = [handle.remote() for _ in range(10)]
@@ -716,7 +728,7 @@ def test_update_config_health_check_period(client: ServeControllerClient):
 
     # Deploy first time, wait for replica running and deployment healthy
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
     pid1 = handle.remote().result()[0]
@@ -730,7 +742,7 @@ def test_update_config_health_check_period(client: ServeControllerClient):
     # Update the deployment's health check period to 0.1 seconds.
     config_template["deployments"][0]["health_check_period_s"] = 0.1
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     # Health check counter should now quickly increase due to the shorter period.
     wait_for_condition(
@@ -762,7 +774,7 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
 
     # Deploy first time, wait for replica running and deployment healthy
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
     pid1 = handle.remote().result()[0]
@@ -770,7 +782,7 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
     # Redeploy with health check timeout reduced to 1 second
     config_template["deployments"][0]["health_check_timeout_s"] = 1
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     # Check that it's the same replica, it didn't get teared down
     # (needs to be done before the tests below because the replica will be marked
@@ -787,6 +799,56 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
         .status
         == DeploymentStatus.UNHEALTHY
     )
+
+
+def test_update_autoscaling_config(client: ServeControllerClient):
+    signal = SignalActor.options(name="signal123").remote()
+
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
+            {
+                "name": "A",
+                "autoscaling_config": {
+                    "target_num_ongoing_requests_per_replica": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "metrics_interval_s": 1000,
+                    "upscale_delay_s": 0.5,
+                    "downscale_delay_s": 0.5,
+                    "look_back_period_s": 2,
+                },
+                "graceful_shutdown_timeout_s": 1,
+            }
+        ],
+    }
+
+    print(time.ctime(), "Deploying pid application.")
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    print(time.ctime(), "Application is RUNNING.")
+
+    print(time.ctime(), "Sending 1 initial unblocked request.")
+    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    signal.send.remote()
+    h.remote().result()
+
+    print(time.ctime(), "Sending 5 blocked requests. Deployment should NOT scale up.")
+    signal.send.remote(clear=True)
+    [h.remote() for _ in range(5)]
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(check_num_replicas_gte, name="A", target=2)
+
+    print(time.ctime(), "Redeploying with `metrics_interval_s` updated to 0.5s.")
+    config_template["deployments"][0]["autoscaling_config"]["metrics_interval_s"] = 0.5
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+
+    wait_for_condition(check_num_replicas_gte, name="A", target=2)
+    print(time.ctime(), "Number of replicas scaled up. Unblocking signal.")
+    signal.send.remote()
+
+    wait_for_condition(check_num_replicas_lte, name="A", target=1)
+    print(time.ctime(), "Number of replicas dropped back down to 1.")
 
 
 def test_deploy_separate_runtime_envs(client: ServeControllerClient):
@@ -816,8 +878,11 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**config_template))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-        == "0 pizzas please!"
+        check_endpoint,
+        endpoint="app1",
+        json=["ADD", 2],
+        expected="0 pizzas please!",
+        timeout=90,
     )
 
     wait_for_condition(
@@ -1018,12 +1083,12 @@ def test_deployments_not_listed_in_config(client: ServeControllerClient):
         "applications": [{"import_path": "ray.serve.tests.test_config_files.pid.node"}]
     }
     client.deploy_apps(ServeDeploySchema(**config))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
     pid1, _ = requests.get("http://localhost:8000/").json()
 
     # Redeploy the same config (with no deployments listed)
     client.deploy_apps(ServeDeploySchema(**config))
-    wait_for_condition(partial(check_running, client), timeout=15)
+    wait_for_condition(check_running, timeout=15)
 
     # It should be the same replica actor
     pids = []
@@ -1153,7 +1218,7 @@ def test_change_route_prefix(client: ServeControllerClient):
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
-    wait_for_condition(check_running, _client=client)
+    wait_for_condition(check_running)
     pid1 = requests.get("http://localhost:8000/old").json()[0]
 
     # Redeploy application with route prefix /new.
@@ -1175,11 +1240,77 @@ def test_change_route_prefix(client: ServeControllerClient):
     wait_for_condition(check_switched)
 
 
+def test_num_replicas_auto(client: ServeControllerClient):
+    """Test `num_replicas="auto"`."""
+
+    signal = SignalActor.options(name="signal123").remote()
+
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
+            {
+                "name": "A",
+                "num_replicas": "auto",
+                "autoscaling_config": {
+                    "look_back_period_s": 2.0,
+                    "metrics_interval_s": 1.0,
+                    "upscale_delay_s": 1.0,
+                },
+                "graceful_shutdown_timeout_s": 1,
+            }
+        ],
+    }
+
+    print(time.ctime(), "Deploying pid application.")
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    print(time.ctime(), "Application is RUNNING.")
+    check_num_replicas_eq("A", 1)
+
+    app_details = client.get_serve_details()["applications"][SERVE_DEFAULT_APP_NAME]
+    deployment_config = app_details["deployments"]["A"]["deployment_config"]
+    # Set by `num_replicas="auto"`
+    assert "num_replicas" not in deployment_config
+    assert deployment_config["max_concurrent_queries"] == 5
+    assert deployment_config["autoscaling_config"] == {
+        # Set by `num_replicas="auto"`
+        "target_num_ongoing_requests_per_replica": 2.0,
+        "min_replicas": 1,
+        "max_replicas": 100,
+        # Overrided by `autoscaling_config`
+        "look_back_period_s": 2.0,
+        "metrics_interval_s": 1.0,
+        "upscale_delay_s": 1.0,
+        # Untouched defaults
+        "downscale_delay_s": 600.0,
+        "upscale_smoothing_factor": None,
+        "downscale_smoothing_factor": None,
+        "smoothing_factor": 1.0,
+        "initial_replicas": None,
+    }
+
+    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    for i in range(3):
+        [h.remote() for _ in range(2)]
+
+        def check_num_waiters(target: int):
+            assert ray.get(signal.cur_num_waiters.remote()) == target
+            return True
+
+        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        print(time.time(), f"Confirmed number of replicas are at {i+1}.")
+
+    signal.send.remote()
+
+
 def check_log_file(log_file: str, expected_regex: list):
     with open(log_file, "r") as f:
         s = f.read()
+        print(s)
         for regex in expected_regex:
-            assert re.findall(regex, s) != []
+            assert re.findall(regex, s) != [], f"Did not find pattern '{regex}' in {s}"
     return True
 
 
@@ -1217,10 +1348,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -1246,10 +1378,11 @@ class TestDeploywithLoggingConfig:
 
         resp = requests.post("http://localhost:8000/app1").json()
 
+        replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
-            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+            expected_log_regex = [f'"replica": "{replica_id}", ']
         else:
-            expected_log_regex = [f'.*{resp["replica"]}.*']
+            expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_deploy_app_with_deployment_logging_config_in_code(
@@ -1276,12 +1409,27 @@ class TestDeploywithLoggingConfig:
             lambda: requests.post("http://localhost:8000/app1").status_code == 200
         )
 
-        # By default, log level is "INFO"
-        resp = requests.post("http://localhost:8000/app1").json()
+        def get_replica_info_format(replica_name: ReplicaName) -> str:
+            return (
+                f"{replica_name.app_name}_{replica_name.deployment_name} "
+                f"{replica_name.replica_suffix}"
+            )
 
-        # Make sure 'model_debug_level' log content does not exist
+        # By default, log level is "INFO"
+        r = requests.post("http://localhost:8000/app1")
+        r.raise_for_status()
+        request_id = r.headers["X-Request-Id"]
+        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+
+        # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
-            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+            check_log_file(r.json()["log_file"], [".*this_is_debug_info.*"])
+
+        # Check the log formatting.
+        check_log_file(
+            r.json()["log_file"],
+            f" {get_replica_info_format(replica_name)} {request_id} ",
+        )
 
         # Set log level to "DEBUG"
         config_dict["applications"][0]["logging_config"] = {
@@ -1295,8 +1443,19 @@ class TestDeploywithLoggingConfig:
             and requests.post("http://localhost:8000/app1").json()["log_level"]
             == logging.DEBUG,
         )
-        resp = requests.post("http://localhost:8000/app1").json()
-        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+        r = requests.post("http://localhost:8000/app1")
+        r.raise_for_status()
+        request_id = r.headers["X-Request-Id"]
+        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+        check_log_file(
+            r.json()["log_file"],
+            [
+                # Check for DEBUG-level log statement.
+                ".*this_is_debug_info.*",
+                # Check that the log formatting has remained the same.
+                f" {get_replica_info_format(replica_name)} {request_id} ",
+            ],
+        )
 
     def test_not_overwritting_logging_config_in_yaml(
         self, client: ServeControllerClient

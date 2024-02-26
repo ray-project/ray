@@ -24,13 +24,13 @@
             "type": "string"
         },
         "max_workers": {
-            "description": "[DEPRECATED] The maximum number of workers nodes to launch in addition to the head node. This takes precedence over min_worker_nodes.",
+            "description": "[DEPRECATED] The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_worker_nodes for all available node types.",
             "type": "integer",
             "minimum": 0,
             "deprecated": true
         },
         "max_worker_nodes": {
-            "description": "The maximum number of workers nodes to launch in addition to the head node. This takes precedence over min_worker_nodes.",
+            "description": "The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_worker_nodes for all available node types.",
             "type": "integer",
             "minimum": 0
         },

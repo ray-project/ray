@@ -1,4 +1,5 @@
-from ray._private.ray_constants import env_integer
+import os
+from ray._private.ray_constants import env_integer, env_bool
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
@@ -79,3 +80,12 @@ AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "dashboard",
     "gcs",
 }
+METRICS_INPUT_ROOT = os.path.join(
+    os.path.dirname(__file__), "modules", "metrics", "export"
+)
+PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
+    METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
+)
+PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
+    "RAY_enable_pipe_based_agent_to_parent_health_check", False
+)

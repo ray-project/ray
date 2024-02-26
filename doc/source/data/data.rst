@@ -4,6 +4,16 @@
 Ray Data: Scalable Datasets for ML
 ==================================
 
+.. toctree::
+    :hidden:
+
+    Overview <overview>
+    key-concepts
+    user-guide
+    examples/index
+    api/api
+    data-internals
+
 Ray Data is a scalable data processing library for ML workloads. It provides flexible and performant APIs for scaling :ref:`Offline batch inference <batch_inference_overview>` and :ref:`Data preprocessing and ingest for ML training <ml_ingest_overview>`. Ray Data uses `streaming execution <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__ to efficiently process large datasets.
 
 .. image:: images/dataset.svg

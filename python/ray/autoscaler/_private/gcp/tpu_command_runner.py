@@ -58,7 +58,7 @@ class TPUVMSSHCommandRunner(SSHCommandRunner):
         run_env="auto",  # Unused argument.
         ssh_options_override_ssh_key="",
         shutdown_after_run=False,
-    ):
+    ) -> str:
         """Override the SSH run for TPU VM pods.
 
         Main functionality here we need to inject is to intercept the resources
@@ -89,7 +89,7 @@ class TPUVMSSHCommandRunner(SSHCommandRunner):
                     ray_constants.RESOURCES_ENVIRONMENT_VARIABLE
                 ] = resources
 
-        super().run(
+        return super().run(
             cmd=cmd,
             timeout=timeout,
             exit_on_fail=exit_on_fail,

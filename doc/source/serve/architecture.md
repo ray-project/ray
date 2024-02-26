@@ -110,13 +110,13 @@ servers.  You can use your own load balancer on top of Ray Serve.
 This architecture ensures horizontal scalability for Serve. You can scale your HTTP and gRPC ingress by adding more nodes. You can also scale your model inference by increasing the number
 of replicas via the `num_replicas` option of your deployment.
 
-### How do ServeHandles work?
+### How do DeploymentHandles work?
 
-{mod}`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to a "router" on the
+{mod}`DeploymentHandles <ray.serve.handle.DeploymentHandle>` wrap a handle to a "router" on the
 same node which routes requests to replicas for a deployment. When a
 request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP or gRPC requests. This enables
-the same deployment selection and batching procedures to happen. ServeHandles are
+the same deployment selection and batching procedures to happen. DeploymentHandles are
 often used to implement [model composition](serve-model-composition).
 
 ### What happens to large requests?

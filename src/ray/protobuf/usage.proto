@@ -87,6 +87,14 @@ enum TagKey {
   SERVE_GET_APP_HANDLE_API_USED = 26;
   // Whether the serve.get_deployment_handle API was used ("1" if used)
   SERVE_GET_DEPLOYMENT_HANDLE_API_USED = 27;
+  // Whether the container runtime env feature was used at the
+  // application level ("1" if used)
+  // This feature allows users to run applications in separate
+  // containers with separate images
+  SERVE_APP_CONTAINER_RUNTIME_ENV_USED = 28;
+  // Whether the container runtime env feature was used at the
+  // individual deployment level ("1" if used)
+  SERVE_DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED = 29;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
@@ -184,4 +192,5 @@ enum TagKey {
   TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT = 517;
   TRAIN_TRANSFORMERS_PREPARE_TRAINER = 518;
   TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK = 519;
+  TRAIN_TORCH_GET_DEVICES = 520;
 }

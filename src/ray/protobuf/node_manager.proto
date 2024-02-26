@@ -224,6 +224,10 @@ message ObjectStoreStats {
   bool object_pulls_queued = 13;
   // The number of primary copies of objects in the local node.
   int64 num_object_store_primary_copies = 14;
+  // The total number of objects that have been allocated to plasma.
+  int64 cumulative_created_objects = 15;
+  // The total number of bytes that have been allocated to plasma objects.
+  int64 cumulative_created_bytes = 16;
 }
 
 message GetNodeStatsReply {
@@ -344,11 +348,16 @@ message DrainRayletRequest {
   // The detailed drain reason message.
   // Used for observability.
   string reason_message = 2;
+  /// Timestamp when the node to be drained will be force killed.
+  /// This is a hint to Ray that it should drain everything before the deadline.
+  int64 deadline_timestamp_ms = 3;
 }
 
 message DrainRayletReply {
   // Whether the drain request is accepted.
   bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
 }
 
 // Service for inter-node-manager communication.

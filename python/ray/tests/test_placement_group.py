@@ -8,7 +8,7 @@ import ray
 from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
-from ray._private.test_utils import skip_flaky_test
+from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -32,7 +32,8 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         def v(self):
             return 10
 
-    # bundle is placement group reserved resources and can't be used in bundles
+    # kBundle_ResourceLabel is placement group reserved resources and
+    # can't be used in bundles
     with pytest.raises(Exception):
         ray.util.placement_group(bundles=[{"bundle": 1}])
     # This test is to test the case that even there all resource in the
@@ -47,6 +48,15 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         ).remote()
         ray.get(a.v.remote())
         ray.get(pg.ready())
+
+        with pytest.raises(ValueError):
+            a = Actor.options(
+                resources={"bundle": 1},
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg
+                ),
+            ).remote()
+            ray.get(a.v.remote())
 
         placement_group_assert_no_leak([pg])
 
@@ -340,10 +350,7 @@ def test_placement_group_spread(
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 @pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-@pytest.mark.skipif(
-    skip_flaky_test(),
-    reason="https://github.com/ray-project/ray/issues/38726",
-)
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38726")
 def test_placement_group_strict_spread(
     ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
 ):

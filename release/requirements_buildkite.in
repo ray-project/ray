@@ -15,3 +15,6 @@ pybuildkite
 PyGithub
 requests
 retry
+
+# Below are requirements only used by ray_ci
+tzdata

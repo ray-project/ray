@@ -171,6 +171,10 @@ if __name__ == "__main__":
         scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
         datasets=ray_datasets,
         dataset_config=DataConfig(datasets_to_split=["train", "validation"]),
+        # If running in a multi-node cluster, this is where you
+        # should configure the run's persistent storage that is accessible
+        # across all worker nodes.
+        # run_config=ray.train.RunConfig(storage_path="s3://..."),
     )
 
     result = trainer.fit()

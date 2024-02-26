@@ -1,4 +1,6 @@
 group: rllib tests
+depends_on:
+  - forge
 steps:
   # builds
   - name: rllibbuild
@@ -28,7 +30,6 @@ steps:
         --except-tags learning_tests,memory_leak_tests,examples,tests_dir,documentation,multi_gpu,no_cpu,torch_2.x_only_benchmark,manual
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: learning tests tf2-static-graph"
     tags: rllib
@@ -41,7 +42,6 @@ steps:
         --except-tags torch_only,tf2_only,no_tf_static_graph,multi_gpu
         --test-arg --framework=tf
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: learning tests pytorch"
     tags: rllib
@@ -54,7 +54,6 @@ steps:
         --except-tags tf_only,tf2_only,multi_gpu
         --test-arg --framework=torch
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: examples"
     tags: rllib
@@ -67,7 +66,6 @@ steps:
         --except-tags multi_gpu,gpu 
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: learning tests tf2-eager-tracing"
     tags: rllib
@@ -80,7 +78,6 @@ steps:
         --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing
         --test-arg --framework=tf2
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: tests dir"
     tags: rllib_directly
@@ -93,7 +90,6 @@ steps:
         --except-tags multi_gpu,manual
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: gpu tests"
     tags: 
@@ -109,7 +105,6 @@ steps:
         --test-env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
         --test-env=RLLIB_NUM_GPUS=1
     depends_on: rllibgpubuild
-    job_env: forge
 
   - label: ":brain: rllib: rlmodule tests"
     tags: rllib_directly
@@ -121,7 +116,6 @@ steps:
         --test-env RLLIB_ENABLE_RL_MODULE=1
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: data tests"
     if: build.branch != "master"
@@ -150,7 +144,6 @@ steps:
         --except-tags learning_tests_with_ray_data,multi_gpu,gpu
         --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: benchmarks"
     tags: rllib
@@ -158,7 +151,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --only-tags torch_2.x_only_benchmark
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: memory leak tf2-eager-tracing tests"
     tags: rllib
@@ -169,7 +161,6 @@ steps:
         --except-tags flaky
         --test-arg --framework=tf2
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: memory leak pytorch tests"
     tags: rllib
@@ -180,7 +171,6 @@ steps:
         --except-tags flaky
         --test-arg --framework=torch
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: doc tests"
     tags: 
@@ -203,7 +193,6 @@ steps:
         --parallelism-per-worker 2
         --skip-ray-installation
     depends_on: rllibbuild
-    job_env: forge
 
   - label: ":brain: rllib: multi-gpu tests"
     tags: 
@@ -217,7 +206,6 @@ steps:
         --build-name rllibgpubuild
         --only-tags multi_gpu
     depends_on: rllibgpubuild
-    job_env: forge
 
   - label: ":brain: rllib: flaky multi-gpu tests"
     tags: 
@@ -233,7 +221,6 @@ steps:
         --only-tags multi_gpu
     depends_on: rllibgpubuild
     soft_fail: true
-    job_env: forge
 
   - label: ":brain: rllib: flaky tests (learning tests)"
     tags: 
@@ -262,7 +249,6 @@ steps:
         --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
     soft_fail: true
-    job_env: forge
 
   - label: ":brain: rllib: flaky tests (examples/rlmodule/models/tests_dir)"
     tags: 
@@ -297,7 +283,6 @@ steps:
         --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
     soft_fail: true
-    job_env: forge
 
   - label: ":brain: rllib: flaky tests (memory leak)"
     tags: 
@@ -312,4 +297,3 @@ steps:
         --test-arg --framework=tf2
     depends_on: rllibbuild
     soft_fail: true
-    job_env: forge

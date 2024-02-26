@@ -4,6 +4,9 @@ import sys
 import time
 import gc
 import random
+import asyncio
+from typing import Optional
+from pydantic import BaseModel
 
 import ray
 
@@ -65,7 +68,6 @@ def test_ray_datasetlike_mini_stress_test(
             threshold = -1
 
         @ray.remote(
-            num_returns="streaming",
             max_retries=-1,
             _generator_backpressure_num_objects=threshold,
         )
@@ -122,7 +124,7 @@ def test_local_gc_not_hang(shutdown_only, monkeypatch):
 
         ray.init()
 
-        @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
+        @ray.remote(_generator_backpressure_num_objects=1)
         def f():
             for _ in range(5):
                 yield 1
@@ -133,6 +135,60 @@ def test_local_gc_not_hang(shutdown_only, monkeypatch):
         # It should not hang.
         for ref in gen:
             ray.get(gen)
+
+
+def test_sync_async_mix_regression_test(shutdown_only):
+    """Verify when sync and async tasks are mixed up
+    it doesn't raise a segfault
+
+    https://github.com/ray-project/ray/issues/41346
+    """
+
+    class PayloadPydantic(BaseModel):
+        class Error(BaseModel):
+            msg: str
+            code: int
+            type: str
+
+        text: Optional[str] = None
+        ts: Optional[float] = None
+        reason: Optional[str] = None
+        error: Optional[Error] = None
+
+    ray.init()
+
+    @ray.remote
+    class B:
+        def __init__(self, a):
+            self.a = a
+
+        async def stream(self):
+            async for ref in self.a.stream.remote(1):
+                print("stream")
+                await ref
+
+        async def start(self):
+            await asyncio.gather(*[self.stream() for _ in range(2)])
+
+    @ray.remote
+    class A:
+        def stream(self, i):
+            payload = PayloadPydantic(
+                text="Test output",
+                ts=time.time(),
+                reason="Success!",
+            )
+
+            for _ in range(10):
+                yield payload
+
+        async def aio_stream(self):
+            for _ in range(10):
+                yield 1
+
+    a = A.remote()
+    b = B.remote(a)
+    ray.get(b.start.remote())
 
 
 if __name__ == "__main__":

@@ -61,16 +61,16 @@ class CoreWorkerDirectTaskReceiver {
       bool *is_retryable_error,
       std::string *application_error)>;
 
-  using OnTaskDone = std::function<Status()>;
+  using OnActorCreationTaskDone = std::function<Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+                               const OnActorCreationTaskDone &actor_creation_task_done_)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
-        task_done_(task_done),
+        actor_creation_task_done_(actor_creation_task_done_),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
@@ -127,7 +127,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The IO event loop for running tasks on.
   instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
-  OnTaskDone task_done_;
+  OnActorCreationTaskDone actor_creation_task_done_;
   /// Shared pool for producing new core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.

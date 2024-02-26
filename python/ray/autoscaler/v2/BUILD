@@ -55,12 +55,13 @@ py_test(
 )
 
 py_test(
-    name = "test_instance_launcher",
+    name = "test_subscribers",
     size = "small",
-    srcs = ["tests/test_instance_launcher.py"],
+    srcs = ["tests/test_subscribers.py"],
     tags = ["team:core"],
     deps = ["//:ray_lib",],
 )
+
 
 py_test(
     name = "test_reconciler",
@@ -98,6 +99,38 @@ py_test(
     name = "test_e2e",
     size = "medium",
     srcs = ["tests/test_e2e.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_scheduler",
+    size = "small",
+    srcs = ["tests/test_scheduler.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_instance_manager",
+    size = "small",
+    srcs = ["tests/test_instance_manager.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_instance_util",
+    size = "small",
+    srcs = ["tests/test_instance_util.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_schema",
+    size = "small",
+    srcs = ["tests/test_schema.py"],
     tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

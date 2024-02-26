@@ -15,8 +15,8 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray-ml:latest-gpu"
-    # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
+    image: "rayproject/ray:latest-gpu"
+    # image: rayproject/ray-ml:latest-gpu   # use this one if you need ML dependencies, but it's slower to pull
     container_name: "ray_nvidia_docker" # e.g. ray_docker
 
     # # Example of running a GPU head with CPU workers
@@ -33,7 +33,7 @@ provider:
     type: gcp
     region: us-west1
     availability_zone: us-west1-b
-    project_id: null # Globally unique project id
+    project_id: null # Replace this with your globally unique project id
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -56,7 +56,7 @@ available_node_types:
         # For more documentation on available fields, see:
         # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
         node_config:
-            machineType: custom-6-16384
+            machineType: n1-standard-2
             disks:
               - boot: true
                 autoDelete: true
@@ -64,10 +64,10 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
+                  sourceImage: projects/ml-images/global/images/c0-deeplearning-common-cu121-v20231209-debian-11
             # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
-              - acceleratorType: nvidia-tesla-k80
+              - acceleratorType: nvidia-tesla-t4
                 acceleratorCount: 1
             metadata:
               items:
@@ -98,10 +98,10 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
+                  sourceImage: projects/ml-images/global/images/c0-deeplearning-common-cu121-v20231209-debian-11
             # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
-              - acceleratorType: nvidia-tesla-k80
+              - acceleratorType: nvidia-tesla-t4
                 acceleratorCount: 1
             metadata:
               items:

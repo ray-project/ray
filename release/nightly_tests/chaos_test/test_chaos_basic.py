@@ -206,7 +206,7 @@ def main():
     # Step 3
     print("Running with failures")
     start = time.time()
-    node_killer = ray.get_actor("node_killer", namespace="release_test_namespace")
+    node_killer = ray.get_actor("NodeKillerActor", namespace="release_test_namespace")
     node_killer.run.remote()
     workload(total_num_cpus, args.smoke)
     print(f"Runtime when there are many failures: {time.time() - start}")

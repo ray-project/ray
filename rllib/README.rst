@@ -39,7 +39,7 @@ Install RLlib and run your first experiment on your laptop in seconds:
 
     $ conda create -n rllib python=3.8
     $ conda activate rllib
-    $ pip install "ray[rllib]" tensorflow "gym[atari]" "gym[accept-rom-license]" atari_py
+    $ pip install "ray[rllib]" tensorflow "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
     $ # Run a test job:
     $ rllib train --run APPO --env CartPole-v0
 
@@ -50,7 +50,7 @@ Install RLlib and run your first experiment on your laptop in seconds:
 
     $ conda create -n rllib python=3.8
     $ conda activate rllib
-    $ pip install "ray[rllib]" torch "gym[atari]" "gym[accept-rom-license]" atari_py
+    $ pip install "ray[rllib]" torch "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
     $ # Run a test job:
     $ rllib train --run APPO --env CartPole-v0 --torch
 

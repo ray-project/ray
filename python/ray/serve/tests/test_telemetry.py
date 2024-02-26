@@ -11,21 +11,18 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
-from ray.dag.input_node import InputNode
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve.context import _get_global_client
-from ray.serve.drivers import DAGDriver
-from ray.serve.http_adapters import json_request
-from ray.serve.schema import ServeDeploySchema
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
     TelemetryStorage,
     check_ray_started,
     receiver_app,
     start_telemetry_app,
 )
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeDeploySchema
 
 
 def test_fastapi_detected(manage_ray_with_telemetry):
@@ -99,72 +96,6 @@ def test_fastapi_detected(manage_ray_with_telemetry):
     assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
 
 
-@pytest.mark.parametrize("use_adapter", [True, False])
-def test_graph_detected(manage_ray_with_telemetry, use_adapter):
-    """
-    Check that DAGDriver and HTTP adapters are detected by telemetry.
-    """
-
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(check_ray_started, timeout=5)
-
-    storage_handle = start_telemetry_app()
-
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
-    )
-
-    # Check that telemetry related to DAGDriver app is not set
-    report = ray.get(storage_handle.get_report.remote())
-    assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
-
-    @serve.deployment(ray_actor_options={"num_cpus": 0})
-    def greeter(input):
-        return "Hello!"
-
-    with InputNode() as input:
-        greeter_node = greeter.bind(input)
-
-    if use_adapter:
-        graph_app = DAGDriver.bind(greeter_node, http_adapter=json_request)
-    else:
-        graph_app = DAGDriver.bind(greeter_node)
-
-    serve.run(graph_app, name="graph_app", route_prefix="/graph")
-
-    wait_for_condition(
-        lambda: serve.status().applications["graph_app"].status
-        == ApplicationStatus.RUNNING,
-        timeout=15,
-    )
-
-    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
-
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote())
-        > current_num_reports,
-        timeout=5,
-    )
-    report = ray.get(storage_handle.get_report.remote())
-
-    # Check all telemetry relevant to the Serve apps on this cluster
-    assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) == "1"
-    assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 2
-    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 3
-    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
-    if use_adapter:
-        assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) == "1"
-
-    # Check that Serve telemetry not relevant to the running apps is omitted
-    assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
-    if not use_adapter:
-        assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
-
-
 @serve.deployment
 class Stub:
     pass
@@ -186,7 +117,6 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
 
     serve.run(
         receiver_app,
-        host="0.0.0.0",
         name="telemetry",
         route_prefix=TELEMETRY_ROUTE_PREFIX,
     )
@@ -205,7 +135,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {
@@ -263,7 +193,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
         ]
@@ -301,15 +231,15 @@ tester = Tester.bind()
 
 
 @pytest.mark.parametrize(
-    "lightweight_option,value",
+    "lightweight_option,value,new_value",
     [
-        ("num_replicas", 2),
-        ("user_config", {"some_setting": 10}),
-        ("autoscaling_config", {"max_replicas": 5}),
+        ("num_replicas", 1, 2),
+        ("user_config", {}, {"some_setting": 10}),
+        ("autoscaling_config", {"max_replicas": 3}, {"max_replicas": 5}),
     ],
 )
 def test_lightweight_config_options(
-    manage_ray_with_telemetry, lightweight_option, value
+    manage_ray_with_telemetry, lightweight_option, value, new_value
 ):
     """
     Check that lightweight config options are detected by telemetry.
@@ -327,7 +257,6 @@ def test_lightweight_config_options(
 
     serve.run(
         receiver_app,
-        host="0.0.0.0",
         name="telemetry",
         route_prefix=TELEMETRY_ROUTE_PREFIX,
     )
@@ -346,7 +275,7 @@ def test_lightweight_config_options(
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.common.utils.receiver_app",
+                "import_path": "ray.serve._private.test_utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {
@@ -356,6 +285,7 @@ def test_lightweight_config_options(
             },
         ]
     }
+    config["applications"][1]["deployments"][0][lightweight_option] = value
 
     # Deploy first config
     serve.start()
@@ -387,7 +317,7 @@ def test_lightweight_config_options(
         assert tagkey.get_value_from_report(report) is None
 
     # Change config and deploy again
-    config["applications"][1]["deployments"][0][lightweight_option] = value
+    config["applications"][1]["deployments"][0][lightweight_option] = new_value
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: serve.status().applications["receiver_app"].status
@@ -416,11 +346,8 @@ def test_lightweight_config_options(
             assert tagkey.get_value_from_report(report) is None
 
 
-@pytest.mark.parametrize("use_new_handle_api", [False, True])
 @pytest.mark.parametrize("call_in_deployment", [False, True])
-def test_handle_apis_detected(
-    manage_ray_with_telemetry, use_new_handle_api, call_in_deployment
-):
+def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     """Check that the various handles are detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -436,11 +363,6 @@ def test_handle_apis_detected(
     assert (
         ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report) is None
     )
-    assert ServeUsageTag.RAY_SERVE_HANDLE_API_USED.get_value_from_report(report) is None
-    assert (
-        ServeUsageTag.RAY_SERVE_SYNC_HANDLE_API_USED.get_value_from_report(report)
-        is None
-    )
 
     @serve.deployment
     class Downstream:
@@ -450,7 +372,7 @@ def test_handle_apis_detected(
     @serve.deployment
     class Caller:
         def __init__(self, h):
-            self._h = h.options(use_new_handle_api=use_new_handle_api)
+            self._h = h
 
         async def __call__(self, call_downstream=True):
             if call_downstream:
@@ -461,35 +383,18 @@ def test_handle_apis_detected(
 
     if call_in_deployment:
         result = requests.get("http://localhost:8000").text
-    elif use_new_handle_api:
-        result = handle.remote(call_downstream=False).result()
     else:
-        result = ray.get(
-            handle.options(use_new_handle_api=False).remote(call_downstream=False)
-        )
+        result = handle.remote(call_downstream=False).result()
 
     assert result == "ok"
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
         print(report["extra_usage_tags"])
-        if use_new_handle_api:
-            assert (
-                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report)
-                == "1"
-            )
-        elif call_in_deployment:
-            assert (
-                ServeUsageTag.RAY_SERVE_HANDLE_API_USED.get_value_from_report(report)
-                == "1"
-            )
-        else:
-            assert (
-                ServeUsageTag.RAY_SERVE_SYNC_HANDLE_API_USED.get_value_from_report(
-                    report
-                )
-                == "1"
-            )
+        assert (
+            ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.get_value_from_report(report)
+            == "1"
+        )
         return True
 
     wait_for_condition(check_telemetry)
@@ -524,7 +429,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     @serve.deployment
     class Caller:
         def __init__(self, h):
-            self._h = h.options(use_new_handle_api=True)
+            self._h = h
 
         async def get(self, call_downstream=False):
             if call_downstream:
@@ -539,17 +444,9 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     if mode == "http":
         result = requests.get("http://localhost:8000").text
     elif mode == "outside_deployment":
-        result = ray.get(
-            handle.options(use_new_handle_api=True).get.remote()._to_object_ref_sync()
-        )
+        result = ray.get(handle.get.remote()._to_object_ref_sync())
     else:
-        result = (
-            handle.options(
-                use_new_handle_api=True,
-            )
-            .get.remote(call_downstream=True)
-            .result()
-        )
+        result = handle.get.remote(call_downstream=True).result()
 
     assert result == "ok"
 

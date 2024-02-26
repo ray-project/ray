@@ -13,7 +13,6 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -79,8 +78,6 @@ class OperatorFusionRule(Rule):
             dag = self._get_fused_map_operator(dag, upstream_ops[0])
             upstream_ops = dag.input_dependencies
 
-        self._propagate_target_max_block_size_to_input(dag)
-
         # Done fusing back-to-back map operators together here,
         # move up the DAG to find the next map operators to fuse.
         dag._input_dependencies = [
@@ -105,23 +102,11 @@ class OperatorFusionRule(Rule):
             len(upstream_ops) == 1
             and isinstance(dag, AllToAllOperator)
             and isinstance(upstream_ops[0], MapOperator)
+            and self._can_fuse(dag, upstream_ops[0])
         ):
-            if self._can_fuse(dag, upstream_ops[0]):
-                # Fuse operator with its upstream op.
-                dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
-                upstream_ops = dag.input_dependencies
-            else:
-                # Propagate target max block size to the upstream map op. This
-                # is necessary even when fusion is not allowed, so that the map
-                # op will produce the right block size for the shuffle op to
-                # consume.
-                map_op = upstream_ops[0]
-                map_op._target_max_block_size = self._get_merged_target_max_block_size(
-                    upstream_ops[0].target_max_block_size, dag.target_max_block_size
-                )
-                break
-
-        self._propagate_target_max_block_size_to_input(dag)
+            # Fuse operator with its upstream op.
+            dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
+            upstream_ops = dag.input_dependencies
 
         # Done fusing MapOperator -> AllToAllOperator together here,
         # move up the DAG to find the next pair of operators to fuse.
@@ -262,27 +247,11 @@ class OperatorFusionRule(Rule):
             # blocks.
             return down_target_max_block_size
 
-    def _propagate_target_max_block_size_to_input(self, dag):
-        # Operator fusion will merge target block sizes for adjacent operators,
-        # but if dag is the first op after a stage with read tasks, then we
-        # also need to propagate the block size to the input data buffer.
-        upstream_ops = dag.input_dependencies
-        if (
-            len(upstream_ops) == 1
-            and isinstance(upstream_ops[0], InputDataBuffer)
-            and self._can_merge_target_max_block_size(
-                upstream_ops[0].target_max_block_size, dag.target_max_block_size
-            )
-        ):
-            upstream_ops[
-                0
-            ]._target_max_block_size = self._get_merged_target_max_block_size(
-                upstream_ops[0].target_max_block_size, dag.target_max_block_size
-            )
-
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
     ) -> MapOperator:
+        from ray.data._internal.logical.operators.map_operator import AbstractMap
+
         assert self._can_fuse(down_op, up_op), (
             "Current rule supports fusing MapOperator->MapOperator, but received: "
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
@@ -295,22 +264,27 @@ class OperatorFusionRule(Rule):
         up_logical_op = self._op_map.pop(up_op)
 
         # Merge minimum block sizes.
-        down_min_rows_per_block = (
-            down_logical_op._min_rows_per_block
-            if isinstance(down_logical_op, AbstractUDFMap)
+        down_min_rows_per_bundled_input = (
+            down_logical_op._min_rows_per_bundled_input
+            if isinstance(down_logical_op, AbstractMap)
             else None
         )
-        up_min_rows_per_block = (
-            up_logical_op._min_rows_per_block
-            if isinstance(up_logical_op, AbstractUDFMap)
+        up_min_rows_per_bundled_input = (
+            up_logical_op._min_rows_per_bundled_input
+            if isinstance(up_logical_op, AbstractMap)
             else None
         )
-        if down_min_rows_per_block is not None and up_min_rows_per_block is not None:
-            min_rows_per_block = max(down_min_rows_per_block, up_min_rows_per_block)
-        elif up_min_rows_per_block is not None:
-            min_rows_per_block = up_min_rows_per_block
+        if (
+            down_min_rows_per_bundled_input is not None
+            and up_min_rows_per_bundled_input is not None
+        ):
+            min_rows_per_bundled_input = max(
+                down_min_rows_per_bundled_input, up_min_rows_per_bundled_input
+            )
+        elif up_min_rows_per_bundled_input is not None:
+            min_rows_per_bundled_input = up_min_rows_per_bundled_input
         else:
-            min_rows_per_block = down_min_rows_per_block
+            min_rows_per_bundled_input = down_min_rows_per_bundled_input
 
         target_max_block_size = self._get_merged_target_max_block_size(
             up_op.target_max_block_size, down_op.target_max_block_size
@@ -334,7 +308,7 @@ class OperatorFusionRule(Rule):
             target_max_block_size=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_block,
+            min_rows_per_bundle=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
         )
 
@@ -355,7 +329,7 @@ class OperatorFusionRule(Rule):
                 down_logical_op._fn_kwargs,
                 down_logical_op._fn_constructor_args,
                 down_logical_op._fn_constructor_kwargs,
-                min_rows_per_block,
+                min_rows_per_bundled_input,
                 compute,
                 ray_remote_args,
             )
@@ -366,7 +340,8 @@ class OperatorFusionRule(Rule):
             logical_op = AbstractMap(
                 name,
                 input_op,
-                ray_remote_args,
+                min_rows_per_bundled_input=min_rows_per_bundled_input,
+                ray_remote_args=ray_remote_args,
             )
         self._op_map[op] = logical_op
         # Return the fused physical operator.

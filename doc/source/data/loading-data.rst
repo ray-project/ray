@@ -770,14 +770,14 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
     .. tab-item:: Databricks
 
-        To read from Databricks, set the ``DATABRICKS_HOST`` environment variable to
+        To read from Databricks, set the ``DATABRICKS_TOKEN`` environment variable to
         your Databricks warehouse access token.
 
         .. code-block:: console
 
             export DATABRICKS_TOKEN=...
 
-        If you're running your program on the Databricks runtime, also set the 
+        If you're not running your program on the Databricks runtime, also set the
         ``DATABRICKS_HOST`` environment variable.
 
         .. code-block:: console
@@ -793,7 +793,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
             import ray
 
             dataset = ray.data.read_databricks_tables(
-                warehouse_id='a885ad08b64951ad',  # Databricks SQL warehouse ID
+                warehouse_id='...',  # Databricks SQL warehouse ID
                 catalog='catalog_1',  # Unity catalog name
                 schema='db_1',  # Schema name
                 query="SELECT title, score FROM movie WHERE year >= 1980",
@@ -835,6 +835,7 @@ To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the
     ds.write_bigquery(
         project_id="my_gcloud_project_id",
         dataset="destination_dataset.destination_table",
+        overwrite_table=True,
     )
 
 
@@ -926,7 +927,7 @@ Loading other datasources
 ==========================
 
 If Ray Data can't load your data, subclass
-:class:`~ray.data.datasource.Datasource`. Then, construct an instance of your custom
+:class:`~ray.data.Datasource`. Then, construct an instance of your custom
 datasource and pass it to :func:`~ray.data.read_datasource`.
 
 .. testcode::
