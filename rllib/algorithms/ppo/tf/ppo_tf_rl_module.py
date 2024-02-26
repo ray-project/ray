@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+import tree  # pip install dm_tree
+
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT, STATE_OUT
@@ -40,6 +42,11 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         the policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
+        # TODO (sven): Make this the only bahevior once PPO has been migrated
+        #  to new API stack (including EnvRunners!).
+        if self.config.model_config_dict.get("uses_new_env_runners"):
+            return self._forward_inference(batch=batch)
+
         output = {}
 
         # Shared encoder
@@ -76,3 +83,21 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
+
+    @override(PPORLModule)
+    def _compute_values(self, batch, device=None):
+        infos = batch.pop(SampleBatch.INFOS, None)
+        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
+        if infos is not None:
+            batch[SampleBatch.INFOS] = infos
+
+        # Separate vf-encoder.
+        if hasattr(self.encoder, "critic_encoder"):
+            encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
+        # Shared encoder.
+        else:
+            encoder_outs = self.encoder(batch)[ENCODER_OUT][CRITIC]
+        # Value head.
+        vf_out = self.vf(encoder_outs)
+        # Squeeze out last dimension (single node value head).
+        return tf.squeeze(vf_out, -1)

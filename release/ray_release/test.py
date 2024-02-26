@@ -3,6 +3,7 @@ import os
 import platform
 import json
 import time
+from itertools import chain
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 
@@ -118,6 +119,31 @@ class Test(dict):
                 "team": team,
             }
         )
+
+    @classmethod
+    def gen_from_s3(cls, prefix: str):
+        """
+        Obtain all tests whose names start with the given prefix from s3
+        """
+        bucket = get_global_config()["state_machine_aws_bucket"]
+        s3_client = boto3.client("s3")
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket,
+            Prefix=f"{AWS_TEST_KEY}/{prefix}",
+        )
+        files = chain.from_iterable([page.get("Contents", []) for page in pages])
+
+        return [
+            Test(
+                json.loads(
+                    s3_client.get_object(Bucket=bucket, Key=file["Key"])
+                    .get("Body")
+                    .read()
+                    .decode("utf-8")
+                )
+            )
+            for file in files
+        ]
 
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """

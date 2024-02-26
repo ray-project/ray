@@ -26,6 +26,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
@@ -695,24 +696,24 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] num_readers The number of readers that must read and release
   /// the object before the caller can write again.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
-  Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
-                                               const std::shared_ptr<Buffer> &metadata,
-                                               uint64_t data_size,
-                                               int64_t num_readers,
-                                               std::shared_ptr<Buffer> *data);
+  Status ExperimentalChannelWriteAcquire(const ObjectID &object_id,
+                                         const std::shared_ptr<Buffer> &metadata,
+                                         uint64_t data_size,
+                                         int64_t num_readers,
+                                         std::shared_ptr<Buffer> *data);
 
   /// Experimental method for mutable objects. Releases a write lock on the
   /// object, allowing readers to read. This is the equivalent of "Seal" for
   /// normal objects.
   ///
   /// \param[in] object_id The ID of the object.
-  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
+  Status ExperimentalChannelWriteRelease(const ObjectID &object_id);
 
   /// Experimental method for mutable objects. Sets the error bit, causing all
   /// future readers and writers to raise an error on acquire.
   ///
   /// \param[in] object_id The ID of the object.
-  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
+  Status ExperimentalChannelSetError(const ObjectID &object_id);
 
   /// Experimental method for mutable objects. Releases the objects, allowing them
   /// to be written again. If the caller did not previously Get the objects,
@@ -720,7 +721,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// releases the value.
   ///
   /// \param[in] object_ids The IDs of the objects.
-  Status ExperimentalMutableObjectReadRelease(const std::vector<ObjectID> &object_ids);
+  Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
+
+  Status ExperimentalChannelRegisterReader(const ObjectID &object_id);
+
+  Status ExperimentalChannelRegisterWriter(const ObjectID &object_id);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -731,7 +736,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
              const int64_t timeout_ms,
-             bool is_experimental_mutable_object,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
@@ -1178,6 +1182,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
                                             const ActorID &callee_actor_id);
 
+  int64_t GetLocalMemoryStoreBytesUsed() const;
+
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
   /// post work to the appropriate event loop.
@@ -1329,12 +1335,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Mark this worker is exiting.
   void SetIsExiting();
-
-  /// Retrieve the current statistics about tasks being received and executing.
-  /// \return an unordered_map mapping function name to list of (num_received,
-  /// num_executing, num_executed). It is a std map instead of absl due to its
-  /// interface with language bindings.
-  std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
 
   /// Add task log info for a task when it starts executing.
   ///
@@ -1632,6 +1632,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  Status ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
+                                                   bool is_writer);
+
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1672,6 +1675,24 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                  bool force_kill,
                                  bool recursive,
                                  OnCanceledCallback on_canceled);
+
+  /// Helper for Get.
+  ///
+  /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.
+  Status GetObjects(const std::vector<ObjectID> &ids,
+                    const int64_t timeout_ms,
+                    std::vector<std::shared_ptr<RayObject>> *results);
+
+  /// Helper for Get, used only to read experimental mutable objects.
+  ///
+  /// \param[in] ids IDs of the objects to get.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.
+  Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
+                                       std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -1738,6 +1759,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
+
+  std::shared_ptr<ExperimentalMutableObjectManager> experimental_mutable_object_manager_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
 

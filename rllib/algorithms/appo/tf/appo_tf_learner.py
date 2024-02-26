@@ -8,9 +8,9 @@ from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.appo.appo_learner import AppoLearner
+from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -19,10 +19,10 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 _, tf, _ = try_import_tf()
 
 
-class APPOTfLearner(AppoLearner, TfLearner):
+class APPOTfLearner(AppoLearner, ImpalaTfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner."""
 
-    @override(TfLearner)
+    @override(ImpalaTfLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -72,12 +72,15 @@ class APPOTfLearner(AppoLearner, TfLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=recurrent_seq_len,
-        )
-        bootstrap_value = bootstrap_values_time_major[-1]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -100,7 +103,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
+            bootstrap_values=bootstrap_values,
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )

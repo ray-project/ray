@@ -1,187 +1,384 @@
 import os
 import sys
 import unittest
+from collections import defaultdict
 
 # coding: utf-8
-from typing import Dict, Set
-from unittest.mock import patch
-
 import pytest
 
-from ray.autoscaler.v2.instance_manager.instance_manager import InstanceUtil
-from ray.autoscaler.v2.schema import InvalidInstanceStatusError
-from ray.core.generated.instance_manager_pb2 import Instance
+from mock import MagicMock
+
+from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
+from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
+from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage, StoreStatus
+from ray.autoscaler.v2.tests.util import MockSubscriber
+from ray.core.generated.instance_manager_pb2 import (
+    GetInstanceManagerStateRequest,
+    Instance,
+    InstanceUpdateEvent,
+    StatusCode,
+    UpdateInstanceManagerStateRequest,
+)
 
 
-def exists_path(
-    src: Instance.InstanceStatus,
-    dst: Instance.InstanceStatus,
-    graphs: Dict["Instance.InstanceStatus", Set["Instance.InstanceStatus"]],
-) -> bool:
-    # BFS search from src to dst to see if there is a path
-    # from src to dst. There's no path if src == dst.
-    visited = set()
-    queue = [src]
-    if src == dst:
-        return False
-    while queue:
-        node = queue.pop(0)
-        if node not in visited:
-            visited.add(node)
-            queue.extend(graphs[node])
-    return dst in visited
+class InstanceManagerTest(unittest.TestCase):
+    def test_instances_version_mismatch(self):
+        ins_storage = MagicMock()
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
+        # Version mismatch on reading from the storage.
+        ins_storage.get_instances.return_value = ({}, 1)
 
+        update = InstanceUpdateEvent(
+            instance_id="id-1",
+            new_instance_status=Instance.QUEUED,
+            instance_type="type-1",
+        )
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=0,
+                updates=[update],
+            )
+        )
+        assert reply.status.code == StatusCode.VERSION_MISMATCH
+        assert len(subscriber.events) == 0
 
-class InstanceUtilTest(unittest.TestCase):
-    def test_basic(self):
-        # New instance.
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
-        assert instance.instance_id == "i-123"
-        assert instance.instance_type == "type_1"
-        assert instance.launch_request_id == "rq-1"
-        assert instance.status == Instance.QUEUED
+        # Version OK.
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=1,
+                updates=[update],
+            )
+        )
+        assert reply.status.code == StatusCode.OK
+        assert len(subscriber.events) == 1
+        assert subscriber.events[0].new_instance_status == Instance.QUEUED
 
-        # Set status.
-        InstanceUtil.set_status(instance, Instance.REQUESTED)
-        assert instance.status == Instance.REQUESTED
+        # Version mismatch when writing to the storage (race happens)
+        ins_storage.batch_upsert_instances.return_value = StoreStatus(
+            False, 2  # No longer 1
+        )
+        subscriber.clear()
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=1,
+                updates=[update],
+            )
+        )
+        assert reply.status.code == StatusCode.VERSION_MISMATCH
+        assert len(subscriber.events) == 0
 
-        # Set status with invalid status.
-        with pytest.raises(InvalidInstanceStatusError):
-            InstanceUtil.set_status(instance, Instance.RAY_RUNNING)
+        # Non-version mismatch error.
+        ins_storage.batch_upsert_instances.return_value = StoreStatus(
+            False, 1  # Still 1
+        )
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=1,
+                updates=[update],
+            )
+        )
+        assert reply.status.code == StatusCode.UNKNOWN_ERRORS
+        assert len(subscriber.events) == 0
 
-        with pytest.raises(InvalidInstanceStatusError):
-            InstanceUtil.set_status(instance, Instance.UNKNOWN)
+    def test_get_and_updates(self):
+        ins_storage = InstanceStorage(
+            "cluster-id",
+            InMemoryStorage(),
+        )
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
 
-    def test_transition_graph(self):
-        # Assert on each edge in the graph.
-        all_status = set(Instance.InstanceStatus.values())
+        # Empty storage.
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert reply.status.code == StatusCode.OK
+        assert list(reply.state.instances) == []
 
-        g = InstanceUtil.get_valid_transitions()
+        # Launch nodes.
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=0,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_type="type-1",
+                        instance_id="id-1",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                    InstanceUpdateEvent(
+                        instance_type="type-2",
+                        instance_id="id-2",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                    InstanceUpdateEvent(
+                        instance_type="type-2",
+                        instance_id="id-3",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                ],
+            )
+        )
+        assert reply.status.code == StatusCode.OK
+        assert len(subscriber.events) == 3
+        for e in subscriber.events:
+            assert e.new_instance_status == Instance.QUEUED
 
-        assert g[Instance.QUEUED] == {Instance.REQUESTED}
-        all_status.remove(Instance.QUEUED)
+        # Get launched nodes.
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert reply.status.code == StatusCode.OK
+        assert len(reply.state.instances) == 3
 
-        assert g[Instance.REQUESTED] == {Instance.ALLOCATED, Instance.ALLOCATION_FAILED}
-        all_status.remove(Instance.REQUESTED)
+        instance_ids = [ins.instance_id for ins in reply.state.instances]
 
-        assert g[Instance.ALLOCATED] == {
-            Instance.RAY_INSTALLING,
-            Instance.RAY_RUNNING,
-            Instance.STOPPING,
-            Instance.STOPPED,
-        }
-        all_status.remove(Instance.ALLOCATED)
+        types_count = defaultdict(int)
+        for ins in reply.state.instances:
+            types_count[ins.instance_type] += 1
+            assert ins.status == Instance.QUEUED
 
-        assert g[Instance.RAY_INSTALLING] == {
-            Instance.RAY_RUNNING,
-            Instance.RAY_INSTALL_FAILED,
-            Instance.RAY_STOPPED,
-            Instance.STOPPED,
-        }
-        all_status.remove(Instance.RAY_INSTALLING)
+        assert types_count["type-1"] == 1
+        assert types_count["type-2"] == 2
 
-        assert g[Instance.RAY_RUNNING] == {
-            Instance.RAY_STOPPING,
-            Instance.RAY_STOPPED,
-            Instance.STOPPED,
-        }
-        all_status.remove(Instance.RAY_RUNNING)
+        # Update node status.
+        subscriber.clear()
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=1,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id=instance_ids[0],
+                        new_instance_status=Instance.REQUESTED,
+                        instance_type="type-1",
+                        launch_request_id="l1",
+                    ),
+                    InstanceUpdateEvent(
+                        instance_id=instance_ids[1],
+                        new_instance_status=Instance.REQUESTED,
+                        launch_request_id="l1",
+                        instance_type="type-1",
+                    ),
+                ],
+            )
+        )
 
-        assert g[Instance.RAY_STOPPING] == {Instance.RAY_STOPPED, Instance.STOPPED}
-        all_status.remove(Instance.RAY_STOPPING)
+        assert reply.status.code == StatusCode.OK
+        assert len(subscriber.events) == 2
+        for e in subscriber.events:
+            assert e.new_instance_status == Instance.REQUESTED
 
-        assert g[Instance.RAY_STOPPED] == {Instance.STOPPED, Instance.STOPPING}
-        all_status.remove(Instance.RAY_STOPPED)
+        # Get updated nodes.
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert reply.status.code == StatusCode.OK
+        assert len(reply.state.instances) == 3
 
-        assert g[Instance.STOPPING] == {Instance.STOPPED}
-        all_status.remove(Instance.STOPPING)
+        types_count = defaultdict(int)
+        for ins in reply.state.instances:
+            types_count[ins.instance_type] += 1
+            if ins.instance_id in [instance_ids[0], instance_ids[1]]:
+                assert ins.status == Instance.REQUESTED
+            else:
+                assert ins.status == Instance.QUEUED
 
-        assert g[Instance.STOPPED] == set()
-        all_status.remove(Instance.STOPPED)
+        # Invalid instances status update.
+        subscriber.clear()
+        with pytest.raises(AssertionError):
+            reply = im.update_instance_manager_state(
+                UpdateInstanceManagerStateRequest(
+                    expected_version=2,
+                    updates=[
+                        InstanceUpdateEvent(
+                            instance_id=instance_ids[2],
+                            # Not requested yet.
+                            new_instance_status=Instance.RAY_RUNNING,
+                        ),
+                    ],
+                )
+            )
+        assert len(subscriber.events) == 0
 
-        assert g[Instance.ALLOCATION_FAILED] == {Instance.QUEUED}
-        all_status.remove(Instance.ALLOCATION_FAILED)
+        # Invalid versions.
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=0,  # Invalid version, outdated.
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id=instance_ids[2],
+                        new_instance_status=Instance.REQUESTED,
+                        instance_type="type-2",
+                    ),
+                ],
+            )
+        )
+        assert reply.status.code == StatusCode.VERSION_MISMATCH
+        assert len(subscriber.events) == 0
 
-        assert g[Instance.RAY_INSTALL_FAILED] == {Instance.STOPPED, Instance.STOPPING}
-        all_status.remove(Instance.RAY_INSTALL_FAILED)
+    def test_insert(self):
+        ins_storage = InstanceStorage(
+            "cluster-id",
+            InMemoryStorage(),
+        )
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
 
-        assert g[Instance.UNKNOWN] == set()
-        all_status.remove(Instance.UNKNOWN)
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=0,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_type="type-1",
+                        instance_id="id-1",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                    InstanceUpdateEvent(
+                        instance_id="id-2",
+                        new_instance_status=Instance.TERMINATING,
+                        cloud_instance_id="cloud-id-2",
+                    ),
+                    InstanceUpdateEvent(
+                        instance_id="id-3",
+                        new_instance_status=Instance.ALLOCATED,
+                        cloud_instance_id="cloud-id-3",
+                    ),
+                ],
+            )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 3
+        instance_by_ids = {ins.instance_id: ins for ins in reply.state.instances}
+        assert instance_by_ids["id-1"].status == Instance.QUEUED
+        assert instance_by_ids["id-1"].instance_type == "type-1"
+        assert instance_by_ids["id-2"].status == Instance.TERMINATING
+        assert instance_by_ids["id-3"].status == Instance.ALLOCATED
+        assert instance_by_ids["id-3"].cloud_instance_id == "cloud-id-3"
+        version = reply.state.version
 
-        assert len(all_status) == 0
-
-    @patch("time.time_ns")
-    def test_status_time(self, mock_time):
-        mock_time.return_value = 1
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
-        # OK
-        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED)[0] == 1
-        # No filter.
-        assert InstanceUtil.get_status_times_ns(
-            instance,
-        ) == [1]
-
-        # Missing status returns empty list
-        assert InstanceUtil.get_status_times_ns(instance, Instance.REQUESTED) == []
-
-        # Multiple status.
-        mock_time.return_value = 2
-        InstanceUtil.set_status(instance, Instance.REQUESTED)
-        mock_time.return_value = 3
-        InstanceUtil.set_status(instance, Instance.ALLOCATION_FAILED)
-        mock_time.return_value = 4
-        InstanceUtil.set_status(instance, Instance.QUEUED)
-        assert InstanceUtil.get_status_times_ns(instance, Instance.QUEUED) == [1, 4]
-
-    def test_is_cloud_instance_allocated(self):
-        all_status = set(Instance.InstanceStatus.values())
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
-        positive_status = {
-            Instance.ALLOCATED,
-            Instance.RAY_INSTALLING,
-            Instance.RAY_INSTALL_FAILED,
-            Instance.RAY_RUNNING,
-            Instance.RAY_STOPPING,
-            Instance.RAY_STOPPED,
-            Instance.STOPPING,
-        }
-        for s in positive_status:
-            instance.status = s
-            assert InstanceUtil.is_cloud_instance_allocated(instance)
-            all_status.remove(s)
-
-        # Unknown not possible.
-        all_status.remove(Instance.UNKNOWN)
-        for s in all_status:
-            instance.status = s
-            assert not InstanceUtil.is_cloud_instance_allocated(instance)
-
-    def test_is_ray_running_reachable(self):
-        all_status = set(Instance.InstanceStatus.values())
-        instance = InstanceUtil.new_instance("i-123", "type_1", "rq-1")
-        positive_status = {
+        # With invalid statuses
+        all_statuses = set(Instance.InstanceStatus.values())
+        non_insertable_statuses = all_statuses - {
             Instance.QUEUED,
-            Instance.REQUESTED,
+            Instance.TERMINATING,
             Instance.ALLOCATED,
-            Instance.RAY_INSTALLING,
-            Instance.ALLOCATION_FAILED,
         }
-        for s in positive_status:
-            instance.status = s
-            assert InstanceUtil.is_ray_running_reachable(instance)
-            assert exists_path(
-                s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
-            )
-            all_status.remove(s)
 
-        # Unknown not possible.
-        all_status.remove(Instance.UNKNOWN)
-        for s in all_status:
-            instance.status = s
-            assert not InstanceUtil.is_ray_running_reachable(instance)
-            assert not exists_path(
-                s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
+        for status in non_insertable_statuses:
+            subscriber.clear()
+            with pytest.raises(AssertionError):
+                reply = im.update_instance_manager_state(
+                    UpdateInstanceManagerStateRequest(
+                        expected_version=version,
+                        updates=[
+                            InstanceUpdateEvent(
+                                instance_id="id-999",
+                                new_instance_status=status,
+                            ),
+                        ],
+                    )
+                )
+            assert len(subscriber.events) == 0
+
+    def test_apply_update(self):
+        ins_storage = InstanceStorage(
+            "cluster-id",
+            InMemoryStorage(),
+        )
+        subscriber = MockSubscriber()
+        im = InstanceManager(
+            ins_storage, instance_status_update_subscribers=[subscriber]
+        )
+
+        # Insert a new instance.
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=0,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_type="type-1",
+                        instance_id="id-1",
+                        new_instance_status=Instance.QUEUED,
+                    ),
+                ],
             )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 1
+        assert reply.state.instances[0].status == Instance.QUEUED
+        assert reply.state.instances[0].instance_type == "type-1"
+
+        # Request
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=1,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id="id-1",
+                        new_instance_status=Instance.REQUESTED,
+                        launch_request_id="l1",
+                        instance_type="type-1",
+                    ),
+                ],
+            )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 1
+        assert reply.state.instances[0].status == Instance.REQUESTED
+        assert reply.state.instances[0].launch_request_id == "l1"
+
+        # ALLOCATED
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=2,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id="id-1",
+                        new_instance_status=Instance.ALLOCATED,
+                        cloud_instance_id="cloud-id-1",
+                    ),
+                ],
+            )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 1
+        assert reply.state.instances[0].status == Instance.ALLOCATED
+        assert reply.state.instances[0].cloud_instance_id == "cloud-id-1"
+
+        # RAY_RUNNING
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=3,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id="id-1",
+                        new_instance_status=Instance.RAY_RUNNING,
+                        ray_node_id="ray-node-1",
+                    ),
+                ],
+            )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 1
+        assert reply.state.instances[0].status == Instance.RAY_RUNNING
+        assert reply.state.instances[0].node_id == "ray-node-1"
+
+        # TERMINATED
+        im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=4,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id="id-1",
+                        new_instance_status=Instance.TERMINATED,
+                    ),
+                ],
+            )
+        )
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        assert len(reply.state.instances) == 1
+        assert reply.state.instances[0].status == Instance.TERMINATED
+        assert reply.state.instances[0].cloud_instance_id == ""
 
 
 if __name__ == "__main__":

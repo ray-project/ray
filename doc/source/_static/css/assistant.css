@@ -89,13 +89,30 @@
 
 .chatContentContainer {
     padding: 15px;
-    max-height: calc(100% - 80px);
+    max-height: calc(100% - 100px);
     overflow-y: auto;
 }
 
 .chatContentContainer input {
     margin-top: 10px;
     margin-bottom: 10px;
+}
+
+hr {
+  border: none;
+  height: 1px;
+  /* Set the hr color */
+  color: #333;  /* old IE */
+  background-color: #333;  /* Modern Browsers */
+}
+
+#result * {
+  overflow-anchor: none;
+}
+
+#anchor {
+  overflow-anchor: auto;
+  height: 1px;
 }
 
 #result{

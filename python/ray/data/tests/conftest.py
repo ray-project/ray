@@ -16,7 +16,6 @@ from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -151,27 +150,6 @@ def local_path(tmp_path, data_dir):
 @pytest.fixture(scope="function")
 def local_fs():
     yield pa.fs.LocalFileSystem()
-
-
-@pytest.fixture(scope="function")
-def mock_block_write_path_provider():
-    class MockBlockWritePathProvider(BlockWritePathProvider):
-        def _get_write_path_for_block(
-            self,
-            base_path,
-            *,
-            filesystem=None,
-            dataset_uuid=None,
-            task_index=None,
-            block_index=None,
-            file_format=None,
-        ):
-            suffix = (
-                f"{task_index:06}_{block_index:06}_{dataset_uuid}.test.{file_format}"
-            )
-            return posixpath.join(base_path, suffix)
-
-    yield MockBlockWritePathProvider()
 
 
 @pytest.fixture(scope="function")
@@ -339,30 +317,6 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture
-def enable_optimizer():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = True
-    ctx.optimizer_enabled = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.optimizer_enabled = original_optimizer
-
-
-@pytest.fixture
-def enable_streaming_executor():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    use_streaming_executor = ctx.use_streaming_executor
-    ctx.new_execution_backend = True
-    ctx.use_streaming_executor = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.use_streaming_executor = use_streaming_executor
-
-
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
@@ -450,7 +404,7 @@ def disable_pyarrow_version_check():
 
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
-def stage_two_block():
+def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],

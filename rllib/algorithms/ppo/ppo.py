@@ -18,8 +18,6 @@ import tree
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -40,7 +38,6 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
 )
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -122,6 +119,8 @@ class PPOConfig(AlgorithmConfig):
         self.kl_coeff = 0.2
         self.kl_target = 0.01
         self.sgd_minibatch_size = 128
+        # Simple logic for now: If None, use `train_batch_size`.
+        self.mini_batch_size_per_learner = None
         self.num_sgd_iter = 30
         self.shuffle_sequences = True
         self.vf_loss_coeff = 1.0
@@ -203,6 +202,7 @@ class PPOConfig(AlgorithmConfig):
         use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
+        mini_batch_size_per_learner: Optional[int] = NotProvided,
         sgd_minibatch_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         shuffle_sequences: Optional[bool] = NotProvided,
@@ -231,8 +231,20 @@ class PPOConfig(AlgorithmConfig):
             use_kl_loss: Whether to use the KL-term in the loss function.
             kl_coeff: Initial coefficient for KL divergence.
             kl_target: Target value for KL divergence.
+            mini_batch_size_per_learner: Only use if new API stack is enabled.
+                The mini batch size per Learner worker. This is the
+                batch size that each Learner worker's training batch (whose size is
+                `s`elf.train_batch_size_per_learner`) will be split into. For example,
+                if the train batch size per Learner worker is 4000 and the mini batch
+                size per Learner worker is 400, the train batch will be split into 10
+                equal sized chunks (or "mini batches"). Each such mini batch will be
+                used for one SGD update. Overall, the train batch on each Learner
+                worker will be traversed `self.num_sgd_iter` times. In the above
+                example, if `self.num_sgd_iter` is 5, we will altogether perform 50
+                (10x5) SGD updates per Learner update step.
             sgd_minibatch_size: Total SGD batch size across all devices for SGD.
-                This defines the minibatch size within each epoch.
+                This defines the minibatch size within each epoch. Deprecated on the
+                new API stack (use `mini_batch_size_per_learner` instead).
             num_sgd_iter: Number of SGD iterations in each outer loop (i.e., number of
                 epochs to execute per train batch).
             shuffle_sequences: Whether to shuffle sequences in the batch when training
@@ -267,6 +279,8 @@ class PPOConfig(AlgorithmConfig):
             self.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
+        if mini_batch_size_per_learner is not NotProvided:
+            self.mini_batch_size_per_learner = mini_batch_size_per_learner
         if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
@@ -298,7 +312,8 @@ class PPOConfig(AlgorithmConfig):
         super().validate()
 
         # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
-        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        # `rollout_fragment_length` and `train_batch_size_per_learner` to avoid user
+        # confusion.
         # TODO (sven): Make rollout_fragment_length a property and create a private
         #  attribute to store (possibly) user provided value (or "auto") in. Deprecate
         #  `self.get_rollout_fragment_length()`.
@@ -307,9 +322,10 @@ class PPOConfig(AlgorithmConfig):
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
         # each `num_sgd_iter`).
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        if self.sgd_minibatch_size > self.train_batch_size:
+        if (
+            not self._enable_new_api_stack
+            and self.sgd_minibatch_size > self.train_batch_size
+        ):
             raise ValueError(
                 f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
@@ -317,6 +333,16 @@ class PPOConfig(AlgorithmConfig):
                 f"is iterated over (used for updating the policy) {self.num_sgd_iter} "
                 "times."
             )
+        elif self._enable_new_api_stack:
+            mbs = self.mini_batch_size_per_learner or self.sgd_minibatch_size
+            tbs = self.train_batch_size_per_learner or self.train_batch_size
+            if mbs > tbs:
+                raise ValueError(
+                    f"`mini_batch_size_per_learner` ({mbs}) must be <= "
+                    f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
+                    f" will be split into {mbs} chunks, each of which is iterated over "
+                    f"(used for updating the policy) {self.num_sgd_iter} times."
+                )
 
         # Episodes may only be truncated (and passed into PPO's
         # `postprocessing_fn`), iff generalized advantage estimation is used
@@ -376,57 +402,122 @@ class PPO(Algorithm):
             return PPOTF2Policy
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
-        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
-            self.config.env_runner_cls, RolloutWorker
-        )
+    def training_step(self):
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self.config.uses_new_env_runners:
+            return self._training_step_new_api_stack()
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
+        else:
+            return self._training_step_old_and_hybrid_api_stacks()
 
+    def _training_step_new_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if use_rollout_worker:
-                if self.config.count_steps_by == "agent_steps":
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config.train_batch_size,
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size,
-                    )
-            # New Episode-returning EnvRunner API.
+            # TODO (sven): Make this also use `synchronous_parallel_sample`.
+            #  Which needs to be enhanced to be able to handle episodes as well.
+            #  Also, this would make this sampling with the EnvRunners fault
+            #  tolerant, which it is NOT right now.
+            if self.workers.num_remote_workers() == 0:
+                episodes: List[SingleAgentEpisode] = [
+                    self.workers.local_worker().sample()
+                ]
             else:
-                if self.workers.num_remote_workers() <= 0:
-                    episodes: List[SingleAgentEpisode] = [
-                        self.workers.local_worker().sample()
-                    ]
-                else:
-                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
-                        lambda w: w.sample(), local_worker=False
-                    )
-                # Perform PPO postprocessing on a (flattened) list of Episodes.
-                postprocessed_episodes: List[
-                    SingleAgentEpisode
-                ] = self.postprocess_episodes(tree.flatten(episodes))
-                # Convert list of postprocessed Episodes into a single sample batch.
-                train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
-                    postprocessed_episodes
+                episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
+                    lambda w: w.sample(), local_worker=False
                 )
+            episodes = tree.flatten(episodes)
+            # TODO (sven): single- vs multi-agent.
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
 
-        train_batch = train_batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+        # Perform a train step on the collected batch.
+        train_results = self.learner_group.update_from_episodes(
+            episodes=episodes,
+            minibatch_size=(
+                self.config.mini_batch_size_per_learner
+                or self.config.sgd_minibatch_size
+            ),
+            num_iters=self.config.num_sgd_iter,
+        )
 
-        # Standardize advantages.
-        train_batch = standardize_fields(train_batch, ["advantages"])
-        # Train
+        # The train results's loss keys are pids to their loss values. But we also
+        # return a total_loss key at the same level as the pid keys. So we need to
+        # subtract that to get the total set of pids to update.
+        # TODO (Kourosh): We should also not be using train_results as a message
+        #  passing medium to infer which policies to update. We could use
+        #  policies_to_train variable that is given by the user to infer this.
+        policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            if self.workers.num_remote_workers() > 0:
+                self.workers.sync_weights(
+                    # Sync weights from learner_group to all rollout workers.
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=policies_to_update,
+                    global_vars=None,
+                )
+            else:
+                weights = self.learner_group.get_weights()
+                self.workers.local_worker().set_weights(weights)
+
+        kl_dict = {}
+        if self.config.use_kl_loss:
+            for pid in policies_to_update:
+                kl = train_results[pid][LEARNER_RESULTS_KL_KEY]
+                kl_dict[pid] = kl
+                if np.isnan(kl):
+                    logger.warning(
+                        f"KL divergence for Module {pid} is non-finite, this will "
+                        "likely destabilize your model and the training process. "
+                        "Action(s) in a specific state have near-zero probability. "
+                        "This can happen naturally in deterministic environments "
+                        "where the optimal policy has zero mass for a specific "
+                        "action. To fix this issue, consider setting `kl_coeff` to "
+                        "0.0 or increasing `entropy_coeff` in your config."
+                    )
+
+        # triggers a special update method on RLOptimizer to update the KL values.
+        additional_results = self.learner_group.additional_update(
+            module_ids_to_update=policies_to_update,
+            sampled_kl_values=kl_dict,
+            timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+        )
+        for pid, res in additional_results.items():
+            train_results[pid].update(res)
+
+        return train_results
+
+    def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
+        # Collect SampleBatches from sample workers until we have a full batch.
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.total_train_batch_size,
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_env_steps=self.config.total_train_batch_size,
+                )
+            train_batch = train_batch.as_multi_agent()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+            self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+            # Standardize advantages.
+            train_batch = standardize_fields(train_batch, ["advantages"])
+
+        # Perform a train step on the collected batch.
         if self.config._enable_new_api_stack:
-            # TODO (Kourosh) Clearly define what train_batch_size
-            #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
+            mini_batch_size_per_learner = (
+                self.config.mini_batch_size_per_learner
+                or self.config.sgd_minibatch_size
+            )
             train_results = self.learner_group.update_from_batch(
                 batch=train_batch,
-                minibatch_size=self.config.sgd_minibatch_size,
+                minibatch_size=mini_batch_size_per_learner,
                 num_iters=self.config.num_sgd_iter,
             )
 
@@ -446,18 +537,15 @@ class PPO(Algorithm):
         else:
             policies_to_update = list(train_results.keys())
 
-        # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        #  train_results.
-        if not use_rollout_worker:
-            global_vars = None
-        else:
-            global_vars = {
-                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-                "num_grad_updates_per_policy": {
-                    pid: self.workers.local_worker().policy_map[pid].num_grad_updates
-                    for pid in policies_to_update
-                },
-            }
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            # TODO (sven): num_grad_updates per each policy should be
+            #  accessible via `train_results` (and get rid of global_vars).
+            "num_grad_updates_per_policy": {
+                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                for pid in policies_to_update
+            },
+        }
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
@@ -550,24 +638,3 @@ class PPO(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-    def postprocess_episodes(
-        self, episodes: List[SingleAgentEpisode]
-    ) -> List[SingleAgentEpisode]:
-        """Calculate advantages and value targets."""
-        from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
-
-        # Bootstrap values.
-        postprocessed_episodes = []
-        # TODO (simon): Remove somehow the double list.
-        # episodes = [episode for episode_list in episodes for episode in episode_list]
-        for episode in episodes:
-            # TODO (sven): Calling 'module' on the 'EnvRunner' only works
-            #  for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
-            postprocessed_episodes.append(
-                compute_gae_for_episode(
-                    episode, self.config, self.workers.local_worker().module
-                )
-            )
-
-        return postprocessed_episodes

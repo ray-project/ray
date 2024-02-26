@@ -18,6 +18,8 @@ class WindowsContainer(Container):
                 f"BASE_IMAGE={self._get_docker_image()}",
                 "--build-arg",
                 f"BUILDKITE_BAZEL_CACHE_URL={bazel_cache}",
+                "--build-arg",
+                f"BUILDKITE_PIPELINE_ID={os.environ.get('BUILDKITE_PIPELINE_ID')}",
                 "-t",
                 self._get_docker_image(),
                 "-f",

@@ -11,31 +11,54 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 
+filter_out_flaky_tests() {
+  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+}
+
+select_flaky_tests() {
+  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
+}
+
+run_small_and_large_flaky_tests() {
+  # shellcheck disable=SC2046
+  bazel query 'attr(tags, "client_tests|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2", tests(//python/ray/tests/...))' | select_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
+}
+
+run_medium_flaky_tests() {
+  # shellcheck disable=SC2046
+  bazel query 'attr(tags, "medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
+}
+
 run_small_test() {
   # shellcheck disable=SC2046
-  bazel test $(./ci/run/bazel_export_options) --config=ci \
-    --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-    --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
-    --test_tag_filters=client_tests,small_size_python_tests \
-    -- python/ray/tests/...
+  bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
 }
 
 run_medium_a_j_test() {
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j \
-      python/ray/tests/...
+  bazel query 'attr(tags, "medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
 }
 
 run_medium_k_z_test() {
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z \
-      python/ray/tests/...
+  bazel query 'attr(tags, "medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
 }
 
 run_large_test() {
-  ./ci/ci.sh test_large
+  # shellcheck disable=SC2046
+  bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
+      --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
 }
 
 run_core_dashboard_test() {
@@ -46,7 +69,7 @@ run_core_dashboard_test() {
   bazel test --config=ci --dynamic_mode=off \
     --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
     --test_tag_filters=-post_wheel_build -- \
-    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/... -core_worker_test
+    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...
 }
 
 run_ray_cpp_and_java() {
@@ -58,7 +81,6 @@ run_ray_cpp_and_java() {
 
 _prelude() {
   rm -rf /tmp/bazel_event_logs
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
@@ -67,6 +89,10 @@ _prelude() {
 }
 
 _epilogue() {
+  # Upload test results
+  ./ci/build/upload_build_info.sh
+  # Assign all macos tests to core for now
+  bazel run //ci/ray_ci/automation:test_db_bot -- core /tmp/bazel_event_logs
   # Persist ray logs
   mkdir -p /tmp/artifacts/.ray/
   tar -czf /tmp/artifacts/.ray/logs.tgz /tmp/ray

@@ -58,7 +58,11 @@ class ProgressBar:
             if ctx.use_ray_tqdm:
                 self._bar = tqdm_ray.tqdm(total=total, position=position)
             else:
-                self._bar = tqdm.tqdm(total=total, position=position)
+                self._bar = tqdm.tqdm(
+                    total=total,
+                    position=position,
+                    dynamic_ncols=True,
+                )
             self._bar.set_description(self._desc)
         else:
             global needs_warning

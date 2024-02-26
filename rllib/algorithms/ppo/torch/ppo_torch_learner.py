@@ -9,7 +9,6 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
-from ray.rllib.utils.torch_utils import sequence_mask
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -41,25 +40,19 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
-        # TODO (Kourosh): We may or may not user module_id. For example if we have an
-        # agent based learning rate scheduler, we may want to use module_id to get the
-        # learning rate for that agent.
 
-        # RNN case: Mask away 0-padded chunks at end of time axis.
-        if self.module[module_id].is_stateful():
-            # In the RNN case, we expect incoming tensors to be padded to the maximum
-            # sequence length. We infer the max sequence length from the actions
-            # tensor.
-            maxlen = torch.max(batch[SampleBatch.SEQ_LENS])
-            mask = sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen=maxlen)
-            num_valid = torch.sum(mask)
+        # Possibly apply masking to some sub loss terms and to the total loss term
+        # at the end. Masking could be used for RNN-based model (zero padded `batch`)
+        # and for PPO's batched value function (and bootstrap value) computations,
+        # for which we add an additional (artificial) timestep to each episode to
+        # simplify the actual computation.
+        if "loss_mask" in batch:
+            num_valid = torch.sum(batch["loss_mask"])
 
-            def possibly_masked_mean(t):
-                return torch.sum(t[mask]) / num_valid
+            def possibly_masked_mean(data_):
+                return torch.sum(data_[batch["loss_mask"]]) / num_valid
 
-        # non-RNN case: No masking.
         else:
-            mask = None
             possibly_masked_mean = torch.mean
 
         action_dist_class_train = (

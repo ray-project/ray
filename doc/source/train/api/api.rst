@@ -28,6 +28,7 @@ PyTorch
     :toctree: doc/
 
     ~train.torch.get_device
+    ~train.torch.get_devices
     ~train.torch.prepare_model
     ~train.torch.prepare_data_loader
     ~train.torch.enable_reproducibility
@@ -95,6 +96,7 @@ XGBoost
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
+    ~train.xgboost.RayTrainReportCallback
 
 
 LightGBM
@@ -105,6 +107,7 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.RayTrainReportCallback
 
 
 .. _ray-train-configs-api:

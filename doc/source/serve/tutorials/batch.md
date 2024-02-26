@@ -1,9 +1,9 @@
 (serve-batch-tutorial)=
 
-# Batching Tutorial
+# Serve a Text Generator with Request Batching
 
-In this guide, we will deploy a simple text generator that takes in
-a batch of queries and processes them at once. In particular, we show:
+This example deploys a simple text generator that takes in
+a batch of queries and processes them at once. In particular, it shows:
 
 - How to implement and deploy a Ray Serve deployment that accepts batches.
 - How to configure the batch size.
@@ -15,7 +15,7 @@ For _offline_ batch inference with large datasets, see [batch inference with Ray
 
 
 ## Define the Deployment
-Open a new Python file called `tutorial_batch.py`. First, let's import Ray Serve and some other helpers.
+Open a new Python file called `tutorial_batch.py`. First, import Ray Serve and some other helpers.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py
 :end-before: __doc_import_end__
@@ -23,8 +23,8 @@ Open a new Python file called `tutorial_batch.py`. First, let's import Ray Serve
 ```
 
 You can use the `@serve.batch` decorator to annotate a function or a method.
-This annotation will automatically cause calls to the function to be batched together.
-The function must handle a list of objects and will be called with a single object.
+This annotation automatically causes calls to the function to be batched together.
+The function must handle a list of objects and is called with a single object.
 This function must also be `async def` so that you can handle multiple queries concurrently:
 
 ```python
@@ -33,12 +33,12 @@ async def my_batch_handler(self, requests: List):
     pass
 ```
 
-This batch handler can then be called from another `async def` method in your deployment.
-These calls will be batched and executed together, but return an individual result as if
+The batch handler can then be called from another `async def` method in your deployment.
+These calls together are batched and executed together, but return an individual result as if
 they were a normal function call:
 
 ```python
-class MyBackend:
+class BatchingDeployment:
     @serve.batch
     async def my_batch_handler(self, requests: List):
         results = []
@@ -47,19 +47,19 @@ class MyBackend:
         return results
 
     async def __call__(self, request):
-        await self.my_batch_handler(request)
+        return await self.my_batch_handler(request)
 ```
 
 :::{note}
 By default, Ray Serve performs *opportunistic batching*. This means that as
-soon as the batch handler is called, the method will be executed without
+soon as the batch handler is called, the method is executed without
 waiting for a full batch. If there are more queries available after this call
-finishes, a larger batch may be executed. This behavior can be tuned using the
+finishes, the larger batch may be executed. You can tune this behavior using the
 `batch_wait_timeout_s` option to `@serve.batch` (defaults to 0). Increasing this
 timeout may improve throughput at the cost of latency under low load.
 :::
 
-Let's define a deployment that takes in a list of input strings and runs 
+Next, define a deployment that takes in a list of input strings and runs 
 vectorized text generation on the inputs.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py
@@ -67,9 +67,9 @@ vectorized text generation on the inputs.
 :start-after: __doc_define_servable_begin__
 ```
 
-Let's prepare to deploy the deployment. Note that in the `@serve.batch` decorator, we
-are specifying the maximum batch size via `max_batch_size=4`. This option limits
-the maximum possible batch size that will be executed at once.
+Next, prepare to deploy the deployment. Note that in the `@serve.batch` decorator, you
+are specifying the maximum batch size with `max_batch_size=4`. This option limits
+the maximum possible batch size that Ray Serve executes at once.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py
 :end-before: __doc_deploy_end__
@@ -82,7 +82,7 @@ Deploy the deployment by running the following through the terminal.
 $ serve run tutorial_batch:generator
 ```
 
-Let's define a [Ray remote task](ray-remote-functions) to send queries in
+Define a [Ray remote task](ray-remote-functions) to send queries in
 parallel. While Serve is running, open a separate terminal window, and run the 
 following in an interactive Python shell or a separate Python script:
 
@@ -96,7 +96,7 @@ def send_query(text):
     resp = requests.get("http://localhost:8000/?text={}".format(text))
     return resp.text
 
-# Let's use Ray to send all queries in parallel
+# Use Ray to send all queries in parallel
 texts = [
     'Once upon a time,',
     'Hi my name is Lewis and I like to',
@@ -112,9 +112,9 @@ results = ray.get([send_query.remote(text) for text in texts])
 print("Result returned:", results)
 ```
 
-You should get an output like the following. As you can see, the first batch has a 
-batch size of 1, and the subsequent queries have a batch size of 4. Even though each 
-query is issued independently, Ray Serve was able to evaluate them in batches.
+You should get an output like the following. The first batch has a 
+batch size of 1, and the subsequent queries have a batch size of 4. Even though the client script issues each 
+query independently, Ray Serve evaluates them in batches.
 ```python
 (pid=...) Our input array has length: 1
 (pid=...) Our input array has length: 4
@@ -141,11 +141,11 @@ Result returned: [
 ```
 
 ## Deploy the Deployment using Python API
-What if you want to evaluate a whole batch in Python? Ray Serve allows you to send
-queries via the Python API. A batch of queries can either come from the web server
+If you want to evaluate a whole batch in Python, Ray Serve allows you to send
+queries with the Python API. A batch of queries can either come from the web server
 or the Python API.
 
-To query the deployment via the Python API, we can use `serve.run()`, which is part
+To query the deployment with the Python API, use `serve.run()`, which is part
 of the Python API, instead of running `serve run` from the console. Add the following
 to the Python script `tutorial_batch.py`:
 
@@ -180,36 +180,9 @@ results = [r.result() for r in responses]
 print("Result batch is", results)
 ```
 
-Finally, let's run the script.
+Finally, run the script.
 ```console
 $ python tutorial_batch.py
 ```
 
-You should get a similar output like before!
-
-## Troubleshooting
-
-If you see the following error:
-
-```console
-TypeError: Descriptors cannot not be created directly.
-    If this call came from a _pb2.py file, your generated code is out of date and must be regenerated with protoc >= 3.19.0.
-    If you cannot immediately regenerate your protos, some other possible workarounds are:   
-     1. Downgrade the protobuf package to 3.20.x or lower.
-     2. Set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python (but this will use pure-Python parsing and will be much slower).
-```
-
-You can downgrade the protobuf package to 3.20.x or lower in your Docker image, or tell Ray to do it at runtime by specifying a [runtime environment](runtime-environments):
-
-Open a new YAML file called `batch_env.yaml` for runtime environment.
-
-```yaml
-pip:
- - protobuf==3.20.3
-```
-
-Then, run the following command to deploy the model with the runtime environment.
-
-```console
-$ serve run --runtime-env batch_env.yaml tutorial_batch:generator
-```
+You should get an output similar to the previous example.

@@ -110,17 +110,27 @@ def test_ray_installation() -> None:
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
         install_ray_cmds.append(inputs)
 
-    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+    with mock.patch(
+        "subprocess.check_call", side_effect=_mock_subprocess
+    ), mock.patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_PIPELINE_ID": "w00t",
+        },
+    ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
         assert install_ray_cmds[-1] == [
             "docker",
             "build",
             "--pull",
+            "--progress=plain",
             "--build-arg",
             f"BASE_IMAGE={docker_image}",
             "--build-arg",
             "BUILD_TYPE=debug",
+            "--build-arg",
+            "BUILDKITE_PIPELINE_ID=w00t",
             "-t",
             docker_image,
             "-f",
@@ -180,19 +190,40 @@ def test_create_bazel_log_mount() -> None:
 
 
 def test_get_test_results() -> None:
-    _BAZEL_LOG = json.dumps(
-        {
-            "id": {"testResult": {"label": "//ray/ci:test"}},
-            "testResult": {"status": "PASSED"},
-        }
-    )
+    _BAZEL_LOGS = [
+        json.dumps(log)
+        for log in [
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:reef"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "FAILED"},
+            },
+            {
+                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "testResult": {"status": "PASSED"},
+            },
+        ]
+    ]
 
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "bazel_log"), "w") as f:
-            f.write(_BAZEL_LOG)
-        container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
-        results = container._get_test_and_results("manu", tmp)
+            f.write("\n".join(_BAZEL_LOGS))
+        results = LinuxTesterContainer.get_test_and_results("manu", tmp)
+        results.sort(key=lambda x: x[0].get_name())
+
         test, result = results[0]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:reef"
+        assert test.get_oncall() == "manu"
+        assert result.is_failing()
+
+        test, result = results[1]
         assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
         assert test.get_oncall() == "manu"
         assert result.is_passing()

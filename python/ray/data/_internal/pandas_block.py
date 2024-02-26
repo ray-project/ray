@@ -16,6 +16,7 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
 from ray.data.block import (
@@ -27,13 +28,12 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.row import TableRow
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
@@ -58,21 +58,23 @@ class PandasRow(TableRow):
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
+        pd = lazy_import_pandas()
+
         def get_item(keys: List[str]) -> Any:
             col = self._row[keys]
             if len(col) == 0:
                 return None
 
             items = col.iloc[0]
-            if isinstance(items[0], TensorArrayElement):
+            if isinstance(items.iloc[0], TensorArrayElement):
                 # Getting an item in a Pandas tensor column may return
                 # a TensorArrayElement, which we have to convert to an ndarray.
-                return tuple([item.to_numpy() for item in items])
+                return pd.Series(item.to_numpy() for item in items)
 
             try:
                 # Try to interpret this as a numpy-type value.
                 # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-                return tuple([item.as_py() for item in items])
+                return pd.Series(item.as_py() for item in items)
 
             except (AttributeError, ValueError):
                 # Fallback to the original form.
@@ -86,7 +88,7 @@ class PandasRow(TableRow):
         if items is None:
             return None
         elif is_single_item:
-            return items[0]
+            return items.iloc[0]
         else:
             return items
 

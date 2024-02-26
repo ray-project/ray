@@ -40,6 +40,7 @@ import setproctitle
 from typing import Literal, Protocol
 
 import ray
+import ray._private.worker
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -426,8 +427,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
-        # TPU_VISIBLE_CHIPS, ..) environment variables.
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
         )
@@ -717,7 +718,7 @@ class Worker:
         value: Any,
         object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
-        _is_experimental_mutable_object: bool = False,
+        _is_experimental_channel: bool = False,
     ):
         """Put value in the local object store with object reference `object_ref`.
 
@@ -733,7 +734,7 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
-            _is_experimental_mutable_object: An experimental flag for mutable
+            _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
@@ -773,7 +774,7 @@ class Worker:
 
         # If the object is mutable, then the raylet should never read the
         # object. Instead, clients will keep the object pinned.
-        pin_object = not _is_experimental_mutable_object
+        pin_object = not _is_experimental_channel
 
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
@@ -787,7 +788,7 @@ class Worker:
                 object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
-                _is_experimental_mutable_object=_is_experimental_mutable_object,
+                _is_experimental_channel=_is_experimental_channel,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -813,7 +814,6 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
-        _is_experimental_mutable_object: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -830,10 +830,6 @@ class Worker:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
-            _is_experimental_mutable_object: An experimental flag for mutable
-                objects. If True, then wait until there is a value available to
-                read. The object must also already be local, or else the get
-                call will hang.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -848,7 +844,6 @@ class Worker:
             object_refs,
             self.current_task_id,
             timeout_ms,
-            _is_experimental_mutable_object,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
@@ -965,7 +960,8 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
+        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
@@ -1165,7 +1161,6 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         super().__init__()
@@ -1173,9 +1168,6 @@ class RayContext(BaseContext, Mapping):
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
-        # No client protocol version since this driver was intiialized
-        # directly
-        self.protocol_version = None
         self.address_info = address_info
 
     def __getitem__(self, key):

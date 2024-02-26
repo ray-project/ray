@@ -142,6 +142,7 @@ py_test_module_list(
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
     "accelerators/test_intel_gpu.py",
+    "accelerators/test_amd_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -339,21 +340,21 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
-    "test_autoscaler.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

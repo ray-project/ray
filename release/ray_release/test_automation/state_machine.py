@@ -1,5 +1,7 @@
 import abc
+from typing import List
 
+import github
 from github import Github
 from pybuildkite.buildkite import Buildkite
 
@@ -13,6 +15,17 @@ RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 DEFAULT_ISSUE_OWNER = "can-anyscale"
+WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
+NO_TEAM = "none"
+TEAM = [
+    "core",
+    "data",
+    "kuberay",
+    "ml",
+    "rllib",
+    "serve",
+    "serverless",
+]
 
 
 class TestStateMachine(abc.ABC):
@@ -40,8 +53,11 @@ class TestStateMachine(abc.ABC):
     @classmethod
     def _init_ray_repo(cls):
         if not cls.ray_repo:
-            github_token = get_secret_token(AWS_SECRET_GITHUB)
-            cls.ray_repo = Github(github_token).get_repo(RAY_REPO)
+            cls.ray_repo = cls.get_github().get_repo(RAY_REPO)
+
+    @classmethod
+    def get_github(cls):
+        return Github(get_secret_token(AWS_SECRET_GITHUB))
 
     @classmethod
     def get_ray_repo(cls):
@@ -54,6 +70,22 @@ class TestStateMachine(abc.ABC):
             buildkite_token = get_secret_token(AWS_SECRET_BUILDKITE)
             cls.ray_buildkite = Buildkite()
             cls.ray_buildkite.set_access_token(buildkite_token)
+
+    @classmethod
+    def get_release_blockers(cls) -> List[github.Issue.Issue]:
+        repo = cls.get_ray_repo()
+        blocker_label = repo.get_label(WEEKLY_RELEASE_BLOCKER_TAG)
+
+        return repo.get_issues(state="open", labels=[blocker_label])
+
+    @classmethod
+    def get_issue_owner(cls, issue: github.Issue.Issue) -> str:
+        labels = issue.get_labels()
+        for label in labels:
+            if label.name in TEAM:
+                return label.name
+
+        return NO_TEAM
 
     def move(self) -> None:
         """
