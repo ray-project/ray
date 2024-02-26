@@ -1103,7 +1103,8 @@ def test_usage_report_e2e(
     else:
         worker_setting = "max_worker_nodes: 1"
 
-    cluster_config_file_path.write_text(f"""
+    cluster_config_file_path.write_text(
+        f"""
 cluster_name: minimal
 {worker_setting}
 provider:
