@@ -45,7 +45,7 @@ def sched_request(
     gang_resource_requests: Optional[List[GangResourceRequest]] = None,
     cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
-    idle_timeout_s: Optional[int] = None,
+    idle_timeout_s: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
 ) -> SchedulingRequest:
 

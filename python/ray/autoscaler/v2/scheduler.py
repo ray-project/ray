@@ -51,7 +51,7 @@ class SchedulingRequest:
     # Max number of worker nodes.
     max_num_nodes: Optional[int] = None
     # Idle timeout in seconds.
-    idle_timeout_s: Optional[int] = None
+    idle_timeout_s: Optional[float] = None
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -205,10 +205,10 @@ class SchedulingNode:
             if disable_launch_config_check:
                 # We are not terminating outdated nodes.
                 logger.info(
-                    "Node config for {node_config} is missing, but we are not "
-                    "terminating the outdated node because "
+                    f"Node config for {instance.im_instance.instance_type} is missing, "
+                    "but we are not terminating the outdated node because "
                     "`disable_launch_config_check` is True in "
-                    "the autoscaler's provider config.".format(node_config=node_config)
+                    "the autoscaler's provider config."
                 )
                 return None
 
@@ -557,7 +557,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # The max number of nodes for the entire cluster.
         _max_num_nodes: Optional[int] = None
         # The idle timeout in seconds.
-        _idle_timeout_s: Optional[int] = None
+        _idle_timeout_s: Optional[float] = None
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
@@ -571,7 +571,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             node_type_configs: Dict[NodeType, NodeTypeConfig],
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
-            idle_timeout_s: Optional[int] = None,
+            idle_timeout_s: Optional[float] = None,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -669,7 +669,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 cluster_shape[node.node_type] += 1
             return cluster_shape
 
-        def get_idle_timeout_s(self) -> Optional[int]:
+        def get_idle_timeout_s(self) -> Optional[float]:
             return self._idle_timeout_s
 
         def update(self, new_nodes: List[SchedulingNode]) -> None:
