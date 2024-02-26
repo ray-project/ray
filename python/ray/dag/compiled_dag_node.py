@@ -125,6 +125,7 @@ class AwaitableDAGOutput:
         ret = await self._fut
         if isinstance(ret, Exception):
             raise ret
+        return ret
 
     def end_read(self):
         self._reader.end_read()

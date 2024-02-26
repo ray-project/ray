@@ -300,8 +300,15 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
 
     async def main(i):
         output_channel = await compiled_dag.execute_async(i)
+        # Using context manager.
         async with output_channel as result:
             assert result == i
+
+        # Using begin_read() / end_read().
+        output_channel = await compiled_dag.execute_async(i)
+        result = await output_channel.begin_read()
+        assert result == i
+        output_channel.end_read()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
     # Note: must teardown before starting a new Ray session, otherwise you'll get
@@ -326,6 +333,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
             async with output_channel as result:
                 assert result == i + 1
 
+        # Using context manager.
         exc = None
         for i in range(99):
             output_channel = await compiled_dag.execute_async(1)
@@ -334,6 +342,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
                     exc = result
         assert isinstance(exc, ValueError), exc
 
+        # Using begin_read() / end_read().
         exc = None
         for i in range(99):
             output_channel = await compiled_dag.execute_async(1)
