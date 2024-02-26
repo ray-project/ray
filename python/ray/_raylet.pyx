@@ -1246,7 +1246,7 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
-        
+
     # Report the intermediate result if there was no error.
     create_generator_return_obj(
         output,
