@@ -23,30 +23,16 @@ export DL="1"
 powershell ci/pipeline/fix-windows-container-networking.ps1
 powershell ci/pipeline/fix-windows-bazel.ps1
 
-readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"
-
 cleanup() {
     bash ./ci/build/upload_build_info.sh
 }
 trap cleanup EXIT
 
-upload_wheels() {
-    if [[ "${BUILDKITE_PIPELINE_ID:-}" != "${PIPELINE_POSTMERGE}" ]]; then
-        exit 0
-    fi
-
-    pip install -q docker aws_requests_auth boto3
-    python .buildkite/copy_files.py --destination branch_wheels --path python/dist
-    if [[ "${BUILDKITE_BRANCH}" == "master" ]]; then
-        python .buildkite/copy_files.py --destination wheels --path python/dist
-    fi
-}
-
 if [[ "$1" == "wheels" ]]; then
     export WINDOWS_WHEELS=1
     bash ci/ci.sh init
     bash ci/ci.sh build
-    upload_wheels
+    bash ci/build/copy_build_artifacts.sh wheel
     exit 0
 fi
 
