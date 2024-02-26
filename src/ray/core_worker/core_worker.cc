@@ -1944,7 +1944,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &concurrency_group_name,
     bool include_job_config,
     int64_t generator_backpressure_num_objects,
-    bool task_tracing) {
+    bool enable_task_events) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1990,7 +1990,7 @@ void CoreWorker::BuildCommonTaskSpec(
       main_thread_current_task_id,
       override_runtime_env_info,
       concurrency_group_name,
-      task_tracing);
+      enable_task_events);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2046,7 +2046,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*include_job_config*/ true,
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
-                      /*report_task_event*/ task_options.task_tracing);
+                      /*enable_task_event*/ task_options.enable_task_events);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -2132,7 +2132,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
                       /*generator_backpressure_num_objects*/ -1,
-                      /*task_tracing*/ actor_creation_options.task_tracing);
+                      /*enable_task_events*/ actor_creation_options.enable_task_events);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2377,7 +2377,7 @@ Status CoreWorker::SubmitActorTask(
                       /*include_job_config*/ false,
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
-                      /*task_tracing*/ task_options.task_tracing);
+                      /*enable_task_events*/ task_options.enable_task_events);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 

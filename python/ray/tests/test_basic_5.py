@@ -364,17 +364,19 @@ def test_head_node_resource_ray_start(call_ray_start):
     assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
 
-@pytest.mark.parametrize("task_tracing", [True, False, None])
-@pytest.mark.parametrize("actor_task_tracing", [True, False])
-def test_task_tracing_actor(shutdown_only, task_tracing, actor_task_tracing):
+@pytest.mark.parametrize("enable_task_events", [True, False, None])
+@pytest.mark.parametrize("actor_enable_task_events", [True, False])
+def test_enable_task_events_actor(
+    shutdown_only, enable_task_events, actor_enable_task_events
+):
     """
-    Test that task tracing is enabled/disabled from the actor's options.
+    Test that task events is enabled/disabled from the actor's options.
 
-    - If actor sets task_tracing=True, all tasks from the actor should be traced.
-    - If actor sets task_tracing=False, all tasks from the actor should not be
+    - If actor sets enable_task_events=True, all tasks from the actor should be traced.
+    - If actor sets enable_task_events=False, all tasks from the actor should not be
         traced by default.
-        - But it can be traced if the task explicitly sets task_tracing=True.
-    - If actor does not set task_tracing, it should be traced by default.
+        - But it can be traced if the task explicitly sets enable_task_events=True.
+    - If actor does not set enable_task_events, it should be traced by default.
 
     """
 
@@ -397,33 +399,33 @@ def test_task_tracing_actor(shutdown_only, task_tracing, actor_task_tracing):
             # This should always be traced.
             ray.get(f.options(name="inner-task-traced").remote())
 
-        @ray.method(task_tracing=actor_task_tracing)
+        @ray.method(enable_task_events=actor_enable_task_events)
         def g(self):
             pass
 
-    if task_tracing is not None:
-        a = Actor.options(task_tracing=task_tracing).remote()
+    if enable_task_events is not None:
+        a = Actor.options(enable_task_events=enable_task_events).remote()
     else:
         a = Actor.remote()
 
-    if actor_task_tracing is not False:
-        ray.get(a.f.options(task_tracing=actor_task_tracing).remote())
+    if actor_enable_task_events is not False:
+        ray.get(a.f.options(enable_task_events=actor_enable_task_events).remote())
     else:
         ray.get(a.f.remote())
 
     ray.get(a.g.remote())
 
     expected_tasks_traced = {"inner-task-traced"}
-    if task_tracing is not False:
+    if enable_task_events is not False:
         expected_tasks_traced.add("Actor.__init__")
         expected_tasks_traced.add("Actor.f")
         expected_tasks_traced.add("Actor.g")
 
-    if actor_task_tracing is True:
+    if actor_enable_task_events is True:
         expected_tasks_traced.add("Actor.f")
         expected_tasks_traced.add("Actor.g")
 
-    if actor_task_tracing is False:
+    if actor_enable_task_events is False:
         if "Actor.f" in expected_tasks_traced:
             expected_tasks_traced.remove("Actor.f")
         if "Actor.g" in expected_tasks_traced:
@@ -440,7 +442,7 @@ def test_task_tracing_actor(shutdown_only, task_tracing, actor_task_tracing):
     wait_for_condition(verify)
 
 
-def test_task_tracing_invalid_options(shutdown_only):
+def test_enable_task_events_invalid_options(shutdown_only):
     """
     Test the invalid values for the option.
     """
@@ -454,20 +456,20 @@ def test_task_tracing_invalid_options(shutdown_only):
         pass
 
     with pytest.raises(TypeError):
-        ray.get(f.options(task_tracing="invalid").remote())
+        ray.get(f.options(enable_task_events="invalid").remote())
 
     with pytest.raises(TypeError):
-        ray.get(f.options(task_tracing=None).remote())
+        ray.get(f.options(enable_task_events=None).remote())
 
     with pytest.raises(TypeError):
-        ray.get(Actor.options(task_tracing="invalid").remote())
+        ray.get(Actor.options(enable_task_events="invalid").remote())
 
     with pytest.raises(TypeError):
-        ray.get(Actor.options(task_tracing=None).remote())
+        ray.get(Actor.options(enable_task_events=None).remote())
 
 
-@pytest.mark.parametrize("task_tracing", [True, False])
-def test_task_tracing(shutdown_only, task_tracing):
+@pytest.mark.parametrize("enable_task_events", [True, False])
+def test_enable_task_events(shutdown_only, enable_task_events):
     ray.init(
         num_cpus=1,
         _system_config={
@@ -485,15 +487,15 @@ def test_task_tracing(shutdown_only, task_tracing):
     def f():
         ray.get(traced.remote())
 
-    @ray.remote(task_tracing=task_tracing)
+    @ray.remote(enable_task_events=enable_task_events)
     def g():
         pass
 
-    ray.get([f.options(task_tracing=task_tracing).remote(), g.remote()])
+    ray.get([f.options(enable_task_events=enable_task_events).remote(), g.remote()])
 
     expected_tasks_traced = {"traced"}
 
-    if task_tracing is not False:
+    if enable_task_events is not False:
         expected_tasks_traced.add("f")
         expected_tasks_traced.add("g")
 
@@ -506,13 +508,13 @@ def test_task_tracing(shutdown_only, task_tracing):
     wait_for_condition(verify)
 
 
-@pytest.mark.parametrize("inner_task_tracing", [True, False])
-@pytest.mark.parametrize("outer_task_tracing", [True, False])
-def test_task_tracing_nested_actor(
-    shutdown_only, inner_task_tracing, outer_task_tracing
+@pytest.mark.parametrize("inner_enable_task_events", [True, False])
+@pytest.mark.parametrize("outer_enable_task_events", [True, False])
+def test_enable_task_events_nested_actor(
+    shutdown_only, inner_enable_task_events, outer_enable_task_events
 ):
     """
-    Test that task_tracing options are independent of each other for
+    Test that enable_task_events options are independent of each other for
     nested actors.
     """
     ray.init(
@@ -524,12 +526,12 @@ def test_task_tracing_nested_actor(
         },
     )
 
-    @ray.remote(task_tracing=inner_task_tracing)
+    @ray.remote(enable_task_events=inner_enable_task_events)
     class A:
         def f(self):
             pass
 
-    @ray.remote(task_tracing=outer_task_tracing)
+    @ray.remote(enable_task_events=outer_enable_task_events)
     class B:
         def __init__(self):
             self.a = A.remote()
@@ -540,11 +542,11 @@ def test_task_tracing_nested_actor(
     b = B.remote()
     ray.get(b.g.remote())
     expected_tasks_traced = set()
-    if inner_task_tracing is not False:
+    if inner_enable_task_events is not False:
         expected_tasks_traced.add("A.f")
         expected_tasks_traced.add("A.__init__")
 
-    if outer_task_tracing is not False:
+    if outer_enable_task_events is not False:
         expected_tasks_traced.add("B.g")
         expected_tasks_traced.add("B.__init__")
 

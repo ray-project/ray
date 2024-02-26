@@ -466,15 +466,21 @@ define can run. This also implies that tasks are scheduled more flexibly,
 and that if you don't need the stateful part of an actor, you're mostly
 better off using tasks.
 
-Task Tracing
-------------
+Task Events 
+-----------
 
-By default, Ray will trace the execution of actor tasks, and reporting task status events and profiling events
-to the Ray Dashboard. See more from :ref:`State API <state-api-overview-ref>` for more details. 
+By default, Ray will trace the execution of actor tasks, reporting task status events and profiling events
+that's used by Ray Dashboard and :ref:`State API <state-api-overview-ref>`.
 
-You could disable task tracing for the actor by setting the `task_tracing` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`.
-You could also disable task tracing for some actor methods by setting the `task_tracing` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
-The per method setting will override the actor setting.
+You could disable task events for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which would reduce the overhead of task execution, and also reduce the amount of data sent to the Ray Dashboard
+
+You could also disable task events for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
+The per method setting will override the actor setting:
+
+.. literalinclude:: doc_code/actors.py
+    :language: python
+    :start-after: __enable_task_events_start__
+    :end-before: __enable_task_events_end__
 
 
 More about Ray Actors

@@ -210,7 +210,7 @@ class RemoteFunction:
                 placement group based scheduling;
                 `NodeAffinitySchedulingStrategy`:
                 node id based affinity scheduling.
-            task_tracing: This specifies whether to enable task tracing for this
+            enable_task_events: This specifies whether to enable task events for this
                 task. If set to True, task events such as (task running, finished)
                 will be emitted, and available to Ray Dashboard and State API.
                 See :ref:`state-api-overview-ref` for more details.
@@ -443,7 +443,7 @@ class RemoteFunction:
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
-                task_options["task_tracing"],
+                task_options["enable_task_events"],
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

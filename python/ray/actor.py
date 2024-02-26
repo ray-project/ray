@@ -75,7 +75,7 @@ def method(*args, **kwargs):
         "max_task_retries",
         "retry_exceptions",
         "_generator_backpressure_num_objects",
-        "task_tracing",
+        "enable_task_events",
     ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
@@ -103,8 +103,8 @@ def method(*args, **kwargs):
             method.__ray_generator_backpressure_num_objects__ = kwargs[
                 "_generator_backpressure_num_objects"
             ]
-        if "task_tracing" in kwargs and kwargs["task_tracing"] is not None:
-            method.__ray_task_tracing__ = kwargs["task_tracing"]
+        if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
+            method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         return method
 
     return annotate_method
@@ -133,7 +133,7 @@ class ActorMethod:
         _generator_backpressure_num_objects: Generator-only config.
             If a number of unconsumed objects reach this threshold,
             a actor task stop pausing.
-        task_tracing: True if task tracing is enabled, i.e. task events from
+        enable_task_events: True if task events is enabled, i.e. task events from
             the actor should be reported. Defaults to True.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
@@ -153,7 +153,7 @@ class ActorMethod:
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
         generator_backpressure_num_objects: int,
-        task_tracing: bool,
+        enable_task_events: bool,
         decorator=None,
         hardref=False,
     ):
@@ -172,7 +172,7 @@ class ActorMethod:
         self._retry_exceptions = retry_exceptions
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
-        self._task_tracing = task_tracing
+        self._enable_task_events = enable_task_events
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -282,7 +282,7 @@ class ActorMethod:
         retry_exceptions=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-        task_tracing=None,
+        enable_task_events=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -292,8 +292,8 @@ class ActorMethod:
             max_task_retries = 0
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
-        if task_tracing is None:
-            task_tracing = self._task_tracing
+        if enable_task_events is None:
+            enable_task_events = self._enable_task_events
         if _generator_backpressure_num_objects is None:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
@@ -317,7 +317,7 @@ class ActorMethod:
                 generator_backpressure_num_objects=(
                     _generator_backpressure_num_objects
                 ),
-                task_tracing=task_tracing,
+                enable_task_events=enable_task_events,
             )
 
         # Apply the decorator if there is one.
@@ -336,7 +336,7 @@ class ActorMethod:
             "decorator": self._decorator,
             "is_generator": self._is_generator,
             "generator_backpressure_num_objects": self._generator_backpressure_num_objects,  # noqa
-            "task_tracing": self._task_tracing,
+            "enable_task_events": self._enable_task_events,
         }
 
     def __setstate__(self, state):
@@ -348,7 +348,7 @@ class ActorMethod:
             state["retry_exceptions"],
             state["is_generator"],
             state["generator_backpressure_num_objects"],
-            state["task_tracing"],
+            state["enable_task_events"],
             state["decorator"],
             hardref=True,
         )
@@ -369,7 +369,7 @@ class _ActorClassMethodMetadata(object):
         max_task_retries: Number of retries on method failure.
         retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry, for each method.
-        task_tracing: True if tracing is enabled, i.e. task events from
+        enable_task_events: True if tracing is enabled, i.e. task events from
             the actor should be reported. Defaults to True.
     """
 
@@ -409,7 +409,7 @@ class _ActorClassMethodMetadata(object):
         self.max_task_retries = {}
         self.retry_exceptions = {}
         self.method_is_generator = {}
-        self.task_tracing = {}
+        self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
 
@@ -454,8 +454,8 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_concurrency_group__
 
-            if hasattr(method, "__ray_task_tracing__"):
-                self.task_tracing[method_name] = method.__ray_task_tracing__
+            if hasattr(method, "__ray_enable_task_events__"):
+                self.enable_task_events[method_name] = method.__ray_enable_task_events__
 
             is_generator = inspect.isgeneratorfunction(
                 method
@@ -791,7 +791,7 @@ class ActorClass:
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
-            task_tracing: True if tracing is enabled, i.e. task events from
+            enable_task_events: True if tracing is enabled, i.e. task events from
                 the actor should be reported. Defaults to True.
 
         Examples:
@@ -904,7 +904,7 @@ class ActorClass:
                 Note that this limit is counted per handle. -1 means that the
                 number of pending calls is unlimited.
             scheduling_strategy: Strategy about how to schedule this actor.
-            task_tracing: True if tracing is enabled, i.e. task events from
+            enable_task_events: True if tracing is enabled, i.e. task events from
                 the actor should be reported. Defaults to True.
 
         Returns:
@@ -975,7 +975,7 @@ class ActorClass:
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
-        task_tracing = actor_options["task_tracing"]
+        enable_task_events = actor_options["enable_task_events"]
 
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -1174,7 +1174,7 @@ class ActorClass:
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
-            task_tracing=task_tracing,
+            enable_task_events=enable_task_events,
         )
 
         if _actor_launch_hook:
@@ -1186,7 +1186,7 @@ class ActorClass:
             meta.language,
             actor_id,
             max_task_retries,
-            task_tracing,
+            enable_task_events,
             meta.method_meta.method_is_generator,
             meta.method_meta.decorators,
             meta.method_meta.signatures,
@@ -1194,7 +1194,7 @@ class ActorClass:
             meta.method_meta.max_task_retries,
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
-            meta.method_meta.task_tracing,
+            meta.method_meta.enable_task_events,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
@@ -1231,7 +1231,7 @@ class ActorHandle:
     Attributes:
         _ray_actor_language: The actor language.
         _ray_actor_id: Actor ID.
-        _ray_task_tracing: The default value of whether task tracing is
+        _ray_enable_task_events: The default value of whether task events is
             enabled, i.e. task events from the actor should be reported.
         _ray_method_is_generator: Map of method name -> if it is a generator
             method.
@@ -1249,9 +1249,9 @@ class ActorHandle:
         _ray_method_generator_backpressure_num_objects: Generator-only
             config. The max number of objects to generate before it
             starts pausing a generator.
-        _ray_method_task_tracing: The value of whether task
+        _ray_method_enable_task_events: The value of whether task
             tracing is enabled for the actor methods. This overrides the
-            actor's default value (`_ray_task_tracing`)
+            actor's default value (`_ray_enable_task_events`)
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
@@ -1266,7 +1266,7 @@ class ActorHandle:
         language,
         actor_id,
         max_task_retries: Optional[int],
-        task_tracing: bool,
+        enable_task_events: bool,
         method_is_generator: Dict[str, bool],
         method_decorators,
         method_signatures,
@@ -1274,7 +1274,7 @@ class ActorHandle:
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
-        method_task_tracing: Dict[str, bool],
+        method_enable_task_events: Dict[str, bool],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         session_and_job,
@@ -1284,7 +1284,7 @@ class ActorHandle:
         self._ray_actor_id = actor_id
         self._ray_max_task_retries = max_task_retries
         self._ray_original_handle = original_handle
-        self._ray_task_tracing = task_tracing
+        self._ray_enable_task_events = enable_task_events
 
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
@@ -1295,7 +1295,7 @@ class ActorHandle:
         self._ray_method_generator_backpressure_num_objects = (
             method_generator_backpressure_num_objects
         )
-        self._ray_method_task_tracing = method_task_tracing
+        self._ray_method_enable_task_events = method_enable_task_events
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
         self._ray_is_cross_language = language != Language.PYTHON
@@ -1328,9 +1328,9 @@ class ActorHandle:
                     self._ray_method_generator_backpressure_num_objects.get(
                         method_name
                     ),  # noqa
-                    self._ray_method_task_tracing.get(
+                    self._ray_method_enable_task_events.get(
                         method_name,
-                        self._ray_task_tracing,  # Use actor's default value
+                        self._ray_enable_task_events,  # Use actor's default value
                     ),
                     decorator=self._ray_method_decorators.get(method_name),
                 )
@@ -1361,7 +1361,7 @@ class ActorHandle:
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
-        task_tracing: bool = True,
+        enable_task_events: bool = True,
     ):
         """Method execution stub for an actor handle.
 
@@ -1379,7 +1379,7 @@ class ActorHandle:
             max_task_retries: Number of retries when method fails.
             retry_exceptions: Boolean of whether you want to retry all user-raised
                 exceptions, or a list of allowlist exceptions to retry.
-            task_tracing: True if tracing is enabled, i.e. task events from
+            enable_task_events: True if tracing is enabled, i.e. task events from
                 the actor should be reported.
 
         Returns:
@@ -1448,7 +1448,7 @@ class ActorHandle:
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
-            task_tracing,
+            enable_task_events,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
@@ -1496,7 +1496,7 @@ class ActorHandle:
             False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
             # TODO(rickyx): how to determinte the defautls here?
-            False,  # task_tracing
+            False,  # enable_task_events
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
@@ -1550,7 +1550,7 @@ class ActorHandle:
                     "method_generator_backpressure_num_objects": (
                         self._ray_method_generator_backpressure_num_objects
                     ),
-                    "method_task_tracing": self._ray_method_task_tracing,
+                    "method_enable_task_events": self._ray_method_enable_task_events,
                     "actor_method_cpus": self._ray_actor_method_cpus,
                     "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
                 },
@@ -1593,7 +1593,7 @@ class ActorHandle:
                 state["method_max_task_retries"],
                 state["method_retry_exceptions"],
                 state["method_generator_backpressure_num_objects"],
-                state["method_task_tracing"],
+                state["method_enable_task_events"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
                 worker.current_session_and_job,

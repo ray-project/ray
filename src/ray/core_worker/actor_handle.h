@@ -95,6 +95,8 @@ class ActorHandle {
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
+  bool EnableTaskEvents() const { return inner_.enable_task_events(); }
+
   std::string GetName() const;
 
   std::string GetNamespace() const;

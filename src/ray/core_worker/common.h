@@ -67,14 +67,14 @@ struct TaskOptions {
               const std::string &concurrency_group_name = "",
               int64_t generator_backpressure_num_objects = -1,
               const std::string &serialized_runtime_env_info = "{}",
-              bool task_tracing = true)
+              bool enable_task_events = kDefaultTaskEventEnabled)
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env_info(serialized_runtime_env_info),
         generator_backpressure_num_objects(generator_backpressure_num_objects),
-        task_tracing(task_tracing) {}
+        enable_task_events(enable_task_events) {}
 
   /// The name of this task.
   std::string name;
@@ -94,7 +94,7 @@ struct TaskOptions {
   int64_t generator_backpressure_num_objects;
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
-  bool task_tracing = true;
+  bool enable_task_events = kDefaultTaskEventEnabled;
 };
 
 /// Options for actor creation tasks.
@@ -115,7 +115,7 @@ struct ActorCreationOptions {
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false,
                        int32_t max_pending_calls = -1,
-                       bool task_tracing = true)
+                       bool enable_task_events = kDefaultTaskEventEnabled)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -132,7 +132,7 @@ struct ActorCreationOptions {
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
         scheduling_strategy(scheduling_strategy),
-        task_tracing(task_tracing) {
+        enable_task_events(enable_task_events) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -186,7 +186,7 @@ struct ActorCreationOptions {
   rpc::SchedulingStrategy scheduling_strategy;
   /// True if task events (worker::TaskEvent) from this creation task should be reported
   /// default to true.
-  const bool task_tracing = true;
+  const bool enable_task_events = kDefaultTaskEventEnabled;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

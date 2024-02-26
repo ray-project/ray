@@ -571,8 +571,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Update task status change for the task attempt in TaskEventBuffer if needed.
   ///
   /// It skips the reporting when:
-  ///   1. when the report_task_status for the task is false.
-  ///   2. when the task event reporting is disabled on the worker.
+  ///   1. when the enable_task_events for the task is false.
+  ///   2. when the task event reporting is disabled on the worker (through ray config,
+  ///   i.e. RAY_task_events_report_interval_ms=0).
   ///
   /// \param attempt_number Attempt number for the task attempt.
   /// \param spec corresponding TaskSpecification of the task
