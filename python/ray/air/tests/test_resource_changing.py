@@ -1,13 +1,10 @@
 import os
 from ray import train
 from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
-from ray.air.constants import TRAIN_DATASET_KEY
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.xgboost import XGBoostTrainer
-from sklearn.datasets import load_breast_cancer
-import pandas as pd
 import pytest
 import ray
 import json
