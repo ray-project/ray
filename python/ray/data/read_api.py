@@ -2519,9 +2519,9 @@ def from_spark(
 
     if is_in_databricks_runtime():  # Ray-on-Spark
         from ray.data.datasource.spark_datasource import (
-            validate_requirements,
-            SparkDatasource,
             _DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES,
+            SparkDatasource,
+            validate_requirements,
         )
         from ray.util.spark.databricks_hook import get_databricks_function
 

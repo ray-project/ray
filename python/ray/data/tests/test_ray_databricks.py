@@ -1,16 +1,18 @@
 import gc
+import math
 import os
 import time
-import pytest
-import pyarrow as pa
-import pandas as pd
-from ray import cloudpickle as pickle
 import uuid
-import math
 from contextlib import contextmanager
-from unittest import mock
-import ray
 from typing import NamedTuple
+from unittest import mock
+
+import pandas as pd
+import pyarrow as pa
+import pytest
+
+import ray
+from ray import cloudpickle as pickle
 
 
 class ChunkMeta(NamedTuple):
@@ -47,11 +49,11 @@ def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
             start_row_idx = chunk_idx * rows_per_chunk
             end_row_idx = start_row_idx + rows_per_chunk
 
-            chunk_pdf = pandas_df[start_row_idx: end_row_idx]
+            chunk_pdf = pandas_df[start_row_idx:end_row_idx]
 
             chunk_table = pa.Table.from_pandas(chunk_pdf)
 
-            with open(tmp_path /chunk_id, "wb") as f:
+            with open(tmp_path / chunk_id, "wb") as f:
                 pickle.dump(chunk_table, f)
 
             return ChunkMeta(
@@ -60,10 +62,7 @@ def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
                 byte_count=chunk_table.nbytes,
             )
 
-        return [
-            gen_chunk(chunk_idx)
-            for chunk_idx in range(num_chunks)
-        ]
+        return [gen_chunk(chunk_idx) for chunk_idx in range(num_chunks)]
 
     def read_chunk(chunk_id):
         with open(tmp_path / chunk_id, "rb") as f:
@@ -92,8 +91,7 @@ def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
         "ray.util.spark.utils.is_in_databricks_runtime",
         return_value=True,
     ), mock.patch(
-        "ray.data.read_api._DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES",
-        default_chunk_bytes
+        "ray.data.read_api._DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES", default_chunk_bytes
     ):
         monkeypatch.setenv(MOCK_ENV, read_chunk_fn_path.as_posix())
         yield
@@ -106,11 +104,11 @@ def shutdown_ray_per_test():
 
 
 def test_from_simple_databricks_spark_dataframe(tmp_path, monkeypatch):
-    fake_spark_df = pd.DataFrame({
-        "x": range(1000)
-    })
+    fake_spark_df = pd.DataFrame({"x": range(1000)})
 
-    with setup_mock(default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch):
+    with setup_mock(
+        default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch
+    ):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
@@ -121,15 +119,15 @@ def test_from_simple_databricks_spark_dataframe(tmp_path, monkeypatch):
     time.sleep(1)  # waiting for ray_ds GC
 
     # assert all chunk data files are removed from the tmp dir.
-    assert [file.name for file in tmp_path.iterdir()] == ['read_chunk_fn.pkl']
+    assert [file.name for file in tmp_path.iterdir()] == ["read_chunk_fn.pkl"]
 
 
 def test_from_mul_cols_databricks_spark_dataframe(tmp_path, monkeypatch):
-    fake_spark_df = pd.DataFrame({
-        "x": range(1000)
-    })
+    fake_spark_df = pd.DataFrame({"x": range(1000)})
 
-    with setup_mock(default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch):
+    with setup_mock(
+        default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch
+    ):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
@@ -138,12 +136,11 @@ def test_from_mul_cols_databricks_spark_dataframe(tmp_path, monkeypatch):
 
 
 def test_large_size_row_databricks_spark_dataframe(tmp_path, monkeypatch):
-    fake_spark_df = pd.DataFrame([
-        {'a': uuid.uuid4().hex * 100}
-        for _ in range(10)
-    ])
+    fake_spark_df = pd.DataFrame([{"a": uuid.uuid4().hex * 100} for _ in range(10)])
 
-    with setup_mock(default_chunk_bytes=3500, tmp_path=tmp_path, monkeypatch=monkeypatch):
+    with setup_mock(
+        default_chunk_bytes=3500, tmp_path=tmp_path, monkeypatch=monkeypatch
+    ):
         ray_ds = ray.data.from_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
