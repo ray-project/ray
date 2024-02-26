@@ -2576,20 +2576,20 @@ class Dataset:
         return None
 
     def num_blocks(self) -> int:
-        """Return the number of blocks of this Dataset.
+        """Return the number of blocks of this :class:`Dataset`.
 
-        This is only implemented for :class:`~ray.data.MaterializedDataset`,
+        This method is only implemented for :class:`~ray.data.MaterializedDataset`,
         since the number of blocks may dynamically change during execution.
-        For instance, during read and transform operations, the number of blocks
-        may be dynamically adjusted to respect memory limits, increasing the
+        For instance, during read and transform operations, Ray Data may dynamically
+        adjust the number of blocks to respect memory limits, increasing the
         number of blocks at runtime.
 
         Returns:
-            The number of blocks of this dataset.
+            The number of blocks of this :class:`Dataset`.
         """
         raise NotImplementedError(
             "Number of blocks is only available for `MaterializedDataset`,"
-            "since the number of blocks may dynamically change during execution."
+            "because the number of blocks may dynamically change during execution."
             "Call `ds.materialize()` to get a `MaterializedDataset`."
         )
 
@@ -5027,7 +5027,7 @@ class MaterializedDataset(Dataset, Generic[T]):
     """
 
     def num_blocks(self) -> int:
-        """Return the number of blocks of this MaterializedDataset.
+        """Return the number of blocks of this :class:`MaterializedDataset`.
 
         Examples:
             >>> import ray
@@ -5038,7 +5038,7 @@ class MaterializedDataset(Dataset, Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The number of blocks of this dataset.
+            The number of blocks of this :class:`Dataset`.
         """
         return self._plan.initial_num_blocks()
 

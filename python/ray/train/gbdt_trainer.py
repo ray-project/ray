@@ -269,7 +269,7 @@ class GBDTTrainer(BaseTrainer):
                         f"Dataset '{dataset_key}' has {dataset_num_blocks} blocks, "
                         f"which is less than the `num_workers` "
                         f"{self._ray_params.num_actors}. "
-                        f"This dataset will be automatically repartitioned to "
+                        f"This dataset is automatically repartitioned to "
                         f"{self._ray_params.num_actors} blocks. You can disable "
                         "this error message by partitioning the dataset "
                         "to have blocks >= number of workers via "
