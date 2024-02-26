@@ -635,7 +635,7 @@ class BaseTrainer(abc.ABC):
             ) from result.error
         return result
 
-    def _save(self, fs: pyarrow.fs.FileSystem, experiment_path: Union[str, Path]):
+    def _save(self, fs: pyarrow.fs.FileSystem, experiment_path: str):
         """Saves the current trainer's class along with the `param_dict` of
         parameters passed to this trainer's constructor.
 
