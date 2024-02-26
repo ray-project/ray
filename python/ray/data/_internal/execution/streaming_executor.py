@@ -244,7 +244,11 @@ class StreamingExecutor(Executor, threading.Thread):
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict()
-        stats.streaming_exec_schedule_s = self._initial_stats.streaming_exec_schedule_s
+        stats.streaming_exec_schedule_s = (
+            self._initial_stats.streaming_exec_schedule_s
+            if self._initial_stats
+            else None
+        )
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
