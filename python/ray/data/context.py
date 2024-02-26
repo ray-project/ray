@@ -156,6 +156,10 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
+# Whether using TFX read implementation for tfrecords
+# datasource is enabled
+DEFAULT_ENABLE_TFRECORD_DATASOURCE_TFX_READ = True
+
 
 @DeveloperAPI
 class DataContext:
@@ -253,6 +257,11 @@ class DataContext:
         self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
         # The reservation ratio for ReservationOpResourceLimiter.
         self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+        # Whether using TFX read implementation for tfrecords
+        # datasource is enabled
+        self.enable_tfrecord_datasource_tfx_read = (
+            DEFAULT_ENABLE_TFRECORD_DATASOURCE_TFX_READ
+        )
 
     @staticmethod
     def get_current() -> "DataContext":

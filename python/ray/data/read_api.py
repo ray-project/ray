@@ -1682,11 +1682,12 @@ def read_tfrecords(
 
     tfx_read = False
 
-    if platform.processor() != "arm":
+    if (
+        platform.processor() != "arm"
+        and DataContext.get_current().enable_tfrecord_datasource_tfx_read
+    ):
         try:
-            from tfx_bsl.cc.tfx_bsl_extension.coders import (  # noqa: F401
-                ExamplesToRecordBatchDecoder,
-            )
+            import tfx_bsl  # noqa: F401
 
             tfx_read = True
         except ModuleNotFoundError:
