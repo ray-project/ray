@@ -216,6 +216,29 @@ class CompiledDAG:
         self.input_task_idxs, self.output_task_idx = [], None
         self.actor_task_count.clear()
 
+        # If InputAttributeNodes are used, remove InputNode and reorder nodes
+        has_attr_node = any(
+            [
+                isinstance(task.dag_node, InputAttributeNode)
+                for _, task in self.idx_to_task.items()
+            ]
+        )
+        if has_attr_node:
+            self.counter = 0
+            dag_nodes = [task.dag_node for _, task in self.idx_to_task.items()]
+            self.idx_to_task.clear()
+            self.dag_node_to_idx.clear()
+            # Add attribute nodes first
+            for dag_node in dag_nodes:
+                if isinstance(dag_node, InputAttributeNode):
+                    self._add_node(dag_node)
+            for dag_node in dag_nodes:
+                if not (
+                    isinstance(dag_node, InputNode)
+                    or isinstance(dag_node, InputAttributeNode)
+                ):
+                    self._add_node(dag_node)
+
         # For each task node, set its upstream and downstream task nodes.
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
@@ -343,6 +366,8 @@ class CompiledDAG:
                 self.dag_output_channels,
             )
 
+        # When there are multiple arguments, all the arguments share this channel
+        arg_channel = None
         queue = self.input_task_idxs.copy()
         visited = set()
         # Create output buffers
@@ -368,8 +393,15 @@ class CompiledDAG:
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
-                    num_readers=task.num_readers if task.num_readers else 1,
+                    num_readers=task.num_readers,
                 )
+            elif isinstance(task.dag_node, InputAttributeNode):
+                if not arg_channel:
+                    arg_channel = Channel(
+                        buffer_size_bytes=self._buffer_size_bytes,
+                        num_readers=1,
+                    )
+                task.output_channel = arg_channel
             else:
                 assert isinstance(task.dag_node, MultiOutputNode) or isinstance(
                     task.dag_node, InputAttributeNode
@@ -399,22 +431,15 @@ class CompiledDAG:
             has_at_least_one_channel_input = False
             for arg in task.args:
                 if isinstance(arg, DAGNode):
-                    parent_node = (
-                        arg._dag_input_node
-                        if isinstance(arg, InputAttributeNode)
-                        else arg
-                    )
-                    parent_idx = self.dag_node_to_idx[parent_node]
-                    arg_channel = self.idx_to_task[parent_idx].output_channel
+                    node_idx = self.dag_node_to_idx[arg]
+                    arg_channel = self.idx_to_task[node_idx].output_channel
                     assert arg_channel is not None
                     resolved_args.append(arg_channel)
                     read_idx = -1
                     if isinstance(arg, InputAttributeNode):
-                        # use arg idx - 1 here because when there are multiple args,
-                        # they are ordered in InputNode, InputAttributeNode,
-                        # InputAttributeNode, ..., while only InputAttributeNodes
-                        # carry arguments
-                        read_idx = self.dag_node_to_idx[arg] - 1
+                        # Assumption: all InputAttributeNodes are at the beginning
+                        # of IR, this is made sure explictly when reordering nodes
+                        read_idx = self.dag_node_to_idx[arg]
                     elif isinstance(arg, InputNode):
                         read_idx = 0
                     read_idxs.append(read_idx)
@@ -443,10 +468,13 @@ class CompiledDAG:
         if len(self.input_task_idxs) > 1:
             # for multi-arg scenario, find the input node for input channel
             for input_task_idx in self.input_task_idxs:
-                if isinstance(self.idx_to_task[input_task_idx].dag_node, InputNode):
+                if isinstance(
+                    self.idx_to_task[input_task_idx].dag_node, InputAttributeNode
+                ):
                     self.dag_input_channel = self.idx_to_task[
                         input_task_idx
                     ].output_channel
+                    break
         else:
             self.dag_input_channel = self.idx_to_task[
                 self.input_task_idxs[0]
@@ -529,7 +557,7 @@ class CompiledDAG:
 
         Args:
             args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode. Not supported yet.
+            kwargs: Kwargs to the InputNode.
 
         Returns:
             A list of Channels that can be used to read the DAG result.
