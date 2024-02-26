@@ -2519,7 +2519,6 @@ def from_spark(
 
     if is_in_databricks_runtime():  # Ray-on-Spark
         from ray.data.datasource.spark_datasource import (
-            _DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES,
             SparkDatasource,
             validate_requirements,
         )
@@ -2527,7 +2526,7 @@ def from_spark(
 
         validate_requirements()
 
-        datasource = SparkDatasource(df, _DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES)
+        datasource = SparkDatasource(df)
         if parallelism == -1:
             parallelism = datasource.num_chunks
         dataset = read_datasource(

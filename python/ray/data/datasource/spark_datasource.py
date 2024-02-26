@@ -8,7 +8,7 @@ from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
-_DATABRICKS_SPARK_DATAFRAME_CHUNK_BYTES = 32 * 1024 * 1024
+_DEFAULT_SPARK_DATAFRAME_CHUNK_BYTES = 32 * 1024 * 1024
 
 
 def validate_requirements():
@@ -70,7 +70,11 @@ def _unpersist_chunks(chunk_ids):
 class SparkDatasource(Datasource):
     """Spark datasource, for reading data from a Spark dataframe in Databricks runtime.
     """
-    def __init__(self, spark_dataframe, bytes_per_chunk):
+    def __init__(
+        self,
+        spark_dataframe,
+        bytes_per_chunk=_DEFAULT_SPARK_DATAFRAME_CHUNK_BYTES
+    ):
         """
         Args:
             spark_dataframe: A `Spark DataFrame`_
