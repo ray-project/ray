@@ -429,13 +429,18 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 ].object_store_memory -= self._reserved_for_op_outputs[op]
             else:
                 # If the remaining resources are not enough to reserve the minimum
-                # resources for this operator, we don't reserve any resources for it.
+                # resources for this operator, we'll only reserve the minimum object
+                # store memory, but not the CPU and GPU resources.
+                # Because Ray Core doesn't allow CPU/GPU resources to be oversubscribed.
                 # Note, we reserve minimum resources first for the upstream
                 # ops. Downstream ops need to wait for upstream ops to finish
                 # and release resources.
                 self._reserved_min_resources[op] = False
-                self._op_reserved[op] = ExecutionResources.zero()
-                self._reserved_for_op_outputs[op] = 1
+                self._op_reserved[op] = ExecutionResources(
+                    0,
+                    0,
+                    min_reserved.object_store_memory,
+                )
                 self._total_shared = self._total_shared.subtract(
                     ExecutionResources(0, 0, 1)
                 )
