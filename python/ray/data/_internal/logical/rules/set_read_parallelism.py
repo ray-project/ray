@@ -25,7 +25,9 @@ def compute_additional_split_factor(
     detected_parallelism, reason, _, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
     )
-    num_read_tasks = len(datasource_or_legacy_reader.get_read_tasks(detected_parallelism))
+    num_read_tasks = len(
+        datasource_or_legacy_reader.get_read_tasks(detected_parallelism)
+    )
     expected_block_size = None
     if mem_size:
         expected_block_size = mem_size / num_read_tasks
@@ -47,7 +49,7 @@ def compute_additional_split_factor(
 
     available_cpu_slots = ray_available_resources().get("CPU", 1)
     if (
-        parallelism > 0
+        parallelism != -1
         and num_read_tasks >= available_cpu_slots * 4
         and num_read_tasks >= 5000
     ):
