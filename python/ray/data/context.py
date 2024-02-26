@@ -148,6 +148,15 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
+# Default value of the max number of blocks that can be buffered at the
+# streaming generator of each `DataOpTask`.
+# Note, if this value is too large, we'll need to allocate more memory
+# buffer for the pending task outputs, which may lead to bad performance
+# as we may not have enough memory buffer for the operator outputs.
+# If the value is too small, the task may be frequently blocked due to
+# streaming generator backpressure.
+DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
+
 
 @DeveloperAPI
 class DataContext:
@@ -236,9 +245,9 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
-        # The max number of blocks that can be buffered at the streaming generator of
-        # each `DataOpTask`.
-        self._max_num_blocks_in_streaming_gen_buffer = 2
+        self._max_num_blocks_in_streaming_gen_buffer = (
+            DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
+        )
         # Whether to enable ReservationOpResourceAllocator.
         self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
         # The reservation ratio for ReservationOpResourceAllocator.
