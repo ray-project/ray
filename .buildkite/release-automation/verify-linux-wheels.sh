@@ -4,9 +4,15 @@ set -euo pipefail
 
 set -x
 
-export PYTHON_VERSION="${PYTHON_VERSION:-3.8}"
-export RAY_VERSION="${RAY_VERSION:-2.9.1}"
-export RAY_HASH="${RAY_HASH:-cfbf98c315cfb2710c56039a3c96477d196de049}"
+export PYTHON_VERSION="${PYTHON_VERSION}"
+if [[ -z "$RAY_VERSION" ]]; then
+    echo "RAY_VERSION environment variable is not set"
+    exit 1
+fi
+if [[ -z "$RAY_HASH" ]]; then
+    echo "RAY_HASH environment variable is not set"
+    exit 1
+fi
 
 export PATH="/root/miniconda3/bin:$PATH"
 

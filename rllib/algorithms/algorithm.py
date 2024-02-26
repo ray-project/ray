@@ -37,8 +37,11 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    DEFAULT_MODULE_ID,
+)
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.utils import _gym_env_creator
@@ -67,10 +70,10 @@ from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
+    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
-    override,
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
@@ -88,6 +91,7 @@ from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_AGENT_STEPS_TRAINED,
@@ -108,17 +112,20 @@ from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentID,
+    AgentToModuleMappingFn,
     AlgorithmConfigDict,
     EnvCreator,
     EnvInfoDict,
     EnvType,
     EpisodeID,
     EpisodeType,
+    ModuleID,
     PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
     ResultDict,
     SampleBatchType,
+    ShouldModuleBeUpdatedFn,
     TensorStructType,
     TensorType,
 )
@@ -760,22 +767,18 @@ class Algorithm(Trainable, AlgorithmBase):
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
-            # Setup proper policies-to-train/should-module-be-updated functions
-            # on the LearnerGroup.
-            self.learner_group.set_should_module_be_updated_fn(
-                self.config.policies_to_train
-            )
 
             # Only when using RolloutWorkers: Update also the worker set's
-            # `is_policy_to_train` (analogous to LearnerGroup's
-            # `should_module_be_updated_fn`).
+            # `is_policy_to_train`.
             # Note that with the new EnvRunner API in combination with the new stack,
-            # this information only needs to be kept in the LearnerGroup and not on the
+            # this information only needs to be kept in the Learner and not on the
             # EnvRunners anymore.
             if not self.config.uses_new_env_runners:
-                update_fn = self.learner_group.should_module_be_updated_fn
+                policies_to_train = self.config.policies_to_train or set(
+                    self.config.policies
+                )
                 self.workers.foreach_worker(
-                    lambda w: w.set_is_policy_to_train(update_fn),
+                    lambda w: w.set_is_policy_to_train(policies_to_train),
                     healthy_only=True,
                 )
 
@@ -1370,20 +1373,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 episodes left to run. It's used to find out whether
                 evaluation should continue.
         """
-        # How many episodes/timesteps do we need to run?
-        # In "auto" mode (only for parallel eval + training): Run as long
-        # as training lasts.
-        unit = self.config.evaluation_duration_unit
+        # Get the configuration for evaluation runs.
         eval_cfg = self.evaluation_config
-        rollout = eval_cfg.rollout_fragment_length
-        num_envs = eval_cfg.num_envs_per_worker
-        auto = self.config.evaluation_duration == "auto"
-        duration = (
-            self.config.evaluation_duration
-            if not auto
-            else (self.config.evaluation_num_workers or 1)
-            * (1 if unit == "episodes" else rollout)
-        )
 
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
@@ -1409,119 +1400,161 @@ class Algorithm(Trainable, AlgorithmBase):
                 "with `enable_async_evaluation=True` config setting!"
             )
 
-        agent_steps_this_iter = 0
-        env_steps_this_iter = 0
-
-        logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
-
-        all_batches = []
-
-        # Default done-function returns True, whenever num episodes
-        # have been completed.
-        if duration_fn is None:
-
-            def duration_fn(num_units_done):
-                return duration - num_units_done
-
         # Put weights only once into object store and use same object
         # ref to synch to all workers.
         self._evaluation_weights_seq_number += 1
         weights_ref = ray.put(self.workers.local_worker().get_weights())
         weights_seq_no = self._evaluation_weights_seq_number
-        remote_fn_partial = functools.partial(
-            self._evaluate_async_remote_fn,
-            _weights_ref=weights_ref,
-            _weights_seq_no=weights_seq_no,
-            _env_runner=True,
-            _env_runner_num_episodes=(1 if unit == "episodes" else None),
-        )
 
-        rollout_metrics = []
+        self.callbacks.on_evaluate_start(algorithm=self)
 
-        # How many episodes have we run (across all eval workers)?
-        num_units_done = 0
-        _round = 0
-
-        while self.evaluation_workers.num_healthy_remote_workers() > 0:
-            units_left_to_do = duration_fn(num_units_done)
-            if units_left_to_do <= 0:
-                break
-
-            _round += 1
-            # Get ready evaluation results and metrics asynchronously.
-            self.evaluation_workers.foreach_worker_async(
-                func=remote_fn_partial,
-                healthy_only=True,
+        # If user provided a custom function for asynchronous evaluation,
+        # run this function.
+        if self.config.custom_async_evaluation_function:
+            logger.info(
+                "Running custom async eval function "
+                f"{self.config.custom_async_evaluation_function}"
             )
-            eval_results = self.evaluation_workers.fetch_ready_async_reqs()
+            # Pass in the weights reference object and the sequence number
+            # to avoid synching the weights too often.
+            metrics = self.config.custom_async_evaluation_function(
+                self,
+                self.evaluation_workers,
+                weights_ref=weights_ref,
+                weights_seq_no=weights_seq_no,
+            )
+            if not metrics or not isinstance(metrics, dict):
+                raise ValueError(
+                    "Custom async eval function must return "
+                    f"dict of metrics, got {metrics}."
+                )
+        # Otherwise evaluate current state of the policy for `duration` many
+        # units.
+        else:
+            # How many episodes/timesteps do we need to run?
+            # In "auto" mode (only for parallel eval + training): Run as long
+            # as training lasts.
+            unit = self.config.evaluation_duration_unit
+            rollout = eval_cfg.rollout_fragment_length
+            num_envs = eval_cfg.num_envs_per_worker
+            auto = self.config.evaluation_duration == "auto"
+            duration = (
+                self.config.evaluation_duration
+                if not auto
+                else (self.config.evaluation_num_workers or 1)
+                * (1 if unit == "episodes" else rollout)
+            )
 
-            episodes = []
-            i = 0
-            for _, result in eval_results:
-                eps, metrics, seq_no = result
-                # Ignore results, if the weights seq-number does not match (is
-                # from a previous evaluation step) OR if we have already reached
-                # the configured duration (e.g. number of episodes to evaluate
-                # for).
-                if seq_no == self._evaluation_weights_seq_number and (
-                    i * (1 if unit == "episodes" else rollout * num_envs)
-                    < units_left_to_do
-                ):
-                    episodes.extend(eps)
-                    rollout_metrics.extend(metrics)
-                i += 1
+            logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
 
-            # Collect steps stats.
-            # TODO (sven): Solve for proper multi-agent env/agent steps counting.
-            #  Once we have multi-agent support on EnvRunner stack, we can simply do:
-            #  `len(episode)` for env steps and `episode.num_agent_steps()` for agent
-            #  steps.
-            _agent_steps = sum(len(e) for e in episodes)
-            _env_steps = sum(len(e) for e in episodes)
+            all_batches = []
+            agent_steps_this_iter = 0
+            env_steps_this_iter = 0
 
-            # Only complete episodes done by eval workers.
-            if unit == "episodes":
-                num_units_done += len(episodes)
-            # n timesteps per returned episode done by eval workers.
-            else:
-                num_units_done += (
-                    _agent_steps
-                    if self.config.count_steps_by == "agent_steps"
-                    else _env_steps
+            # Default done-function returns True, whenever num episodes
+            # have been completed.
+            if duration_fn is None:
+
+                def duration_fn(num_units_done):
+                    return duration - num_units_done
+
+            remote_fn_partial = functools.partial(
+                self._evaluate_async_remote_fn,
+                _weights_ref=weights_ref,
+                _weights_seq_no=weights_seq_no,
+                _env_runner=True,
+                _env_runner_num_episodes=(
+                    eval_cfg.num_envs_per_worker if unit == "episodes" else None
+                ),
+            )
+
+            rollout_metrics = []
+
+            # How many episodes have we run (across all eval workers)?
+            num_units_done = 0
+            _round = 0
+
+            while self.evaluation_workers.num_healthy_remote_workers() > 0:
+                units_left_to_do = duration_fn(num_units_done)
+                if units_left_to_do <= 0:
+                    break
+
+                _round += 1
+                # Get ready evaluation results and metrics asynchronously.
+                self.evaluation_workers.foreach_worker_async(
+                    func=remote_fn_partial,
+                    healthy_only=True,
+                )
+                eval_results = self.evaluation_workers.fetch_ready_async_reqs()
+
+                episodes = []
+                i = 0
+                for _, result in eval_results:
+                    eps, metrics, seq_no = result
+                    # Ignore results, if the weights seq-number does not match (is
+                    # from a previous evaluation step) OR if we have already reached
+                    # the configured duration (e.g. number of episodes to evaluate
+                    # for).
+                    if seq_no == self._evaluation_weights_seq_number and (
+                        i * (1 if unit == "episodes" else rollout * num_envs)
+                        < units_left_to_do
+                    ):
+                        episodes.extend(eps)
+                        rollout_metrics.extend(metrics)
+                    i += 1
+
+                # Collect steps stats.
+                # TODO (sven): Solve for proper multi-agent env/agent steps counting.
+                #  Once we have multi-agent support on EnvRunner stack, we can simply
+                # do: `len(episode)` for env steps and `episode.num_agent_steps()` for
+                # agent steps.
+                _agent_steps = sum(len(e) for e in episodes)
+                _env_steps = sum(len(e) for e in episodes)
+
+                # Only complete episodes done by eval workers.
+                if unit == "episodes":
+                    num_units_done += len(episodes)
+                # n timesteps per returned episode done by eval workers.
+                else:
+                    num_units_done += (
+                        _agent_steps
+                        if self.config.count_steps_by == "agent_steps"
+                        else _env_steps
+                    )
+
+                if self.reward_estimators:
+                    batch = concat_samples([e.get_sample_batch() for e in episodes])
+                    all_batches.append(batch)
+
+                agent_steps_this_iter += _agent_steps
+                env_steps_this_iter += _env_steps
+
+                logger.info(
+                    f"Ran round {_round} of parallel evaluation "
+                    f"({num_units_done}/{duration if not auto else '?'} "
+                    f"{unit} done)"
                 )
 
+                sampler_results = summarize_episodes(
+                    rollout_metrics,
+                    keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
+                )
+
+            metrics = dict({"sampler_results": sampler_results})
+            metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
+            metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
+
             if self.reward_estimators:
-                batch = concat_samples([e.get_sample_batch() for e in episodes])
-                all_batches.append(batch)
+                # Compute off-policy estimates
+                metrics["off_policy_estimator"] = {}
+                total_batch = concat_samples(all_batches)
+                for name, estimator in self.reward_estimators.items():
+                    estimates = estimator.estimate(total_batch)
+                    metrics["off_policy_estimator"][name] = estimates
 
-            agent_steps_this_iter += _agent_steps
-            env_steps_this_iter += _env_steps
-
-            logger.info(
-                f"Ran round {_round} of parallel evaluation "
-                f"({num_units_done}/{duration if not auto else '?'} "
-                f"{unit} done)"
-            )
+            del remote_fn_partial
 
         del weights_ref
-        del remote_fn_partial
-
-        sampler_results = summarize_episodes(
-            rollout_metrics,
-            keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
-        )
-
-        metrics = dict({"sampler_results": sampler_results})
-        metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
-        metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
-
-        if self.reward_estimators:
-            # Compute off-policy estimates
-            metrics["off_policy_estimator"] = {}
-            total_batch = concat_samples(all_batches)
-            for name, estimator in self.reward_estimators.items():
-                estimates = estimator.estimate(total_batch)
-                metrics["off_policy_estimator"][name] = estimates
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on Algorithm, so it can be attached to
@@ -1651,14 +1684,13 @@ class Algorithm(Trainable, AlgorithmBase):
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             # TODO (Avnish): Implement this on learner_group.get_weights().
-            # TODO (Kourosh): figure out how we are going to sync MARLModule
-            # weights to MARLModule weights under the policy_map objects?
             from_worker_or_trainer = None
             if self.config._enable_new_api_stack:
                 from_worker_or_trainer = self.learner_group
+
             self.workers.sync_weights(
                 from_worker_or_learner_group=from_worker_or_trainer,
-                policies=list(train_results.keys()),
+                policies=set(train_results.keys()) - {ALL_MODULES},
                 global_vars=global_vars,
             )
 
@@ -1991,6 +2023,20 @@ class Algorithm(Trainable, AlgorithmBase):
             return actions
 
     @PublicAPI
+    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> RLModule:
+        """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
+
+        Args:
+            module_id: ID of the (single-agent) RLModule to return from the MARLModule
+                used by the local EnvRunner.
+
+        Returns:
+            The SingleAgentRLModule sitting under the ModuleID key inside the
+            local worker's (EnvRunner's) MARLModule.
+        """
+        return self.workers.local_worker().module[module_id]
+
+    @PublicAPI
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
@@ -2080,6 +2126,14 @@ class Algorithm(Trainable, AlgorithmBase):
             The newly added policy (the copy that got added to the local
             worker). If `workers` was provided, None is returned.
         """
+        if self.config.uses_new_env_runners:
+            raise ValueError(
+                "`Algorithm.add_policy()` is not supported on the new API stack w/ "
+                "EnvRunners! Use `Algorithm.add_module()` instead. Also see "
+                "`rllib/examples/self_play_league_based_with_open_spiel.py` for an "
+                "example."
+            )
+
         validate_policy_id(policy_id, error=True)
 
         self.workers.add_policy(
@@ -2105,10 +2159,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 module_spec=SingleAgentRLModuleSpec.from_module(module),
             )
 
-            # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+            # Update each Learner's `policies_to_train` information, but only
             # if the arg is explicitly provided here.
             if policies_to_train is not None:
-                self.learner_group.set_should_module_be_updated_fn(policies_to_train)
+                self.learner_group.foreach_learner(
+                    lambda learner: learner.config.multi_agent(
+                        policies_to_train=policies_to_train
+                    )
+                )
 
             weights = policy.get_weights()
             self.learner_group.set_weights({policy_id: weights})
@@ -2130,6 +2188,78 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)
+
+    @PublicAPI
+    def add_module(
+        self,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+        *,
+        module_state: Optional[Dict] = None,
+        new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+        evaluation_workers: bool = True,
+    ) -> Optional[Policy]:
+        """Adds a new (single-agent) RLModule to this Algorithm's MARLModule.
+
+        Args:
+            module_id: ID of the RLModule to add to the MARLModule.
+                IMPORTANT: Must not contain characters that
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
+            module_spec: The SingleAgentRLModuleSpec to use for constructing the new
+                RLModule.
+            module_state: Optional state dict to apply to the new
+                RLModule instance, right after its construction.
+            new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
+                mapping function to use from here on. Note that already ongoing
+                episodes will not change their mapping but will use the old mapping till
+                the end of the episode.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+            evaluation_workers: Whether to add the new RLModule also
+                to the evaluation WorkerSet.
+
+        Returns:
+            The newly added RLModule (the copy that got added to the local
+            worker).
+        """
+        validate_policy_id(module_id, error=True)
+
+        def _add(env_runner_or_learner):
+            env_runner_or_learner.module.add_module(
+                module_id=module_id, module=module_spec.build()
+            )
+            if new_agent_to_module_mapping_fn is not None:
+                env_runner_or_learner.config.multi_agent(
+                    policy_mapping_fn=new_agent_to_module_mapping_fn
+                )
+            # This setting doesn't really matter for EnvRunners (no
+            # training going on there, but we'll update this as well
+            # here for good measure).
+            if new_should_module_be_updated is not None:
+                env_runner_or_learner.config.multi_agent(
+                    policies_to_train=new_should_module_be_updated
+                )
+
+        # Create RLModule on all EnvRunners.
+        self.workers.foreach_worker(_add, local_worker=True)
+        self.workers.sync_weights(policies=[module_id])
+        # Also on the eval EnvRunners?
+        if evaluation_workers is True and self.evaluation_workers is not None:
+            self.evaluation_workers.foreach_worker(_add, local_worker=True)
+            self.evaluation_workers.sync_weights(policies=[module_id])
+        # Create RLModule on all Learner workers.
+        new_module = self.workers.local_worker().module[module_id]
+        self.learner_group.foreach_learner(_add)
+        self.learner_group.set_weights({module_id: new_module.get_state()})
+
+        # Return newly added RLModule (from the local EnvRunner).
+        return new_module
 
     @PublicAPI
     def remove_policy(
@@ -2173,10 +2303,14 @@ class Algorithm(Trainable, AlgorithmBase):
         # Update all EnvRunner workers.
         self.workers.foreach_worker(fn, local_worker=True, healthy_only=True)
 
-        # Update the LearnerGroup's `should_module_be_updated_fn` function, but only
+        # Update each Learner's `policies_to_train` information, but only
         # if the arg is explicitly provided here.
         if self.config._enable_new_api_stack and policies_to_train is not None:
-            self.learner_group.set_should_module_be_updated_fn(policies_to_train)
+            self.learner_group.foreach_learner(
+                lambda learner: learner.config.multi_agent(
+                    policies_to_train=policies_to_train
+                )
+            )
 
         # Update the evaluation worker set's workers, if required.
         if evaluation_workers and self.evaluation_workers is not None:
@@ -2764,7 +2898,12 @@ class Algorithm(Trainable, AlgorithmBase):
             state["worker"] = self.workers.local_worker().get_state()
 
         # Also store eval `policy_mapping_fn` (in case it's different from main one).
-        if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
+        # Note, the new `EnvRunner API` has no policy mapping function.
+        if (
+            hasattr(self, "evaluation_workers")
+            and self.evaluation_workers is not None
+            and not self.config.uses_new_env_runners
+        ):
             state[
                 "eval_policy_mapping_fn"
             ] = self.evaluation_workers.local_worker().policy_mapping_fn

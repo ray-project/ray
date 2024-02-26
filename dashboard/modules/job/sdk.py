@@ -287,7 +287,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="stable")
     def delete_job(
         self,
         job_id: str,
