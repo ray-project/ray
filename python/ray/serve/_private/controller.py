@@ -356,8 +356,8 @@ class ServeController:
         (head node and nodes with deployment replicas).
         """
         new_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_proxy_nodes = (
-            new_proxy_nodes - self.cluster_node_info_cache.get_draining_node_ids()
+        new_proxy_nodes = new_proxy_nodes - set(
+            self.cluster_node_info_cache.get_draining_nodes()
         )
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes

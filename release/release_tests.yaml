@@ -113,7 +113,7 @@
 # 10 GB image classification raw images with 1 GPU.
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_raw
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -140,7 +140,7 @@
 # 10 GB image classification parquet with 1 GPU.
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_parquet
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -168,7 +168,7 @@
 # 300 GB image classification raw images with 16 GPUs
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_raw
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -197,7 +197,7 @@
 
 
 - name: chaos_torch_batch_inference_16_gpu_300gb_raw
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests
 
   frequency: nightly
@@ -229,7 +229,7 @@
 # 300 GB image classification parquet data with 16 GPUs
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_parquet
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -260,7 +260,7 @@
 # 10 TB image classification parquet data with heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
 - name: torch_batch_inference_hetero_10tb_parquet
-  group: AIR tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: weekly
@@ -1647,35 +1647,6 @@
 
   alert: default
 
-- name: ml_user_xgboost_gpu_connect_latest
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_xgboost_test.sh
-    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python xgboost/train_gpu_connect.py
-    wait_for_nodes:
-      num_nodes: 5
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
-
-  alert: default
-
 - name: ml_user_xgboost_gpu_connect_master
   group: ML user tests
   working_dir: ml_user_tests
@@ -1686,7 +1657,7 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_xgboost_master_test.sh
+      post_build_script: byod_xgboost_test.sh
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
@@ -3020,6 +2991,7 @@
   working_dir: serve_tests
 
   frequency: nightly
+  stable: False
   team: serve
 
   cluster:
@@ -5433,32 +5405,6 @@
 # Dataset tests
 ###############
 
-- name: inference
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: manual
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: inference.yaml
-
-  run:
-    timeout: 600
-    script: python inference.py
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: inference_gce.yaml
-
 - name: parquet_metadata_resolution
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -5761,7 +5707,7 @@
 
   run:
     timeout: 18000
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 3
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image --use-gpu --num-epochs 2
 
   variations:
     - __suffix__: aws
@@ -5835,7 +5781,7 @@
 
   run:
     timeout: 18000
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu --num-epochs 2
 
   variations:
     - __suffix__: aws
@@ -5859,7 +5805,7 @@
 
   run:
     timeout: 18000
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order --use-gpu
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order --use-gpu --num-epochs 2
 
   variations:
     - __suffix__: aws
@@ -5916,6 +5862,30 @@
       frequency: manual
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_images_train_1_gpu_5_cpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: multi_node_train_1g5c.yaml
+
+  run:
+    timeout: 2400
+    script: python multi_node_train_benchmark.py --num-workers 1 --file-type image --use-gpu --num-epochs 2 --skip-train-model --prefetch-batches 16 --batch-size -1 --disable-locality-with-output
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_1g5c_gce.yaml
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
@@ -6006,8 +5976,8 @@
     cluster_compute: multi_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
+    # Expect the benchmark to finish within 90 minutes.
+    timeout: 5400
     script: python iter_tensor_batches_benchmark.py --data-size-gb=10
 
   variations:

@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
 import pytest
@@ -14,6 +14,7 @@ from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
@@ -125,7 +126,7 @@ def check_num_replicas_gte(
 ) -> int:
     """Check if num replicas is >= target."""
 
-    assert get_num_running_replicas(name) >= target
+    assert get_num_running_replicas(name, app_name) >= target
     return True
 
 
@@ -134,7 +135,7 @@ def check_num_replicas_eq(
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_running_replicas(name) == target
+    assert get_num_running_replicas(name, app_name) == target
     return True
 
 
@@ -143,7 +144,50 @@ def check_num_replicas_lte(
 ) -> int:
     """Check if num replicas is <= target."""
 
-    assert get_num_running_replicas(name) <= target
+    assert get_num_running_replicas(name, app_name) <= target
+    return True
+
+
+def check_replica_counts(
+    controller: ActorHandle,
+    deployment_id: DeploymentID,
+    total: Optional[int] = None,
+    by_state: Optional[List[Tuple[ReplicaState, int, Callable]]] = None,
+):
+    """Uses _dump_replica_states_for_testing to check replica counts.
+
+    Args:
+        controller: A handle to the Serve controller.
+        deployment_id: The deployment to check replica counts for.
+        total: The total number of expected replicas for the deployment.
+        by_state: A list of tuples of the form
+            (replica state, number of replicas, filter function).
+            Used for more fine grained checks.
+    """
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_id)
+    )
+
+    if total is not None:
+        replica_counts = {
+            state: len(replicas.get([state]))
+            for state in ALL_REPLICA_STATES
+            if replicas.get([state])
+        }
+        assert replicas.count() == total, replica_counts
+
+    if by_state is not None:
+        for state, count, check in by_state:
+            assert isinstance(state, ReplicaState)
+            assert isinstance(count, int) and count >= 0
+            if check:
+                filtered = {r for r in replicas.get(states=[state]) if check(r)}
+                curr_count = len(filtered)
+            else:
+                curr_count = replicas.count(states=[state])
+            msg = f"Expected {count} for state {state} but got {curr_count}."
+            assert curr_count == count, msg
+
     return True
 
 
@@ -288,6 +332,8 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         await asyncio.sleep(100000)
     except asyncio.CancelledError:
+        # Clear the context var to avoid Ray recursively cancelling this method call.
+        ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
 
 
@@ -335,3 +381,55 @@ class FakeGrpcContext:
 
     def invocation_metadata(self):
         return self._invocation_metadata
+
+
+class FakeGauge:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.value = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+        self.value = value
+        if tags:
+            self.tags.update(tags)
+
+    def get_value(self):
+        return self.value
+
+    def get_tags(self):
+        return self.tags
+
+
+class FakeCounter:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.count: int = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        self.count += value
+        if tags:
+            self.tags.update(tags)
+
+    def get_count(self) -> int:
+        return self.count
+
+    def get_tags(self):
+        return self.tags
