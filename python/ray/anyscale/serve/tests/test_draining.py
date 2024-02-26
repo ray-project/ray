@@ -1,4 +1,8 @@
 import asyncio
+import os
+import random
+import time
+from typing import List
 
 import pytest
 import requests
@@ -10,7 +14,9 @@ from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2
 from ray.serve._private.common import ReplicaState
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.test_utils import check_num_replicas_eq, check_num_replicas_gte
 from ray.serve.context import _get_global_client
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeInstanceDetails
 from ray.tests.conftest import *  # noqa
 
@@ -225,6 +231,77 @@ def test_draining_without_traffic(monkeypatch, ray_start_cluster):
 
     wait_for_condition(lambda: check_replica_node_ids(expected_replica_node_ids))
 
+    serve.shutdown()
+
+
+def send_requests(h: DeploymentHandle, n: int, m: int) -> List:
+    refs = list()
+    for _ in range(n):
+        refs.extend([h.remote() for _ in range(m)])
+        time.sleep(0.5)
+    return refs
+
+
+def test_start_then_stop_replicas(ray_start_cluster):
+    """We should start replacement replicas before stopping replicas on draining node"""
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, resources={"head": 1})
+    cluster.add_node(num_cpus=3, resources={"worker-node-1": 1})
+    cluster.add_node(num_cpus=2, resources={"worker-node-2": 1})
+    cluster.add_node(num_cpus=1, resources={"worker-node-3": 1})
+    cluster.wait_for_nodes()
+
+    signal = SignalActor.remote()
+    ray.get(signal.send.remote())
+    # head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
+    # worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+
+    @serve.deployment(num_replicas=3, ray_actor_options={"num_cpus": 1})
+    class A:
+        def __init__(self):
+            ray.get(signal.wait.remote())
+
+        def __call__(self):
+            return os.getpid(), ray.get_runtime_context().get_node_id()
+
+    h = serve.run(A.bind())
+    refs = send_requests(h, 3, 10)
+    pids, node_ids = zip(*[ref.result() for ref in refs])
+
+    # Block initialization of new replicas to prepare for draining
+    signal.send.remote(clear=True)
+
+    # Drain any node where there are replicas running.
+    node_to_drain = random.choice(list(set(node_ids)))
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    gcs_client.drain_node(
+        node_to_drain,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        (time.time() + 500) * 1000,
+    )
+
+    # At least one replica is running on the draining node, so at least
+    # one new replacement replica should be started.
+    wait_for_condition(check_num_replicas_gte, name="A", target=4)
+
+    refs = send_requests(h, 3, 10)
+    new_pids, node_ids = zip(*[ref.result() for ref in refs])
+    assert set(pids) == set(new_pids)
+
+    # Unblock initialization of new replicas.
+    signal.send.remote()
+    wait_for_condition(check_num_replicas_eq, name="A", target=3)
+    status = serve.status().applications["default"].deployments["A"]
+    assert status.status == "HEALTHY"
+
+    # At least one replica among the 3 currently running replicas is new
+    refs = send_requests(h, 3, 10)
+    new_pids, node_ids = zip(*[ref.result() for ref in refs])
+    assert len(set(pids) & set(new_pids)) < 3
+
+    # Shut down serve to avoid state sharing between tests.
     serve.shutdown()
 
 

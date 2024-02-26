@@ -192,9 +192,11 @@ def test_handle_prefers_same_az_without_prefer_node(ray_cluster):
         assert h.remote().result() == worker2_node_id
 
     ray.get(signal.send.remote())
-    assert blocked_ref1.result() in {head_node_id, worker1_node_id}
-    assert blocked_ref2.result() in {head_node_id, worker1_node_id}
-    assert blocked_ref1.result() != blocked_ref2.result()
+    res1 = blocked_ref1.result()
+    res2 = blocked_ref2.result()
+    assert res1 in {head_node_id, worker1_node_id}
+    assert res2 in {head_node_id, worker1_node_id}
+    assert res1 != res2
 
 
 if __name__ == "__main__":
