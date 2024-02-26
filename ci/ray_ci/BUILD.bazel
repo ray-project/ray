@@ -37,7 +37,6 @@ py_binary(
 py_binary(
     name = "build_in_docker",
     srcs = ["build_in_docker.py"],
-    exec_compatible_with = ["//:hermetic_python"],
     deps = [":ray_ci_lib"],
 )
 

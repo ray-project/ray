@@ -21,6 +21,7 @@ _DOCKER_ENV = [
     "BUILDKITE_JOB_ID",
     "BUILDKITE_LABEL",
     "BUILDKITE_PIPELINE_ID",
+    "BUILDKITE_BAZEL_CACHE_URL",
 ]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
@@ -30,9 +31,15 @@ class Container(abc.ABC):
     A wrapper for running commands in ray ci docker container
     """
 
-    def __init__(self, docker_tag: str, envs: Optional[List[str]] = None) -> None:
+    def __init__(
+        self,
+        docker_tag: str,
+        volumes: Optional[List[str]] = None,
+        envs: Optional[List[str]] = None,
+    ) -> None:
         self.docker_tag = docker_tag
         self.envs = envs or []
+        self.volumes = volumes or []
         self.envs += _DOCKER_ENV
 
     def run_script_with_output(self, script: List[str]) -> bytes:
@@ -90,7 +97,7 @@ class Container(abc.ABC):
             command += ["--env", env]
         if network:
             command += ["--network", network]
-        for volume in volumes or []:
+        for volume in (volumes or []) + self.volumes:
             command += ["--volume", volume]
         return (
             command

@@ -46,17 +46,19 @@ steps:
 
   - label: ":windows: wheel {{matrix}}"
     # we have linux/mac wheels tag, but do not have a windows wheels tag..
-    # so using python and core_cpp here, to make sure at least it builds
+    # so using linux_wheels and core_cpp here, to make sure at least it builds
     tags:
       - oss
-      - python
+      - linux_wheels
       - core_cpp
     job_env: WINDOWS
     mount_windows_artifacts: true
     instance_type: windows
     commands:
-      - export BUILD_ONE_PYTHON_ONLY={{matrix}}
-      - bash /c/workdir/.buildkite/windows_ci.sh wheels
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} 
+        --operating-system windows --upload
+    depends_on: windowsbuild
     matrix:
       - "3.8"
       - "3.9"
