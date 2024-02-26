@@ -107,10 +107,18 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            logger.get_logger().info("Executing DAG %s", dag)
-            logger.get_logger().info("Execution config: %s", self._options)
+            stdout_logger = logger.get_logger()
+            log_path = logger.get_datasets_log_path()
+            message = "Starting execution of Dataset."
+            if log_path is not None:
+                message += f" Full log is in {log_path}"
+            stdout_logger.info(message)
+            stdout_logger.info("Execution plan of Dataset: %s\n", dag)
+            logger.get_logger(log_to_stdout=False).info(
+                "Execution config: %s", self._options
+            )
             if not self._options.verbose_progress:
-                logger.get_logger().info(
+                logger.get_logger(log_to_stdout=False).info(
                     "Tip: For detailed progress reporting, run "
                     "`ray.data.DataContext.get_current()."
                     "execution_options.verbose_progress = True`"
@@ -168,7 +176,7 @@ class StreamingExecutor(Executor, threading.Thread):
         with self._shutdown_lock:
             if not self._execution_started or self._shutdown:
                 return
-            logger.get_logger().debug(f"Shutting down {self}.")
+            logger.get_logger(log_to_stdout=False).debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.

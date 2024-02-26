@@ -29,7 +29,7 @@ def compute_additional_split_factor(
     expected_block_size = None
     if mem_size:
         expected_block_size = mem_size / num_read_tasks
-        logger.get_logger().debug(
+        logger.get_logger(log_to_stdout=False).debug(
             f"Expected in-memory size {mem_size}," f" block size {expected_block_size}"
         )
         size_based_splits = round(max(1, expected_block_size / target_max_block_size))
@@ -37,9 +37,13 @@ def compute_additional_split_factor(
         size_based_splits = 1
     if cur_additional_split_factor:
         size_based_splits *= cur_additional_split_factor
-    logger.get_logger().debug(f"Size based split factor {size_based_splits}")
+    logger.get_logger(log_to_stdout=False).debug(
+        f"Size based split factor {size_based_splits}"
+    )
     estimated_num_blocks = num_read_tasks * size_based_splits
-    logger.get_logger().debug(f"Blocks after size splits {estimated_num_blocks}")
+    logger.get_logger(log_to_stdout=False).debug(
+        f"Blocks after size splits {estimated_num_blocks}"
+    )
 
     available_cpu_slots = ray_available_resources().get("CPU", 1)
     if (
@@ -112,14 +116,14 @@ class SetReadParallelismRule(Rule):
 
         if logical_op._parallelism == -1:
             assert reason != ""
-            logger.get_logger().info(
+            logger.get_logger(log_to_stdout=False).info(
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for operator {logical_op.name} to satisfy {reason}."
             )
         logical_op.set_detected_parallelism(detected_parallelism)
 
         if k is not None:
-            logger.get_logger().info(
+            logger.get_logger(log_to_stdout=False).info(
                 f"To satisfy the requested parallelism of {detected_parallelism}, "
                 f"each read task output is split into {k} smaller blocks."
             )
@@ -127,4 +131,6 @@ class SetReadParallelismRule(Rule):
         if k is not None:
             op.set_additional_split_factor(k)
 
-        logger.get_logger().debug(f"Estimated num output blocks {estimated_num_blocks}")
+        logger.get_logger(log_to_stdout=False).debug(
+            f"Estimated num output blocks {estimated_num_blocks}"
+        )
