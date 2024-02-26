@@ -1538,36 +1538,6 @@
       cluster:
         cluster_compute: tpl_gce_1x96.yaml
 
-- name: tune_scalability_xgboost_sweep
-  group: Tune scalability tests
-  working_dir: tune_tests/scalability_tests
-
-  frequency: weekly
-  team: ml
-
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_tune_test.sh
-    cluster_compute: tpl_16x64.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/test_xgboost_sweep.py
-
-    wait_for_nodes:
-      num_nodes: 16
-
-
-  alert: tune_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_16x64.yaml
-
 
 ############################
 # Tune fault tolerance tests
