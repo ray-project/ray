@@ -236,7 +236,11 @@ class SplitCoordinator:
         except StopIteration:
             return None
         finally:
-            stats = self._base_dataset._plan.stats()
+            stats = (
+                self._executor.get_stats()
+                if self._executor
+                else self._base_dataset._plan.stats()
+            )
             if stats and stats.streaming_split_coordinator_s:
                 stats.streaming_split_coordinator_s.add(
                     time.perf_counter() - start_time
