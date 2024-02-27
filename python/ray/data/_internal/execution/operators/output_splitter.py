@@ -1,6 +1,7 @@
 import math
 from collections import deque
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -147,6 +148,7 @@ class OutputSplitter(PhysicalOperator):
             return "[locality disabled]"
 
     def _dispatch_bundles(self, dispatch_all: bool = False) -> None:
+        start_time = time.perf_counter()
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
         while self._buffer and (
@@ -169,6 +171,8 @@ class OutputSplitter(PhysicalOperator):
                 # Put it back and abort.
                 self._buffer.insert(0, target_bundle)
                 break
+        if self._metrics:
+            self._metrics.streaming_split_overhead_time += time.perf_counter() - start_time
 
     def _select_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.
@@ -233,7 +237,7 @@ class OutputSplitter(PhysicalOperator):
         return bundle.get_cached_location()
 
 
-def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
+def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
     left_blocks, left_meta = [], []
     right_blocks, right_meta = [], []
     acc = 0
@@ -264,7 +268,7 @@ def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
     return left, right
 
 
-def _split_meta(m: BlockMetadata, left_size: int) -> (BlockMetadata, BlockMetadata):
+def _split_meta(m: BlockMetadata, left_size: int) -> Tuple[BlockMetadata, BlockMetadata]:
     left_bytes = int(math.floor(m.size_bytes * (left_size / m.num_rows)))
     left = BlockMetadata(
         num_rows=left_size,
@@ -285,13 +289,13 @@ def _split_meta(m: BlockMetadata, left_size: int) -> (BlockMetadata, BlockMetada
 
 def _split_block(
     b: ObjectRef[Block], left_size: int
-) -> (ObjectRef[Block], ObjectRef[Block]):
+) -> Tuple[ObjectRef[Block], ObjectRef[Block]]:
     split_single_block = cached_remote_fn(_split_single_block)
     left, right = split_single_block.options(num_returns=2).remote(b, left_size)
     return left, right
 
 
-def _split_single_block(b: Block, left_size: int) -> (Block, Block):
+def _split_single_block(b: Block, left_size: int) -> Tuple[Block, Block]:
     acc = BlockAccessor.for_block(b)
     left = acc.slice(0, left_size)
     right = acc.slice(left_size, acc.num_rows())
