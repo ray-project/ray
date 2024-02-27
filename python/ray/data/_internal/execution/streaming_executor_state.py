@@ -523,9 +523,8 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, resource_manager)
-        in_backpressure = (
-            any(not p.can_add_input(op) for p in backpressure_policies)
-            or not under_resource_limits
+        in_backpressure = not under_resource_limits or any(
+            not p.can_add_input(op) for p in backpressure_policies
         )
         if (
             not in_backpressure

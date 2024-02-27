@@ -118,11 +118,6 @@ class OpRuntimeMetrics:
         default=0, metadata={"export": False}
     )
 
-    # Start time of current pause due to task submission backpressure
-    _task_submission_backpressure_start_time: float = field(
-        default=-1, metadata={"export": False}
-    )
-
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
@@ -130,6 +125,8 @@ class OpRuntimeMetrics:
         self._is_map = isinstance(op, MapOperator)
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
         self._extra_metrics: Dict[str, Any] = {}
+        # Start time of current pause due to task submission backpressure
+        self._task_submission_backpressure_start_time = -1
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
