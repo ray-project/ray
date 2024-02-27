@@ -472,6 +472,8 @@ class Worker:
         # Cache the job id from initialize_job_config() to optimize lookups.
         # This is on the critical path of ray.get()/put() calls.
         self._cached_job_id = None
+        # Cache the driver node id from get_driver_node_id() to optimize lookups.
+        self._cached_driver_node_id = None
 
     @property
     def connected(self):
@@ -515,6 +517,24 @@ class Worker:
     @property
     def current_node_id(self):
         return self.core_worker.get_current_node_id()
+
+    def get_driver_node_id(self, timeout=None) -> ray.NodeID:
+        """
+        Get the driver node id via Job Info. Populates the cached driver node id if
+        found. The fetching can be slow if there are too many jobs.
+
+        @raises Exception if the gcs client times out.
+        @returns driver node id if found, None otherwise (e.g. the job has not yet
+        started).
+        """
+        if self._cached_driver_node_id is not None:
+            return self._cached_driver_node_id
+        all_infos = self.gcs_client.get_all_job_info(timeout=timeout)
+        # Type: src.ray.protobuf.gcs_pb2.JobTableData
+        my_job_info = all_infos[self.current_job_id.binary()]
+        driver_node_id = ray.NodeID(my_job_info.driver_address.raylet_id)
+        self._cached_driver_node_id = driver_node_id
+        return driver_node_id
 
     @property
     def task_depth(self):
@@ -1847,6 +1867,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker.set_cached_job_id(None)
+    global_worker._cached_driver_node_id = None
 
 
 atexit.register(shutdown, True)
@@ -2353,9 +2374,8 @@ def connect(
         # (4) it's not client mode, (handled by client code)
         # (5) the driver is at the same node (machine) as the worker.
         #
-        # We only do the first 4 checks here.
-        # TODO: do the (5) check in _raylet.pyx maybe_initialize_job_config by checking
-        # worker's node_id == driver's node_id.
+        # We only do the first 4 checks here. The (5) check is done in _raylet.pyx
+        # maybe_initialize_job_config.
         if not any(
             [
                 job_config._runtime_env_has_working_dir(),

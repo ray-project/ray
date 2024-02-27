@@ -335,6 +335,78 @@ print(ray.get(my_file.remote()))
         assert os.path.join(tmpdir, "lib.py") in output, output
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 1,
+            "num_nodes": 2,
+        },
+    ],
+    indirect=True,
+)
+def test_worker_exception_if_no_working_dir_diff_node(ray_start_cluster):
+    """
+    Tests that, in a cluster of 2 nodes, a job with no working_dir that runs
+    a function with an import from driver's path, on both nodes.
+
+    On the driver's node it should work, but on the other node it should raise an
+    error about failing to import.
+    """
+    lib_code = """
+def get_file_path():
+    return __file__
+"""
+
+    runner_code = """
+import os
+import ray
+import lib
+ray.init()
+
+lib_path = lib.get_file_path()
+
+@ray.remote
+def my_file():
+    return lib.get_file_path()
+
+node_ids = set(n['NodeID'] for n in ray.nodes())
+my_node = ray.get_runtime_context().get_node_id()
+other_node = (node_ids - set([my_node])).pop()
+
+# runs on same node, works
+assert ray.get(my_file.options(
+    scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        node_id=my_node,
+        soft=False,
+    )
+).remote()) == lib_path
+
+# runs on different node, fails
+exc = None
+try:
+    ray.get(my_file.options(
+            scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=other_node,
+                soft=False,
+            )
+    ).remote())
+except ray.exceptions.RayTaskError as e:
+    exc = e
+assert isinstance(exc, ray.exceptions.RayTaskError), type(exc)
+assert "The remote function failed to import on the worker" in str(exc), str(exc)
+    """
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, "lib.py"), "w") as f:
+            f.write(lib_code)
+
+        with open(os.path.join(tmpdir, "runner.py"), "w") as f:
+            f.write(runner_code)
+
+        subprocess.check_output([sys.executable, "runner.py"], cwd=tmpdir)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
