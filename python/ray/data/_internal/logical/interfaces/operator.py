@@ -1,4 +1,10 @@
+import sys
 from typing import Iterator, List
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 
 class Operator:
@@ -10,7 +16,7 @@ class Operator:
     def __init__(
         self,
         name: str,
-        input_dependencies: List["Operator"],
+        input_dependencies: List[Self],
     ):
         self._name = name
         self._input_dependencies = input_dependencies
@@ -24,7 +30,7 @@ class Operator:
         return self._name
 
     @property
-    def input_dependencies(self) -> List["Operator"]:
+    def input_dependencies(self) -> List[Self]:
         """List of operators that provide inputs for this operator."""
         assert hasattr(
             self, "_input_dependencies"
@@ -32,14 +38,14 @@ class Operator:
         return self._input_dependencies
 
     @property
-    def output_dependencies(self) -> List["Operator"]:
+    def output_dependencies(self) -> List[Self]:
         """List of operators that consume outputs from this operator."""
         assert hasattr(
             self, "_output_dependencies"
         ), "Operator.__init__() was not called."
         return self._output_dependencies
 
-    def post_order_iter(self) -> Iterator["Operator"]:
+    def post_order_iter(self) -> Iterator[Self]:
         """Depth-first traversal of this operator and its input dependencies."""
         for op in self.input_dependencies:
             yield from op.post_order_iter()
