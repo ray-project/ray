@@ -157,7 +157,7 @@ class ExecutionOptions:
             streaming_split operations.
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
-            option is useful for performance debugging. Off by default.
+            option is useful for performance debugging. On by default.
     """
 
     resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
@@ -172,7 +172,7 @@ class ExecutionOptions:
 
     actor_locality_enabled: bool = True
 
-    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
+    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "1")))
 
     def validate(self) -> None:
         """Validate the options."""

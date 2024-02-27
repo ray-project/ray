@@ -646,11 +646,6 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        compute = get_compute_strategy(
-            fn,
-            compute=compute,
-            concurrency=concurrency,
-        )
 
         def process_batch(batch: "pandas.DataFrame") -> "pandas.DataFrame":
             batch.loc[:, col] = fn(batch)
@@ -663,6 +658,7 @@ class Dataset:
             process_batch,
             batch_format="pandas",  # TODO(ekl) we should make this configurable.
             compute=compute,
+            concurrency=concurrency,
             zero_copy_batch=False,
             **ray_remote_args,
         )
@@ -713,16 +709,12 @@ class Dataset:
         def fn(batch):
             return batch.drop(columns=cols)
 
-        compute = get_compute_strategy(
-            fn,
-            compute=compute,
-            concurrency=concurrency,
-        )
         return self.map_batches(
             fn,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
+            concurrency=concurrency,
             **ray_remote_args,
         )
 
@@ -772,16 +764,12 @@ class Dataset:
         def fn(batch):
             return BlockAccessor.for_block(batch).select(columns=cols)
 
-        compute = get_compute_strategy(
-            fn,
-            compute=compute,
-            concurrency=concurrency,
-        )
         return self.map_batches(
             fn,
             batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
+            concurrency=concurrency,
             **ray_remote_args,
         )
 

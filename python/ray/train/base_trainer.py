@@ -230,7 +230,9 @@ class BaseTrainer(abc.ABC):
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
-        self.run_config = copy.copy(run_config) or RunConfig()
+        self.run_config = (
+            copy.copy(run_config) if run_config is not None else RunConfig()
+        )
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
         self.starting_checkpoint = resume_from_checkpoint
@@ -635,7 +637,7 @@ class BaseTrainer(abc.ABC):
             ) from result.error
         return result
 
-    def _save(self, fs: pyarrow.fs.FileSystem, experiment_path: Union[str, Path]):
+    def _save(self, fs: pyarrow.fs.FileSystem, experiment_path: str):
         """Saves the current trainer's class along with the `param_dict` of
         parameters passed to this trainer's constructor.
 

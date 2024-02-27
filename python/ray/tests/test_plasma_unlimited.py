@@ -16,6 +16,10 @@ from ray._private.test_utils import (
 
 MB = 1024 * 1024
 
+# Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
+# increase the timeout.
+pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
+
 
 def _init_ray():
     return ray.init(num_cpus=2, object_store_memory=700e6)

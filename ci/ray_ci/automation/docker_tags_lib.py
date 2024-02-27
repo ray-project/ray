@@ -2,8 +2,9 @@ import subprocess
 from datetime import datetime
 from typing import List, Optional, Callable
 import os
-import requests
 from dateutil import parser
+
+import requests
 
 from ci.ray_ci.utils import logger
 
