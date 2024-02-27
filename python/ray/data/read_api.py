@@ -2516,6 +2516,8 @@ def from_spark(
             "In Databricks runtime, you should use 'from_databricks_spark' API."
         )
 
+    # Databricks runtime doesn't have RayDP,
+    # so that it imports `raydp` after checking it is not in Databricks runtime.
     import raydp
 
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
