@@ -773,7 +773,7 @@ class BaseTrainer(abc.ABC):
 
                 # This check should always pass if ResourceChangingScheduler is not
                 # used.
-                if scaling_config_from_trial_resources != scaling_config:
+                if trial_resources != scaling_config.as_placement_group_factory():
                     scaling_config = trainer_cls._validate_scaling_config(
                         scaling_config_from_trial_resources
                     )
