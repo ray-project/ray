@@ -767,6 +767,9 @@ class BaseTrainer(abc.ABC):
                     scaling_config = trainer_cls._validate_scaling_config(
                         scaling_config
                     )
+                else:
+                    return ScalingConfig()
+
                 scaling_config_from_trial_resources = (
                     ScalingConfig.from_placement_group_factory(trial_resources)
                 )
