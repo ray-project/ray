@@ -218,7 +218,7 @@ class _ClientAPI:
         # activates the same logic on the server side; so there's no need to
         # pass anything else. It's inside the class definition that becomes an
         # actor. Similar annotations would follow the same way.
-        valid_kwargs = ["num_returns", "concurrency_group", "enable_task_events"]
+        valid_kwargs = ["num_returns", "concurrency_group"]
         error_string = (
             "The @ray.method decorator must be applied using at least one of "
             f"the arguments in the list {valid_kwargs}, for example "
@@ -237,8 +237,6 @@ class _ClientAPI:
                 method.__ray_num_returns__ = kwargs["num_returns"]
             if "concurrency_group" in kwargs:
                 method.__ray_concurrency_group__ = kwargs["concurrency_group"]
-            if "enable_task_events" in kwargs:
-                method.__ray_enable_task_events__ = kwargs["enable_task_events"]
             return method
 
         return annotate_method
