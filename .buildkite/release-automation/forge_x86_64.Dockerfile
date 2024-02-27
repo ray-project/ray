@@ -3,10 +3,8 @@
 FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG BUILDKITE_BAZEL_CACHE_URL
 
 ENV PATH="/home/forge/.local/bin:${PATH}"
-ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 RUN <<EOF
 #!/bin/bash
 
@@ -14,7 +12,7 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12
+apt-get install -y curl zip clang-12 git
 
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
@@ -29,12 +27,6 @@ curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelis
 chmod +x /usr/local/bin/bazelisk
 
 ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
-
-{
-  echo "build --config=ci"
-  echo "build --announce_rc"
-  echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}"
-} > ~/.bazelrc
 
 EOF
 
