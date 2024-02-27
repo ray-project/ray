@@ -126,7 +126,7 @@ class DataConfig:
         """
         ctx = ray.data.DataContext.get_current()
         return ExecutionOptions(
-            locality_with_output=True,
+            locality_with_output=False,
             resource_limits=ctx.execution_options.resource_limits,
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,

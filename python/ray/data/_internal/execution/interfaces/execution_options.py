@@ -193,7 +193,7 @@ class ExecutionOptions:
 
     preserve_order: bool = False
 
-    actor_locality_enabled: bool = True
+    actor_locality_enabled: bool = False
 
     verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "1")))
 
