@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set -euo pipefail
-
 check_release_blockers_count() {
     NUM_RELEASE_BLOCKERS=$(bazel run //ci/ray_ci/automation:weekly_green_metric)
     if [ "$NUM_RELEASE_BLOCKERS" -gt 0 ]; then
