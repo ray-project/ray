@@ -2510,6 +2510,7 @@ def from_spark(
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import raydp
+
     from ray.util.spark.utils import is_in_databricks_runtime
 
     if is_in_databricks_runtime():
@@ -2541,16 +2542,18 @@ def from_databricks_spark(
     Returns:
         A :class:`~ray.data.Dataset`, the data is cached in the Spark distributed cache
         system, but is not cached in Ray object store.
-    """
-    from ray.util.spark.utils import is_in_databricks_runtime
+    """  # noqa: E501
     from ray.data.datasource.databricks_spark_datasource import (
         DatabricksSparkDatasource,
         validate_requirements,
     )
     from ray.util.spark.databricks_hook import get_databricks_function
+    from ray.util.spark.utils import is_in_databricks_runtime
 
     if not is_in_databricks_runtime():
-        raise RuntimeError("'from_databricks_spark' API only supports Databricks runtime.")
+        raise RuntimeError(
+            "'from_databricks_spark' API only supports Databricks runtime."
+        )
 
     validate_requirements()
 
