@@ -65,7 +65,6 @@ def dummy_context_manager(*args, **kwargs):
 
 @pytest.fixture(autouse=True, scope="module")
 def ray_start_4_cpus():
-    # Make sure to set the env var before calling ray.init()
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
