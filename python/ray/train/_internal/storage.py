@@ -384,16 +384,14 @@ class StorageContext:
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
         >>> ray.shutdown()
 
-    Example with storage_path=None:
+    Example with storage_path="/tmp/ray_results":
 
         >>> from ray.train._internal.storage import StorageContext
-        >>> import os
-        >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
-        ...     storage_path=None,
+        ...     storage_path="/tmp/ray_results",
         ...     experiment_dir_name="exp_name",
         ... )
-        >>> storage.storage_fs_path  # Auto-resolved
+        >>> storage.storage_fs_path
         '/tmp/ray_results'
         >>> storage.experiment_fs_path
         '/tmp/ray_results/exp_name'
