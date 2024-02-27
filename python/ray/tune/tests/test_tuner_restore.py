@@ -337,6 +337,9 @@ def test_tuner_restore_restart_errored(ray_start_2_cpus, tmpdir):
 def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     """Resuming unfinished trials should pick up existing state"""
     monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
+    # Make sure that only one trial is pending at a time to prevent
+    # the trial order from getting shuffled around.
+    monkeypatch.setenv("TUNE_MAX_PENDING_TRIALS_PG", "1")
 
     fail_marker = tmpdir / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
@@ -344,6 +347,17 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     hang_marker = tmpdir / "hang_marker"
     hang_marker.write_text("", encoding="utf-8")
 
+    param_space = {
+        # First trial succeeds, second hangs, third fails, fourth hangs
+        "failing_hanging": tune.grid_search(
+            [
+                (None, None),
+                (None, hang_marker),
+                (fail_marker, None),
+                (None, hang_marker),
+            ]
+        ),
+    }
     tuner = Tuner(
         _train_fn_sometimes_failing,
         tune_config=TuneConfig(num_samples=1),
@@ -353,17 +367,7 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
             failure_config=FailureConfig(fail_fast=False),
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
-        param_space={
-            # First trial succeeds, second hangs, third fails, fourth hangs
-            "failing_hanging": tune.grid_search(
-                [
-                    (None, None),
-                    (None, hang_marker),
-                    (fail_marker, None),
-                    (None, hang_marker),
-                ]
-            ),
-        },
+        param_space=param_space,
     )
     # Catch the FailOnStats error
     with pytest.raises(RuntimeError):
@@ -386,12 +390,13 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     tuner = Tuner.restore(
         str(tmpdir / "test_tuner_resume_unfinished"),
         trainable=_train_fn_sometimes_failing,
+        param_space=param_space,
     )
     tuner._local_tuner._run_config.callbacks = None
 
     results = tuner.fit()
     assert len(results) == 4
-    # assert len(results.errors) == 1
+    assert len(results.errors) == 1
     assert sorted([r.metrics["it"] for r in results]) == sorted([2, 3, 1, 2])
 
 
