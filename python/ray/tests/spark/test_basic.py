@@ -479,7 +479,7 @@ class TestSparkLocalCluster:
 
         config = autoscaling_cluster._config
 
-        assert config["max_workers"] == 100
+        assert config["max_worker_nodes"] == 100
 
         assert config["available_node_types"]["ray.head.default"] == {
             "resources": {
@@ -489,7 +489,7 @@ class TestSparkLocalCluster:
                 "object_store_memory": 20000000,
             },
             "node_config": {},
-            "max_workers": 0,
+            "max_worker_nodes": 0,
         }
         assert config["available_node_types"]["ray.worker"] == {
             "resources": {
@@ -499,8 +499,8 @@ class TestSparkLocalCluster:
                 "object_store_memory": 40000000,
             },
             "node_config": {},
-            "min_workers": 0,
-            "max_workers": 100,
+            "min_worker_nodes": 0,
+            "max_worker_nodes": 100,
         }
         assert config["upscaling_speed"] == 2.0
         assert config["idle_timeout_minutes"] == 3.0
