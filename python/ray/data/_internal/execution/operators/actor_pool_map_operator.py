@@ -123,7 +123,7 @@ class ActorPoolMapOperator(MapOperator):
         # situations where the scheduler is unable to schedule downstream operators
         # due to lack of available actors, causing an initial "pileup" of objects on
         # upstream operators, leading to a spike in memory usage prior to steady state.
-        logger.get_logger().info(
+        logger.get_logger(log_to_stdout=False).info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
         try:

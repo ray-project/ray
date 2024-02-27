@@ -427,14 +427,14 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
         assert "RepartitionReduce" in ds_stats.metadata
 
     ds = ray.data.range(10000, parallelism=10).repartition(20, shuffle=shuffle)
-    assert ds.num_blocks() == 20, ds.num_blocks()
+    assert ds._plan.initial_num_blocks() == 20, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(10000))
     assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
 
     # Test num_output_blocks > num_rows to trigger empty block handling.
     ds = ray.data.range(20, parallelism=10).repartition(40, shuffle=shuffle)
-    assert ds.num_blocks() == 40, ds.num_blocks()
+    assert ds._plan.initial_num_blocks() == 40, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(20))
     if shuffle:
         assert ds._block_num_rows() == [10] * 2 + [0] * (40 - 2), ds._block_num_rows()
@@ -444,7 +444,7 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
 
     # Test case where number of rows does not divide equally into num_output_blocks.
     ds = ray.data.range(22).repartition(4, shuffle=shuffle)
-    assert ds.num_blocks() == 4, ds.num_blocks()
+    assert ds._plan.initial_num_blocks() == 4, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(22))
     if shuffle:
         assert ds._block_num_rows() == [6, 6, 6, 4], ds._block_num_rows()
@@ -454,7 +454,7 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
 
     # Test case where we do not split on repartitioning.
     ds = ray.data.range(10, parallelism=1).repartition(1, shuffle=shuffle)
-    assert ds.num_blocks() == 1, ds.num_blocks()
+    assert ds._plan.initial_num_blocks() == 1, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(10))
     assert ds._block_num_rows() == [10], ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
@@ -496,7 +496,7 @@ def test_union_e2e(ray_start_regular_shared, preserve_order):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds.num_blocks() == 50
+    assert ds._plan.initial_num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
     _check_usage_record(["ReadRange", "Union"])

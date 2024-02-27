@@ -28,7 +28,13 @@ DEFAULT_ARCHITECTURE = "x86_64"
 
 
 class BuilderContainer(LinuxContainer):
-    def __init__(self, python_version: str, build_type: str, architecture: str) -> None:
+    def __init__(
+        self,
+        python_version: str,
+        build_type: str,
+        architecture: str,
+        upload: bool = False,
+    ) -> None:
         super().__init__(
             "manylinux" if architecture == "x86_64" else f"manylinux-{architecture}",
             volumes=[f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/rayci"],
@@ -37,6 +43,7 @@ class BuilderContainer(LinuxContainer):
         assert build_type in BUILD_TYPES, f"build_type must be one of {BUILD_TYPES}"
         self.build_type = build_type
         self.bin_path = python_version_info["bin_path"]
+        self.upload = upload
 
     def run(self) -> None:
         # chown is required to allow forge to upload the wheel
@@ -54,4 +61,6 @@ class BuilderContainer(LinuxContainer):
             f"./ci/build/build-manylinux-wheel.sh {self.bin_path}",
             "chown -R 2000:100 /artifact-mount",
         ]
+        if self.upload:
+            cmds += ["./ci/build/copy_build_artifacts.sh wheel"]
         self.run_script(cmds)
