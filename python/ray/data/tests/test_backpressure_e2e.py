@@ -14,7 +14,6 @@ from ray.data.tests.conftest import (
     assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_snapshot,
 )
-from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import shutdown_only  # noqa: F401
 
 
