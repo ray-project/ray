@@ -583,6 +583,9 @@ class BaseTrainer(abc.ABC):
         self.run_config.name = (
             self.run_config.name or StorageContext.get_experiment_dir_name(trainable)
         )
+        # The storage context here is only used to access the resolved
+        # storage fs and experiment path, in order to avoid duplicating that logic.
+        # This is NOT the storage context object that gets passed to remote workers.
         storage = StorageContext(
             storage_path=self.run_config.storage_path,
             experiment_dir_name=self.run_config.name,

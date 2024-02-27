@@ -10,7 +10,7 @@ from ray.air.config import RunConfig
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
-from ray.tune import ResumeConfig, TuneError
+from ray.tune import ResumeConfig
 from ray.tune.experimental.output import (
     get_air_verbosity,
 )

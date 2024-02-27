@@ -129,16 +129,13 @@ class TunerInternal:
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_analysis = None
 
-        # This needs to happen before `tune.run()` is kicked in.
-        # This is because currently tune does not exit gracefully if
-        # run in ray client mode - if crash happens, it just exits immediately
-        # without allowing for checkpointing tuner and trainable.
-        # Thus this has to happen before tune.run() so that we can have something
-        # to restore from.
         self._run_config.name = (
             self._run_config.name
             or StorageContext.get_experiment_dir_name(self.converted_trainable)
         )
+        # The storage context here is only used to access the resolved
+        # storage fs and experiment path, in order to avoid duplicating that logic.
+        # This is NOT the storage context object that gets passed to remote workers.
         storage = StorageContext(
             storage_path=self._run_config.storage_path,
             experiment_dir_name=self._run_config.name,
