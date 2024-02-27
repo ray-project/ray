@@ -261,8 +261,9 @@ class ScalingConfig:
         """Create a ScalingConfig from a Tune's PlacementGroupFactory
 
         Note that this is only needed for ResourceChangingScheduler, which
-        modifies a Trainables' PlacementGroupFactory but doesn't propagate
-        the changes to ScalingConfig.
+        modifies a trial's PlacementGroupFactory but doesn't propagate
+        the changes to ScalingConfig. TrainTrainable needs to reconstruct
+        a ScalingConfig from on the trial's PlacementGroupFactory.
         """
 
         # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]

@@ -66,7 +66,10 @@ def test_resources(ray_start_4_cpus):
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DummyTrainer(
-        check_cpus, scaling_config=ScalingConfig(trainer_resources={"CPU": 2})
+        check_cpus,
+        scaling_config=ScalingConfig(
+            trainer_resources={"CPU": 2}, resources_per_worker={}
+        ),
     )
     trainer.fit()
 
