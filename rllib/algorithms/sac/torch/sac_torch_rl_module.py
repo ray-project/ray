@@ -38,7 +38,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         return self._forward_inference(batch)
 
     @override(RLModule)
