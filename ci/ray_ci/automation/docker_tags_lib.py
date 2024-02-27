@@ -12,6 +12,7 @@ from ci.ray_ci.utils import logger
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
 
+
 class DockerHubRateLimitException(Exception):
     """
     Exception for Docker Hub rate limit exceeded.
@@ -276,7 +277,7 @@ def _is_release_tag(
 def _crane_binary():
     r = runfiles.Create()
     system = platform.system()
-    if system != "Linux" or platform.processor() != 'x86_64':
+    if system != "Linux" or platform.processor() != "x86_64":
         raise ValueError(f"Unsupported platform: {system}")
     return r.Rlocation("crane_linux_x86_64/crane")
 
