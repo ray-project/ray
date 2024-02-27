@@ -2509,14 +2509,14 @@ def from_spark(
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
-    import raydp
-
     from ray.util.spark.utils import is_in_databricks_runtime
 
     if is_in_databricks_runtime():
         raise RuntimeError(
             "In Databricks runtime, you should use 'from_databricks_spark' API."
         )
+
+    import raydp
 
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
