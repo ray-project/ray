@@ -412,7 +412,7 @@ class StorageContext:
 
     def __init__(
         self,
-        storage_path: Optional[Union[str, os.PathLike]],
+        storage_path: Union[str, os.PathLike],
         experiment_dir_name: str,
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,

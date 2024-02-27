@@ -35,6 +35,8 @@ def _get_defaults_results_dir() -> str:
     )
 
 
+DEFAULT_STORAGE_PATH = Path("~/ray_results").expanduser().as_posix()
+
 # Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
 CHECKPOINT_DIR_NAME = "checkpoint_dir_name"
 TIME_TOTAL_S = "_time_total_s"
