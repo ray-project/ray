@@ -11,7 +11,7 @@ from ray.air.constants import (  # noqa: F401
 )
 
 
-def get_ray_train_session_dir() -> str:
+def _get_ray_train_session_dir() -> str:
     assert ray.is_initialized(), "Ray must be initialized to get the session dir."
     return Path(
         ray._private.worker._global_node.get_session_dir_path(), "artifacts"

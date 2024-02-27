@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, U
 from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
 from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
-from ray.train.constants import get_ray_train_session_dir
+from ray.train.constants import _get_ray_train_session_dir
 
 if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
@@ -608,7 +608,7 @@ class StorageContext:
         See `_ExperimentCheckpointManager.checkpoint` for where that happens.
         """
         return Path(
-            get_ray_train_session_dir(), self.experiment_dir_name, "driver_artifacts"
+            _get_ray_train_session_dir(), self.experiment_dir_name, "driver_artifacts"
         ).as_posix()
 
     @property
@@ -664,7 +664,7 @@ class StorageContext:
                 "setting `trial_dir_name`"
             )
         return Path(
-            get_ray_train_session_dir(),
+            _get_ray_train_session_dir(),
             self.experiment_dir_name,
             "working_dirs",
             self.trial_dir_name,
