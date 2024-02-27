@@ -63,7 +63,7 @@ class ResourceManager:
         self._debug = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
-        self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
+        self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
         ctx = DataContext.get_current()
@@ -184,7 +184,7 @@ class ResourceManager:
                 f"op_outputs: {memory_string(self._mem_op_outputs[op])})"
             )
             if (
-                self.op_resource_allocator_enabled()
+                isinstance(self._op_resource_allocator, ReservationOpResourceAllocator)
                 and op in self._op_resource_allocator._op_budgets
             ):
                 usage_str += f", budget: {self._op_resource_allocator._op_budgets[op]}"
@@ -389,7 +389,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # This makes sure that we will have enough budget to pull the outputs from
             # the running tasks.
             self._reserved_for_op_outputs[op] = max(
-                default_reserved.object_store_memory // 2, 1
+                default_reserved.object_store_memory / 2, 1.0
             )
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
@@ -471,15 +471,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
-        res = self._op_budgets[
-            op
-        ].object_store_memory + self._op_outputs_reserved_remaining(op)
+        res = self._op_budgets[op].object_store_memory
+        res += self._op_outputs_reserved_remaining(op)
+        res = int(res)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
             res = 1
         return res
 
-    def _get_downstream_non_map_op_memory_usage(self, op: PhysicalOperator) -> int:
+    def _get_downstream_non_map_op_memory_usage(self, op: PhysicalOperator) -> float:
         """Get the total memory usage of the downstream non-Map operators."""
         usage = 0
         for next_op in op.output_dependencies:
