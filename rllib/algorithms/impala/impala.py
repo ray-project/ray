@@ -465,6 +465,10 @@ class ImpalaConfig(AlgorithmConfig):
             else self._minibatch_size
         )
 
+    @minibatch_size.setter
+    def minibatch_size(self, minibatch_size):
+        self._minibatch_size = minibatch_size
+
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
         if self.framework_str == "torch":
