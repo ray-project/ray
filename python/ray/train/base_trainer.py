@@ -230,7 +230,9 @@ class BaseTrainer(abc.ABC):
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
-        self.run_config = copy.copy(run_config) or RunConfig()
+        self.run_config = (
+            copy.copy(run_config) if run_config is not None else RunConfig()
+        )
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
         self.starting_checkpoint = resume_from_checkpoint
