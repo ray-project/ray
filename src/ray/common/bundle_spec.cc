@@ -204,8 +204,8 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
       FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
   new_resources[bundle_key] = 0.001;
   if (bundle_index >= 0) {
-    auto bundle_key_with_index =
-        FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, bundle_index);
+    auto bundle_key_with_index = FormatPlacementGroupResource(
+        kBundle_ResourceLabel, placement_group_id, bundle_index);
     new_resources[bundle_key_with_index] = 0.001;
   }
   return new_resources;

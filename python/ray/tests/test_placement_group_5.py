@@ -183,7 +183,7 @@ def test_task_using_pg_observability(ray_start_cluster):
     assert f"bundle_group_{bundle_index}" not in r
 
     # Make sure ray status doesn't contain formatted resources.
-    actor2 = Actor.options(
+    actor2 = Actor.options(  # noqa
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             placement_group=pg, placement_group_bundle_index=0
         )
