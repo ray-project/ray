@@ -30,37 +30,45 @@ typedef int pid_t;
 
 namespace ray {
 
-// Utility class to enable subreaper functionality in Linux.
+// Utility functions to enable subreaper functionality in Linux.
 //
 // In Ray, raylet creates core_worker processes, which may create grandchild processes.
 // If core_worker exits normally it tries to kill all its children recursively. However
 // if core_worker is killed by a signal, its children leak and still occupy resources.
 //
-// This class allows raylet to act as a subreaper, so that it can take over the
+// This module allows raylet to act as a subreaper, so that it can take over the
 // responsibility of killing the grandchild processes when core_worker is killed by a
 // signal.
-//
-// How it works: When raylet starts, it calls prctl(PR_SET_CHILD_SUBREAPER, 1) to enable
-// subreaper functionality. This means that when a child process of raylet exits, 2 things
-// happen:
-// 1. the orphaned grandchildren gets reparented to raylet (ppid=raylet's pid)
-// 2. raylet gets a SIGCHLD signal.
-//
-// When raylet receives a SIGCHLD signal, it lists all its children and kills any unknown
-// children. This requires raylet to keep track of its *known* children in
-// `Process::spawnvpe`.
-//
-// Subreaper functionality is enabled by setting `kill_child_processes_on_worker_exit` Ray
-// config. It is only available in Linux 3.4 and later - if the platform does not support
-// subreaper, this class is a no-op (with a warning).
 
-// Sets up sigchld handler for this process.
+// Set this process as a subreaper. Should be called by raylet and core_worker.
+// Only works on Linux >= 3.4.
+// Returns False if the platform does not support subreaper, or the operation fails.
 //
-// On Windows: do nothing.
-// On Linux: True -> subreaper, False -> ignore sigchld.
-// On MacOS: ignore sigchld.
-void SetupSigchldHandler(bool kill_orphan_subprocesses,
-                         boost::asio::io_context &io_service);
+// An orphaned process, that is, a process whose parent has exited, gets reparented to
+// the nearest ancestor that is a subreaper. We use this to kill orphaned grandchildren
+// by this scheme:
+//
+// raylet (subreaper, killing unknown children)
+//  -> core_worker (subreaper, don't kill children until exiting)
+//  -> user process
+//  -> grandchild process
+//
+// If core_worker is alive and user process exited, grandchild is reparented to
+// core_worker. In this case core_worker will do nothing, because the grandchild may be
+// a daemon process.
+//
+// If core_worker crashed, user process is reparented to raylet. Raylet kills all unknown
+// children, so user process is killed, then grandchild is reparented to raylet. Raylet
+// kills the grandchild.
+bool SetThisProcessAsSubreaper();
+
+// Kill all unknown children. Lists all processes with pid = this process, and filters
+// out the known children, that is, processes created via `Process::spawnvpe`.
+//
+// Should be called by raylet only.
+//
+// Note: this function is one-time. Raylet should call it periodically.
+void KillUnknownChildren();
 
 // Thread-safe tracker for owned children.
 // Only works in Linux.
@@ -87,22 +95,6 @@ class KnownChildrenTracker {
 #ifdef __linux__
   absl::Mutex m_;
   absl::flat_hash_set<pid_t> children_ ABSL_GUARDED_BY(m_);
-#endif
-};
-
-// RAII class to mask SIGCHLD in ctor and unmask (back to prev mask) in dtor.
-// If masks failed, it logs a warning and carry on.
-// Only works in Linux.
-// In non-Linux platforms: do nothing.
-class SigchldMasker {
- public:
-  SigchldMasker();
-  ~SigchldMasker();
-  RAY_DISALLOW_COPY_AND_ASSIGN(SigchldMasker);
-
- private:
-#ifdef __linux__
-  sigset_t prev_mask_;
 #endif
 };
 

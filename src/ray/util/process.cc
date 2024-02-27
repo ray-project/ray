@@ -347,11 +347,6 @@ Process::Process(const char *argv[],
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
 
-  // Conditional RAII object to mask SIGCHLD in the creation of the subprocess.
-  std::unique_ptr<SigchldMasker> masker;
-  if (mask_sigchld) {
-    masker = std::make_unique<SigchldMasker>();
-  }
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));

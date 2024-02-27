@@ -113,7 +113,11 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   stats::NumCachedWorkersSkippedJobMismatch.Record(0);
   stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
   stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
-  // No need to treat SIGCHLD as it's handled in raylet main.cc.
+#ifndef _WIN32
+  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
+  // become zombies instead of dying gracefully.
+  signal(SIGCHLD, SIG_IGN);
+#endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
