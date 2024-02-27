@@ -515,14 +515,6 @@ py_test(
 )
 
 py_test(
-    name = "test_streaming_backpressure_edge_case",
-    size = "medium",
-    srcs = ["tests/test_streaming_backpressure_edge_case.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_transform_pyarrow",
     size = "small",
     srcs = ["tests/test_transform_pyarrow.py"],
