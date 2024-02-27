@@ -7,4 +7,4 @@ steps:
     depends_on: forge
     job_env: forge
     commands:
-      - bash -i .buildkite/release-automation/check_release_blockers.sh
+      - bazel run //ci/ray_ci/automation:weekly_green_metric
