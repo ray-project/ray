@@ -7,8 +7,8 @@ steps:
     commands:
       - bash .buildkite/release-automation/check_release_blockers.sh
 
-  - label: "Trigger postmerge test"
-    trigger: "postmerge"
+  - trigger: "postmerge"
+    label: "Trigger postmerge test"
       build:
         commit: build.env("COMMIT")
         branch: "master"
