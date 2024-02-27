@@ -8,6 +8,7 @@ import tensorflow as tf
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
+from ray.data import DataContext
 from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
@@ -750,23 +751,26 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
 
 def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
     infer_schema = read_opts.pop("tfx_read_auto_infer_schema", tfx_read)
-    tf_ds = ray.data.read_tfrecords(
-        paths=paths, tfx_read_auto_infer_schema=infer_schema, **read_opts
-    )
 
-    # if tfx read is enaled, we just return the dataset because, by default
-    # tfx_read will be used in unit tests given that tfx-bsl dependency is
-    # installed
-    if tfx_read:
-        return tf_ds
+    context = DataContext.get_current()
+    context.enable_tfrecords_tfx_read = tfx_read
+    context.tfrecords_tfx_read_auto_infer_schema = infer_schema
 
-    read_op = tf_ds._plan._logical_plan.dag
-    datasource_override = read_op._datasource
-    datasource_override._tfx_read = tfx_read
-    parallelism = read_opts.pop("parallelism", -1)
-    ds = ray.data.read_datasource(datasource_override, parallelism=parallelism)
+    return ray.data.read_tfrecords(paths=paths, **read_opts)
 
-    return ds
+    # # if tfx read is enaled, we just return the dataset because, by default
+    # # tfx_read will be used in unit tests given that tfx-bsl dependency is
+    # # installed
+    # if tfx_read:
+    #     return tf_ds
+
+    # read_op = tf_ds._plan._logical_plan.dag
+    # datasource_override = read_op._datasource
+    # datasource_override._tfx_read = tfx_read
+    # parallelism = read_opts.pop("parallelism", -1)
+    # ds = ray.data.read_datasource(datasource_override, parallelism=parallelism)
+
+    # return ds
 
 
 if __name__ == "__main__":

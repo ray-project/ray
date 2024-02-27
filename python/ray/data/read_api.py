@@ -1593,7 +1593,9 @@ def read_tfrecords(
     .. info:
         Using tfx-bsl for reading tfrecord files is prefered, When reading large
         datasets in production use cases. To use this implementation you should
-        install tfx-bsl with: `pip install tfx_bsl --no-dependencies`
+        install tfx-bsl with:
+            1. `pip install tfx_bsl --no-dependencies`
+            2. DatasetContext.get_current().enable_tfrecords_tfx_read = True
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -1666,12 +1668,6 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        tfx_read_batch_size: An int representing the number of consecutive elements of
-            this dataset to combine in a single batch when tfx-bsl is used to read
-            the tfrecord files.
-        tfx_read_auto_infer_schema: Toggles the schema inference applied; applicable
-            only if tfx-bsl is used and tf_schema argument is missing.
-            Defaults to True.
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
 
@@ -1681,11 +1677,9 @@ def read_tfrecords(
     import platform
 
     tfx_read = False
+    context = DataContext.get_current()
 
-    if (
-        platform.processor() != "arm"
-        and DataContext.get_current().enable_tfrecord_datasource_tfx_read
-    ):
+    if context.enable_tfrecords_tfx_read and platform.processor() != "arm":
         try:
             import tfx_bsl  # noqa: F401
 
@@ -1714,7 +1708,7 @@ def read_tfrecords(
         include_paths=include_paths,
         file_extensions=file_extensions,
         tfx_read=tfx_read,
-        tfx_batch_size=tfx_read_batch_size,
+        tfx_batch_size=context.tfrecords_tfx_read_batch_size,
     )
     ds = read_datasource(
         datasource,
@@ -1723,7 +1717,7 @@ def read_tfrecords(
         override_num_blocks=override_num_blocks,
     )
 
-    if tfx_read_auto_infer_schema and tfx_read and not tf_schema:
+    if context.tfrecords_tfx_read_auto_infer_schema and tfx_read and not tf_schema:
         from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
 
         return _infer_schema_and_transform(ds)
