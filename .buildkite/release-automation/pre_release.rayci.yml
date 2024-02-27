@@ -3,20 +3,9 @@ steps:
   - trigger: "postmerge"
     label: "Trigger postmerge test"
     build:
-      commit: build.env("COMMIT")
-      branch: build.env("BRANCH")
-      message: "Triggered by release automation pipeline {{build.env('BUILDKITE_BUILD_NUMBER')}}"
-  
-  - trigger: "release"
-    label: "Trigger Release {{matrix}} test"
-    matrix:
-      - "nightly"
-      - "nightly-3x"
-      - "weekly"
-    build:
-      commit: build.env("COMMIT")
-      branch: build.env("BRANCH")
-      message: "Triggered by release automation pipeline {{build.env('BUILDKITE_BUILD_NUMBER')}}"
-      env:
-        AUTOMATIC=1
-        RELEASE_FREQUENCY={{matrix}}
+      commit: "$GREEN_COMMIT"
+      branch: "$BRANCH"
+      message: "Triggered by release automation pipeline"
+
+# GREEN_COMMIT=10009390b0ff61875b45cbab75052a89332b528e
+# BRANCH=master
