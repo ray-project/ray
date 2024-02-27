@@ -358,7 +358,7 @@ class _ReduceStageIterator:
             self._reduce_arg_blocks = self._reduce_arg_blocks[
                 :_debug_limit_execution_to_num_blocks
             ]
-            logger.get_logger().info(
+            logger.get_logger(log_to_stdout=False).info(
                 f"Limiting execution to {len(self._reduce_arg_blocks)} reduce tasks"
             )
 
@@ -442,7 +442,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         merge_factor: float = 2,
         _debug_limit_execution_to_num_blocks: int = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        logger.get_logger().info("Using experimental push-based shuffle.")
+        logger.get_logger(log_to_stdout=False).info(
+            "Using experimental push-based shuffle."
+        )
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
         # map-merge stage.
@@ -495,7 +497,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # the logging level to DEBUG from a driver script, so just print
         # verbosely for now.
         # See https://github.com/ray-project/ray/issues/42002.
-        logger.get_logger().info(f"Push-based shuffle schedule:\n{stage}")
+        logger.get_logger(log_to_stdout=False).info(
+            f"Push-based shuffle schedule:\n{stage}"
+        )
 
         map_fn = self._map_partition
         merge_fn = self._merge
@@ -514,7 +518,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         if _debug_limit_execution_to_num_blocks is not None:
             input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
-            logger.get_logger().info(
+            logger.get_logger(log_to_stdout=False).info(
                 f"Limiting execution to {len(input_blocks_list)} map tasks"
             )
         map_stage_iter = _MapStageIterator(
@@ -739,7 +743,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         num_output_blocks: int,
     ) -> _PushBasedShuffleStage:
         num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
-        logger.get_logger().info(
+        logger.get_logger(log_to_stdout=False).info(
             f"Found {num_cpus_total} CPUs available CPUs for push-based shuffle."
         )
         num_tasks_per_map_merge_group = merge_factor + 1
