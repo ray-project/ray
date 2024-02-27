@@ -4,12 +4,13 @@ from typing import List, Optional, Callable
 import os
 import requests
 from dateutil import parser
+import runfiles
+import platform
 
 from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
-
 
 class DockerHubRateLimitException(Exception):
     """
@@ -272,11 +273,19 @@ def _is_release_tag(
     return True
 
 
+def _crane_binary():
+    r = runfiles.Create()
+    system = platform.system()
+    if system != "Linux" or platform.processor() != 'x86_64':
+        raise ValueError(f"Unsupported platform: {system}")
+    return r.Rlocation("crane_linux_x86_64/crane")
+
+
 def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
     try:
         with subprocess.Popen(
             [
-                "crane",
+                _crane_binary(),
                 "cp",
                 source,
                 f"{aws_ecr_repo}:{tag}",
