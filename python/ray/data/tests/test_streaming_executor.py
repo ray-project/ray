@@ -54,6 +54,7 @@ def mock_resource_manager(
         get_downstream_object_store_memory=MagicMock(
             return_value=downstream_object_store_memory
         ),
+        op_resource_allocator_enabled=MagicMock(return_value=False),
     )
 
 
@@ -127,7 +128,8 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    process_completed_tasks(topo, [], 0)
+    resource_manager = mock_resource_manager()
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
@@ -138,7 +140,7 @@ def test_process_completed_tasks():
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_completed = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
@@ -152,7 +154,7 @@ def test_process_completed_tasks():
     o1.mark_execution_completed = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -170,7 +172,7 @@ def test_process_completed_tasks():
 
     o3.mark_execution_completed()
     o2.mark_execution_completed = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     o2.mark_execution_completed.assert_called_once()
 
@@ -189,6 +191,14 @@ def test_select_operator_to_run():
     resource_manager = mock_resource_manager(
         global_limits=ExecutionResources(1, 1, 1),
     )
+    memory_usage = {
+        o1: 0,
+        o2: 0,
+        o3: 0,
+    }
+    resource_manager.get_op_usage = MagicMock(
+        side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
+    )
 
     # Test empty.
     assert (
@@ -198,8 +208,9 @@ def test_select_operator_to_run():
         is None
     )
 
-    # Test backpressure based on queue length between operators.
+    # Test backpressure based on memory_usage of each operator.
     topo[o1].outqueue.append(make_ref_bundle("dummy1"))
+    memory_usage[o1] += 1
     assert (
         select_operator_to_run(
             topo, resource_manager, [], True, "dummy", AutoscalingState()
@@ -207,6 +218,7 @@ def test_select_operator_to_run():
         == o2
     )
     topo[o1].outqueue.append(make_ref_bundle("dummy2"))
+    memory_usage[o1] += 1
     assert (
         select_operator_to_run(
             topo, resource_manager, [], True, "dummy", AutoscalingState()
@@ -214,41 +226,7 @@ def test_select_operator_to_run():
         == o2
     )
     topo[o2].outqueue.append(make_ref_bundle("dummy3"))
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o3
-    )
-
-    # Test backpressure includes num active tasks as well.
-    o3.num_active_tasks = MagicMock(return_value=2)
-    o3.internal_queue_size = MagicMock(return_value=0)
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o2
-    )
-    # Internal queue size is added to num active tasks.
-    o3.num_active_tasks = MagicMock(return_value=0)
-    o3.internal_queue_size = MagicMock(return_value=2)
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o2
-    )
-    o2.num_active_tasks = MagicMock(return_value=2)
-    o2.internal_queue_size = MagicMock(return_value=0)
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o3
-    )
-    o2.num_active_tasks = MagicMock(return_value=0)
-    o2.internal_queue_size = MagicMock(return_value=2)
+    memory_usage[o2] += 1
     assert (
         select_operator_to_run(
             topo, resource_manager, [], True, "dummy", AutoscalingState()
