@@ -146,7 +146,7 @@ _common_options = {
         )
     ),
     "_metadata": Option((dict, type(None))),
-    "enable_task_events": Option(bool, default_value=True),
+    "enable_task_events": Option(bool),
 }
 
 

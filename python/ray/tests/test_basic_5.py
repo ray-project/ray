@@ -364,10 +364,26 @@ def test_head_node_resource_ray_start(call_ray_start):
     assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
 
-@pytest.mark.parametrize("enable_task_events", [True, False, None])
-@pytest.mark.parametrize("actor_enable_task_events", [True, False])
+@pytest.mark.parametrize(
+    "actor_enable_task_events",
+    [True, False, None],
+    ids=["actor_true", "actor_false", "actor_none"],
+)
+@pytest.mark.parametrize(
+    "actor_method_enable_task_events",
+    [True, False, None],
+    ids=["actor_method_true", "actor_method_false", "actor_method_none"],
+)
+@pytest.mark.parametrize(
+    "system_enable_task_events",
+    [True, False, None],
+    ids=["system_true", "system_false", "system_none"],
+)
 def test_enable_task_events_actor(
-    shutdown_only, enable_task_events, actor_enable_task_events
+    actor_enable_task_events,
+    actor_method_enable_task_events,
+    system_enable_task_events,
+    shutdown_only,
 ):
     """
     Test that task events is enabled/disabled from the actor's options.
@@ -379,53 +395,71 @@ def test_enable_task_events_actor(
     - If actor does not set enable_task_events, it should be traced by default.
 
     """
+    system_configs = {
+        "task_events_report_interval_ms": 100,
+        "metrics_report_interval_ms": 200,
+        "enable_timeline": False,
+    }
+
+    if system_enable_task_events is not None:
+        system_configs["enable_task_events"] = system_enable_task_events
 
     ray.init(
         num_cpus=1,
-        _system_config={
-            "task_events_report_interval_ms": 100,
-            "metrics_report_interval_ms": 200,
-            "enable_timeline": False,
-        },
+        _system_config=system_configs,
     )
 
     @ray.remote
     def f():
         pass
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     class Actor:
         def f(self):
             # This should always be traced.
             ray.get(f.options(name="inner-task-traced").remote())
 
-        @ray.method(enable_task_events=actor_enable_task_events)
+        @ray.method(
+            enable_task_events=(
+                actor_method_enable_task_events
+                if actor_method_enable_task_events is not None
+                else actor_enable_task_events  # We don't allow None defaults
+            )
+        )
         def g(self):
             pass
 
-    if enable_task_events is not None:
-        a = Actor.options(enable_task_events=enable_task_events).remote()
+    if actor_enable_task_events is not None:
+        a = Actor.options(enable_task_events=actor_enable_task_events).remote()
     else:
         a = Actor.remote()
 
-    if actor_enable_task_events is not False:
-        ray.get(a.f.options(enable_task_events=actor_enable_task_events).remote())
+    if actor_method_enable_task_events is not None:
+        ray.get(
+            a.f.options(enable_task_events=actor_method_enable_task_events).remote()
+        )
     else:
         ray.get(a.f.remote())
 
     ray.get(a.g.remote())
 
-    expected_tasks_traced = {"inner-task-traced"}
-    if enable_task_events is not False:
+    expected_tasks_traced = set()
+    if system_enable_task_events is not False:
+        expected_tasks_traced = {"inner-task-traced"}
+
+    if actor_enable_task_events is not False and system_enable_task_events is not False:
         expected_tasks_traced.add("Actor.__init__")
         expected_tasks_traced.add("Actor.f")
         expected_tasks_traced.add("Actor.g")
 
-    if actor_enable_task_events is True:
+    if (
+        actor_method_enable_task_events is True
+        and system_enable_task_events is not False
+    ):
         expected_tasks_traced.add("Actor.f")
         expected_tasks_traced.add("Actor.g")
 
-    if actor_enable_task_events is False:
+    if actor_method_enable_task_events is False:
         if "Actor.f" in expected_tasks_traced:
             expected_tasks_traced.remove("Actor.f")
         if "Actor.g" in expected_tasks_traced:
@@ -437,6 +471,55 @@ def test_enable_task_events_actor(
         assert len(tasks) == len(expected_tasks_traced)
         assert {t["name"] for t in tasks} == expected_tasks_traced
 
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "actor_enable_task_events",
+    [True, False, None],
+    ids=["actor_true", "actor_false", "actor_none"],
+)
+@pytest.mark.parametrize(
+    "remote_task_enable_task_events",
+    [True, False, None],
+    ids=["remote_task_true", "remote_task_false", "remote_task_none"],
+)
+def test_enable_task_events_remote_actor(
+    actor_enable_task_events, remote_task_enable_task_events, shutdown_only
+):
+    @ray.remote
+    class Actor:
+        def f(self):
+            pass
+
+    @ray.remote
+    def task(actor):
+        actor.f.remote()
+
+    if actor_enable_task_events is not None:
+        a = Actor.options(enable_task_events=actor_enable_task_events).remote()
+    else:
+        a = Actor.remote()
+
+    if remote_task_enable_task_events is not None:
+        task = task.options(enable_task_events=remote_task_enable_task_events)
+
+    ray.get(task.remote(a))
+
+    expected_tasks = set()
+    if actor_enable_task_events is not False:
+        expected_tasks.add("Actor.f")
+        expected_tasks.add("Actor.__init__")
+
+    if remote_task_enable_task_events is not False:
+        expected_tasks.add("task")
+
+    def verify():
+        tasks = list_tasks()
+        assert len(tasks) == len(expected_tasks)
+        assert {t["name"] for t in tasks} == expected_tasks
         return True
 
     wait_for_condition(verify)
@@ -468,15 +551,28 @@ def test_enable_task_events_invalid_options(shutdown_only):
         ray.get(Actor.options(enable_task_events=None).remote())
 
 
-@pytest.mark.parametrize("enable_task_events", [True, False])
-def test_enable_task_events(shutdown_only, enable_task_events):
+@pytest.mark.parametrize(
+    "enable_task_events", [True, False], ids=["task_enable", "task_disable"]
+)
+@pytest.mark.parametrize(
+    "system_enable_task_events",
+    [True, False, None],
+    ids=["system_true", "system_false", "system_none"],
+)
+def test_enable_task_events_tasks(
+    enable_task_events, system_enable_task_events, shutdown_only
+):
+    system_config = {
+        "task_events_report_interval_ms": 100,
+        "metrics_report_interval_ms": 200,
+        "enable_timeline": False,
+    }
+    if system_enable_task_events is not None:
+        system_config["enable_task_events"] = system_enable_task_events
+
     ray.init(
         num_cpus=1,
-        _system_config={
-            "task_events_report_interval_ms": 100,
-            "metrics_report_interval_ms": 200,
-            "enable_timeline": False,
-        },
+        _system_config=system_config,
     )
 
     @ray.remote
@@ -493,9 +589,11 @@ def test_enable_task_events(shutdown_only, enable_task_events):
 
     ray.get([f.options(enable_task_events=enable_task_events).remote(), g.remote()])
 
-    expected_tasks_traced = {"traced"}
+    expected_tasks_traced = set()
+    if system_enable_task_events is not False:
+        expected_tasks_traced.add("traced")
 
-    if enable_task_events is not False:
+    if enable_task_events is not False and system_enable_task_events is not False:
         expected_tasks_traced.add("f")
         expected_tasks_traced.add("g")
 

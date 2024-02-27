@@ -249,7 +249,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
   task_event_buffer_ =
       std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
-  if (RayConfig::instance().task_events_report_interval_ms() > 0) {
+  if (RayConfig::instance().enable_task_events()) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
     }
@@ -2151,7 +2151,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name,
       ray_namespace,
       actor_creation_options.max_pending_calls,
-      actor_creation_options.execute_out_of_order);
+      actor_creation_options.execute_out_of_order,
+      actor_creation_options.enable_task_events);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(actor_id,

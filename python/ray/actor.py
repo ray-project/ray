@@ -975,7 +975,11 @@ class ActorClass:
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
-        enable_task_events = actor_options["enable_task_events"]
+
+        # Override enable_task_events to default for actor if not specified (i.e. None)
+        enable_task_events = actor_options.get("enable_task_events")
+        if enable_task_events is None:
+            enable_task_events = ray._config.enable_task_events()
 
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -1361,7 +1365,7 @@ class ActorHandle:
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
-        enable_task_events: bool = True,
+        enable_task_events: Optional[bool] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1495,7 +1499,7 @@ class ActorHandle:
             False,  # retry_exceptions
             False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
-            True,  # enable_task_events
+            self._ray_enable_task_events,  # enable_task_events
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
@@ -1540,6 +1544,7 @@ class ActorHandle:
                     "actor_language": self._ray_actor_language,
                     "actor_id": self._ray_actor_id,
                     "max_task_retries": self._ray_max_task_retries,
+                    "enable_task_events": self._enable_task_events,
                     "method_is_generator": self._ray_method_is_generator,
                     "method_decorators": self._ray_method_decorators,
                     "method_signatures": self._ray_method_signatures,
@@ -1585,6 +1590,7 @@ class ActorHandle:
                 state["actor_language"],
                 state["actor_id"],
                 state["max_task_retries"],
+                state["enable_task_events"],
                 state["method_is_generator"],
                 state["method_decorators"],
                 state["method_signatures"],

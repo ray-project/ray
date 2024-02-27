@@ -415,6 +415,11 @@ class RemoteFunction:
         if _task_launch_hook:
             _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
+        # Override enable_task_events to default for actor if not specified (i.e. None)
+        enable_task_events = task_options.get("enable_task_events")
+        if enable_task_events is None:
+            enable_task_events = ray._config.enable_task_events()
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language._format_args(worker, args, kwargs)
@@ -443,7 +448,7 @@ class RemoteFunction:
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
-                task_options["enable_task_events"],
+                enable_task_events,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

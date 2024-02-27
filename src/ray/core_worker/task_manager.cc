@@ -1468,7 +1468,7 @@ bool TaskManager::RecordTaskStatusEventIfNeeded(
   if (!task_event_buffer_.Enabled()) {
     return false;
   }
-  if (!spec.TaskTracingEnabled()) {
+  if (!spec.EnableTaskEvents()) {
     return false;
   }
 

@@ -382,7 +382,7 @@ const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() cons
   return message_->serialized_retry_exception_allowlist();
 }
 
-bool TaskSpecification::TaskTracingEnabled() const {
+bool TaskSpecification::EnableTaskEvents() const {
   return message_->enable_task_events();
 }
 

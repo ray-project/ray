@@ -172,3 +172,7 @@ cdef class Config:
     @staticmethod
     def gcs_rpc_server_reconnect_timeout_s():
         return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()
+
+    @staticmethod
+    def enable_task_events():
+        return RayConfig.instance().enable_task_events()
