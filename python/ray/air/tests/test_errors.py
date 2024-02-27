@@ -152,6 +152,7 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
             name=name,
             failure_config=FailureConfig(fail_fast=fail_fast),
         ),
+        scaling_config=ScalingConfig(num_workers=1),
     )
 
     if fail_fast in [False, True]:

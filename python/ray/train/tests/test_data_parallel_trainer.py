@@ -411,12 +411,11 @@ def test_colocate_trainer_and_rank0_worker(
             resources_per_worker=resources_per_worker,
         )
 
-        if scale_config.total_resources:
-            trainer = CustomDataParallelTrainer(
-                train_func,
-                scaling_config=scale_config,
-            )
-            trainer.fit()
+        trainer = CustomDataParallelTrainer(
+            train_func,
+            scaling_config=scale_config,
+        )
+        trainer.fit()
 
 
 if __name__ == "__main__":
