@@ -1,12 +1,5 @@
 group: Pre-release checks
 steps:
-  - label: "Check release blockers"
-    depends_on: forge
-    job_env: forge
-    instance_type: small_branch
-    commands:
-      - bash .buildkite/release-automation/check_release_blockers.sh
-
   - trigger: "postmerge"
     label: "Trigger postmerge test"
       build:
