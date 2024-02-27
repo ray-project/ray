@@ -4,7 +4,6 @@ FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-ENV PATH="/home/forge/.local/bin:${PATH}"
 RUN <<EOF
 #!/bin/bash
 
