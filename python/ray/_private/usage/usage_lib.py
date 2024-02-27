@@ -60,7 +60,6 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray.autoscaler._private.util import rewrite_deprecated_workers_fields
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
 from ray.core.generated import usage_pb2, gcs_pb2
 
@@ -711,6 +710,11 @@ def get_cluster_config_to_report(
     try:
         with open(cluster_config_file_path) as f:
             config = yaml.safe_load(f)
+            # Lazy import ray.autoscaler to improve startup time, see https://github.com/ray-project/ray/pull/33964
+            from ray.autoscaler._private.util import (
+                rewrite_deprecated_workers_fields,
+            )  # noqa: E402
+
             config = rewrite_deprecated_workers_fields(config)
 
             result = ClusterConfigToReport()
