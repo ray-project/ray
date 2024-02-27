@@ -168,6 +168,8 @@ class ConnectorV2(abc.ABC):
             All SingleAgentEpisodes in the input list, whereby MultiAgentEpisodes will
             be broken down into their individual SingleAgentEpisode components.
         """
+        list_indices = defaultdict(int)
+
         # Single-agent case.
         if isinstance(episodes[0], SingleAgentEpisode):
             if zip_with_batch_column is not None:
@@ -177,26 +179,34 @@ class ConnectorV2(abc.ABC):
                         f"length as the list of episodes ({len(episodes)}), but has "
                         f"length {len(zip_with_batch_column)}!"
                     )
-                for episode, data in zip(episodes, zip_with_batch_column):
-                    yield episode, data
+                for episode, (eps_id_tuple, data) in zip(
+                    episodes,
+                    zip_with_batch_column.items(),
+                ):
+                    assert episode.id_ == eps_id_tuple[0]
+                    d = data[list_indices[eps_id_tuple]]
+                    list_indices[eps_id_tuple] += 1
+                    yield episode, d
             else:
                 for episode in episodes:
                     yield episode
             return
 
         # Multi-agent case.
-        list_indices = defaultdict(int)
         for episode in episodes:
-            agent_ids = (
+            for agent_id in (
                 episode.get_agents_that_stepped()
                 if agents_that_stepped_only
                 else episode.agent_ids
-            )
-            for agent_id in agent_ids:
+            ):
                 sa_episode = episode.agent_episodes[agent_id]
                 # for sa_episode in episode.agent_episodes.values():
                 if zip_with_batch_column is not None:
-                    key = (sa_episode.id_, sa_episode.agent_id, sa_episode.module_id)
+                    key = (
+                        sa_episode.multi_agent_episode_id,
+                        sa_episode.agent_id,
+                        sa_episode.module_id,
+                    )
                     if len(zip_with_batch_column[key]) <= list_indices[key]:
                         raise ValueError(
                             "Invalid `zip_with_batch_column` data: Must structurally "

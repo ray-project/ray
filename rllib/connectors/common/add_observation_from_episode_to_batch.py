@@ -102,7 +102,10 @@ class AddObservationFromEpisodeToBatch(ConnectorV2):
         if SampleBatch.OBS in data:
             return data
 
-        for sa_episode in self.single_agent_episode_iterator(episodes):
+        for sa_episode in self.single_agent_episode_iterator(
+            episodes,
+            agents_that_stepped_only=not self._as_learner_connector,
+        ):
             if self._as_learner_connector:
                 self.add_n_batch_items(
                     data,
@@ -119,7 +122,7 @@ class AddObservationFromEpisodeToBatch(ConnectorV2):
                 self.add_batch_item(
                     data,
                     SampleBatch.OBS,
-                    item_to_add=sa_episode.get_observations(indices=-1, fill=0.0),
+                    item_to_add=sa_episode.get_observations(-1),
                     single_agent_episode=sa_episode,
                 )
         return data
