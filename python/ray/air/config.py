@@ -141,7 +141,7 @@ class ScalingConfig:
     # If adding new attributes here, please also update
     # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
-    num_workers: Optional[Union[int, SampleRange]] = None
+    num_workers: Union[int, SampleRange] = 1
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
@@ -218,10 +218,9 @@ class ScalingConfig:
     @property
     def total_resources(self):
         """Map of total resources required for the trainer."""
-        num_workers = self.num_workers or 1
         total_resource_map = defaultdict(float, self._trainer_resources_not_none)
         for k, value in self._resources_per_worker_not_none.items():
-            total_resource_map[k] += value * num_workers
+            total_resource_map[k] += value * self.num_workers
         return dict(total_resource_map)
 
     @property
@@ -250,11 +249,9 @@ class ScalingConfig:
         trainer_bundle = self._trainer_resources_not_none
         worker_bundle = self._resources_per_worker_not_none
 
-        num_workers = self.num_workers or 1
-
         # Colocate Trainer and rank0 worker by merging their bundles
         combined_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
-        bundles = [{}, combined_bundle] + [worker_bundle] * (num_workers - 1)
+        bundles = [{}, combined_bundle] + [worker_bundle] * (self.num_workers - 1)
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
