@@ -1,8 +1,5 @@
 group: Pre-release checks
 steps:
-  - name: forge
-    wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
-
   - label: "Check release blockers"
     depends_on: forge
     job_env: forge

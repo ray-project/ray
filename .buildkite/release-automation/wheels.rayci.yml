@@ -2,9 +2,6 @@ group: Validate TestPyPI wheels
 steps:
   - block: "Validate Ray wheels from TestPyPI"
 
-  - name: forge
-    wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
-
   - label: "Linux x86_64 Python {{matrix}}"
     depends_on: forge
     job_env: forge
