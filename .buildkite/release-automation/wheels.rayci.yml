@@ -1,9 +1,12 @@
 group: Validate TestPyPI wheels
 steps:
   - block: "Validate Ray wheels from TestPyPI"
+    key: "block_testpypi_validation"
 
   - label: "Linux x86_64 Python {{matrix}}"
-    depends_on: forge
+    depends_on: 
+      - forge
+      - "block_testpypi_validation"
     job_env: forge
     commands:
       - export PYTHON_VERSION={{matrix}}
