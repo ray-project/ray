@@ -1,12 +1,15 @@
 group: Pre-release checks
 steps:
   - label: "Check release blockers"
+    name: check-release-blockers
     depends_on: forge
     job_env: forge
+    instance_type: small_branch
     commands:
       - bash .buildkite/release-automation/check_release_blockers.sh
 
   - label: "Trigger postmerge test"
+    depends_on: check-release-blockers
     trigger: "postmerge"
     build:
       commit: "${COMMIT}"
@@ -14,6 +17,7 @@ steps:
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
   
   - label: "Trigger Release nightly test"
+    depends_on: check-release-blockers
     trigger: "release"
     build:
       commit: "${COMMIT}"
@@ -24,6 +28,7 @@ steps:
         RELEASE_FREQUENCY: "nightly"
   
   - label: "Trigger Release nightly-3x test"
+    depends_on: check-release-blockers
     trigger: "release"
     build:
       commit: "${COMMIT}"
@@ -34,6 +39,7 @@ steps:
         RELEASE_FREQUENCY: "nightly-3x"
   
   - label: "Trigger Release weekly test"
+    depends_on: check-release-blockers
     trigger: "release"
     build:
       commit: "${COMMIT}"
