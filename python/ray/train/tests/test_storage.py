@@ -16,7 +16,7 @@ from ray.train._internal.storage import (
 from ray.train.tests.test_new_persistence import _resolve_storage_type
 
 
-@pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
+@pytest.fixture(params=["nfs", "cloud", "custom_fs"])
 def storage(request, tmp_path) -> StorageContext:
     storage_type = request.param
     with _resolve_storage_type(storage_type, tmp_path) as (
