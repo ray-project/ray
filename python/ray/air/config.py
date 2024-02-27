@@ -163,14 +163,14 @@ class ScalingConfig:
                     "`resources_per_worker."
                 )
 
-            if self.num_workers is None:
-                self.num_workers = 1
+        if self.num_workers is None:
+            self.num_workers = 1
 
-            if isinstance(self.num_workers, int) and self.num_workers <= 0:
-                raise ValueError(
-                    "Expected `num_workers` to be greater than 0, "
-                    f"received: `num_workers={self.num_workers}`."
-                )
+        if isinstance(self.num_workers, int) and self.num_workers <= 0:
+            raise ValueError(
+                "Expected `num_workers` to be greater than 0, "
+                f"received: `num_workers={self.num_workers}`."
+            )
 
     def __repr__(self):
         return _repr_dataclass(self)
