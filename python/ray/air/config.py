@@ -281,9 +281,9 @@ class ScalingConfig:
         use_gpu = bool(resources_per_worker.get("GPU", False))
         placement_strategy = pgf.strategy
 
-        # In TrainTrainer, we merged the trainer resource into the first worker
-        # resources bundle. Need to extract trainer resource by calculating the
-        # resources diff.
+        # In `as_placement_group_factory`, we merged the trainer resource into the
+        # first worker resources bundle. We need to calculate the resources diff to
+        # get the trainer resources.
         # Note: If there's only one worker, we won't be able to calculate the diff.
         # We'll have empty trainer bundle and assign all resources to the worker.
         trainer_resources = dict(
