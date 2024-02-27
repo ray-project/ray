@@ -24,6 +24,7 @@ AWS_WEEKLY_GREEN_METRIC = "ray_weekly_green_metric"
 def main(production: bool) -> None:
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
     blockers = TestStateMachine.get_release_blockers()
+    print(blockers.totalCount)
     logger.info(f"Found {blockers.totalCount} release blockers")
 
     blocker_teams = [TestStateMachine.get_issue_owner(blocker) for blocker in blockers]
