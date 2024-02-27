@@ -362,6 +362,13 @@ The maximum number of workers the cluster will have at any given time.
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
+.. _cluster-configuration-max-workers:
+
+``max_workers``
+~~~~~~~~~~~~~~~~~~~~
+
+Deprecated since Ray 2.10 in favor of :ref:`max_worker_nodes` <cluster-configuration-max-worker-nodes>, which has identical behavior but has a new name to avoid confusion with worker processes.
+
 .. _cluster-configuration-upscaling-speed:
 
 ``upscaling_speed``
@@ -1411,7 +1418,7 @@ The minimum number of worker nodes to maintain for this node type regardless of 
 ``available_node_types.<node_type_name>.node_type.min_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Deprecated since Ray 2.9 in favor of :ref:`min_worker_nodes <cluster-configuration-node-min-worker-nodes>`, which has identical behavior but has a new name to avoid confusion with worker processes.
+Deprecated since Ray 2.10 in favor of :ref:`min_worker_nodes <cluster-configuration-node-min-worker-nodes>`, which has identical behavior but has a new name to avoid confusion with worker processes.
 
 .. _cluster-configuration-node-max-worker-nodes:
 
@@ -1432,7 +1439,7 @@ Note, for the nodes of type ``head_node_type`` the default number of max worker 
 ``available_node_types.<node_type_name>.node_type.max_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Deprecated since Ray 2.9 in favor of :ref:`max_worker_nodes <cluster-configuration-node-max-worker-nodes>`, which has identical behavior but has a new name to avoid confusion with worker processes.
+Deprecated since Ray 2.10 in favor of :ref:`max_worker_nodes <cluster-configuration-node-max-worker-nodes>`, which has identical behavior but has a new name to avoid confusion with worker processes.
 
 .. _cluster-configuration-node-type-worker-setup-commands:
 
