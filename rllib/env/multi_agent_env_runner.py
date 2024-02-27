@@ -65,6 +65,10 @@ class MultiAgentEnvRunner(EnvRunner):
         # Wrap into `VectorListInfo`` wrapper to get infos as lists.
         self.env = gym.make("rllib-multi-agent-env-runner-v0")
 
+        # Global counter for environment steps from all workers. This is
+        # needed for schedulers used by `RLModule`s.
+        self.global_num_env_steps_sampled = 0
+
         # Create the vectorized gymnasium env.
         assert isinstance(self.env.unwrapped, MultiAgentEnv), (
             "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
@@ -247,7 +251,9 @@ class MultiAgentEnvRunner(EnvRunner):
                 self._cached_to_module = None
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module, t=ts)
+                    to_env = self.module.forward_exploration(
+                        to_module, t=self.global_num_env_steps_sampled + ts
+                    )
                 else:
                     to_env = self.module.forward_inference(to_module)
 
@@ -451,7 +457,9 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module, t=ts)
+                    to_env = self.module.forward_exploration(
+                        to_module, t=self.global_num_env_steps_sampled + ts
+                    )
                 else:
                     to_env = self.module.forward_inference(to_module)
 
