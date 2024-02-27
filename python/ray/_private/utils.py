@@ -2026,6 +2026,9 @@ def pasre_pg_formatted_resources_to_original(
             continue
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 3:
+            # This should be already skipped from the logic above.
+            assert result.group(1) != "bundle"
+
             original_resources[result.group(1)] = value
             continue
         original_resources[key] = value
