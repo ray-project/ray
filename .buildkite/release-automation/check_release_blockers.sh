@@ -1,10 +1,6 @@
 #!/bin/bash
 
-set -e
-
-call_weekly_green_metric() {
-    bazel run //ci/ray_ci/automation:weekly_green_metric
-}
+set -euo pipefail
 
 check_release_blockers_count() {
     NUM_RELEASE_BLOCKERS=$(bazel run //ci/ray_ci/automation:weekly_green_metric)
