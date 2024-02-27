@@ -290,6 +290,26 @@ In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/
                 value: redis:6379
     ```
 
+* **`RAY_REDIS_CA_CERT`** environment variable in head's Pod:
+Ray reads the `RAY_REDIS_CA_CERT` environment variable to set the path of the certificate for the Redis server.
+You can use a secret to store the certificate and mount it to the head Pod:
+    ```yaml
+    template:
+      spec:
+        containers:
+          - name: ray-head
+            env:
+              - name: RAY_REDIS_CA_CERT
+                value: /etc/redis-certs/redis-ca.crt
+            volumeMounts:
+              - name: redis-certs
+                mountPath: /etc/redis-certs
+        volumes:
+          - name: redis-certs
+            secret:
+              secretName: redis-certs
+    ```
+
 (kuberay-external-storage-namespace)=
 ### 3. Use an external storage namespace
 
