@@ -26,6 +26,7 @@ from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_dask,
+    from_databricks_spark,
     from_huggingface,
     from_items,
     from_mars,
