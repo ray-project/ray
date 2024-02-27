@@ -8,4 +8,4 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
-      - bash -i .buildkite/release-automation/check_release_blockers.sh
+      - bash .buildkite/release-automation/check_release_blockers.sh
