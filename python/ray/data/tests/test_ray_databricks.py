@@ -24,8 +24,8 @@ class ChunkMeta(NamedTuple):
 @contextmanager
 def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
     """
-    `ray.data.from_spark` supports Databricks runtime, but it relies on databricks
-    internal APIs.
+    `ray.data.from_databricks_spark` supports Databricks runtime,
+    but it relies on databricks internal APIs.
     So in unit tests, we have to set up mocks for testing it.
 
     Note that the mocked `persist_df_as_chunks` function accepts
@@ -72,7 +72,7 @@ def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
     with open(read_chunk_fn_path, "wb") as fp:
         pickle.dump(read_chunk, fp)
 
-    MOCK_ENV = "_RAY_DATABRICKS_FROM_SPARK_READ_CHUNK_FN_PATH"
+    MOCK_ENV = "_RAY_FROM_DATABRICKS_SPARK_READ_CHUNK_FN_PATH"
 
     def unpersist_chunks(chunk_ids):
         for chunk_id in chunk_ids:
@@ -110,7 +110,7 @@ def test_from_simple_databricks_spark_dataframe(tmp_path, monkeypatch):
     with setup_mock(
         default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch
     ):
-        ray_ds = ray.data.from_spark(fake_spark_df)
+        ray_ds = ray.data.from_databricks_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
         gc.collect()
@@ -128,7 +128,7 @@ def test_from_mul_cols_databricks_spark_dataframe(tmp_path, monkeypatch):
     with setup_mock(
         default_chunk_bytes=1000, tmp_path=tmp_path, monkeypatch=monkeypatch
     ):
-        ray_ds = ray.data.from_spark(fake_spark_df)
+        ray_ds = ray.data.from_databricks_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
 
@@ -141,7 +141,7 @@ def test_large_size_row_databricks_spark_dataframe(tmp_path, monkeypatch):
     with setup_mock(
         default_chunk_bytes=3500, tmp_path=tmp_path, monkeypatch=monkeypatch
     ):
-        ray_ds = ray.data.from_spark(fake_spark_df)
+        ray_ds = ray.data.from_databricks_spark(fake_spark_df)
         result = ray_ds.to_pandas()
         del ray_ds
 

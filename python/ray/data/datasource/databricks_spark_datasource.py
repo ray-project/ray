@@ -46,7 +46,7 @@ def _persist_dataframe_as_chunks(spark_dataframe, bytes_per_chunk):
 
 def _read_chunk_fn(chunk_ids) -> Iterator["pyarrow.Table"]:
     if read_chunk_fn_path := os.environ.get(
-        "_RAY_DATABRICKS_FROM_SPARK_READ_CHUNK_FN_PATH"
+        "_RAY_FROM_DATABRICKS_SPARK_READ_CHUNK_FN_PATH"
     ):
         import ray.cloudpickle as pickle
 
