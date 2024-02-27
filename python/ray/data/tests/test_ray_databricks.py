@@ -79,19 +79,19 @@ def setup_mock(default_chunk_bytes, tmp_path, monkeypatch):
             os.remove(os.path.join(tmp_path, chunk_id))
 
     with mock.patch(
-        "ray.data.datasource.spark_datasource.validate_requirements",
+        "ray.data.datasource.databricks_spark_datasource.validate_requirements",
         return_value=None,
     ), mock.patch(
-        "ray.data.datasource.spark_datasource._persist_dataframe_as_chunks",
+        "ray.data.datasource.databricks_spark_datasource._persist_dataframe_as_chunks",
         persist_df_as_chunks,
     ), mock.patch(
-        "ray.data.datasource.spark_datasource._unpersist_chunks",
+        "ray.data.datasource.databricks_spark_datasource._unpersist_chunks",
         unpersist_chunks,
     ), mock.patch(
         "ray.util.spark.utils.is_in_databricks_runtime",
         return_value=True,
     ), mock.patch(
-        "ray.data.datasource.spark_datasource._DEFAULT_SPARK_DATAFRAME_CHUNK_BYTES",
+        "ray.data.datasource.databricks_spark_datasource._DEFAULT_SPARK_DATAFRAME_CHUNK_BYTES",  # noqa: E501
         default_chunk_bytes,
     ):
         monkeypatch.setenv(MOCK_ENV, read_chunk_fn_path.as_posix())
