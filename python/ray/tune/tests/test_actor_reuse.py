@@ -481,15 +481,12 @@ def test_detect_reuse_mixins():
     assert _check_mixin(dummy_mixin(MyTrainable))
 
 
-def test_remote_trial_dir_with_reuse_actors(
-    trainable, ray_start_2_cpus, monkeypatch, tmp_path
-):
+def test_remote_trial_dir_with_reuse_actors(trainable, ray_start_2_cpus, tmp_path):
     """Check that the trainable has its remote directory set to the right
     location, when new trials get swapped in on actor reuse.
     Each trial runs for 2 iterations, with checkpoint_frequency=1, so each
     remote trial dir should have 2 checkpoints.
     """
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     tmp_target = str(tmp_path / "upload_dir")
     exp_name = "remote_trial_dir_update_on_actor_reuse"
 
