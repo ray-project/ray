@@ -7,4 +7,4 @@ steps:
     depends_on: forge
     job_env: forge
     commands:
-      bash .buildkite/release-automation/check-release-blockers.sh
+      bash .buildkite/release-automation/check_release_blockers.sh
