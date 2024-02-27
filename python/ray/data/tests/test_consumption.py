@@ -63,7 +63,7 @@ def test_schema(ray_start_regular):
         last_snapshot,
     )
 
-    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert str(ds2) == "Dataset(num_rows=10, schema={id: int64})"
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
@@ -312,12 +312,12 @@ def test_basic(ray_start_regular_shared):
 
 def test_range(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
     ds = ray.data.range(10, parallelism=2)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
@@ -441,24 +441,23 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
 
 def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
         "Filter(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
-        "   +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "   +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
-        "      +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "      +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.materialize()
     assert (
@@ -467,8 +466,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
 
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
@@ -482,15 +480,13 @@ def test_dataset_repr(ray_start_regular_shared):
     ds3 = ds1.union(ds2)
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
-    assert repr(ds3) == (
-        "Union\n+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
-    )
+    assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
     ds = ds.zip(ds3)
     assert repr(ds) == (
         "Zip\n"
         "+- MapBatches(<lambda>)\n"
         "+- Union\n"
-        "   +- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "   +- Dataset(num_rows=9, schema={id: int64})"
     )
 
     def my_dummy_fn(x):
@@ -499,8 +495,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
-        "MapBatches(my_dummy_fn)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "MapBatches(my_dummy_fn)\n" "+- Dataset(num_rows=10, schema={id: int64})"
     )
 
 
@@ -515,8 +510,11 @@ def test_limit(ray_start_regular_shared, lazy):
 
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
-@pytest.mark.parametrize("limit,min_read_tasks", [(10, 1), (20, 2), (30, 3), (60, 6)])
-def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks):
+@pytest.mark.parametrize("limit", [10, 20, 30, 60])
+def test_limit_no_redundant_read(
+    ray_start_regular_shared,
+    limit,
+):
     # Test that dataset truncation eliminates redundant reads.
     @ray.remote
     class Counter:
@@ -562,8 +560,8 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
 
     source = CountingRangeDatasource()
 
-    total_rows = 100
-    parallelism = 10
+    total_rows = 1000
+    parallelism = 100
     ds = ray.data.read_datasource(
         source,
         parallelism=parallelism,
@@ -575,12 +573,13 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
     ds = ds.limit(limit)
     ds = ds.limit(total_rows)
     # Check content.
-    assert extract_values("id", ds.take(limit)) == list(range(limit))
+    assert len(ds.take(limit)) == limit
     # Check number of read tasks launched.
     # min_read_tasks is the minimum number of read tasks needed for the limit.
     # We may launch more tasks than this number, in order to to maximize throughput.
     # But the actual number of read tasks should be less than the parallelism.
     count = ray.get(source.counter.get.remote())
+    min_read_tasks = limit // (total_rows // parallelism)
     assert min_read_tasks <= count < parallelism
 
 
@@ -634,7 +633,7 @@ def test_from_items_parallelism(ray_start_regular_shared, parallelism):
     ds = ray.data.from_items(records, parallelism=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == parallelism
+    assert ds._plan.initial_num_blocks() == parallelism
 
 
 def test_from_items_parallelism_truncated(ray_start_regular_shared):
@@ -646,7 +645,7 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     ds = ray.data.from_items(records, parallelism=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == n
+    assert ds._plan.initial_num_blocks() == n
 
 
 def test_take_batch(ray_start_regular_shared):
@@ -711,7 +710,7 @@ def test_iter_rows(ray_start_regular_shared):
         assert row == df_row.to_dict()
 
     # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
+    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
         assert isinstance(row, dict)
         assert row == t_row
 
@@ -1172,7 +1171,7 @@ def test_union(ray_start_regular_shared):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds.num_blocks() == 50
+    assert ds._plan.initial_num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 
@@ -1536,7 +1535,7 @@ def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplo
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, parallelism=5000).materialize()
     assert (
-        "The requested parallelism of 5000 is "
+        "The requested number of read blocks of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
     ), caplog.text
 
@@ -1654,8 +1653,8 @@ class FlakyCSVDatasink(_CSVDatasink):
 
 
 def test_datasource(ray_start_regular):
-    source = ray.data.datasource.RandomIntRowDatasource()
-    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
+    assert len(ray.data.read_datasource(source).take()) == 10
     source = ray.data.datasource.RangeDatasource(n=10)
     assert extract_values(
         "value",
@@ -1747,9 +1746,8 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet", parallelism=8)
-    assert ds._plan.get_plan_as_string("Dataset") == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "Dataset(\n"
-        "   num_blocks=8,\n"
         "   num_rows=150,\n"
         "   schema={\n"
         "      sepal.length: double,\n"
@@ -1762,14 +1760,13 @@ def test_dataset_plan_as_string(ray_start_cluster):
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
-    assert ds._plan.get_plan_as_string("Dataset") == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
         "            +- Dataset(\n"
-        "                  num_blocks=8,\n"
         "                  num_rows=150,\n"
         "                  schema={\n"
         "                     sepal.length: double,\n"

@@ -7,6 +7,7 @@ chatWidgetDiv.innerHTML = `
 document.body.appendChild(chatWidgetDiv);
 
 // Create chat-popup div
+const date = new Date()
 var chatPopupDiv = document.createElement("div");
 chatPopupDiv.className = "chat-popup";
 chatPopupDiv.id = "chatPopup";
@@ -30,7 +31,7 @@ chatPopupDiv.innerHTML = `
     </div>
   </div>
   <div class="chatFooter text-right p-2">
-    © Copyright 2023, The Ray Team.
+    © Copyright ${date.getFullYear()}, The Ray Team.
   </div>
 `
 chatPopupDiv.messages = []

@@ -422,11 +422,10 @@ class DataParallelTrainer(BaseTrainer):
         train_loop_per_worker = construct_train_func(
             self._train_loop_per_worker,
             self._train_loop_config,
+            train_func_context=self._backend_config.train_func_context,
             fn_arg_name="train_loop_per_worker",
             discard_returns=True,
         )
-
-        additional_resources_per_worker = scaling_config.additional_resources_per_worker
 
         trial_info = TrialInfo(
             name=session.get_trial_name(),
@@ -441,9 +440,7 @@ class DataParallelTrainer(BaseTrainer):
             backend_config=self._backend_config,
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
-            num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
-            additional_resources_per_worker=additional_resources_per_worker,
+            resources_per_worker=scaling_config._resources_per_worker_not_none,
             max_retries=0,
         )
 

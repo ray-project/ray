@@ -265,7 +265,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 
 # Feature flag for caching queue lengths for faster routing in each handle.
 RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
-    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "0") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "1") == "1"
 )
 
 # Feature flag for strictly enforcing max_concurrent_queries (replicas will reject
@@ -306,3 +306,9 @@ SERVE_GRPC_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
+
+# Feature flag to eagerly start replacement replicas. This means new
+# replicas will start before waiting for old replicas to fully stop.
+RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
+    os.environ.get("RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS", "1") == "1"
+)

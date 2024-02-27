@@ -22,7 +22,6 @@ Ray Data represents tensors as
 .. testoutput::
 
     Dataset(
-       num_blocks=...,
        num_rows=100,
        schema={image: numpy.ndarray(shape=(28, 28), dtype=uint8)}
     )
@@ -148,4 +147,4 @@ formats, see the :ref:`Input/Output reference <input-output>`.
             ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_json("/tmp/simple")
 
-For more information on saving data, read :ref:`Saving data <loading_data>`.
+For more information on saving data, read :ref:`Saving data <saving-data>`.

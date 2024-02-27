@@ -140,7 +140,7 @@ class RandomTest:
 
         if blocking:
             ray.get(self.random_killer.spare.remote(new_name))
-            serve.run(
+            serve._run(
                 handler.bind(),
                 name=new_name,
                 route_prefix=f"/{new_name}",
@@ -149,7 +149,7 @@ class RandomTest:
             self.applications.append(new_name)
             ray.get(self.random_killer.stop_spare.remote(new_name))
         else:
-            serve.run(
+            serve._run(
                 handler.bind(),
                 name=new_name,
                 route_prefix=f"/{new_name}",
