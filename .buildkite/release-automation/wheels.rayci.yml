@@ -4,7 +4,6 @@ steps:
     depends_on: forge
 
   - label: "Linux x86_64 Python {{matrix}}"
-    depends_on: forge
     job_env: forge
     commands:
       - export PYTHON_VERSION={{matrix}}
