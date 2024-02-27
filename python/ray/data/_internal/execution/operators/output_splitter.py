@@ -174,8 +174,7 @@ class OutputSplitter(PhysicalOperator):
                 # Put it back and abort.
                 self._buffer.insert(0, target_bundle)
                 break
-        if self._metrics:
-            self._output_splitter_overhead_time += time.perf_counter() - start_time
+        self._output_splitter_overhead_time += time.perf_counter() - start_time
 
     def _select_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.

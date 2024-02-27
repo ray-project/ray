@@ -630,7 +630,6 @@ class DatasetStats:
 
         # Streaming split iterator stats
         self.streaming_split_coordinator_s: Timer = Timer()
-        self.streaming_split_output_s: Timer = Timer()
 
     @property
     def stats_actor(self):
