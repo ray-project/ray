@@ -523,19 +523,19 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, resource_manager)
-        # TODO: is this the only component of backpressure or should these
-        # other conditions be considered for timing?
-        in_backpressure = any(not p.can_add_input(op) for p in backpressure_policies)
+        in_backpressure = (
+            any(not p.can_add_input(op) for p in backpressure_policies)
+            or not under_resource_limits
+        )
         if (
-            under_resource_limits
+            not in_backpressure
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and not in_backpressure
         ):
             ops.append(op)
         # Signal whether op in backpressure for stats collections
-        op.notify_in_backpressure(in_backpressure)
+        op.notify_in_task_submission_backpressure(in_backpressure)
         # Update the op in all cases to enable internal autoscaling, etc.
         op.notify_resource_usage(state.num_queued(), under_resource_limits)
 

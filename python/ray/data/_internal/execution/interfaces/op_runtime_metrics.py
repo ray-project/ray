@@ -113,11 +113,15 @@ class OpRuntimeMetrics:
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
-    # Time operator spent in backpressure
-    backpressure_time: float = field(default=0, metadata={"export": False})
+    # Time operator spent in task submission backpressure
+    task_submission_backpressure_time: float = field(
+        default=0, metadata={"export": False}
+    )
 
-    # Start time of current pause due to backpressure
-    _backpressure_start_time: float = field(default=-1, metadata={"export": False})
+    # Start time of current pause due to task submission backpressure
+    _task_submission_backpressure_start_time: float = field(
+        default=-1, metadata={"export": False}
+    )
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -249,16 +253,16 @@ class OpRuntimeMetrics:
         """Callback when an output is dequeued by the operator."""
         self.obj_store_mem_internal_outqueue -= output.size_bytes()
 
-    def on_toggle_backpressure(self, in_backpressure):
-        if in_backpressure and self._backpressure_start_time == -1:
+    def on_toggle_task_submission_backpressure(self, in_backpressure):
+        if in_backpressure and self._task_submission_backpressure_start_time == -1:
             # backpressure starting, start timer
-            self._backpressure_start_time = time.perf_counter()
-        elif self._backpressure_start_time != -1:
+            self._task_submission_backpressure_start_time = time.perf_counter()
+        elif self._task_submission_backpressure_start_time != -1:
             # backpressure stopping, stop timer
-            self.backpressure_time += (
-                time.perf_counter() - self._backpressure_start_time
+            self.task_submission_backpressure_time += (
+                time.perf_counter() - self._task_submission_backpressure_start_time
             )
-            self._backpressure_start_time = -1
+            self._task_submission_backpressure_start_time = -1
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""

@@ -148,7 +148,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         )
 
         with patch.object(
-            OpRuntimeMetrics.__dataclass_fields__["backpressure_time"],
+            OpRuntimeMetrics.__dataclass_fields__["task_submission_backpressure_time"],
             "metadata",
             {"export": True},
         ):
@@ -164,7 +164,9 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1, concurrency=1)
             ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1, concurrency=1)
             ds.take_all()
-            assert 0 < ds._plan.stats().extra_metrics["backpressure_time"]
+            assert (
+                0 < ds._plan.stats().extra_metrics["task_submission_backpressure_time"]
+            )
 
 
 class TestStreamOutputBackpressurePolicy(unittest.TestCase):
