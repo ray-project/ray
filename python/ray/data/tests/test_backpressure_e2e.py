@@ -175,7 +175,7 @@ def test_no_deadlock_on_resource_contention(
     assert len(ds.take_all()) == num_blocks
 
 
-def test_input_backpressure_e2e(restore_data_context, shutdown_only):
+def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F811
     # Tests that backpressure applies even when reading directly from the input
     # datasource. This relies on datasource metadata size estimation.
     @ray.remote
@@ -236,7 +236,7 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
     assert launched <= 10, launched
 
 
-def test_streaming_backpressure_e2e(restore_data_context):
+def test_streaming_backpressure_e2e(restore_data_context):  # noqa: F811
     # This test case is particularly challenging since there is a large input->output
     # increase in data size: https://github.com/ray-project/ray/issues/34041
     class TestSlow:
