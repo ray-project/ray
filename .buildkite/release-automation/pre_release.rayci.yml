@@ -10,6 +10,6 @@ steps:
   - trigger: "postmerge"
     label: "Trigger postmerge test"
       build:
-        commit: build.env("COMMIT")
+        commit: "10009390b0ff61875b45cbab75052a89332b528e"
         branch: "master"
         message: "Triggered by release automation pipeline"
