@@ -62,7 +62,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             batch_curr, self.qf_encoder, self.qf
         )[QF_PREDS]
         # If necessary make a forward pass through the twin Q network.
-        if self.config.model_config_dict["twin_q"]:
+        if self.twin_q:
             output[QF_TWIN_PREDS] = self._qf_forward_train_helper(
                 batch_curr, self.qf_twin_encoder, self.qf_twin
             )[QF_PREDS]
@@ -103,7 +103,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         """
         return (
             self._qf_forward_train_helper(batch, self.qf_twin_encoder, self.qf_twin)
-            if self.config.model_config_dict["twin_q"]
+            if self.twin_q
             else {}
         )
 
@@ -117,7 +117,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             self._qf_forward_train_helper(
                 batch, self.qf_target_twin_encoder, self.qf_target_twin
             )
-            if self.config.model_config_dict["twin_q"]
+            if self.twin_q
             else {}
         )
 
@@ -133,7 +133,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
                 (self.qf_target_twin_encoder, self.qf_twin_encoder),
                 (self.qf_target_twin, self.qf_twin),
             ]
-            if self.config.model_config_dict["twin_q"]
+            if self.twin_q
             else []
         )
 
