@@ -120,7 +120,7 @@ class OpRuntimeMetrics:
     total_data_tasks_time: float = field(default=0, metadata={"export_metric": False})
 
     # Total time spent in UDFs
-    total_data_udfs_time: float = field(default=0, metadata={"export_metric": False})
+    total_data_udfs_time: float = field(default=0, metadata={"export": False})
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
