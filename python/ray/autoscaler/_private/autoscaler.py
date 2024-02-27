@@ -126,6 +126,8 @@ class NonTerminatedNodes:
         self.worker_ids: List[NodeID] = []
         # The head node (node kind "head")
         self.head_id: Optional[NodeID] = None
+        # Map of multi-host replica IDs to nodes in each replica
+        self.multi_host_replicas_to_workers = defaultdict(list)
 
         for node in self.all_node_ids:
             node_kind = provider.node_tags(node)[TAG_RAY_NODE_KIND]
@@ -133,6 +135,8 @@ class NonTerminatedNodes:
                 self.worker_ids.append(node)
             elif node_kind == NODE_KIND_HEAD:
                 self.head_id = node
+            node_multihost_replica = provider.node_tags(node)[TAG_RAY_MULTIHOST_REPLICA]
+            self.multi_host_replicas_to_workers.append(node)
 
         # Note: For typical use-cases, self.all_node_ids == self.worker_ids +
         # [self.head_id]. The difference being in the case of unmanaged nodes.
@@ -409,6 +413,9 @@ class StandardAutoscaler:
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
 
+        # This will accumulate the multi-host replicas we need to terminate.
+        self.multi_host_replicas_to_delete = []
+
         # Update running nodes gauge
         num_workers = len(self.non_terminated_nodes.worker_ids)
         self.prom_metrics.running_workers.set(num_workers)
@@ -481,6 +488,7 @@ class StandardAutoscaler:
         (3) Terminates outdated nodes,
                 namely nodes whose configs don't match `node_config` for the
                 relevant node type.
+        (4) Terminate nodes part of a multi-host replica being deleted.
 
         Avoids terminating non-outdated nodes required by
         autoscaler.sdk.request_resources().
@@ -527,6 +535,11 @@ class StandardAutoscaler:
             should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts
             )
+            if should_keep_or_terminate == KeepOrTerminate.terminate:
+                self.schedule_node_termination(node_id, reason, logger.info)
+                continue
+            # Check if node is part of a multi-host replica that is being deleted
+            should_keep_or_terminate, reason = self._keep_worker_of_multihost_replica(node_id)
             if should_keep_or_terminate == KeepOrTerminate.terminate:
                 self.schedule_node_termination(node_id, reason, logger.info)
                 continue
@@ -604,6 +617,12 @@ class StandardAutoscaler:
             aggregate=operator.add,
         )
         self.nodes_to_terminate.append(node_id)
+        # Scale down entire multi-host replica of node being deleted
+        tags = self.provider.node_tags(node_id)
+        if TAG_RAY_MULTIHOST_REPLICA in tags:
+            multi_host_replica_id = tags[TAG_RAY_MULTIHOST_REPLICA]
+            if multi_host_replica_id not in self.multi_host_replicas_to_delete:
+                self.multi_host_replicas_to_delete.append(multi_host_replica_id)
 
     def terminate_scheduled_nodes(self):
         """Terminate scheduled nodes and clean associated autoscaler state."""
@@ -623,6 +642,13 @@ class StandardAutoscaler:
         for node in self.nodes_to_terminate:
             self.node_tracker.untrack(node)
             self.prom_metrics.stopped_nodes.inc()
+            # Clean up multi-host replicas to delete
+            tags = self.provider.node_tags(node)
+            if TAG_RAY_MULTIHOST_REPLICA in tags:
+                multi_host_replica_id = tags[TAG_RAY_MULTIHOST_REPLICA]
+                self.multi_host_replicas_to_workers[multi_host_replica_id].remove(node)
+                if len(self.multi_host_replicas_to_workers[multi_host_replica_id]) == 0:
+                    self.multi_host_replicas_to_delete.remove(multi_host_replica_id)
 
         # Update internal node lists
         self.non_terminated_nodes.remove_terminating_nodes(self.nodes_to_terminate)
@@ -1007,6 +1033,37 @@ class StandardAutoscaler:
                 return KeepOrTerminate.terminate, "max_workers_per_type"
 
         return KeepOrTerminate.decide_later, None
+
+    def _keep_worker_of_multihost_replica(self, node_id: NodeID) -> Tuple[KeepOrTerminate, Optional[str]]:
+        """Determines if a worker should be kept based on whether any
+        other nodes in the same multi-host replica have been deleted.
+
+        Returns KeepOrTerminate.terminate when:
+        (a) The worker belongs to a multi-host replica scheduled to delete.
+
+        Return KeepOrTerminate.keep otherwise.
+
+        Returns:
+            KeepOrTerminate: keep if the node should be kept, terminate if the
+            node should be terminated
+            Optional[str]: reason for termination. Not None on
+            KeepOrTerminate.terminate, None otherwise.
+        """
+        # For type checking, assert that this object has been instantitiated.
+        assert self.provider
+
+        tags = self.provider.node_tags(node_id)
+        if TAG_RAY_MULTIHOST_REPLICA in tags:
+            multi_host_replica_id = tags[TAG_RAY_MULTIHOST_REPLICA]
+
+            if multi_host_replica_id in self.multi_host_replicas_to_delete:
+                # All pods in this multi-host replica should be deleted
+                return (
+                    KeepOrTerminate.terminate,
+                    f"Pod belongs to a multi-host replica being deleted: {multi_host_replica_id}",
+                )
+
+        return KeepOrTerminate.keep, None
 
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(TAG_RAY_USER_NODE_TYPE)
