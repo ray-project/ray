@@ -67,7 +67,7 @@ def _unpersist_chunks(chunk_ids):
 
 
 @PublicAPI(stability="alpha")
-class SparkDatasource(Datasource):
+class DatabricksSparkDatasource(Datasource):
     """Spark datasource, for reading data from a Spark dataframe in Databricks
     runtime.
     """
