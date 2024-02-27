@@ -20,7 +20,6 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
-from ray.train.constants import DEFAULT_STORAGE_PATH
 
 if TYPE_CHECKING:
     from ray.tune.callback import Callback
@@ -637,9 +636,11 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.train import SyncConfig
+        from ray.train.constants import DEFAULT_STORAGE_PATH
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if self.storage_path is None:
+
             self.storage_path = DEFAULT_STORAGE_PATH
 
         if not self.failure_config:
