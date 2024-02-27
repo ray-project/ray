@@ -42,14 +42,6 @@ _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
 
 
-_TUNER_FAILED_MSG = (
-    "The Ray Tune run failed. Please inspect the previous error messages for a "
-    "cause. After fixing the issue, you can restart the run from scratch or "
-    "continue this run. To continue this run, you can use "
-    '`tuner = Tuner.restore("{path}", trainable=...)`.'
-)
-
-
 @PublicAPI(stability="beta")
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
@@ -381,38 +373,22 @@ class Tuner:
 
         Raises:
             RayTaskError: If user-provided trainable raises an exception
-            TuneError: General Ray Tune error.
         """
 
         if not self._is_ray_client:
-            try:
-                return self._local_tuner.fit()
-            except TuneError as e:
-                raise TuneError(
-                    _TUNER_FAILED_MSG.format(
-                        path=self._local_tuner.get_experiment_checkpoint_dir()
-                    )
-                ) from e
+            return self._local_tuner.fit()
         else:
-            experiment_checkpoint_dir = ray.get(
-                self._remote_tuner.get_experiment_checkpoint_dir.remote()
-            )
             (
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            try:
-                fit_future = self._remote_tuner.fit.remote()
-                _stream_client_output(
-                    fit_future,
-                    progress_reporter,
-                    string_queue,
-                )
-                return ray.get(fit_future)
-            except TuneError as e:
-                raise TuneError(
-                    _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
-                ) from e
+            fit_future = self._remote_tuner.fit.remote()
+            _stream_client_output(
+                fit_future,
+                progress_reporter,
+                string_queue,
+            )
+            return ray.get(fit_future)
 
     def get_results(self) -> ResultGrid:
         """Get results of a hyperparameter tuning run.
