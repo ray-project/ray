@@ -2015,7 +2015,6 @@ def pasre_pg_formatted_resources_to_original(
     for key, value in pg_formatted_resources.items():
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 3:
-            # This should be already skipped from the logic above.
             # Filter out resources that have bundle_group_[pg_id] since
             # it is an implementation detail.
             # This resource is automatically added to the resource
