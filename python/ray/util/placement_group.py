@@ -179,7 +179,7 @@ def placement_group(
         _soft_target_node_id: (Private, Experimental) Soft hint where bundles of
             this placement group should be placed.
             The target node is specified by it's hex ID.
-            If the target node has no available resources,
+            If the target node has no available resources or died,
             bundles can be placed elsewhere.
             This currently only works with STRICT_PACK pg.
 
@@ -217,10 +217,7 @@ def placement_group(
             f"with STRICT_PACK but got {strategy}"
         )
 
-    if (
-        _soft_target_node_id
-        and ray.NodeID.from_hex(_soft_target_node_id) == ray.NodeID.nil()
-    ):
+    if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
         raise ValueError(
             f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
         )

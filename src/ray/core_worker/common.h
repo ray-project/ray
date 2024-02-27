@@ -210,9 +210,10 @@ struct PlacementGroupCreationOptions {
   /// The maximum fraction of CPU cores this placement group can take up on each node.
   const double max_cpu_fraction_per_node;
   /// ID of the target node where bundles should be placed
-  /// iff the target node has enough available resources.
+  /// iff the target node has enough available resources and alive.
   /// Otherwise, the bundles can be placed elsewhere.
-  // This only applies to STRICT_PACK pg.
+  /// Nil means there is no target node.
+  /// This only applies to STRICT_PACK pg.
   const NodeID soft_target_node_id;
 };
 
