@@ -807,6 +807,7 @@ class MultiAgentEpisode:
             if len_lookback_buffer > 0
             else slice(None, 0)  # -> empty slice
         )
+        print("indices_obs_and_infos=", indices_obs_and_infos, "indices_rest=", indices_rest)
 
         successor = MultiAgentEpisode(
             # Same ID.

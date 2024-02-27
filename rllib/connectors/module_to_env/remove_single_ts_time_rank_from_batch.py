@@ -10,8 +10,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.typing import EpisodeType
 
-torch, _ = try_import_torch()
-_, tf, _ = try_import_tf()
+#torch, _ = try_import_torch()
+#_, tf, _ = try_import_tf()
 
 
 class RemoveSingleTsTimeRankFromBatch(ConnectorV2):
@@ -33,16 +33,16 @@ class RemoveSingleTsTimeRankFromBatch(ConnectorV2):
             return data
 
         # Note that we are still operating on tensors.
-        framework = rl_module.framework
-        if framework == "torch":
-            framework = torch
-        elif framework == "tf2":
-            framework = tf
-        else:
-            framework = np
+        #framework = rl_module.framework
+        #if framework == "torch":
+        #    framework = torch
+        #elif framework == "tf2":
+        #    framework = tf
+        #else:
+        #    framework = np
 
         data = tree.map_structure_with_path(
-            lambda p, s: s if STATE_OUT in p else framework.squeeze(s, axis=1),
+            lambda p, s: s if STATE_OUT in p else np.squeeze(s, axis=0),
             data,
         )
 

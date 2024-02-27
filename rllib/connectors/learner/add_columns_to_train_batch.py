@@ -1,7 +1,7 @@
 from typing import Any, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -32,10 +32,7 @@ class AddColumnsToTrainBatch(ConnectorV2):
                 self.add_n_batch_items(
                     data,
                     SampleBatch.INFOS,
-                    items_to_add=[
-                        sa_episode.get_infos(indices=ts)
-                        for ts in range(len(sa_episode))
-                    ],
+                    items_to_add=sa_episode.get_infos(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
@@ -109,7 +106,7 @@ class AddColumnsToTrainBatch(ConnectorV2):
             else next(iter(episodes[0].agent_episodes.values()))
         )
         for column in ref_sa_eps.extra_model_outputs.keys():
-            if column != STATE_OUT and column not in data:
+            if column not in [STATE_IN, STATE_OUT] and column not in data:
                 for sa_episode in self.single_agent_episode_iterator(
                         episodes,
                         agents_that_stepped_only=False,

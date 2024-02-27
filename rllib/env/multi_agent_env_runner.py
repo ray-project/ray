@@ -385,6 +385,7 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Also, make sure we start new episode chunks (continuing the ongoing episodes
         # from the to-be-returned chunks).
+        print(f"Cutting episode {self._episode} len_lookback={self.config.episode_lookback_horizon}")
         ongoing_episode_continuation = self._episode.cut(
             len_lookback_buffer=self.config.episode_lookback_horizon
         )

@@ -1433,11 +1433,7 @@ class Learner:
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
-            (
-                fwd_out,
-                loss_per_module,
-                metrics_per_module,
-            ) = self._update(nested_tensor_minibatch)
+            (fwd_out, loss_per_module, metrics_per_module) = self._update(nested_tensor_minibatch)
 
             result = self.compile_results(
                 batch=tensor_minibatch,

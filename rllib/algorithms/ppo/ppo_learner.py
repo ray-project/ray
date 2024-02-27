@@ -85,6 +85,7 @@ class PPOLearner(Learner):
                 "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
                 "to work with! Otherwise, GAE/advantage computation can't be performed."
             )
+
         batch = {}
 
         sa_episodes_list = list(
@@ -118,19 +119,13 @@ class PPOLearner(Learner):
 
         for module_id, module_vf_preds in vf_preds.items():
             # Collect new (single-agent) episode lengths.
-            if is_multi_agent:
-                episode_lens_plus_1 = [
-                    len(sa_eps)
-                    for ma_eps in episodes
-                    for sa_eps in ma_eps.agent_episodes.values()
-                    if sa_eps.module_id == module_id
-                ]
-            else:
-                episode_lens_plus_1 = [len(eps) for eps in episodes]
+            episode_lens_plus_1 = [
+                len(e)
+                for e in sa_episodes_list
+                if e.module_id is None or e.module_id == module_id
+            ]
 
-            batch[module_id] = {}
-
-            # Remove all zero-padding again, if applicable for the upcoming
+            # Remove all zero-padding again, if applicable, for the upcoming
             # GAE computations.
             module_vf_preds = unpad_data_if_necessary(
                 episode_lens_plus_1, module_vf_preds
@@ -155,23 +150,42 @@ class PPOLearner(Learner):
             # Remove the extra timesteps again from vf_preds and value targets. Now that
             # the GAE computation is done, we don't need this last timestep anymore in
             # any of our data.
-            (
-                batch[module_id][SampleBatch.VF_PREDS],
-                batch[module_id][Postprocessing.VALUE_TARGETS],
-            ) = remove_last_ts_from_data(
+            module_vf_preds, module_value_targets = remove_last_ts_from_data(
                 episode_lens_plus_1,
                 module_vf_preds,
                 module_value_targets,
             )
-            module_advantages = (
-                batch[module_id][Postprocessing.VALUE_TARGETS]
-                - batch[module_id][SampleBatch.VF_PREDS]
-            )
+            module_advantages = module_value_targets - module_vf_preds
+            # Drop vf-preds, not needed in loss. Note that in the PPORLModule, vf-preds
+            # are recomputed with each `forward_train` call anyway.
             # Standardize advantages (used for more stable and better weighted
             # policy gradient computations).
-            batch[module_id][Postprocessing.ADVANTAGES] = (
+            module_advantages = (
                 module_advantages - module_advantages.mean()
             ) / max(1e-4, module_advantages.std())
+
+            # Restructure ADVANTAGES and VALUE_TARGETS in a way that the Learner
+            # connector can properly re-batch these new fields.
+            batch_pos = 0
+            for eps in sa_episodes_list:
+                if eps.module_id is not None and eps.module_id != module_id:
+                    continue
+                len_ = len(eps) - 1
+                self._learner_connector.add_n_batch_items(
+                    batch=batch,
+                    column=Postprocessing.ADVANTAGES,
+                    items_to_add=module_advantages[batch_pos:batch_pos + len_],
+                    num_items=len_,
+                    single_agent_episode=eps,
+                )
+                self._learner_connector.add_n_batch_items(
+                    batch=batch,
+                    column=Postprocessing.VALUE_TARGETS,
+                    items_to_add=module_value_targets[batch_pos:batch_pos + len_],
+                    num_items=len_,
+                    single_agent_episode=eps,
+                )
+                batch_pos += len_
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
         remove_last_ts_from_episodes_and_restore_truncateds(

@@ -1011,6 +1011,23 @@ class TestMultiAgentEpisode(unittest.TestCase):
         act = episode.get_actions(-4, env_steps=False, fill="skip")
         check(act, {"a0": "skip", "a1": 0})
 
+        # Generate a simple multi-agent episode, where one agent is done.
+        observations = [
+            {"a0": 0, "a1": 0},
+            {"a0": 1, "a1": 1},
+            {"a0": 2},
+        ]
+        actions = [{"a0": 0, "a1": 0}, {"a0": 1, "a1": 1}, {"a0": 2}]
+        rewards = [{"a0": 1, "a1": 1}, {"a0": 2, "a1": 2}, {"a0": 3}]
+        terminateds = {"a1": True}
+        episode = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            terminateds=terminateds,
+        )
+        print(episode)
+
         # Generate simple records for a multi agent environment.
         (
             observations,

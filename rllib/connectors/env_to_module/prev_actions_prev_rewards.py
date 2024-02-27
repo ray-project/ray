@@ -154,7 +154,7 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
         self.foreach_batch_item_change_in_place(
             batch=data,
             column=SampleBatch.OBS,
-            func=lambda orig_obs, agent_id, module_id: new_obs.pop(0),
+            func=lambda orig_obs, eps_id, agent_id, module_id: new_obs.pop(0),
         )
 
         return data

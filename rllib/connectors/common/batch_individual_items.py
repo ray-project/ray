@@ -38,12 +38,14 @@ class BatchIndividualItems(ConnectorV2):
             if is_marl_module and column in rl_module:
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
-                    if isinstance(col_data, list):
+                    if isinstance(col_data, list) and col != SampleBatch.INFOS:
                         module_data[col] = batch(col_data)
+
             # Simple case: There is a list directly under `column`:
             # Batch the list.
             elif isinstance(column_data, list):
                 data[column] = batch(column_data)
+
             # Single-agent case: There is a dict under `column` mapping
             # `eps_id` to lists of items:
             # Sort by eps_id, concat all these lists, then batch.

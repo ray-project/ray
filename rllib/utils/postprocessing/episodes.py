@@ -34,7 +34,7 @@ def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
     orig_truncateds = []
     for episode in episodes:
         # Make sure the episode is already in numpy format.
-        assert episode.is_finalized
+        assert episode.is_finalized, episode
         orig_truncateds.append(episode.is_truncated)
 
         # Add timestep.

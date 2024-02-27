@@ -63,6 +63,7 @@ if __name__ == "__main__":
         .environment("env")
         # And new EnvRunner.
         .rollouts(
+            rollout_fragment_length=10,#TODO: debug weird crashes in multi-agent prev-a/prev-r
             env_to_module_connector=_env_to_module,
             num_rollout_workers=args.num_env_runners,
             # Set up the correct env-runner to use depending on
