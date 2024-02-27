@@ -34,13 +34,6 @@ def storage(request, tmp_path) -> StorageContext:
         )
 
 
-@pytest.fixture(autouse=True)
-def local_path(tmp_path, monkeypatch):
-    local_dir = str(tmp_path / "ray_results")
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", local_dir)
-    yield local_dir
-
-
 @pytest.fixture(autouse=True, scope="module")
 def ray_init():
     # NOTE: This is needed to set the `/tmp/ray/session_*` directory.
@@ -171,14 +164,6 @@ def test_persist_artifacts(storage: StorageContext):
     trial_working_dir.joinpath("1.txt").touch()
 
     storage.persist_artifacts()
-
-    if not storage.syncer:
-        # No syncing is needed -- pass early if storage_path == storage_local_path
-        assert _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path) == [
-            "1.txt"
-        ]
-        return
-
     storage.syncer.wait()
 
     assert sorted(
@@ -206,11 +191,6 @@ def test_persist_artifacts(storage: StorageContext):
 
 def test_persist_artifacts_failures(storage: StorageContext):
     """Tests `StorageContext.persist_artifacts` edge cases (empty directory)."""
-    if not storage.syncer:
-        # Should be a no-op if storage_path == storage_local_path (no syncing needed)
-        storage.persist_artifacts()
-        return
-
     # Uploading before the trial directory has been created should fail
     with pytest.raises(FileNotFoundError):
         storage.persist_artifacts()
