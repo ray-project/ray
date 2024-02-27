@@ -112,11 +112,6 @@ class OpRuntimeMetrics:
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
-    # Streaming split overhead.
-    streaming_split_overhead_time: float = field(
-        default=0, metadata={"map_only": True, "export_metric": True}
-    )
-
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 

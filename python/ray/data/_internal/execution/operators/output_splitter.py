@@ -48,6 +48,8 @@ class OutputSplitter(PhysicalOperator):
         self._output_queue: deque[RefBundle] = deque()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
+        # The time of the overhead for the output splitter
+        self._output_splitter_overhead_time = 0
 
         if locality_hints is not None:
             if n != len(locality_hints):
@@ -98,6 +100,7 @@ class OutputSplitter(PhysicalOperator):
         stats = {}
         for i, num in enumerate(self._num_output):
             stats[f"num_output_{i}"] = num
+        stats["output_splitter_overhead_time"] = self._output_splitter_overhead_time
         return stats
 
     def _add_input_inner(self, bundle, input_index) -> None:
@@ -172,9 +175,7 @@ class OutputSplitter(PhysicalOperator):
                 self._buffer.insert(0, target_bundle)
                 break
         if self._metrics:
-            self._metrics.streaming_split_overhead_time += (
-                time.perf_counter() - start_time
-            )
+            self._output_splitter_overhead_time += time.perf_counter() - start_time
 
     def _select_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.
