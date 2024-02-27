@@ -1006,7 +1006,7 @@ class StandardAutoscaler:
             if new_count <= min(min_worker_nodes, max_worker_nodes):
                 return KeepOrTerminate.keep, None
             if new_count > max_worker_nodes:
-                return KeepOrTerminate.terminate, "max_worker_nodes_per_type"
+                return KeepOrTerminate.terminate, "max_workers_per_type"
 
         return KeepOrTerminate.decide_later, None
 
