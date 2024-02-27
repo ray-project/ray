@@ -185,18 +185,18 @@ class Dataset:
         >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
         >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})  # doctest: +ELLIPSIS
         MapBatches(<lambda>)
-        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
+        +- Dataset(num_rows=1000, schema={id: int64})
         >>> # Compute the maximum.
         >>> ds.max("id")
         999
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()  # doctest: +ELLIPSIS
         RandomShuffle
-        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
+        +- Dataset(num_rows=1000, schema={id: int64})
         >>> # Sort it back in order.
         >>> ds.sort("id")  # doctest: +ELLIPSIS
         Sort
-        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
+        +- Dataset(num_rows=1000, schema={id: int64})
 
     Both unexecuted and materialized Datasets can be passed between Ray tasks and
     actors without incurring a copy. Dataset supports conversion to/from several
@@ -970,8 +970,8 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.repartition(10).num_blocks()
+            >>> ds = ray.data.range(100).repartition(10).materialize()
+            >>> ds.num_blocks()
             10
 
         Time complexity: O(dataset size / parallelism)
@@ -1110,7 +1110,7 @@ class Dataset:
         import pandas as pd
         import pyarrow as pa
 
-        if self.num_blocks() == 0:
+        if self._plan.initial_num_blocks() == 0:
             raise ValueError("Cannot sample from an empty Dataset.")
 
         if fraction < 0 or fraction > 1:
@@ -2471,7 +2471,7 @@ class Dataset:
             The number of records in the dataset.
         """
         # Handle empty dataset.
-        if self.num_blocks() == 0:
+        if self._plan.initial_num_blocks() == 0:
             return 0
 
         # For parquet, we can return the count directly from metadata.
@@ -2576,24 +2576,22 @@ class Dataset:
         return None
 
     def num_blocks(self) -> int:
-        """Return the number of blocks of this dataset.
+        """Return the number of blocks of this :class:`Dataset`.
 
-        Note that during read and transform operations, the number of blocks
-        may be dynamically adjusted to respect memory limits, increasing the
+        This method is only implemented for :class:`~ray.data.MaterializedDataset`,
+        since the number of blocks may dynamically change during execution.
+        For instance, during read and transform operations, Ray Data may dynamically
+        adjust the number of blocks to respect memory limits, increasing the
         number of blocks at runtime.
 
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100).repartition(10)
-            >>> ds.num_blocks()
-            10
-
-        Time complexity: O(1)
-
         Returns:
-            The number of blocks of this dataset.
+            The number of blocks of this :class:`Dataset`.
         """
-        return self._plan.initial_num_blocks()
+        raise NotImplementedError(
+            "Number of blocks is only available for `MaterializedDataset`,"
+            "because the number of blocks may dynamically change during execution."
+            "Call `ds.materialize()` to get a `MaterializedDataset`."
+        )
 
     @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def size_bytes(self) -> int:
@@ -4048,7 +4046,6 @@ class Dataset:
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
             Dataset(
-               num_blocks=...,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -4079,7 +4076,6 @@ class Dataset:
             >>> ds
             Concatenator
             +- Dataset(
-                  num_blocks=...,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,
@@ -4683,7 +4679,6 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4766,7 +4761,6 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4936,7 +4930,7 @@ class Dataset:
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        return self._plan.get_plan_as_string(self.__class__.__name__)
+        return self._plan.get_plan_as_string(self.__class__)
 
     def __str__(self) -> str:
         return repr(self)
@@ -5032,7 +5026,21 @@ class MaterializedDataset(Dataset, Generic[T]):
     tasks without re-executing the underlying computations for producing the stream.
     """
 
-    pass
+    def num_blocks(self) -> int:
+        """Return the number of blocks of this :class:`MaterializedDataset`.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100).repartition(10).materialize()
+            >>> ds.num_blocks()
+            10
+
+        Time complexity: O(1)
+
+        Returns:
+            The number of blocks of this :class:`Dataset`.
+        """
+        return self._plan.initial_num_blocks()
 
 
 @PublicAPI(stability="beta")

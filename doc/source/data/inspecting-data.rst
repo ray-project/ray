@@ -52,7 +52,6 @@ For more information like the number of rows, print the Dataset.
 .. testoutput::
 
     Dataset(
-       num_blocks=...,
        num_rows=150,
        schema={
           sepal length (cm): double,
