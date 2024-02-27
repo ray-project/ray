@@ -1,6 +1,10 @@
 group: Validate wheels
 steps:
+  - name: forge
+    wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
+
   - label: "check release blockers"
-    instance_type: default
+    depends_on: forge
+    job_env: forge
     commands:
-      - bash .buildkite/release-automation/check_release_blockers.sh
+      - bash -i .buildkite/release-automation/check_release_blockers.sh
