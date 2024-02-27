@@ -178,7 +178,7 @@ class DataContext:
         use_polars: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
-        min_parallelism: bool,
+        min_parallelism: int,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
         verbose_stats_log: bool,

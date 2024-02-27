@@ -66,7 +66,8 @@ Usually, transforms are fused together and with the upstream read task.
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For more information on transforming data, see
+For the example above, each read task generates one output block. In the case where the read input file
+is large, a single read task may output multiple blocks. For more information on transforming data, see
 :ref:`Transforming data <transforming_data>`.
 
 Shuffling data
@@ -236,7 +237,7 @@ system failure occurs, Ray Data recreates blocks by re-executing tasks.
 .. _datasets_operator_fusion:
 
 Operator Fusion Optimization
--------------------------
+----------------------------
 
 In order to reduce memory usage and task overheads, Ray Data automatically fuses together
 lazy operators that are compatible:
