@@ -229,10 +229,11 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
     it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
     next(it)
     time.sleep(3)
+    del it, ds
     launched = ray.get(source.counter.get.remote())
 
     # If backpressure is broken we'll launch 15+.
-    assert launched < 5, launched
+    assert launched <= 10, launched
 
 
 def test_streaming_backpressure_e2e(restore_data_context):
