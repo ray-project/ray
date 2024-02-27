@@ -6,5 +6,6 @@ steps:
   - label: "check release blockers"
     depends_on: forge
     job_env: forge
+    instance_type: small_branch
     commands:
       - bazel run //ci/ray_ci/automation:weekly_green_metric
