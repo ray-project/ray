@@ -1,6 +1,6 @@
 group: Validate wheels
 steps:
   - label: "check release blockers"
-    instance_type: small
+    instance_type: default
     commands:
-      - ./.buildkite/release-automation/check_release_blockers.sh
+      - bash .buildkite/release-automation/check_release_blockers.sh
