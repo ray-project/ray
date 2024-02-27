@@ -129,23 +129,18 @@ class TunerInternal:
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_analysis = None
 
-        # This needs to happen before `tune.run()` is kicked in.
-        # This is because currently tune does not exit gracefully if
-        # run in ray client mode - if crash happens, it just exits immediately
-        # without allowing for checkpointing tuner and trainable.
-        # Thus this has to happen before tune.run() so that we can have something
-        # to restore from.
         self._run_config.name = (
             self._run_config.name
             or StorageContext.get_experiment_dir_name(self.converted_trainable)
         )
+        # The storage context here is only used to access the resolved
+        # storage fs and experiment path, in order to avoid duplicating that logic.
+        # This is NOT the storage context object that gets passed to remote workers.
         storage = StorageContext(
             storage_path=self._run_config.storage_path,
             experiment_dir_name=self._run_config.name,
             storage_filesystem=self._run_config.storage_filesystem,
         )
-        # TODO(justinvyu): Temporary fix for `get_experiment_checkpoint_dir`
-        self._experiment_fs_path = storage.experiment_fs_path
 
         fs = storage.storage_filesystem
         fs.create_dir(storage.experiment_fs_path)
@@ -356,9 +351,8 @@ class TunerInternal:
         # Ex: s3://bucket/exp_name -> s3://bucket, exp_name
         self._run_config.name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
-
-        # TODO(justinvyu): Temporary fix for `get_experiment_checkpoint_dir`
-        self._experiment_fs_path = path_or_uri
+        # Update the storage_filesystem with the one passed in on restoration, if any.
+        self._run_config.storage_filesystem = storage_filesystem
 
         # Load the experiment results at the point where it left off.
         try:
@@ -366,6 +360,7 @@ class TunerInternal:
                 experiment_checkpoint_path=path_or_uri,
                 default_metric=self._tune_config.metric,
                 default_mode=self._tune_config.mode,
+                storage_filesystem=storage_filesystem,
             )
         except Exception:
             self._experiment_analysis = None
@@ -428,10 +423,6 @@ class TunerInternal:
         if not isinstance(scaling_config, ScalingConfig):
             return
         self._param_space["scaling_config"] = scaling_config.__dict__.copy()
-
-    # This has to be done through a function signature (@property won't do).
-    def get_experiment_checkpoint_dir(self) -> str:
-        return self._experiment_fs_path
 
     @property
     def trainable(self) -> TrainableTypeOrTrainer:

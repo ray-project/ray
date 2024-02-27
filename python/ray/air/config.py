@@ -138,8 +138,6 @@ class ScalingConfig:
 
     """
 
-    # If adding new attributes here, please also update
-    # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
     num_workers: Optional[Union[int, SampleRange]] = None
     use_gpu: Union[bool, SampleRange] = False

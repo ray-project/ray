@@ -218,8 +218,7 @@ steps:
     tags: tune
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- 
-        //python/ray/tests/xgboost/... python/ray/tests/horovod/... ml 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/horovod/... ml 
         --parallelism-per-worker 2
     depends_on: [ "mlbuild", "forge" ]
 

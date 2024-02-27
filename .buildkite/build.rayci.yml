@@ -6,7 +6,7 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
       - "3.8"
       - "3.9"
@@ -22,7 +22,7 @@ steps:
       - oss
     instance_type: medium-arm64
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
     matrix:
       - "3.8"
       - "3.9"
@@ -39,7 +39,7 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
     depends_on:
       - manylinux
       - forge
