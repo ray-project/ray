@@ -439,10 +439,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._op_reserved[op] = ExecutionResources(
                     0,
                     0,
-                    min_reserved.object_store_memory,
+                    min_reserved.object_store_memory
+                    - self._reserved_for_op_outputs[op],
                 )
                 self._total_shared = self._total_shared.subtract(
-                    ExecutionResources(0, 0, 1)
+                    ExecutionResources(0, 0, min_reserved.object_store_memory)
                 )
 
             self._total_shared = self._total_shared.max(ExecutionResources.zero())
