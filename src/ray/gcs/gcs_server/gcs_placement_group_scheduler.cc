@@ -324,8 +324,13 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
         (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
       }
-      // Commit the bundle resources on the remote node to the cluster resources.
-      CommitBundleResources(commited_bundle_locations);
+
+      if (status.ok()) {
+        // Commit the bundle resources on the remote node to the cluster resources.
+        // If status is not OK, no need to call ReturnBundleResources because the
+        // OnAllBundleCommitRequestReturned function calls it.
+        CommitBundleResources(commited_bundle_locations);
+      }
 
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(
