@@ -12,27 +12,27 @@ steps:
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
-      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      message: "Nightly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        AUTOMATIC=1
-        RELEASE_FREQUENCY=nightly
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly"
   
   - label: "Trigger Release nightly-3x test"
     trigger: "release"
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
-      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      message: "Nightly-3x test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        AUTOMATIC=1
-        RELEASE_FREQUENCY=nightly-3x
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly-3x"
   
   - label: "Trigger Release weekly test"
     trigger: "release"
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
-      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      message: "Weekly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        AUTOMATIC=1
-        RELEASE_FREQUENCY=weekly
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "weekly"
