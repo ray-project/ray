@@ -38,6 +38,9 @@ KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
+# Key for label that identifies which multi-host relica a pod belongs to
+MULTIHOST_REPLICA_KEY = "multihost-replica"
+
 # Design:
 
 # Each modification the autoscaler wants to make is posted to the API server goal state
@@ -72,7 +75,8 @@ def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
     kind, type = kind_and_type(pod)
     status = status_tag(pod)
     ip = pod_ip(pod)
-    return NodeData(kind=kind, type=type, status=status, ip=ip)
+    multihost_replica = multihost_replica_id(pod)
+    return NodeData(kind=kind, type=type, multihost_replica=multihost_replica, status=status, ip=ip)
 
 
 def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
@@ -88,6 +92,12 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
         type = labels[KUBERAY_LABEL_KEY_TYPE]
     return kind, type
 
+def multihost_replica_id(pod: Dict[str, Any]) -> string:
+    """ Returns the replica identifier for a multi-host worker group.
+    If the pod belongs to a single-host group, returns an empty string.
+    """
+    labels = pod["metadata"]["labels"]
+    return labels[MULTIHOST_REPLICA_KEY]
 
 def pod_ip(pod: Dict[str, Any]) -> NodeIP:
     return pod["status"].get("podIP", "IP not yet assigned")
@@ -201,6 +211,9 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     # 1 is the default replicas value used by the KubeRay operator
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
+def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
+    # Extract NumOfHosts of a worker group. 1 is the default NumOfHosts value used by the Kuberay operator.
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("numOfHosts", 1)
 
 class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
     def __init__(
@@ -362,6 +375,10 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         for node_type, target_replicas in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
+            # Account for multi-host worker groups
+            if group_num_of_hosts != 0:
+                target_replicas /= group_num_of_hosts
             # Cap the replica count to maxReplicas.
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
