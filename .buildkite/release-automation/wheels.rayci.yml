@@ -1,7 +1,7 @@
 group: Validate wheels
 steps:
   - name: forge
-    wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
+    wanda: ci/docker/forge.wanda.yaml
 
   - label: "check release blockers"
     depends_on: forge
