@@ -351,6 +351,8 @@ class TunerInternal:
         # Ex: s3://bucket/exp_name -> s3://bucket, exp_name
         self._run_config.name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
+        # Update the storage_filesystem with the one passed in on restoration, if any.
+        self._run_config.storage_filesystem = storage_filesystem
 
         # Load the experiment results at the point where it left off.
         try:
@@ -358,6 +360,7 @@ class TunerInternal:
                 experiment_checkpoint_path=path_or_uri,
                 default_metric=self._tune_config.metric,
                 default_mode=self._tune_config.mode,
+                storage_filesystem=storage_filesystem,
             )
         except Exception:
             self._experiment_analysis = None
