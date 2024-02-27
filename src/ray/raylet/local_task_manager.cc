@@ -979,7 +979,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
       }
     }
 
-    for (const auto& cpu_resource_id : cpu_resource_ids) {
+    for (const auto &cpu_resource_id : cpu_resource_ids) {
       allocated_instances->Remove(cpu_resource_id);
     }
   }
