@@ -59,6 +59,7 @@ from ray.autoscaler._private.util import (
     format_info_string,
     hash_launch_conf,
     hash_runtime_conf,
+    rewrite_deprecated_workers_fields,
     validate_config,
     with_head_node_ip,
 )
@@ -228,6 +229,7 @@ class StandardAutoscaler:
             def read_fn():
                 with open(config_reader) as f:
                     new_config = yaml.safe_load(f.read())
+                    new_config = rewrite_deprecated_workers_fields(new_config)
                 return new_config
 
             self.config_reader = read_fn

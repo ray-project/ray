@@ -315,8 +315,8 @@ def test_node_killer_filter():
                     "CPU": 1,
                 },
                 "node_config": {},
-                "min_workers": 2,
-                "max_workers": 2,
+                "min_worker_nodes": 2,
+                "max_worker_nodes": 2,
             },
         },
     )
