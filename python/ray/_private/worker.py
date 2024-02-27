@@ -78,6 +78,7 @@ from ray._private.runtime_env.setup_hook import (
 )
 from ray._private.storage import _load_class
 from ray._private.utils import get_ray_doc_version
+from ray.core.generated import gcs_pb2
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -473,7 +474,7 @@ class Worker:
         # This is on the critical path of ray.get()/put() calls.
         self._cached_job_id = None
         # Cache the driver node id from get_driver_node_id() to optimize lookups.
-        self._cached_driver_node_id = None
+        self._cached_driver_node_id: Optional[ray.NodeID] = None
 
     @property
     def connected(self):
@@ -521,17 +522,27 @@ class Worker:
     def get_driver_node_id(self, timeout=None) -> ray.NodeID:
         """
         Get the driver node id via Job Info. Populates the cached driver node id if
-        found. The fetching can be slow if there are too many jobs.
+        found.
 
-        @raises Exception if the gcs client times out.
-        @returns driver node id if found, None otherwise (e.g. the job has not yet
+        TODO: Fetching can be slow if there are so many workers started at the same time
+        because GCS main thread is overloaded. We've seen it is delayed up to 10~30
+        seconds. Ideally, we should not query GCS when a new worker starts, but we are
+        doing this already (each worker pings GCS like 5~6 times when a new worker
+        starts). We can fix this holistically when we address large scale cluster
+        problems.
+
+        Args:
+            timeout: Timeout in seconds for GCS Client.
+
+        Raises: Exception if the gcs client times out.
+
+        Returns: driver node id if found, None otherwise (e.g. the job has not yet
         started).
         """
         if self._cached_driver_node_id is not None:
             return self._cached_driver_node_id
         all_infos = self.gcs_client.get_all_job_info(timeout=timeout)
-        # Type: src.ray.protobuf.gcs_pb2.JobTableData
-        my_job_info = all_infos[self.current_job_id.binary()]
+        my_job_info: gcs_pb2.JobTableData = all_infos[self.current_job_id.binary()]
         driver_node_id = ray.NodeID(my_job_info.driver_address.raylet_id)
         self._cached_driver_node_id = driver_node_id
         return driver_node_id

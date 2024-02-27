@@ -2805,7 +2805,7 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None):
+    def get_all_job_info(self, timeout=None) -> Dict[str, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
