@@ -1,6 +1,6 @@
 import math
-from collections import deque
 import time
+from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
@@ -172,7 +172,9 @@ class OutputSplitter(PhysicalOperator):
                 self._buffer.insert(0, target_bundle)
                 break
         if self._metrics:
-            self._metrics.streaming_split_overhead_time += time.perf_counter() - start_time
+            self._metrics.streaming_split_overhead_time += (
+                time.perf_counter() - start_time
+            )
 
     def _select_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.
@@ -268,7 +270,9 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
     return left, right
 
 
-def _split_meta(m: BlockMetadata, left_size: int) -> Tuple[BlockMetadata, BlockMetadata]:
+def _split_meta(
+    m: BlockMetadata, left_size: int
+) -> Tuple[BlockMetadata, BlockMetadata]:
     left_bytes = int(math.floor(m.size_bytes * (left_size / m.num_rows)))
     left = BlockMetadata(
         num_rows=left_size,

@@ -204,7 +204,7 @@ class SplitCoordinator:
 
         This is intended to be called concurrently from multiple clients.
         """
-
+        start_time = time.perf_counter()
         if epoch_id != self._cur_epoch:
             raise ValueError(
                 "Invalid iterator: the dataset has moved on to another epoch."
@@ -235,6 +235,12 @@ class SplitCoordinator:
             return block
         except StopIteration:
             return None
+        finally:
+            stats = self._base_dataset._plan.stats()
+            if stats and stats.streaming_split_coordinator_s:
+                stats.streaming_split_coordinator_s.add(
+                    time.perf_counter() - start_time
+                )
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

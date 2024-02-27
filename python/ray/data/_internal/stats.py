@@ -628,6 +628,10 @@ class DatasetStats:
         self.global_bytes_restored: int = 0
         self.dataset_bytes_spilled: int = 0
 
+        # Streaming split iterator stats
+        self.streaming_split_coordinator_s: Timer = Timer()
+        self.streaming_split_output_s: Timer = Timer()
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
