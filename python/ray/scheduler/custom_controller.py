@@ -24,6 +24,7 @@ class Controller():
 
     def start_loop(self):
         while True:
+            
             data = requests.get("http://localhost:8000/get").json()
             user_task = Task(**data)
             if user_task.spec == {}:
@@ -91,33 +92,40 @@ class Controller():
                 print("reconcile: user_task finished", user_task.spec[USER_TASK_ID])
             return
                 
-    def download_s3_folder(self,bucket_name, s3_folder='', local_dir=None):
-        """
-        Download the contents of a folder directory
-        Args:
-            bucket_name: the name of the s3 bucket
-            s3_folder: the folder path in the s3 bucket
-            local_dir: a relative or absolute directory path in the local file system
-        """
-        s3=boto3.resource('s3',aws_access_key_id=AWS_ACCESS_KEY_ID,aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
-        bucket = s3.Bucket(bucket_name)
-        for obj in bucket.objects.filter(Prefix=s3_folder):
-            
-            target = obj.key if local_dir is None \
-                else os.path.join(local_dir, os.path.relpath(obj.key, s3_folder))
-            if '/' in target:
-                if not os.path.exists(os.path.dirname(target)):
-                    os.makedirs(os.path.dirname(target))
-                
-            if obj.key[-1] == '/':
-                continue
-            bucket.download_file(obj.key, target)
-
 
     def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_name):
     
         @ray.remote
         def bind_label():
+            def download_s3_folder(bucket_name, s3_folder='', local_dir=None):
+                """
+                Download the contents of a folder directory
+                Args:
+                    bucket_name: the name of the s3 bucket
+                    s3_folder: the folder path in the s3 bucket
+                    local_dir: a relative or absolute directory path in the local file system
+                """
+        #         s3=boto3.resource('s3',aws_access_key_id="AKIATHLAXGTZLQXAEE4D",aws_secret_access_key='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'
+        # )
+
+                s3=boto3.resource('s3',aws_access_key_id=AWS_ACCESS_KEY_ID,aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+                bucket = s3.Bucket(bucket_name)
+                for obj in bucket.objects.filter(Prefix=s3_folder):
+                    
+                    if local_dir is None:
+                        target = obj.key
+                    elif local_dir[-1]=="/":
+                        target=os.path.join(local_dir, os.path.relpath(obj.key, s3_folder))
+                    else:
+                        target=local_dir
+                
+                    if '/' in target:
+                        if not os.path.exists(os.path.dirname(target)):
+                            os.makedirs(os.path.dirname(target))
+                        
+                    if obj.key[-1] == '/':
+                        continue
+                    bucket.download_file(obj.key, target)
 	        #TODO: how to guarantee transfer data finished 
             #TODO: set home address
             # os.system("ls")
@@ -132,12 +140,12 @@ class Controller():
             else:
                 # node_ip=self.get_node_ip(data_id)
                 if s3==True:
-                    self.download_s3_folder(str(bucket_name),str(object_name))
-                        
+                    download_s3_folder(str(bucket_name),str(object_name),str(label))
+
                 else:
                     os.system("rsync --mkpath -a -P {} {}".format(DATA_IP+":"+label,label))
-               
-                ray.get_runtime_context().set_label({label: label})
+                if os.path.exists(label):
+                    ray.get_runtime_context().set_label({label: label})
             return FINISHED
 
         task_id = bind_label.options(
