@@ -797,6 +797,7 @@ def wait_until_succeeded_without_exception(
             func(*args)
             return True
         except exceptions as ex:
+            logger.info(f"Retryable exception: {ex}, retrying...")
             last_ex = ex
             time_elapsed = (time.time() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
