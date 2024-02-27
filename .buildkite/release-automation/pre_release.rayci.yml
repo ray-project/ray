@@ -6,3 +6,10 @@ steps:
     instance_type: small_branch
     commands:
       - bash .buildkite/release-automation/check_release_blockers.sh
+
+  - label: "Trigger postmerge test"
+    trigger: "postmerge"
+      build:
+        commit: build.env("COMMIT")
+        branch: "master"
+        message: "Triggered by release automation pipeline"
