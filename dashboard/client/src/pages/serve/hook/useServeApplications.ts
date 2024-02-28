@@ -1,4 +1,4 @@
-import useState from "react";
+import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getServeApplications } from "../../../service/serve";
