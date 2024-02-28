@@ -31,7 +31,7 @@ def test_colocate_trainer_and_rank0_worker(
     trainer_resources,
     resources_per_worker_and_use_gpu,
 ):
-    ray.init()
+    ray.init(ignore_reinit_error=True)
 
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
 
