@@ -371,14 +371,14 @@ class StorageContext:
         >>> storage.experiment_fs_path
         'bucket/path/exp_name'
         >>> storage.experiment_local_staging_path  # doctest: +ELLIPSIS
-        '/tmp/ray/session_.../artifacts/exp_name/driver_artifacts'
+        '/tmp/ray/session_.../artifacts/.../exp_name/driver_artifacts'
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
         'bucket/path/exp_name/trial_dir'
         >>> storage.trial_local_staging_path  # doctest: +ELLIPSIS
-        '/tmp/ray/session_.../artifacts/exp_name/driver_artifacts/trial_dir'
+        '/tmp/ray/session_.../artifacts/.../exp_name/driver_artifacts/trial_dir'
         >>> storage.trial_working_directory   # doctest: +ELLIPSIS
-        '/tmp/ray/session_.../artifacts/exp_name/working_dirs/trial_dir'
+        '/tmp/ray/session_.../artifacts/.../exp_name/working_dirs/trial_dir'
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
@@ -417,6 +417,8 @@ class StorageContext:
         trial_dir_name: Optional[str] = None,
         current_checkpoint_index: int = -1,
     ):
+        from ray.tune.utils import date_str
+
         self.custom_fs_provided = storage_filesystem is not None
 
         # If no remote path is set, try to get Ray Storage URI
@@ -448,6 +450,8 @@ class StorageContext:
 
         self._create_validation_file()
         self._check_validation_file()
+
+        self._timestamp = date_str()
 
     def __str__(self):
         return (
@@ -594,7 +598,8 @@ class StorageContext:
         The driver is the node where `Trainer.fit`/`Tuner.fit` is being called.
 
         This path is of the form:
-        `/tmp/ray/session_<session_id>/artifacts/<experiment_dir_name>/driver_artifacts`
+        `/tmp/ray/session_<session_id>/artifacts/<ray-train-job-timestamp>/
+        <experiment_dir_name>/driver_artifacts`
 
         This should be used as the temporary staging location for files *on the driver*
         before syncing them to `(storage_filesystem, storage_path)`.
@@ -606,7 +611,10 @@ class StorageContext:
         See `_ExperimentCheckpointManager.checkpoint` for where that happens.
         """
         return Path(
-            _get_ray_train_session_dir(), self.experiment_dir_name, "driver_artifacts"
+            _get_ray_train_session_dir(),
+            self._timestamp,
+            self.experiment_dir_name,
+            "driver_artifacts",
         ).as_posix()
 
     @property
@@ -628,7 +636,8 @@ class StorageContext:
         The driver is the node where `Trainer.fit`/`Tuner.fit` is being called.
 
         This path is of the form:
-        `/tmp/ray/session_<session_id>/artifacts/<experiment_dir_name>/driver_artifacts/<trial_dir_name>`
+        `/tmp/ray/session_<session_id>/artifacts/<ray-train-job-timestamp>/
+        <experiment_dir_name>/driver_artifacts/<trial_dir_name>`
 
         This should be used as the temporary location for files on the driver
         before syncing them to `(storage_filesystem, storage_path)`.
@@ -648,7 +657,8 @@ class StorageContext:
         """The local filesystem path to trial working directory.
 
         This path is of the form:
-        `/tmp/ray/session_<session_id>/artifacts/<experiment_dir_name>/working_dirs/<trial_dir_name>`
+        `/tmp/ray/session_<session_id>/artifacts/<ray-train-job-timestamp>/
+        <experiment_dir_name>/working_dirs/<trial_dir_name>`
 
         Ray Train/Tune moves the remote actor's working directory to this path
         by default, unless disabled by `RAY_CHDIR_TO_TRIAL_DIR` environment variable.
@@ -663,6 +673,7 @@ class StorageContext:
             )
         return Path(
             _get_ray_train_session_dir(),
+            self._timestamp,
             self.experiment_dir_name,
             "working_dirs",
             self.trial_dir_name,
