@@ -2013,8 +2013,8 @@ def pasre_pg_formatted_resources_to_original(
     original_resources = {}
 
     for key, value in pg_formatted_resources.items():
-        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 2:
+        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 3:
             # Filter out resources that have bundle_group_[pg_id] since
             # it is an implementation detail.
             # This resource is automatically added to the resource
@@ -2024,8 +2024,12 @@ def pasre_pg_formatted_resources_to_original(
 
             original_resources[result.group(1)] = value
             continue
-        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 3:
+
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            if result.group(1) == "bundle":
+                continue
+
             original_resources[result.group(1)] = value
             continue
         original_resources[key] = value

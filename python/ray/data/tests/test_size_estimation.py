@@ -109,8 +109,8 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
         assert 80 < x < 120, (x, nrow)
 
     # Disabled.
-    # Setting infinite block size effectively disables block splitting.
-    ctx.target_max_block_size = float("inf")
+    # Setting a huge block size effectively disables block splitting.
+    ctx.target_max_block_size = 2**64
     ds4 = gen("out4")
     assert ds4._block_num_rows() == [1000]
 
@@ -194,8 +194,8 @@ def test_split_map(shutdown_only, use_actors):
     assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Disabled.
-    # Setting infinite block size effectively disables block splitting.
-    ctx.target_max_block_size = float("inf")
+    # Setting a huge block size effectively disables block splitting.
+    ctx.target_max_block_size = 2**64
     ds3 = ray.data.range(1000, parallelism=1).map(arrow_fn, **kwargs)
     nblocks = len(ds3.map(identity_fn, **kwargs).get_internal_block_refs())
     assert nblocks == 1, nblocks

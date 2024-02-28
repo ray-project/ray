@@ -14,6 +14,8 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import wait_for_condition
+from click.testing import CliRunner
+import ray.scripts.scripts as scripts
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -112,6 +114,94 @@ def test_placement_group_no_resource(ray_start_cluster, connect_to_client):
             assert reduce(check_eq, first_node_ids) != reduce(check_eq, second_node_ids)
 
             placement_group_assert_no_leak([pg1, pg2])
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_pg_no_resource_bundle_index(ray_start_cluster, connect_to_client):
+    @ray.remote(num_cpus=0)
+    class Actor:
+        def node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    cluster = ray_start_cluster
+    num_nodes = 4
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    with connect_to_client_or_not(connect_to_client):
+        pg = ray.util.placement_group(
+            bundles=[{"CPU": 1} for _ in range(num_nodes)],
+        )
+        ray.get(pg.ready())
+        first_bundle_node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][
+            0
+        ]
+
+        # Iterate 10 times to make sure it is not flaky.
+        for _ in range(10):
+            actor = Actor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_bundle_index=0
+                )
+            ).remote()
+
+            assert first_bundle_node_id == ray.get(actor.node_id.remote())
+
+        placement_group_assert_no_leak([pg])
+
+
+# Make sure the task observability API outputs don't contain
+# pg related data.
+# TODO(sang): Currently, when a task hangs because the bundle
+# index doesn't have enough resources, it is not displayed. Fix it.
+def test_task_using_pg_observability(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_assigned_resources(self):
+            return ray.get_runtime_context().get_assigned_resources()
+
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    pg = ray.util.placement_group(
+        bundles=[{"CPU": 1} for _ in range(num_nodes)],
+    )
+
+    # Make sure get_assigned_id doesn't contain formatted resources.
+    bundle_index = 0
+    actor1 = Actor.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=bundle_index
+        )
+    ).remote()
+    r = ray.get(actor1.get_assigned_resources.remote())
+    assert "bundle_group" not in r
+    assert f"bundle_group_{bundle_index}" not in r
+
+    # Make sure ray status doesn't contain formatted resources.
+    actor2 = Actor.options(  # noqa
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        )
+    ).remote()
+
+    def check_demands():
+        runner = CliRunner()
+        result = runner.invoke(scripts.status)
+        if "No cluster status." in result.stdout:
+            return False
+
+        expected_demand_str = (
+            "{'CPU': 1.0}: 1+ pending tasks/actors " "(1+ using placement groups)"
+        )
+        assert expected_demand_str in result.stdout, result.stdout
+        return True
+
+    wait_for_condition(check_demands)
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

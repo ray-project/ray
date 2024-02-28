@@ -565,6 +565,8 @@ if __name__ == "__main__":
             ctx = ray.data.context.DataContext.get_current()
 
             options.resource_limits.object_store_memory = 10e9
+            # Disable resource reservation for maximum throughput.
+            ctx.op_resource_reservation_ratio = 0
 
             datasets["train"] = build_dataset(
                 args.data_root,

@@ -55,7 +55,16 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         compute_strategy=TaskPoolStrategy(),
     )
     assert op.base_resource_usage() == ExecutionResources()
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=1, gpu=0)
+    data_context = ray.data.DataContext.get_current()
+    inc_obj_store_mem = (
+        data_context._max_num_blocks_in_streaming_gen_buffer
+        * data_context.target_max_block_size
+    )
+    assert op.incremental_resource_usage() == ExecutionResources(
+        cpu=1,
+        gpu=0,
+        object_store_memory=inc_obj_store_mem,
+    )
     assert op._ray_remote_args == {"num_cpus": 1}
 
     op = MapOperator.create(
@@ -66,7 +75,9 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         ray_remote_args={"num_gpus": 2},
     )
     assert op.base_resource_usage() == ExecutionResources()
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=2)
+    assert op.incremental_resource_usage() == ExecutionResources(
+        cpu=0, gpu=2, object_store_memory=inc_obj_store_mem
+    )
     assert op._ray_remote_args == {"num_gpus": 2}
 
     with pytest.raises(ValueError):
@@ -204,10 +215,17 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     )
     op.start(ExecutionOptions())
 
+    data_context = ray.data.DataContext.get_current()
+    inc_obj_store_mem = (
+        data_context._max_num_blocks_in_streaming_gen_buffer
+        * data_context.target_max_block_size
+    )
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
     # All actors are idle (pending creation), therefore shouldn't need to scale up when
     # submitting a new task, so incremental resource usage should be 0.
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.incremental_resource_usage() == ExecutionResources(
+        cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+    )
     assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
@@ -218,7 +236,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     for i in range(4):
         # Pool is still idle while waiting for actors to start, so additional tasks
         # shouldn't trigger scale-up, so incremental resource usage should still be 0.
-        assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
+        assert op.incremental_resource_usage() == ExecutionResources(
+            cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+        )
         op.add_input(input_op.get_next(), 0)
         assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
         assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
@@ -290,10 +310,17 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     )
     op.start(ExecutionOptions())
 
+    data_context = ray.data.DataContext.get_current()
+    inc_obj_store_mem = (
+        data_context._max_num_blocks_in_streaming_gen_buffer
+        * data_context.target_max_block_size
+    )
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
     # All actors are idle (pending creation), therefore shouldn't need to scale up when
     # submitting a new task, so incremental resource usage should be 0.
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.incremental_resource_usage() == ExecutionResources(
+        cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+    )
     assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
@@ -304,7 +331,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     for i in range(4):
         # Pool is still idle while waiting for actors to start, so additional tasks
         # shouldn't trigger scale-up, so incremental resource usage should still be 0.
-        assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
+        assert op.incremental_resource_usage() == ExecutionResources(
+            cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+        )
         op.add_input(input_op.get_next(), 0)
         assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
         assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(

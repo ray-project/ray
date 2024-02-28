@@ -10,10 +10,6 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.11"
-  jobs:
-    pre_build:
-      - bash ./ci/env/install-bazel.sh
-      - ~/bin/bazel build //:install_py_proto
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

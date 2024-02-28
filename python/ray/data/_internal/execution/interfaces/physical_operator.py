@@ -65,16 +65,16 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_blocks_to_read: Optional[int]) -> int:
+    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
         """Callback when data is ready to be read from the streaming generator.
 
         Args:
-            max_blocks_to_read: Max number of blocks to read. If None, all available
+            max_bytes_to_read: Max bytes of blocks to read. If None, all available
                 will be read.
         Returns: The number of blocks read.
         """
-        num_blocks_read = 0
-        while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
+        bytes_read = 0
+        while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
@@ -103,8 +103,8 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
-            num_blocks_read += 1
-        return num_blocks_read
+            bytes_read += meta.size_bytes
+        return bytes_read
 
 
 class MetadataOpTask(OpTask):
@@ -386,11 +386,16 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(
+        self, consider_autoscaling=True
+    ) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
 
         For example, an operator that launches a task per input could return
         ExecutionResources(cpu=1) as its incremental usage.
+
+        Args:
+            consider_autoscaling: Whether to consider the possibility of autoscaling.
         """
         return ExecutionResources()
 

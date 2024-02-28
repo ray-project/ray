@@ -56,7 +56,10 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     "--run-per-test",
     default=1,
     type=int,
-    help=("The number of time we run test on the same commit"),
+    help=(
+        "The number of time we run test on the same commit. This number might be "
+        "overridden by the local test config (whichever is higher)."
+    ),
 )
 def main(
     test_collection_file: Tuple[str],
@@ -151,6 +154,8 @@ def main(
         tests = grouped_tests[group]
         group_steps = []
         for test, smoke_test in tests:
+            # run the tests as many time as the global or its local configuration allows
+            run_per_test = max(test.get("repeated_run", 1), run_per_test)
             for run_id in range(run_per_test):
                 step = get_step(
                     test,
