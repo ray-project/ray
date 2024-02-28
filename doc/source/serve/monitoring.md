@@ -274,10 +274,8 @@ In the replica `Model` log file, you should see the following:
 ```
 
 :::{note}
-`RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
-next release. If you have the need to override the global default for Serve logging
-format without setting `logging_config`, you can set `RAY_SERVE_LOG_ENCODING=JSON`
-environment variable to achieve the same.
+The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
+next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
 :::
 
 #### Disable access log
