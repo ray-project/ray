@@ -155,8 +155,7 @@ def main(
         group_steps = []
         for test, smoke_test in tests:
             # run the tests as many time as the global or its local configuration allows
-            run_per_test = max(test.get("repeated_run", 1), run_per_test)
-            for run_id in range(run_per_test):
+            for run_id in range(max(test.get("repeated_run", 1), run_per_test)):
                 step = get_step(
                     test,
                     test_collection_file,
