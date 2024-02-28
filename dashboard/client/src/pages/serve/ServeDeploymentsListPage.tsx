@@ -151,7 +151,7 @@ export const ServeDeploymentsListPage = () => {
                     )
                     .map((application) => (
                       <ServeApplicationRows
-                        key={`${application.name}__${application.deployments.length}`}
+                        key={`${application.name}`}
                         application={application}
                         startExpanded={true}
                       />
