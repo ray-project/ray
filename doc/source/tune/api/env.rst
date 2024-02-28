@@ -45,7 +45,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1``
+  to ``auto``, which will be updated to ``max(200, cluster_cpus * 1.1)`` for random/grid search and ``1``
   for any other search algorithms.
 * **TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD**: When syncing trial data between nodes, only sync if this many
   iterations were recorded for the trial or the minimum time threshold was met. This will prevent unnecessary
