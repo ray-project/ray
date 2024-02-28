@@ -11,6 +11,7 @@ steps:
   - label: "Trigger postmerge test"
     depends_on: check-release-blockers
     trigger: "postmerge"
+    if: build.env("COMMIT") != null && build.env("BRANCH") != null
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
@@ -19,6 +20,7 @@ steps:
   - label: "Trigger Release nightly test"
     depends_on: check-release-blockers
     trigger: "release"
+    if: build.env("COMMIT") != null && build.env("BRANCH") != null
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
@@ -30,6 +32,7 @@ steps:
   - label: "Trigger Release nightly-3x test"
     depends_on: check-release-blockers
     trigger: "release"
+    if: build.env("COMMIT") != null && build.env("BRANCH") != null
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
@@ -41,6 +44,7 @@ steps:
   - label: "Trigger Release weekly test"
     depends_on: check-release-blockers
     trigger: "release"
+    if: build.env("COMMIT") != null && build.env("BRANCH") != null
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
