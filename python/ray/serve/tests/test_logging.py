@@ -3,10 +3,12 @@ import json
 import logging
 import os
 import re
+import shutil
 import string
 import sys
 import time
 from contextlib import redirect_stderr
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -642,6 +644,57 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
 
         # Clean up logger handlers
         logger.handlers.clear()
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_DISABLE_STDOUT": "1"},
+    ],
+    indirect=True,
+)
+def test_logging_disable_stdout(ray_instance):
+    """Test logging when RAY_SERVE_DISABLE_STDOUT is set.
+
+    When RAY_SERVE_DISABLE_STDOUT=1 is set, serve should redirect stdout and stderr to
+    serve logger.
+    """
+    # Clean up log directory.
+    logs_dir = Path("/tmp/fake_logs_dir")
+    if logs_dir.exists() and logs_dir.is_dir():
+        shutil.rmtree(logs_dir)
+
+    logging_config = LoggingConfig(encoding="JSON", logs_dir=str(logs_dir))
+    serve_logger = logging.getLogger("ray.serve")
+
+    @serve.deployment(logging_config=logging_config)
+    def disable_stdout():
+        serve_logger.info("from_serve_logger")
+        print("from_print")
+        raise RuntimeError("from_error")
+
+    app = disable_stdout.bind()
+    serve.run(app)
+    requests.get("http://127.0.0.1:8000")
+
+    # Check if each of the logs exist in Serve's log files.
+    from_serve_logger_check = False
+    from_print_check = False
+    from_error_check = False
+    for log_file in os.listdir(logs_dir):
+        if log_file.startswith("replica_default_disable_stdout"):
+            with open(logs_dir / log_file) as f:
+                for line in f:
+                    structured_log = json.loads(line)
+                    if "from_serve_logger" in structured_log["message"]:
+                        from_serve_logger_check = True
+                    elif "from_print" in structured_log["message"]:
+                        from_print_check = True
+                    elif "from_error" in structured_log["message"]:
+                        from_error_check = True
+    assert from_serve_logger_check
+    assert from_print_check
+    assert from_error_check
 
 
 if __name__ == "__main__":

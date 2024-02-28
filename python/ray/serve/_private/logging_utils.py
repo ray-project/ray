@@ -2,11 +2,13 @@ import copy
 import json
 import logging
 import os
+import sys
 from typing import Optional, Tuple
 
 import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
+    RAY_SERVE_DISABLE_STDOUT,
     RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
@@ -152,7 +154,11 @@ def access_log_msg(*, method: str, status: str, latency_ms: float):
 
 
 def log_to_stderr_filter(record: logging.LogRecord) -> bool:
-    """Filters log records based on a parameter in the `extra` dictionary."""
+    """Filters log records based on a parameter in the `extra` dictionary or
+    RAY_SERVE_DISABLE_STDOUT environment variable."""
+    if RAY_SERVE_DISABLE_STDOUT:
+        return False
+
     if not hasattr(record, "log_to_stderr") or record.log_to_stderr is None:
         return True
 
@@ -181,6 +187,41 @@ def get_component_logger_file_path() -> Optional[str]:
             ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
             if absolute_path.startswith(ray_logs_dir):
                 return absolute_path[len(ray_logs_dir) :]
+
+
+class StreamToLogger(object):
+    """
+    Fake file-like stream object that redirects writes to a logger instance.
+
+    This comes from https://stackoverflow.com/a/36296215 directly.
+    """
+
+    def __init__(self, logger, log_level=logging.INFO):
+        self.logger = logger
+        self.log_level = log_level
+        self.linebuf = ""
+
+    def write(self, buf):
+        temp_linebuf = self.linebuf + buf
+        self.linebuf = ""
+        for line in temp_linebuf.splitlines(True):
+            # From the io.TextIOWrapper docs:
+            #   On output, if newline is None, any '\n' characters written
+            #   are translated to the system default line separator.
+            # By default sys.stdout.write() expects '\n' newlines and then
+            # translates them so this is still cross platform.
+            if line[-1] == "\n":
+                self.logger.log(self.log_level, line.rstrip())
+            else:
+                self.linebuf += line
+
+    def flush(self):
+        if self.linebuf != "":
+            self.logger.log(self.log_level, self.linebuf.rstrip())
+        self.linebuf = ""
+
+    def isatty(self) -> bool:
+        return True
 
 
 def configure_component_logger(
@@ -261,6 +302,11 @@ def configure_component_logger(
 
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
+
+    # Redirect stdout and stderr to Serve logger.
+    if RAY_SERVE_DISABLE_STDOUT:
+        sys.stdout = StreamToLogger(logger, logging.INFO)
+        sys.stderr = StreamToLogger(logger, logging.ERROR)
 
     logger.addHandler(file_handler)
 
