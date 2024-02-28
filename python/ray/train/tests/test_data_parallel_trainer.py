@@ -6,7 +6,6 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
@@ -32,32 +31,6 @@ def ray_start_4_cpus_4_gpus_4_extra():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_heterogenous_cluster():
-    """
-    Start a heterogenous cluster with 10 nodes:
-        - 1 node with 20 CPUs
-        - 2 nodes with 2 GPU and 20 CPUs
-        - 2 nodes with 2 GPU and 5 CPUs
-    """
-    cluster = Cluster()
-
-    node_configs = []
-    node_configs += [{"num_cpus": 20}]
-    node_configs += [{"num_cpus": 20, "num_gpus": 2}] * 2
-    node_configs += [{"num_cpus": 5, "num_gpus": 2}] * 2
-
-    for config in node_configs:
-        cluster.add_node(**config)
-
-    ray.init(address=cluster.address)
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
 
 
 def gen_execute_single_async_special(special_f):
@@ -345,56 +318,6 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     # Sort the cuda visible devices to have exact match with expected result.
     visible_devices = [",".join(sorted(r.split(","))) for r in visible_devices]
     assert visible_devices == ["0,1,2,3", "0,1,2,3"]
-
-
-@pytest.mark.parametrize("trainer_resources", [None, {"CPU": 15}, {"GPU": 1}])
-@pytest.mark.parametrize(
-    "resources_per_worker_and_use_gpu",
-    [
-        (None, True),
-        ({"CPU": 1}, False),
-        ({"GPU": 1}, True),
-    ],
-)
-def test_colocate_trainer_and_rank0_worker(
-    ray_start_heterogenous_cluster,
-    trainer_resources,
-    resources_per_worker_and_use_gpu,
-):
-    resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
-
-    def train_func():
-        pass
-
-    class CustomBackend(Backend):
-        def on_training_start(self, worker_group, backend_config):
-            trainer_node_id = ray.get_runtime_context().get_node_id()
-
-            def check_node_id():
-                if ray.train.get_context().get_world_rank() == 0:
-                    assert trainer_node_id == ray.get_runtime_context().get_node_id()
-
-            worker_group.execute(check_node_id)
-
-    class CustomBackendConfig(BackendConfig):
-        @property
-        def backend_cls(self):
-            return CustomBackend
-
-    for num_workers in [1, 2, 4]:
-        scale_config = ScalingConfig(
-            num_workers=num_workers,
-            use_gpu=use_gpu,
-            trainer_resources=trainer_resources,
-            resources_per_worker=resources_per_worker,
-        )
-
-        trainer = DataParallelTrainer(
-            train_func,
-            scaling_config=scale_config,
-            backend_config=CustomBackendConfig(),
-        )
-        trainer.fit()
 
 
 if __name__ == "__main__":

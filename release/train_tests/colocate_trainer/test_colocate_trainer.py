@@ -7,11 +7,18 @@ Setup:
 Test owner: woshiyyya
 """
 
+import ray
+import ray.train
+import pytest
+
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.backend import Backend, BackendConfig
-from ray.train import RunConfig, ScalingConfig
+from ray.train import ScalingConfig
 
-@pytest.mark.parametrize("trainer_resources", [None, {"memory": 40 * 1024 ** 3}, {"CPU": 10}])
+
+@pytest.mark.parametrize(
+    "trainer_resources", [None, {"memory": 40 * 1024**3}, {"CPU": 10}]
+)
 @pytest.mark.parametrize(
     "resources_per_worker_and_use_gpu",
     [
@@ -25,6 +32,8 @@ def test_colocate_trainer_and_rank0_worker(
     trainer_resources,
     resources_per_worker_and_use_gpu,
 ):
+    resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
+
     def train_func():
         pass
 

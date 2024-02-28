@@ -2736,7 +2736,7 @@
 
   alert: default
 
-- name: train_multinode_persistence
+- name: train_colocate_trainer
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
