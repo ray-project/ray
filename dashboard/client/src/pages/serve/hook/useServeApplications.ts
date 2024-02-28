@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import useState from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getServeApplications } from "../../../service/serve";
 import { ServeSystemActorStatus } from "../../../type/serve";
 import { ServeDetails } from "../ServeSystemDetails";
-import { ServeApplication } from "../../../type/serve";
 
 const SERVE_PROXY_STATUS_SORT_ORDER: Record<ServeSystemActorStatus, number> = {
   [ServeSystemActorStatus.UNHEALTHY]: 0,
@@ -78,7 +77,7 @@ export const useServeDeployments = () => {
     proxiesPage,
     setProxiesPage: (key: string, val: number) =>
       setProxiesPage({ ...proxiesPage, [key]: val }),
-    serveApplications: serveApplicationsList
+    serveApplications: serveApplicationsList,
   };
 };
 

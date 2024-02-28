@@ -10,10 +10,9 @@ import {
   TableHead,
   TableRow,
   TextField,
-  TextFieldProps,
   Typography,
 } from "@material-ui/core";
-import { Alert, Autocomplete, Pagination } from "@material-ui/lab";
+import { Alert, Pagination } from "@material-ui/lab";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import Loading from "../../components/Loading";

@@ -1,5 +1,13 @@
-import {createStyles, IconButton, TableCell, TableRow, makeStyles, Link } from "@material-ui/core";
+import {
+  createStyles,
+  IconButton,
+  Link,
+  makeStyles,
+  TableCell,
+  TableRow,
+} from "@material-ui/core";
 import React, { useState } from "react";
+import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
 import {
   CodeDialogButton,
@@ -9,7 +17,6 @@ import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeApplication } from "../../type/serve";
-import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
 export type ServeApplicationRowsProps = {
@@ -66,19 +73,22 @@ export const ServeApplicationRows = ({
           </IconButton>
         </TableCell>
         <TableCell align="center" className={classes.applicationName}>
-              <Link
-        component={RouterLink}
-        to={`applications/${name ? encodeURIComponent(name) : "-"}`}
-      >
-        {name ? name : "-"}
-      </Link>
+          <Link
+            component={RouterLink}
+            to={`applications/${name ? encodeURIComponent(name) : "-"}`}
+          >
+            {name ? name : "-"}
+          </Link>
         </TableCell>
         <TableCell align="center">
           <StatusChip type="serveApplication" status={status} />
         </TableCell>
         <TableCell align="center">
           {message ? (
-            <CodeDialogButtonWithPreview title="Message details" code={message} />
+            <CodeDialogButtonWithPreview
+              title="Message details"
+              code={message}
+            />
           ) : (
             "-"
           )}
@@ -119,4 +129,4 @@ export const ServeApplicationRows = ({
         ))}
     </React.Fragment>
   );
-}
+};

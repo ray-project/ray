@@ -47,7 +47,7 @@ export type ServeDeploymentRowProps = {
 export const ServeDeploymentRow = ({
   deployment,
   application: { last_deployed_time_s, name: applicationName },
-  showExpandColumn = false
+  showExpandColumn = false,
 }: ServeDeploymentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
@@ -56,15 +56,17 @@ export const ServeDeploymentRow = ({
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
   const deploymentNameClass = showExpandColumn
-  ? classes.deploymentName
-  : `${classes.deploymentName} ${classes.deploymentNameAsFirstColumn}`;
+    ? classes.deploymentName
+    : `${classes.deploymentName} ${classes.deploymentNameAsFirstColumn}`;
 
   return (
     <React.Fragment>
       <TableRow>
-        {showExpandColumn && <TableCell>
-          {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
-        </TableCell>}
+        {showExpandColumn && (
+          <TableCell>
+            {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
+          </TableCell>
+        )}
         <TableCell align="center" className={deploymentNameClass}>
           <Link
             component={RouterLink}
@@ -89,14 +91,17 @@ export const ServeDeploymentRow = ({
             "-"
           )}
         </TableCell>
-        <TableCell align="center">          <Link
+        <TableCell align="center">
+          {" "}
+          <Link
             component={RouterLink}
             to={`/serve/applications/${encodeURIComponent(
               applicationName,
             )}/${encodeURIComponent(name)}`}
           >
             {replicas.length}
-          </Link></TableCell>
+          </Link>
+        </TableCell>
         <TableCell align="center">
           <CodeDialogButton
             title={`Deployment config for ${name}`}
