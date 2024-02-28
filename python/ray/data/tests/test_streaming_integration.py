@@ -480,6 +480,10 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
 
 
 def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits.object_store_memory = 100 * 1024**2
+    ctx.target_max_block_size = 1 * 1024**2
+
     @ray.remote(max_concurrency=10)
     class Barrier:
         def __init__(self, n, delay=0):
