@@ -770,7 +770,7 @@ class BaseTrainer(abc.ABC):
                 if self.trial_resources == scaling_config.as_placement_group_factory():
                     return scaling_config
 
-                scaling_config = trainer_cls._validate_scaling_config(scaling_config)
+                trainer_cls._validate_scaling_config(scaling_config)
 
                 return ScalingConfig.from_placement_group_factory(trial_resources)
 

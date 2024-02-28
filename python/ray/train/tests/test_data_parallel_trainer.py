@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray import train, tune
 from ray.cluster_utils import Cluster
-from ray.train import RunConfig, ScalingConfig, TrainingIterator
+from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -364,20 +364,20 @@ def test_colocate_trainer_and_rank0_worker(
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
 
     def train_func():
-        # Ensure rank 0 worker is scheduled on a highmem node
-        node_id = ray.get_runtime_context().get_node_id()
-        ray.train.report(metrics={"worker_node_id": node_id})
+        pass
 
-    class CustomDataParallelTrainer(DataParallelTrainer):
-        def _run_training(self, training_iterator: TrainingIterator) -> None:
-            trainable_node_id = ray.get_runtime_context().get_node_id()
+    class CustomBackend(Backend):
+        def on_training_start(self, worker_group, backend_config):
+            trainer_node_id = ray.get_runtime_context().get_node_id()
 
-            for training_results in training_iterator:
-                # Ensure trainable and rank 0 worker are always on the same node
-                assert (
-                    training_results[0].metrics["worker_node_id"] == trainable_node_id
-                )
-                self._propagate_results(training_results)
+            def check_node_id():
+                assert trainer_node_id == ray.get_runtime_context().get_node_id()
+
+            worker_group.execute(check_node_id)
+
+    class CustomBackendConfig(BackendConfig):
+        def backend_cls(self):
+            return CustomBackend
 
     for num_workers in [1, 2, 4]:
         scale_config = ScalingConfig(
@@ -387,9 +387,10 @@ def test_colocate_trainer_and_rank0_worker(
             resources_per_worker=resources_per_worker,
         )
 
-        trainer = CustomDataParallelTrainer(
+        trainer = DataParallelTrainer(
             train_func,
             scaling_config=scale_config,
+            backend_config=CustomBackendConfig(),
         )
         trainer.fit()
 
