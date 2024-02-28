@@ -653,7 +653,7 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     ],
     indirect=True,
 )
-def test_logging_disable_stdout(ray_instance, serve_and_ray_shutdown):
+def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance):
     """Test logging when RAY_SERVE_DISABLE_STDOUT is set.
 
     When RAY_SERVE_DISABLE_STDOUT=1 is set, serve should redirect stdout and stderr to
