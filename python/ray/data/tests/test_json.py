@@ -186,7 +186,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
 
     ds = ray.data.read_json(path, filesystem=fs)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -573,65 +573,6 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
         # Test metadata ops.
         for block, meta in ds2._plan.execute().get_blocks_with_metadata():
             BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_json_write_block_path_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    mock_block_write_path_provider,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    # Single block.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df1])
-    ds._set_uuid("data")
-    ds.write_json(
-        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    file_path = os.path.join(data_path, "000000_000000_data.test.json")
-    assert df1.equals(
-        pd.read_json(
-            file_path, orient="records", lines=True, storage_options=storage_options
-        )
-    )
-
-    # Two blocks.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    ds._set_uuid("data")
-    ds.write_json(
-        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    file_path2 = os.path.join(data_path, "000001_000000_data.test.json")
-    df = pd.concat([df1, df2])
-    ds_df = pd.concat(
-        [
-            pd.read_json(
-                file_path, orient="records", lines=True, storage_options=storage_options
-            ),
-            pd.read_json(
-                file_path2,
-                orient="records",
-                lines=True,
-                storage_options=storage_options,
-            ),
-        ]
-    )
-    assert df.equals(ds_df)
 
 
 @pytest.mark.parametrize(

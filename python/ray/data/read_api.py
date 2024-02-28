@@ -1,6 +1,7 @@
 import collections
 import logging
 import os
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -204,7 +205,7 @@ def range(
         >>> import ray
         >>> ds = ray.data.range(10000)
         >>> ds
-        Dataset(num_blocks=..., num_rows=10000, schema={id: int64})
+        Dataset(num_rows=10000, schema={id: int64})
         >>> ds.map(lambda row: {"id": row["id"] * 2}).take(4)
         [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
 
@@ -258,11 +259,7 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
         >>> ds
-        Dataset(
-           num_blocks=...,
-           num_rows=1000,
-           schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)}
-        )
+        Dataset(num_rows=1000, schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)})
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
                [0, 0]])}, {'data': array([[2, 2],
@@ -1281,7 +1278,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_blocks=..., num_rows=1, schema={a: int64, b: int64})
+        Dataset(num_rows=1, schema={a: int64, b: int64})
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1597,7 +1594,6 @@ def read_tfrecords(
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
         Dataset(
-           num_blocks=...,
            num_rows=150,
            schema={...}
         )
@@ -1611,7 +1607,6 @@ def read_tfrecords(
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
         Dataset(
-           num_blocks=...,
            num_rows=150,
            schema={...}
         )
@@ -2559,7 +2554,6 @@ def from_huggingface(
                 schema={text: string, label: int64}
             )
             Dataset(
-                num_blocks=...,
                 num_rows=3257,
                 schema={text: string, label: int64}
             )
@@ -2757,6 +2751,12 @@ def _get_datasource_or_legacy_reader(
     DataContext._set_current(ctx)
 
     if ds.should_create_reader:
+        warnings.warn(
+            "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
+            "`Reader`, implement `Datasource.get_read_tasks` and "
+            "`Datasource.estimate_inmemory_data_size`.",
+            DeprecationWarning,
+        )
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
     else:
         datasource_or_legacy_reader = ds

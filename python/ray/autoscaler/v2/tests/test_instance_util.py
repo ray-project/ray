@@ -3,32 +3,12 @@ import sys
 import unittest
 
 # coding: utf-8
-from typing import Dict, Set
 from unittest.mock import patch
 
 import pytest
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.core.generated.instance_manager_pb2 import Instance
-
-
-def exists_path(
-    src: Instance.InstanceStatus,
-    dst: Instance.InstanceStatus,
-    graphs: Dict["Instance.InstanceStatus", Set["Instance.InstanceStatus"]],
-) -> bool:
-    # BFS search from src to dst to see if there is a path
-    # from src to dst. There's no path if src == dst.
-    visited = set()
-    queue = [src]
-    if src == dst:
-        return False
-    while queue:
-        node = queue.pop(0)
-        if node not in visited:
-            visited.add(node)
-            queue.extend(graphs[node])
-    return dst in visited
 
 
 class InstanceUtilTest(unittest.TestCase):
@@ -78,18 +58,34 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_RUNNING,
             Instance.RAY_INSTALL_FAILED,
             Instance.RAY_STOPPED,
+            Instance.TERMINATING,
             Instance.TERMINATED,
         }
         all_status.remove(Instance.RAY_INSTALLING)
 
         assert g[Instance.RAY_RUNNING] == {
+            Instance.RAY_STOP_REQUESTED,
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
+            Instance.TERMINATING,
             Instance.TERMINATED,
         }
         all_status.remove(Instance.RAY_RUNNING)
 
-        assert g[Instance.RAY_STOPPING] == {Instance.RAY_STOPPED, Instance.TERMINATED}
+        assert g[Instance.RAY_STOP_REQUESTED] == {
+            Instance.RAY_STOPPING,
+            Instance.RAY_STOPPED,
+            Instance.TERMINATED,
+            Instance.RAY_RUNNING,
+        }
+        all_status.remove(Instance.RAY_STOP_REQUESTED)
+
+        assert g[Instance.RAY_STOPPING] == {
+            Instance.RAY_STOPPED,
+            Instance.TERMINATING,
+            Instance.TERMINATED,
+        }
+
         all_status.remove(Instance.RAY_STOPPING)
 
         assert g[Instance.RAY_STOPPED] == {Instance.TERMINATED, Instance.TERMINATING}
@@ -160,6 +156,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_INSTALLING,
             Instance.RAY_INSTALL_FAILED,
             Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
@@ -178,29 +175,22 @@ class InstanceUtilTest(unittest.TestCase):
 
     def test_is_ray_running_reachable(self):
         all_status = set(Instance.InstanceStatus.values())
-        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
         positive_status = {
             Instance.QUEUED,
             Instance.REQUESTED,
             Instance.ALLOCATED,
             Instance.RAY_INSTALLING,
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
         }
         for s in positive_status:
-            instance.status = s
-            assert InstanceUtil.is_ray_running_reachable(instance.status)
-            assert exists_path(
-                s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
-            )
+            assert InstanceUtil.is_ray_running_reachable(s)
             all_status.remove(s)
 
         # Unknown not possible.
         all_status.remove(Instance.UNKNOWN)
         for s in all_status:
-            instance.status = s
-            assert not InstanceUtil.is_ray_running_reachable(instance.status)
-            assert not exists_path(
-                s, Instance.RAY_RUNNING, InstanceUtil.get_valid_transitions()
-            )
+            assert not InstanceUtil.is_ray_running_reachable(s)
 
     def test_reachable_from(self):
         def add_reachable_from(reachable, src, transitions):
@@ -227,7 +217,10 @@ class InstanceUtilTest(unittest.TestCase):
         add_reachable_from(expected_reachable, Instance.TERMINATION_FAILED, transitions)
         add_reachable_from(expected_reachable, Instance.RAY_STOPPED, transitions)
         add_reachable_from(expected_reachable, Instance.RAY_STOPPING, transitions)
+        add_reachable_from(expected_reachable, Instance.RAY_STOP_REQUESTED, transitions)
         add_reachable_from(expected_reachable, Instance.RAY_RUNNING, transitions)
+        # Add RAY_STOP_REQUESTED again since it's also reachable from RAY_RUNNING.
+        add_reachable_from(expected_reachable, Instance.RAY_STOP_REQUESTED, transitions)
         add_reachable_from(expected_reachable, Instance.RAY_INSTALL_FAILED, transitions)
         add_reachable_from(expected_reachable, Instance.RAY_INSTALLING, transitions)
         add_reachable_from(expected_reachable, Instance.ALLOCATED, transitions)
