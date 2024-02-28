@@ -236,8 +236,7 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to CommitBundleResources.
-    bool GrantCommitBundleResources(bool success = true,
-                                    const Status &status = Status::OK()) {
+    bool GrantCommitBundleResources(const Status &status = Status::OK()) {
       rpc::CommitBundleResourcesReply reply;
       if (commit_callbacks.size() == 0) {
         return false;
