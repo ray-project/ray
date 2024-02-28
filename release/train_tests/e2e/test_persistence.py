@@ -356,7 +356,7 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
 
     ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
-
+    # abc
     trainer = TorchTrainer(
         train_fn,
         train_loop_config={
