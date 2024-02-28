@@ -244,7 +244,7 @@ argument in `serve.run` or `@serve.deployment`
 
 ::::{tab-set}
 
-:::{tab-item} `serve.run`
+:::{tab-item} serve.run
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __serve_run_json_start__
 :end-before: __serve_run_json_end__
@@ -252,7 +252,7 @@ argument in `serve.run` or `@serve.deployment`
 ```
 :::
 
-:::{tab-item} `@serve.deployment`
+:::{tab-item} @serve.deployment
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __deployment_json_start__
 :end-before: __deployment_json_end__
