@@ -35,7 +35,7 @@ steps:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "nightly"
   
-  - wait
+  - wait: ~
 
   - label: "Pre-release checks finished"
     key: pre-release-check-finished
