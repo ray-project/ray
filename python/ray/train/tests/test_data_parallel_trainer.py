@@ -371,11 +371,13 @@ def test_colocate_trainer_and_rank0_worker(
             trainer_node_id = ray.get_runtime_context().get_node_id()
 
             def check_node_id():
-                assert trainer_node_id == ray.get_runtime_context().get_node_id()
+                if ray.train.get_context().get_world_rank() == 0:
+                    assert trainer_node_id == ray.get_runtime_context().get_node_id()
 
             worker_group.execute(check_node_id)
 
     class CustomBackendConfig(BackendConfig):
+        @property
         def backend_cls(self):
             return CustomBackend
 
