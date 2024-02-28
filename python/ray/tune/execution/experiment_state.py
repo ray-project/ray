@@ -11,6 +11,7 @@ from ray.train._internal.storage import (
     get_fs_and_path,
     _download_from_fs_path,
     _list_at_fs_path,
+    _upload_to_fs_path,
 )
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
@@ -154,10 +155,8 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        experiment_local_path = self._storage.experiment_local_staging_path
-        if not experiment_local_path:
-            return
-
+        driver_staging_path = self._storage.experiment_local_staging_path
+        # TODO(justinvyu): [local_dir] Probably want to disable this num_to_keep force
         force = force or self._should_force_cloud_sync
 
         now = time.time()
@@ -175,8 +174,11 @@ class _ExperimentCheckpointManager:
         with out_of_band_serialize_dataset():
             save_fn()
 
-        # Kick off periodic sync experiment staging directory to cloud
-        self.sync_up(force=force, wait=wait)
+        _upload_to_fs_path(
+            local_path=driver_staging_path,
+            fs=self._storage.storage_filesystem,
+            fs_path=self._storage.experiment_fs_path,
+        )
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
@@ -185,7 +187,6 @@ class _ExperimentCheckpointManager:
 
         # Finish
         self._last_save_time = time.time()
-        return experiment_local_path
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
         syncer = self._storage.syncer
@@ -244,25 +245,13 @@ class _ExperimentCheckpointManager:
         sync_time_taken = now - start_time
 
         if sync_time_taken > self._slow_sync_threshold:
-            try:
-                import fsspec
-            except Exception:
-                fsspec = None
-
-            fsspec_msg = ""
-            if fsspec is None:
-                fsspec_msg = (
-                    "If your data is small, try installing fsspec "
-                    "(`pip install fsspec`) for more efficient local file parsing. "
-                )
-
             logger.warning(
-                "Syncing the experiment checkpoint to cloud took a long time with "
+                "Syncing the experiment checkpoint to cloud took a "
                 f"{sync_time_taken:.2f} seconds. This can be due to a large number "
                 f"of trials, large logfiles, or throttling from the "
-                f"remote storage provider for too frequent syncs. {fsspec_msg}"
-                f"If your `CheckpointConfig.num_to_keep` is a low number, this can "
-                f"trigger frequent syncing, in which case you should increase it. "
+                f"remote storage provider for too frequent syncs.\n"
+                f"If you set `CheckpointConfig.num_to_keep` to a low number, this can "
+                f"trigger frequent syncing. Try increasing the `num_to_keep`. "
             )
 
         if not synced:

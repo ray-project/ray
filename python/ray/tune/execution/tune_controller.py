@@ -353,16 +353,13 @@ class TuneController:
             # Metadata
             "stats": {"start_time": self._start_time},
         }
-        experiment_state_fs_path = Path(
-            self._storage.experiment_fs_path, self.experiment_state_file_name
-        ).as_posix()
-
-        with self._storage.storage_filesystem.open_output_stream(
-            experiment_state_fs_path
-        ) as f:
-            f.write(json.dumps(runner_state, cls=TuneFunctionEncoder).encode("utf-8"))
 
         experiment_local_staging_path = self._storage.experiment_local_staging_path
+        with open(
+            Path(experiment_local_staging_path, self.experiment_state_file_name), "w"
+        ) as f:
+            json.dump(runner_state, f, cls=TuneFunctionEncoder)
+
         self._search_alg.save_to_dir(
             experiment_local_staging_path, session_str=self._session_str
         )
@@ -427,6 +424,10 @@ class TuneController:
             new_storage.storage_filesystem = self._storage.storage_filesystem
             new_storage.storage_fs_path = self._storage.storage_fs_path
             new_storage.experiment_dir_name = self._storage.experiment_dir_name
+
+            # NOTE: The restored run should use a new staging directory.
+            new_storage._timestamp = self._storage._timestamp
+
             # ATTN: `trial.set_storage` is used intentionally, since it
             # also updates the absolute paths and filesystem of tracked checkpoints.
             trial.set_storage(new_storage)
