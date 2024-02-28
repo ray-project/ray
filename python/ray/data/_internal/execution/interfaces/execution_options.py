@@ -194,7 +194,6 @@ class ExecutionResources:
 
 
 @DeveloperAPI
-@dataclass
 class ExecutionOptions:
     """Common options for execution.
 
@@ -223,21 +222,39 @@ class ExecutionOptions:
             option is useful for performance debugging. On by default.
     """
 
-    _resource_limits: ExecutionResources = field(
-        default_factory=ExecutionResources.for_limits
-    )
+    def __init__(
+        self,
+        resource_limits: Optional[ExecutionResources] = None,
+        exclude_resources: Optional[ExecutionResources] = None,
+        locality_with_output: Union[bool, List[NodeIdStr]] = False,
+        preserve_order: bool = False,
+        actor_locality_enabled: bool = True,
+        verbose_progress: Optional[bool] = None,
+    ):
+        if resource_limits is None:
+            resource_limits = ExecutionResources.for_limits()
+        self.resource_limits = resource_limits
+        if exclude_resources is None:
+            exclude_resources = ExecutionResources.zero()
+        self.exclude_resources = exclude_resources
+        self.locality_with_output = locality_with_output
+        self.preserve_order = preserve_order
+        self.actor_locality_enabled = actor_locality_enabled
+        if verbose_progress is None:
+            verbose_progress = bool(
+                int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "1"))
+            )
+        self.verbose_progress = verbose_progress
 
-    exclude_resources: ExecutionResources = field(
-        default_factory=lambda: ExecutionResources.zero()
-    )
-
-    locality_with_output: Union[bool, List[NodeIdStr]] = False
-
-    preserve_order: bool = False
-
-    actor_locality_enabled: bool = True
-
-    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "1")))
+    def __repr__(self) -> str:
+        return (
+            f"ExecutionOptions(resource_limits={self.resource_limits}, "
+            f"exclude_resources={self.exclude_resources}, "
+            f"locality_with_output={self.locality_with_output}, "
+            f"preserve_order={self.preserve_order}, "
+            f"actor_locality_enabled={self.actor_locality_enabled}, "
+            f"verbose_progress={self.verbose_progress})"
+        )
 
     @property
     def resource_limits(self) -> ExecutionResources:
@@ -255,7 +272,7 @@ class ExecutionOptions:
         """Validate the options."""
         for attr in ["cpu", "gpu", "object_store_memory"]:
             if (
-                getattr(self.resource_limits, attr) is not None
+                getattr(self.resource_limits, attr) != float("inf")
                 and getattr(self.exclude_resources, attr, 0) > 0
             ):
                 raise ValueError(
