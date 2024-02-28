@@ -81,6 +81,7 @@ def _build_dataset(
     consumer_num_cpus,
     num_blocks,
     block_size,
+    insert_limit_op=False,
 ):
     # Create a dataset with 2 operators:
     # - The producer op has only 1 task, which produces `num_blocks` blocks, each
@@ -109,22 +110,29 @@ def _build_dataset(
     ds = ds.map_batches(producer, batch_size=None, num_cpus=producer_num_cpus)
     # Add a limit op in the middle, to test that ReservationOpResourceAllocator
     # will account limit op's resource usage to the previous producer map op.
-    ds = ds.limit(num_blocks)
+    if insert_limit_op:
+        ds = ds.limit(num_blocks)
     ds = ds.map_batches(consumer, batch_size=None, num_cpus=consumer_num_cpus)
+    if insert_limit_op:
+        ds = ds.limit(num_blocks)
     return ds
 
 
 @pytest.mark.parametrize(
-    "cluster_cpus, cluster_obj_store_mem_mb",
+    "cluster_cpus, cluster_obj_store_mem_mb, insert_limit_op",
     [
-        (3, 500),  # CPU not enough
-        (4, 100),  # Object store memory not enough
-        (3, 100),  # Both not enough
+        (3, 500, False),  # CPU not enough
+        (3, 500, True),  # CPU not enough
+        (4, 100, False),  # Object store memory not enough
+        (4, 100, True),  # Object store memory not enough
+        (3, 100, False),  # Both not enough
+        (3, 100, True),  # Both not enough
     ],
 )
 def test_no_deadlock_on_small_cluster_resources(
     cluster_cpus,
     cluster_obj_store_mem_mb,
+    insert_limit_op,
     shutdown_only,  # noqa: F811
     restore_data_context,  # noqa: F811
 ):
@@ -141,12 +149,14 @@ def test_no_deadlock_on_small_cluster_resources(
         consumer_num_cpus=1,
         num_blocks=num_blocks,
         block_size=block_size,
+        insert_limit_op=insert_limit_op,
     )
     assert len(ds.take_all()) == num_blocks
 
 
+@pytest.mark.parametrize("insert_limit_op", [False, True])
 def test_no_deadlock_on_resource_contention(
-    shutdown_only, restore_data_context  # noqa: F811
+    insert_limit_op, shutdown_only, restore_data_context  # noqa: F811
 ):
     """Test when resources are preempted by non-Data code, the execution can
     still proceed without deadlock."""
@@ -173,6 +183,7 @@ def test_no_deadlock_on_resource_contention(
         consumer_num_cpus=0.9,
         num_blocks=num_blocks,
         block_size=block_size,
+        insert_limit_op=insert_limit_op,
     )
     assert len(ds.take_all()) == num_blocks
 
