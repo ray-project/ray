@@ -9,10 +9,6 @@
 #  # Provide the working directory which will be uploaded to the cluster
 #  working_dir: example_dir
 #
-#  The number of time we run test on the same commit. This number might be 
-#  overritten by the global pipeline config (whichever is higher)
-#  repeated_run: 5
-#
 #  # How often to run the tests.
 #  # One of [manual, any, multi, nightly, nightly-3x, weekly].
 #  # Descriptions of each frequency (that's not immediately obvious):
@@ -4072,7 +4068,6 @@
   group: core-daily-test
   team: core
   frequency: nightly
-  repeated_run: 5
   working_dir: microbenchmark
 
   cluster:

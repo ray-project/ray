@@ -38,9 +38,6 @@
 						"weekly"
 					]
 				},
-				"repeated_run": {
-					"type": "integer"
-				},
 				"team": {
 					"type": "string"
 				},
