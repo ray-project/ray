@@ -41,13 +41,13 @@ export type ServeDeploymentRowProps = {
   application: ServeApplication;
   // Optional prop to control the visibility of the first column.
   // This is used to display an expand/collapse button on the applications page, but not the deployment page.
-  showFirstColumn?: boolean;
+  showExpandColumn?: boolean;
 };
 
 export const ServeDeploymentRow = ({
   deployment,
   application: { last_deployed_time_s, name: applicationName },
-  showFirstColumn = true
+  showExpandColumn = true
 }: ServeDeploymentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
@@ -55,14 +55,14 @@ export const ServeDeploymentRow = ({
 
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
-  const deploymentNameClass = showFirstColumn
+  const deploymentNameClass = showExpandColumn
   ? classes.deploymentName
   : `${classes.deploymentName} ${classes.deploymentNameAsFirstColumn}`;
 
   return (
     <React.Fragment>
       <TableRow>
-        {showFirstColumn && <TableCell>
+        {showExpandColumn && <TableCell>
           {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
         </TableCell>}
         <TableCell align="center" className={deploymentNameClass}>
