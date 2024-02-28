@@ -119,16 +119,14 @@ def _build_dataset(
 
 
 @pytest.mark.parametrize(
-    "cluster_cpus, cluster_obj_store_mem_mb, insert_limit_op",
+    "cluster_cpus, cluster_obj_store_mem_mb",
     [
-        (3, 500, False),  # CPU not enough
-        (3, 500, True),  # CPU not enough
-        (4, 100, False),  # Object store memory not enough
-        (4, 100, True),  # Object store memory not enough
-        (3, 100, False),  # Both not enough
-        (3, 100, True),  # Both not enough
+        (3, 500),  # CPU not enough
+        (4, 100),  # Object store memory not enough
+        (3, 100),  # Both not enough
     ],
 )
+@pytest.mark.parametrize("insert_limit_op", [False, True])
 def test_no_deadlock_on_small_cluster_resources(
     cluster_cpus,
     cluster_obj_store_mem_mb,
