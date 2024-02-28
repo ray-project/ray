@@ -9,7 +9,7 @@ from starlette.requests import Request
 @serve.deployment(
     # Each replica will be sent 2 requests at a time.
     max_concurrent_queries=2,
-    # Each caller will queue up to 2 requests at a time
+    # Each caller queues up to 2 requests at a time.
     # (beyond those that are sent to replicas).
     max_queued_requests=2,
 )
@@ -34,7 +34,7 @@ r = Requester.remote()
 serve.run(SlowDeployment.bind())
 
 # Send 4 requests first. 2 of these should be sent to the replica and 2 should
-# be queued in the proxy. These will take a few seconds to execute.
+# in the proxy. These requests take a few seconds to execute.
 first_refs = [r.do_request.remote() for _ in range(4)]
 _, pending = ray.wait(first_refs, timeout=1)
 assert len(pending) == 4
