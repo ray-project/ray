@@ -28,10 +28,11 @@ from ray.train import ScalingConfig
     ],
 )
 def test_colocate_trainer_and_rank0_worker(
-    ray_start_heterogenous_cluster,
     trainer_resources,
     resources_per_worker_and_use_gpu,
 ):
+    ray.init()
+
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
 
     def train_func():
@@ -39,13 +40,13 @@ def test_colocate_trainer_and_rank0_worker(
 
     class CustomBackend(Backend):
         def on_training_start(self, worker_group, backend_config):
-            trainer_node_id = ray.get_runtime_context().get_node_id()
+            trainer_node_ip = ray.util.get_node_ip_address()
 
-            def check_node_id():
+            def check_node_ip():
                 if ray.train.get_context().get_world_rank() == 0:
-                    assert trainer_node_id == ray.get_runtime_context().get_node_id()
+                    assert trainer_node_ip == ray.util.get_node_ip_address()
 
-            worker_group.execute(check_node_id)
+            worker_group.execute(check_node_ip)
 
     class CustomBackendConfig(BackendConfig):
         @property
