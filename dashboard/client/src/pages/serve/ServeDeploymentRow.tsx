@@ -27,7 +27,7 @@ const useStyles = makeStyles((theme) =>
       fontWeight: 400,
     },
     deploymentNameAsFirstColumn: {
-      fontWeight: 500, // bold style for when name is the first column
+      fontWeight: 500, // bold style for when name is the first column, e.g. on the Deployment page
     },
     statusMessage: {
       maxWidth: 400,
