@@ -93,6 +93,15 @@ class Humanify:
         """Converts miliseconds to a datetime object."""
         return str(datetime.datetime.fromtimestamp(x / 1000))
 
+    def timestamp_or_empty(x: int):
+        """
+        Converts miliseconds to a datetime object.
+        If it is -1, return empty string.
+        """
+        if x == -1:
+            return ""
+        return Humanify.timestamp(x)
+
     def memory(x: int):
         """Converts raw bytes to a human readable memory size."""
         if x >= 2**30:
@@ -627,12 +636,12 @@ class WorkerState(StateSchema):
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
     worker_launch_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False, detail=True, format_fn=Humanify.timestamp_or_empty
     )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False, detail=True, format_fn=Humanify.timestamp_or_empty
     )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
