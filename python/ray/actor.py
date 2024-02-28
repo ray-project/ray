@@ -133,7 +133,7 @@ class ActorMethod:
         _generator_backpressure_num_objects: Generator-only config.
             If a number of unconsumed objects reach this threshold,
             a actor task stop pausing.
-        enable_task_events: True if task events is enabled, i.e. task events from
+        enable_task_events: True if task events is enabled, i.e., task events from
             the actor should be reported. Defaults to True.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
@@ -369,7 +369,7 @@ class _ActorClassMethodMetadata(object):
         max_task_retries: Number of retries on method failure.
         retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry, for each method.
-        enable_task_events: True if tracing is enabled, i.e. task events from
+        enable_task_events: True if tracing is enabled, i.e., task events from
             the actor should be reported. Defaults to True.
     """
 
@@ -791,7 +791,7 @@ class ActorClass:
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
-            enable_task_events: True if tracing is enabled, i.e. task events from
+            enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
 
         Examples:
@@ -904,7 +904,7 @@ class ActorClass:
                 Note that this limit is counted per handle. -1 means that the
                 number of pending calls is unlimited.
             scheduling_strategy: Strategy about how to schedule this actor.
-            enable_task_events: True if tracing is enabled, i.e. task events from
+            enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
 
         Returns:
@@ -1236,7 +1236,7 @@ class ActorHandle:
         _ray_actor_language: The actor language.
         _ray_actor_id: Actor ID.
         _ray_enable_task_events: The default value of whether task events is
-            enabled, i.e. task events from the actor should be reported.
+            enabled, i.e., task events from the actor should be reported.
         _ray_method_is_generator: Map of method name -> if it is a generator
             method.
         _ray_method_decorators: Optional decorators for the function
@@ -1255,7 +1255,7 @@ class ActorHandle:
             starts pausing a generator.
         _ray_method_enable_task_events: The value of whether task
             tracing is enabled for the actor methods. This overrides the
-            actor's default value (`_ray_enable_task_events`)
+            actor's default value (`_ray_enable_task_events`).
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
@@ -1383,7 +1383,7 @@ class ActorHandle:
             max_task_retries: Number of retries when method fails.
             retry_exceptions: Boolean of whether you want to retry all user-raised
                 exceptions, or a list of allowlist exceptions to retry.
-            enable_task_events: True if tracing is enabled, i.e. task events from
+            enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
 
         Returns:

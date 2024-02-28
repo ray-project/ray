@@ -490,7 +490,7 @@ RAY_CONFIG(bool, task_events_skip_driver_for_test, false)
 RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
 /// If task events should be enabled/disabled for the Ray cluster. If disabled, no task
-/// events will be reported to GCS.
+/// events are reported to GCS.
 RAY_CONFIG(bool, enable_task_events, true)
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
