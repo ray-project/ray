@@ -108,11 +108,14 @@ class TaskPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(
+        self, consider_autoscaling=True
+    ) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
-            object_store_memory=self._metrics.average_bytes_outputs_per_task,
+            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            or 0,
         )
 
     def get_concurrency(self) -> Optional[int]:
