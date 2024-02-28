@@ -9,7 +9,6 @@ from ci.ray_ci.builder_container import (
     ARCHITECTURE,
     BuilderContainer,
 )
-from ci.ray_ci.forge_container import ForgeContainer
 from ci.ray_ci.docker_container import PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
@@ -80,7 +79,7 @@ def main(
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
-        build_wheel(python_version, build_type, architecture)
+        build_wheel(python_version, build_type, architecture, upload)
         return
 
     if artifact_type == "docker":
@@ -114,12 +113,13 @@ def main(
     raise ValueError(f"Invalid artifact type {artifact_type}")
 
 
-def build_wheel(python_version: str, build_type: str, architecture: str) -> None:
+def build_wheel(
+    python_version: str, build_type: str, architecture: str, upload: bool
+) -> None:
     """
     Build a wheel artifact.
     """
-    BuilderContainer(python_version, build_type, architecture).run()
-    ForgeContainer(architecture).upload_wheel()
+    BuilderContainer(python_version, build_type, architecture, upload).run()
 
 
 def build_docker(
@@ -134,7 +134,7 @@ def build_docker(
     """
     Build a container artifact.
     """
-    BuilderContainer(python_version, build_type, architecture).run()
+    BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
@@ -153,7 +153,7 @@ def build_anyscale(
     """
     Build an anyscale container artifact.
     """
-    BuilderContainer(python_version, build_type, architecture).run()
+    BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload=False

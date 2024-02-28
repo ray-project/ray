@@ -115,11 +115,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=?,\n"
-        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -132,11 +128,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, parallelism=1)
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
-        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -147,14 +139,10 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         f.write("foobar")
 
     ds = ray.data.read_numpy(path, parallelism=1)
-    assert ds.num_blocks() == 1
+    assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
-        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
     )
     assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
@@ -190,11 +178,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
         path, meta_provider=FastFileMetadataProvider(), parallelism=1
     )
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
-        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -278,48 +262,6 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds.write_numpy(data_path, filesystem=fs, column="data")
     file_path1 = os.path.join(data_path, "data_000000_000000.npy")
     file_path2 = os.path.join(data_path, "data_000001_000000.npy")
-    if endpoint_url is None:
-        arr1 = np.load(file_path1)
-        arr2 = np.load(file_path2)
-    else:
-        from s3fs.core import S3FileSystem
-
-        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
-        arr1 = np.load(s3.open(file_path1))
-        arr2 = np.load(s3.open(file_path2))
-    assert ds.count() == 10
-    assert len(arr1) == 5
-    assert len(arr2) == 5
-    assert arr1.sum() == 10
-    assert arr2.sum() == 35
-    np.testing.assert_equal(extract_values("data", ds.take(1)), [np.array([0])])
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_numpy_write_block_path_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    mock_block_write_path_provider,
-):
-    ds = ray.data.range_tensor(10, parallelism=2)
-    ds._set_uuid("data")
-    ds.write_numpy(
-        data_path,
-        filesystem=fs,
-        block_path_provider=mock_block_write_path_provider,
-        column="data",
-    )
-    file_path1 = os.path.join(data_path, "000000_000000_data.test.npy")
-    file_path2 = os.path.join(data_path, "000001_000000_data.test.npy")
     if endpoint_url is None:
         arr1 = np.load(file_path1)
         arr2 = np.load(file_path2)
