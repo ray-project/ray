@@ -505,7 +505,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         E.g.,
           - "cur_map->downstream_map" will return an empty list.
-          - "cur_map->limit1->limi2->downstream_map" will return [limit1, limit2].
+          - "cur_map->limit1->limit2->downstream_map" will return [limit1, limit2].
         """
         for next_op in op.output_dependencies:
             if not isinstance(next_op, MapOperator):
@@ -518,7 +518,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         E.g.,
           - "cur_map->downstream_map" will return [downstream_map].
-          - "cur_map->limit1->limi2->downstream_map" will return [downstream_map].
+          - "cur_map->limit1->limit2->downstream_map" will return [downstream_map].
         """
         for next_op in op.output_dependencies:
             if isinstance(next_op, MapOperator):
