@@ -49,7 +49,13 @@ class BedMaker:
     sys.platform != "linux",
     reason="Orphan process killing only works on Linux.",
 )
-def test_ray_kill_can_kill_subprocess():
+def test_ray_kill_can_kill_subprocess(shutdown_only):
+    """
+    This works becuase of kill_child_processes_on_worker_exit.
+    Even if kill_child_processes_on_worker_exit_with_raylet_subreaper
+    is not set, the worker will still kill its subprocesses.
+    """
+    ray.init()
     b = BedMaker.remote()
     pid = ray.get(b.make_sleeper.remote())
 
