@@ -102,8 +102,13 @@ class ScalingConfig:
     """Configuration for scaling training.
 
     Args:
-        trainer_resources: Resources to allocate for the trainer. If None is provided,
-            will default to 1 CPU for most trainers.
+        trainer_resources: Resources to allocate for the training coordinator.
+            The training coordinator launches the worker group and executes
+            the training function per worker, and this process does NOT require
+            GPUs. The coordinator is always scheduled on the same node as the
+            rank 0 worker, so one example use case is to set a minimum amount
+            of resources (e.g. CPU memory) required by the rank 0 node.
+            By default, this assigns 1 CPU to the training coordinator.
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
@@ -248,6 +253,9 @@ class ScalingConfig:
         worker_bundle = self._resources_per_worker_not_none
 
         # Colocate Trainer and rank0 worker by merging their bundles
+        # Note: This empty bundle is required so that the Tune actor manager schedules
+        # the Trainable onto the combined bundle while taking none of its resources,
+        # rather than a non-empty head bundle.
         combined_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
         bundles = [{}, combined_bundle] + [worker_bundle] * (self.num_workers - 1)
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
