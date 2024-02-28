@@ -56,17 +56,22 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     },
 }
 
+
 def get_step_for_test_group(
     grouped_tests: Dict[str, List[Tuple[Test, bool]]],
+    minimum_run_per_test: int = 1,
+    test_collection_file: List[str] = None,
+    env: Optional[Dict] = None,
+    priority: int = 0,
+    global_config: Optional[str] = None,
+    is_concurrency_limit: bool = True,
 ):
     steps = []
     for group in sorted(grouped_tests):
         tests = grouped_tests[group]
         group_steps = []
         for test, smoke_test in tests:
-            # run the tests as many time as the global or its local configuration allows
-            run_per_test = max(test.get("repeated_run", 1), run_per_test)
-            for run_id in range(max(test.get(""))):
+            for run_id in range(max(test.get("repeated_run", 1), minimum_run_per_test)):
                 step = get_step(
                     test,
                     test_collection_file,
@@ -76,11 +81,11 @@ def get_step_for_test_group(
                     report=True,
                     smoke_test=smoke_test,
                     env=env,
-                    priority_val=priority.value,
+                    priority_val=priority,
                     global_config=global_config,
                 )
 
-                if no_concurrency_limit:
+                if not is_concurrency_limit:
                     step.pop("concurrency", None)
                     step.pop("concurrency_group", None)
 
@@ -88,6 +93,8 @@ def get_step_for_test_group(
 
         group_step = {"group": group, "steps": group_steps}
         steps.append(group_step)
+
+    return steps
 
 
 def get_step(
