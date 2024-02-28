@@ -25,7 +25,7 @@ def main(production: bool) -> None:
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
     blockers = TestStateMachine.get_release_blockers()
     logger.info(f"Found {blockers.totalCount} release blockers")
-
+    print(blockers.totalCount)
     blocker_teams = [TestStateMachine.get_issue_owner(blocker) for blocker in blockers]
     num_blocker_by_team = {team: blocker_teams.count(team) for team in blocker_teams}
     for team, num_blocker in num_blocker_by_team.items():
