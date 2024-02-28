@@ -259,14 +259,14 @@ class TestReadImages:
         try:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
-            assert ds.num_blocks() == 1
+            assert ds._plan.initial_num_blocks() == 1
             ds = ds.materialize()
             # Verify dynamic block splitting taking effect to generate more blocks.
-            assert ds.num_blocks() == 3
+            assert ds._plan.initial_num_blocks() == 3
 
             # Test union of same datasets
             union_ds = ds.union(ds, ds, ds).materialize()
-            assert union_ds.num_blocks() == 12
+            assert union_ds._plan.initial_num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
 

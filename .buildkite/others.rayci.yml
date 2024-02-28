@@ -59,6 +59,7 @@ steps:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... //python/ray/tests/... core
         --run-flaky-tests
+        --except-tags no_windows
         --build-name windowsbuild
         --operating-system windows
         --test-env=CI="1"
@@ -66,6 +67,7 @@ steps:
         --test-env=USERPROFILE
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
         --skip-ray-installation
+        --except-tags no_windows
         --run-flaky-tests
         --build-name windowsbuild
         --operating-system windows
@@ -74,6 +76,7 @@ steps:
         --test-env=USERPROFILE
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
         --skip-ray-installation
+        --except-tags no_windows
         --run-flaky-tests
         --build-name windowsbuild
         --operating-system windows
