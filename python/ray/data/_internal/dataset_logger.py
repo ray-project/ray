@@ -77,7 +77,6 @@ class DatasetLogger:
                 session_dir,
                 DatasetLogger.DEFAULT_DATASET_LOG_PATH,
             )
-
             file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)
             file_log_handler = logging.FileHandler(datasets_log_path)
             file_log_handler.setLevel(LOGGER_LEVEL.upper())

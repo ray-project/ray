@@ -49,7 +49,6 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             # Only log the full internal stack trace to stdout when configured.
             # The full stack trace will always be emitted to the Ray Data log file.
             log_to_stdout = DataContext.get_current().log_internal_stack_trace_to_stdout
-            # data_exception_logger.get_logger(log_to_stdout=log_to_stdout).exception(e)
 
             is_user_code_exception = isinstance(e, UserCodeException)
             if is_user_code_exception:
