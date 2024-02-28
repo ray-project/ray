@@ -38,7 +38,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         return self._forward_inference(batch)
 
     @override(RLModule)
@@ -46,7 +46,6 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         output = {}
 
         # SAC needs also Q function values and action logits for next observations.
-        # TODO (simon): Check, if we need to override the Encoder input_sp
         batch_curr = {SampleBatch.OBS: batch[SampleBatch.OBS]}
         batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
 
@@ -57,10 +56,9 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         pi_encoder_next_outs = self.pi_encoder(batch_next)
 
         # Q-network forward pass.
+        # TODO (simon): Use here `_qf_forward_train` instead of the helper.
         batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]})
-        output[QF_PREDS] = self._qf_forward_train_helper(
-            batch_curr, self.qf_encoder, self.qf
-        )[QF_PREDS]
+        output[QF_PREDS] = self._qf_forward_train(batch_curr)[QF_PREDS]
         # If necessary make a forward pass through the twin Q network.
         if self.twin_q:
             output[QF_TWIN_PREDS] = self._qf_forward_train_helper(
