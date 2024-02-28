@@ -18,9 +18,6 @@ export type ServeApplicationRowsProps = {
 };
 const useStyles = makeStyles((theme) =>
   createStyles({
-    tableContainer: {
-      overflowX: "scroll",
-    },
     applicationName: {
       fontWeight: 500,
     },
