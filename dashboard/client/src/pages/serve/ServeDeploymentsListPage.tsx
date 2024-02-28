@@ -114,7 +114,7 @@ export const ServeDeploymentsListPage = () => {
                 }}
               />
               <Pagination
-                count={Math.ceil(serveDeployments.length / page.pageSize)}
+                count={Math.ceil(serveApplications.length / page.pageSize)}
                 page={page.pageNo}
                 onChange={(e, pageNo) => setPage("pageNo", pageNo)}
               />
