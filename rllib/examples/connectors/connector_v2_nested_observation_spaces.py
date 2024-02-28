@@ -1,5 +1,5 @@
 from ray.tune.registry import register_env
-from ray.rllib.connectors.common import AddObservationFromEpisodeToBatch
+from ray.rllib.connectors.common import AddObservationsFromEpisodeToBatch
 from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
         return [
-            AddObservationFromEpisodeToBatch(),
+            AddObservationsFromEpisodeToBatch(),
             FlattenObservations(multi_agent=args.num_agents > 0),
             WriteObservationsToEpisodes(),
         ]

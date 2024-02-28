@@ -27,16 +27,15 @@ class ListifyDataForVectorEnv(ConnectorV2):
 
     @override(ConnectorV2)
     def __call__(
-            self,
-            *,
-            rl_module: RLModule,
-            data: Optional[Any],
-            episodes: List[EpisodeType],
-            explore: Optional[bool] = None,
-            shared_data: Optional[dict] = None,
-            **kwargs,
+        self,
+        *,
+        rl_module: RLModule,
+        data: Optional[Any],
+        episodes: List[EpisodeType],
+        explore: Optional[bool] = None,
+        shared_data: Optional[dict] = None,
+        **kwargs,
     ) -> Any:
-
         for column, column_data in data.copy().items():
             # Multi-agent case: Create lists of multi-agent dicts under each column.
             if isinstance(episodes[0], MultiAgentEpisode):
@@ -52,9 +51,7 @@ class ListifyDataForVectorEnv(ConnectorV2):
             # Single-agent case: Create simple lists under each column.
             else:
                 data[column] = [
-                    d
-                    for key in sorted(data[column].keys())
-                    for d in data[column][key]
+                    d for key in sorted(data[column].keys()) for d in data[column][key]
                 ]
                 # Batch actions for (single-agent) gym.vector.Env.
                 # All other columns, leave listify'ed.

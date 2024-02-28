@@ -50,7 +50,9 @@ class UnBatchToIndividualItems(ConnectorV2):
                 for column, column_data in module_data.items():
                     column_data = unbatch(column_data)
                     new_column_data = {}
-                    for i, (eps_id, agent_id) in enumerate(memorized_map_structure[module_id]):
+                    for i, (eps_id, agent_id) in enumerate(
+                        memorized_map_structure[module_id]
+                    ):
                         key = (eps_id, agent_id, module_id)
                         # TODO (sven): Support vectorization for MultiAgentEnvRunner.
                         # AgentIDs whose SingleAgentEpisodes are already done, should

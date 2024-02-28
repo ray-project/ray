@@ -4,18 +4,13 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
 class BatchIndividualItems(ConnectorV2):
-
     @override(ConnectorV2)
     def __call__(
         self,
@@ -32,10 +27,12 @@ class BatchIndividualItems(ConnectorV2):
 
         # Convert lists of individual items into properly batched data.
         for column, column_data in data.copy().items():
-
-            # If `column` is a ModuleID, search in columns under it and try to batch
-            # these as well (if not already done).
+            # Multi-agent case: This connector piece should only be used after(!)
+            # the AgentToModuleMapping connector has already been applied, leading
+            # to a batch structure of:
+            # [module_id] -> [col0] -> [list of items]
             if is_marl_module and column in rl_module:
+                assert is_multi_agent
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != SampleBatch.INFOS:
@@ -73,13 +70,12 @@ class BatchIndividualItems(ConnectorV2):
                 # Only record structure for OBS column.
                 if column == SampleBatch.OBS:
                     shared_data["memorized_map_structure"] = memorized_map_structure
-            # Multi-agent case: There is a dict under `column` mapping
-            # (eps_id, agent_id, module_id)-tuples to lists of items:
-            # Sort by eps_id, concat all these lists, then batch.
+            # Multi-agent case: This should already be covered above.
+            # This connector piece should only be used after(!)
+            # the AgentToModuleMapping connector has already been applied, leading
+            # to a batch structure of:
+            # [module_id] -> [col0] -> [list of items]
             else:
                 raise NotImplementedError
-            #for (eps_id, agent_id, module_id), items in column_data.items():
-            #    if isinstance(items, list):
-            #        data[column][env_idx_agent_module_key] = batch(items)
 
         return data

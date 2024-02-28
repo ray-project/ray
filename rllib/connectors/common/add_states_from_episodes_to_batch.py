@@ -15,7 +15,7 @@ from ray.rllib.utils.spaces.space_utils import batch, unbatch
 from ray.rllib.utils.typing import EpisodeType
 
 
-class AddStateFromEpisodeToBatch(ConnectorV2):
+class AddStatesFromEpisodesToBatch(ConnectorV2):
     """Gets last STATE_OUT from running episode and adds it as STATE_IN to the batch.
 
     - Operates on a list of Episode objects.
@@ -29,7 +29,7 @@ class AddStateFromEpisodeToBatch(ConnectorV2):
         import gymnasium as gym
         import numpy as np
 
-        from ray.rllib.connectors.common import AddStateFromEpisodeToBatch
+        from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
@@ -51,7 +51,7 @@ class AddStateFromEpisodeToBatch(ConnectorV2):
         print(f"2nd Episode's last obs is {eps_2_last_obs}")
 
         # Create an instance of this class, providing the obs- and action spaces.
-        connector = AddObservationFromEpisodeToBatch(obs_space, act_space)
+        connector = AddObservationsFromEpisodeToBatch(obs_space, act_space)
 
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
@@ -76,7 +76,7 @@ class AddStateFromEpisodeToBatch(ConnectorV2):
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a AddObservationFromEpisodeToBatch instance.
+        """Initializes a AddObservationsFromEpisodeToBatch instance.
 
         Args:
             as_learner_connector: Whether this connector is part of a Learner connector
@@ -94,8 +94,8 @@ class AddStateFromEpisodeToBatch(ConnectorV2):
         self.max_seq_len = max_seq_len
         if self._as_learner_connector and self.max_seq_len is None:
             raise ValueError(
-                "Cannot run `AddStateFromEpisodeToBatch` as Learner connector without "
-                "`max_seq_len` constructor argument!"
+                "Cannot run `AddStatesFromEpisodesToBatch` as Learner connector without"
+                " `max_seq_len` constructor argument!"
             )
 
     @override(ConnectorV2)
@@ -109,7 +109,6 @@ class AddStateFromEpisodeToBatch(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-
         # If not stateful OR STATE_IN already in data, early out.
         if not rl_module.is_stateful() or STATE_IN in data:
             return data
@@ -128,7 +127,9 @@ class AddStateFromEpisodeToBatch(ConnectorV2):
             # into max_seq_len chunks.
             for column, column_data in data.copy().items():
                 for key, item_list in column_data.items():
-                    column_data[key] = split_and_zero_pad_list(item_list, T=self.max_seq_len)
+                    column_data[key] = split_and_zero_pad_list(
+                        item_list, T=self.max_seq_len
+                    )
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -172,14 +173,19 @@ class AddStateFromEpisodeToBatch(ConnectorV2):
                 self.add_n_batch_items(
                     batch=data,
                     column=STATE_IN,
-                    items_to_add=unbatch(tree.map_structure(
-                        # [::max_seq_len] = only keep every Tth (max_seq_len) state in.
-                        # [:-1] = shift state outs by one (ignore very last state out,
-                        # but therefore add the lookback/init state at the beginning).
-                        lambda i, o: np.concatenate([[i], o[:-1]])[::self.max_seq_len],
-                        look_back_state,
-                        state_outs,
-                    )),
+                    items_to_add=unbatch(
+                        tree.map_structure(
+                            # [::max_seq_len]: only keep every Tth state in value.
+                            # [:-1]: Shift state outs by one (ignore very last state
+                            # out, but therefore add the lookback/init state at the
+                            # beginning).
+                            lambda i, o: np.concatenate([[i], o[:-1]])[
+                                :: self.max_seq_len
+                            ],
+                            look_back_state,
+                            state_outs,
+                        )
+                    ),
                     num_items=int(math.ceil(len(sa_episode) / self.max_seq_len)),
                     single_agent_episode=sa_episode,
                 )

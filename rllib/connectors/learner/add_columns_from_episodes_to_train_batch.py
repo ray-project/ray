@@ -9,7 +9,33 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 
 
-class AddColumnsToTrainBatch(ConnectorV2):
+class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
+    """Adds infos/actions/rewards/terminateds/... to train batch.
+
+    Does NOT add observations to train batch (these should have already been added
+    by a different ConnectorV2 piece: AddObservationsToTrainBatch)
+
+    If provided with `episodes` data, this connector piece makes sure that the final
+    train batch going into the RLModule for updating (`forward_train()` call) contains
+    at the minimum:
+    - Observations: From all episodes under the SampleBatch.OBS key.
+    - Actions, rewards, terminal/truncation flags: From all episodes under the
+    respective keys.
+    - All data inside the episodes' `extra_model_outs` property, e.g. action logp and
+    action probs under the respective keys.
+    - States: If the RLModule is stateful, the episodes' STATE_OUTS will be extracted
+    and restructured under a new STATE_IN key in such a way that the resulting STATE_IN
+    batch has the shape (B', ...). Here, B' is the sum of splits we have to do over
+    the given episodes, such that each chunk is at most `max_seq_len` long (T-axis).
+    Also, all other data will be properly reshaped into (B, T=max_seq_len, ...) and
+    will be zero-padded, if necessary.
+
+    If the user wants to customize their own data under the given keys (e.g. obs,
+    actions, ...), they can extract from the episodes or recompute from `data`
+    their own data and store it in `data` under those keys. In this case, the default
+    connector will not change the data under these keys and simply act as a
+    pass-through.
+    """
 
     @override(ConnectorV2)
     def __call__(
@@ -22,7 +48,6 @@ class AddColumnsToTrainBatch(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-
         # Infos.
         if SampleBatch.INFOS not in data:
             for sa_episode in self.single_agent_episode_iterator(
@@ -102,14 +127,15 @@ class AddColumnsToTrainBatch(ConnectorV2):
         # Extra model outputs (except for STATE_OUT, which will be handled by another
         # default connector piece).
         ref_sa_eps = (
-            episodes[0] if isinstance(episodes[0], SingleAgentEpisode)
+            episodes[0]
+            if isinstance(episodes[0], SingleAgentEpisode)
             else next(iter(episodes[0].agent_episodes.values()))
         )
         for column in ref_sa_eps.extra_model_outputs.keys():
             if column not in [STATE_IN, STATE_OUT] and column not in data:
                 for sa_episode in self.single_agent_episode_iterator(
-                        episodes,
-                        agents_that_stepped_only=False,
+                    episodes,
+                    agents_that_stepped_only=False,
                 ):
                     self.add_n_batch_items(
                         data,

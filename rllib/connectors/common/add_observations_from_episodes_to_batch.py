@@ -6,11 +6,10 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
-class AddObservationFromEpisodeToBatch(ConnectorV2):
+class AddObservationsFromEpisodesToBatch(ConnectorV2):
     """Gets the last observation from a running episode and adds it to the batch.
 
     - Operates on a list of Episode objects.
@@ -24,7 +23,7 @@ class AddObservationFromEpisodeToBatch(ConnectorV2):
         import gymnasium as gym
         import numpy as np
 
-        from ray.rllib.connectors.common import AddObservationFromEpisodeToBatch
+        from ray.rllib.connectors.common import AddObservationsFromEpisodeToBatch
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
@@ -46,7 +45,7 @@ class AddObservationFromEpisodeToBatch(ConnectorV2):
         print(f"2nd Episode's last obs is {eps_2_last_obs}")
 
         # Create an instance of this class, providing the obs- and action spaces.
-        connector = AddObservationFromEpisodeToBatch(obs_space, act_space)
+        connector = AddObservationsFromEpisodeToBatch(obs_space, act_space)
 
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
@@ -70,7 +69,7 @@ class AddObservationFromEpisodeToBatch(ConnectorV2):
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a AddObservationFromEpisodeToBatch instance.
+        """Initializes a AddObservationsFromEpisodeToBatch instance.
 
         Args:
             as_learner_connector: Whether this connector is part of a Learner connector
@@ -97,7 +96,6 @@ class AddObservationFromEpisodeToBatch(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-
         # If "obs" already in data, early out.
         if SampleBatch.OBS in data:
             return data

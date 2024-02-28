@@ -6,7 +6,6 @@ from ray.rllib.algorithms.ppo.ppo import (
 )
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
@@ -78,8 +77,6 @@ class PPOLearner(Learner):
         *,
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
-        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
-
         if not episodes:
             raise ValueError(
                 "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
@@ -160,9 +157,9 @@ class PPOLearner(Learner):
             # are recomputed with each `forward_train` call anyway.
             # Standardize advantages (used for more stable and better weighted
             # policy gradient computations).
-            module_advantages = (
-                module_advantages - module_advantages.mean()
-            ) / max(1e-4, module_advantages.std())
+            module_advantages = (module_advantages - module_advantages.mean()) / max(
+                1e-4, module_advantages.std()
+            )
 
             # Restructure ADVANTAGES and VALUE_TARGETS in a way that the Learner
             # connector can properly re-batch these new fields.
@@ -174,14 +171,14 @@ class PPOLearner(Learner):
                 self._learner_connector.add_n_batch_items(
                     batch=batch,
                     column=Postprocessing.ADVANTAGES,
-                    items_to_add=module_advantages[batch_pos:batch_pos + len_],
+                    items_to_add=module_advantages[batch_pos : batch_pos + len_],
                     num_items=len_,
                     single_agent_episode=eps,
                 )
                 self._learner_connector.add_n_batch_items(
                     batch=batch,
                     column=Postprocessing.VALUE_TARGETS,
-                    items_to_add=module_value_targets[batch_pos:batch_pos + len_],
+                    items_to_add=module_value_targets[batch_pos : batch_pos + len_],
                     num_items=len_,
                     single_agent_episode=eps,
                 )

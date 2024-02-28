@@ -4,8 +4,7 @@ import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import (
     clip_action,
@@ -16,7 +15,6 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class NormalizeAndClipActions(ConnectorV2):
-
     def __init__(
         self,
         input_observation_space: Optional[gym.Space] = None,
@@ -73,8 +71,8 @@ class NormalizeAndClipActions(ConnectorV2):
         # TODO: Get rid of this once we merge the PR for `recompute_observation_space`
         #  ...
         if self._action_space_struct is None:
-            self._action_space_struct = get_base_struct_from_space(self.action_space)        
-        
+            self._action_space_struct = get_base_struct_from_space(self.action_space)
+
         def _unsquash_or_clip(action, env_vector_idx, agent_id, module_id):
             if agent_id is not None:
                 struct = self._action_space_struct[agent_id]

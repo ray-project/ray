@@ -14,8 +14,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.framework import convert_to_tensor, try_import_tf
-from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType, ModelWeights
@@ -270,9 +269,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 else:
                     to_env = self.module.forward_inference(to_module)
 
-                # Unbatch (listify) everything before calling the connector.
-                #to_env = tree.map_structure(lambda s: unbatch(convert_to_numpy(s)), to_env)
-
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
@@ -457,20 +453,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     shared_data=_shared_data,
                 )
 
-                # Convert data to proper tensor formats, depending on framework used by the
-                # RLModule.
-                # TODO (sven): Support GPU-based EnvRunners + RLModules for sampling. Right
-                #  now we assume EnvRunners are always only on the CPU.
-                #to_module = convert_to_tensor(to_module, self.module.framework)
-
                 # RLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(to_module)
                 else:
                     to_env = self.module.forward_inference(to_module)
-
-                # Unbatch (listify) everything before calling the connector.
-                #to_env = tree.map_structure(lambda s: unbatch(convert_to_numpy(s)), to_env)
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
@@ -497,7 +484,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-                #extra_model_output = tree.map_structure(lambda s: s[env_index], to_env)
 
                 if terminateds[env_index] or truncateds[env_index]:
                     eps += 1

@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch, unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeType
 
 
@@ -114,7 +114,11 @@ class AgentToModuleMapping(ConnectorV2):
                 else:
                     data_by_module[column] = agent_data
                 continue
-            for (eps_id, agent_id, module_id), values_batch_or_list in agent_data.items():
+            for (
+                eps_id,
+                agent_id,
+                module_id,
+            ), values_batch_or_list in agent_data.items():
                 if not isinstance(values_batch_or_list, list):
                     assert False
                     values_batch_or_list = unbatch(values_batch_or_list)

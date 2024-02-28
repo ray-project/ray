@@ -3,7 +3,6 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import gymnasium as gym
-import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -447,8 +446,8 @@ class ConnectorV2(abc.ABC):
             single_agent_episode=single_agent_episode,
         )
 
-    #@staticmethod
-    #def get_batch_item(batch, column, env_vector_idx, agent_id, module_id):
+    # @staticmethod
+    # def get_batch_item(batch, column, env_vector_idx, agent_id, module_id):
     #    if isinstance(batch[column], list):
     #        assert agent_id is None and module_id is None
     #        return batch[column][(env_vector_idx,)]
@@ -472,7 +471,7 @@ class ConnectorV2(abc.ABC):
         # under each column. Each item corresponds to one episode index meaning the
         # length of the list is the same as the number of (vectorized) envs.
         # AgentID and ModuleID are both None.
-        #if isinstance(data_to_process[0], list):
+        # if isinstance(data_to_process[0], list):
         #    # Make sure structures are the same.
         #    assert all(len(d) == len(data_to_process[0]) for d in data_to_process[1:])
         #    for env_vector_idx, data_tuple in enumerate(zip(*data_to_process)):
@@ -487,9 +486,7 @@ class ConnectorV2(abc.ABC):
 
         # Multi-agent case: There is a dict mapping from a
         # (eps idx, AgentID, ModuleID)-tuples to lists of individual data items.
-        #else:
-
-
+        # else:
 
         for key, d0_list in data_to_process[0].items():
             if len(key) == 3:

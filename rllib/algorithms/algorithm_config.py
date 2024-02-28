@@ -854,8 +854,8 @@ class AlgorithmConfig(_Config):
 
     def build_env_to_module_connector(self, env):
         from ray.rllib.connectors.env_to_module import (
-            AddObservationFromEpisodeToBatch,
-            AddStateFromEpisodeToBatch,
+            AddObservationsFromEpisodeToBatch,
+            AddStatesFromEpisodesToBatch,
             AgentToModuleMapping,
             BatchIndividualItems,
             EnvToModulePipeline,
@@ -878,7 +878,11 @@ class AlgorithmConfig(_Config):
                 custom_connectors = list(val_)
             # Unsupported return value.
             else:
-                raise ValueError(TODO)
+                raise ValueError(
+                    "`AlgorithmConfig.rollouts(env_to_module_connector=..)` must return"
+                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
@@ -890,15 +894,17 @@ class AlgorithmConfig(_Config):
 
         if self.add_default_connectors_to_env_to_module_pipeline:
             # Append OBS handling.
-            pipeline.append(AddObservationFromEpisodeToBatch())
+            pipeline.append(AddObservationsFromEpisodeToBatch())
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
-            pipeline.append(AddStateFromEpisodeToBatch())
+            pipeline.append(AddStatesFromEpisodesToBatch())
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent():
-                pipeline.append(AgentToModuleMapping(
-                    modules=set(self.policies),
-                    agent_to_module_mapping_fn=self.policy_mapping_fn,
-                ))
+                pipeline.append(
+                    AgentToModuleMapping(
+                        modules=set(self.policies),
+                        agent_to_module_mapping_fn=self.policy_mapping_fn,
+                    )
+                )
             # Batch all data.
             pipeline.append(BatchIndividualItems())
             # Convert to Tensors.
@@ -934,7 +940,11 @@ class AlgorithmConfig(_Config):
                 custom_connectors = list(val_)
             # Unsupported return value.
             else:
-                raise ValueError(TODO)
+                raise ValueError(
+                    "`AlgorithmConfig.rollouts(module_to_env_connector=..)` must return"
+                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
@@ -964,13 +974,14 @@ class AlgorithmConfig(_Config):
             # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
             pipeline.prepend(GetActions())
 
-
             # Append: Anything that has to do with action sampling.
             # Unsquash/clip actions based on config and action space.
-            pipeline.append(NormalizeAndClipActions(
-                normalize_actions=self.normalize_actions,
-                clip_actions=self.clip_actions,
-            ))
+            pipeline.append(
+                NormalizeAndClipActions(
+                    normalize_actions=self.normalize_actions,
+                    clip_actions=self.clip_actions,
+                )
+            )
             # Listify data from ConnectorV2-data format to normal lists that we can
             # index into by env vector index. These lists contain individual items
             # for single-agent and multi-agent dicts for multi-agent.
@@ -981,12 +992,11 @@ class AlgorithmConfig(_Config):
     def build_learner_connector(self, input_observation_space, input_action_space):
         from ray.rllib.connectors.learner import (
             AddColumnsToTrainBatch,
-            AddObservationFromEpisodeToBatch,
-            AddStateFromEpisodeToBatch,
+            AddObservationsFromEpisodeToBatch,
+            AddStatesFromEpisodesToBatch,
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
-            NumpyToTensor,
         )
 
         custom_connectors = []
@@ -1005,7 +1015,11 @@ class AlgorithmConfig(_Config):
                 custom_connectors = list(val_)
             # Unsupported return value.
             else:
-                raise ValueError(TODO)
+                raise ValueError(
+                    "`AlgorithmConfig.training(learner_connector=..)` must return "
+                    "a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = LearnerConnectorPipeline(
             connectors=custom_connectors,
@@ -1014,29 +1028,35 @@ class AlgorithmConfig(_Config):
         )
         if self.add_default_connectors_to_learner_pipeline:
             # Append OBS handling.
-            pipeline.append(AddObservationFromEpisodeToBatch(as_learner_connector=True))
+            pipeline.append(
+                AddObservationsFromEpisodeToBatch(as_learner_connector=True)
+            )
             # Append all other columns handling.
             pipeline.append(AddColumnsToTrainBatch())
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
-            pipeline.append(AddStateFromEpisodeToBatch(
-                as_learner_connector=True, max_seq_len=self.model.get("max_seq_len")
-            ))
+            pipeline.append(
+                AddStatesFromEpisodesToBatch(
+                    as_learner_connector=True, max_seq_len=self.model.get("max_seq_len")
+                )
+            )
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent():
-                pipeline.append(AgentToModuleMapping(
-                    modules=set(self.policies),
-                    agent_to_module_mapping_fn=self.policy_mapping_fn,
-                ))
+                pipeline.append(
+                    AgentToModuleMapping(
+                        modules=set(self.policies),
+                        agent_to_module_mapping_fn=self.policy_mapping_fn,
+                    )
+                )
             # Batch all data.
             pipeline.append(BatchIndividualItems())
             # Convert to Tensors.
-            #pipeline.append(NumpyToTensor(as_learner_connector=True))
-            #pipeline.append(
+            # pipeline.append(NumpyToTensor(as_learner_connector=True))
+            # pipeline.append(
             #    DefaultLearnerConnector(
             #        input_observation_space=pipeline.observation_space,
             #        input_action_space=pipeline.action_space,
             #    )
-            #)
+            # )
         return pipeline
 
     def build_learner_group(

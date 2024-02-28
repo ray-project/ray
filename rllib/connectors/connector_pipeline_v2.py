@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -9,7 +8,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
-from ray.util.timer import _Timer
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +52,6 @@ class ConnectorPipelineV2(ConnectorV2):
                 self.input_action_space = self.connectors[0].input_action_space
         self._fix_input_output_types()
 
-        #self.timers = defaultdict(_Timer)
-
     def __len__(self):
         return len(self.connectors)
 
@@ -77,8 +73,6 @@ class ConnectorPipelineV2(ConnectorV2):
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
-            #timer = self.timers[str(connector)]
-            #with timer:
             data = connector(
                 rl_module=rl_module,
                 data=data,
