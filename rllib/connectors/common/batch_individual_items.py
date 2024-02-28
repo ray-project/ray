@@ -53,7 +53,7 @@ class BatchIndividualItems(ConnectorV2):
                 # TODO: only really need this in non-Learner connector pipeline
                 memorized_map_structure = []
                 list_to_be_batched = []
-                for (eps_id,) in sorted(column_data.keys()):
+                for (eps_id,) in column_data.keys():
                     for item in column_data[(eps_id,)]:
                         # Only record structure for OBS column.
                         if column == SampleBatch.OBS:
