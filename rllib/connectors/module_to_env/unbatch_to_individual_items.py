@@ -10,7 +10,10 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class UnBatchToIndividualItems(ConnectorV2):
-    """TODO"""
+    """Unbatches the given `data` back into the individual-batch-items format.
+
+
+    """
 
     @override(ConnectorV2)
     def __call__(
@@ -35,12 +38,16 @@ class UnBatchToIndividualItems(ConnectorV2):
                 column_data = unbatch(column_data)
                 new_column_data = {}
                 for i, eps_id in enumerate(memorized_map_structure):
+                    # Keys are always tuples to resemble multi-agent keys, which
+                    # have the structure (eps_id, agent_id, module_id).
                     key = (eps_id,)
                     if key not in new_column_data:
                         new_column_data[key] = []
                     new_column_data[key].append(column_data[i])
                 data[column] = new_column_data
-        # Multi-agent case:
+        # Multi-agent case: Memorized structure is dict mapping module_ids to lists of
+        # (eps_id, agent_id)-tuples, such that the original individual-items-based form
+        # can be constructed.
         else:
             for module_id, module_data in data.copy().items():
                 if module_id not in memorized_map_structure:
