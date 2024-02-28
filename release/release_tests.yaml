@@ -4100,6 +4100,7 @@
 
   variations:
     - __suffix__: aws
+      repeated_run: 5
     - __suffix__: gce
       env: gce
       frequency: manual
