@@ -196,7 +196,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
         # Now test a random n-step sampling.
         for _ in range(1000):
-            sample = buffer.sample(batch_size_B=16, n_step=None, beta=1.0)
+            sample = buffer.sample(batch_size_B=16, n_step=(1, 5), beta=1.0)
             (
                 obs,
                 actions,
@@ -239,6 +239,65 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
             # Ensure that there is variation in the n-steps.
             self.assertTrue(np.var(n_steps) > 0.0)
+
+    def test_infos_and_extra_model_outputs(self):
+        # Define replay buffer (alpha=0.8)
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10000, alpha=0.8)
+
+        # Fill the buffer with episodes.
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
+
+        # Now test a sampling with infos and extra model outputs (nbeta=0.7).
+        for _ in range(1000):
+            sample = buffer.sample(
+                batch_size_B=16,
+                n_step=1,
+                beta=0.7,
+                include_infos=True,
+                include_extra_model_outputs=True,
+            )
+            (
+                obs,
+                actions,
+                rewards,
+                next_obs,
+                is_terminated,
+                is_truncated,
+                weights,
+                n_steps,
+                infos,
+                extra_model_outputs,
+            ) = (
+                sample["obs"],
+                sample["actions"],
+                sample["rewards"],
+                sample["new_obs"],
+                sample["terminateds"],
+                sample["truncateds"],
+                sample["weights"],
+                sample["n_steps"],
+                sample["infos"],
+                sample["extra_model_outputs"],
+            )
+
+            # Make sure terminated and truncated are never both True.
+            assert not np.any(np.logical_and(is_truncated, is_terminated))
+
+            # All fields have same shape.
+            assert (
+                obs.shape[:2]
+                == rewards.shape
+                == actions.shape
+                == next_obs.shape
+                == is_truncated.shape
+                == is_terminated.shape
+                == weights.shape
+                == n_steps.shape
+                == infos.shape
+                == extra_model_outputs.shape
+            )
 
     def test_update_priorities(self):
         # Define replay buffer (alpha=1.0).

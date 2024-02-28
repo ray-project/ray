@@ -182,10 +182,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         *,
         batch_size_B: Optional[int] = None,
         batch_length_T: Optional[int] = None,
-        n_step: Optional[Union[int, Tuple]] = 1,
+        n_step: Optional[Union[int, Tuple]] = None,
         beta: float = 0.0,
         gamma: float = 0.99,
         include_infos: bool = False,
+        include_extra_model_outputs: bool = False,
     ) -> SampleBatchType:
         """Samples from a buffer in a prioritized way.
 
@@ -251,7 +252,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Use random n-step sampling.
             random_n_step = True
         else:
-            actual_n_step = n_step
+            actual_n_step = n_step or 1
             random_n_step = False
 
         # Rows to return.
@@ -264,9 +265,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         weights = [[] for _ in range(batch_size_B)]
         n_steps = [[] for _ in range(batch_size_B)]
         # If `info` should be included, construct also a container for them.
-        # TODO (simon): Add also `extra_model_outs`.
         if include_infos:
             infos = [[] for _ in range(batch_size_B)]
+        # If `extra_model_outputs` should be included, construct a container for them.
+        if include_extra_model_outputs:
+            extra_model_outputs = [[] for _ in range(batch_size_B)]
         # Keep track of the indices that were sampled last for updating the
         # weights later (see `ray.rllib.utils.replay_buffer.utils.
         # update_priorities_in_episode_replay_buffer`).
@@ -340,11 +343,27 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # rewards[B].append(sum(eps_rewards))
             # Note, `SingleAgentEpisode` stores the action that followed
             # `o_t` with `o_(t+1)`, therefore, we need the next one.
-            actions[B].append(episode.get_actions(episode_ts - n_step))
+            actions[B].append(episode.get_actions(episode_ts - actual_n_step))
             if include_infos:
                 # If infos are included we include the ones from the last timestep
                 # as usually the info contains additional values about the last state.
                 infos[B].append(episode.get_infos(episode_ts))
+            if include_extra_model_outputs:
+                # If `extra_model_outputs` are included we include the ones from the
+                # first timestep as usually the `extra_model_outputs` contain additional
+                # values from the forward pass that produced the action at the first
+                # timestep.
+                # Note, we extract them into single row dictionaries similar to the
+                # infos, in a connector we can then extract these into single batch
+                # rows.
+                extra_model_outputs[B].append(
+                    {
+                        k: episode.get_extra_model_outputs(
+                            k, episode_ts - actual_n_step
+                        )
+                        for k in episode.extra_model_outputs.keys()
+                    }
+                )
 
             # If the sampled time step is the episode's last time step check, if
             # the episode is terminated or truncated.
@@ -376,10 +395,18 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             "weights": np.array(weights),
             "n_steps": np.array(n_steps),
         }
+        # Include infos if necessary.
         if include_infos:
             ret.update(
                 {
                     SampleBatch.INFOS: np.array(infos),
+                }
+            )
+        # Include extra model outputs, if necessary.
+        if include_extra_model_outputs:
+            ret.update(
+                {
+                    "extra_model_outputs": np.array(extra_model_outputs),
                 }
             )
 
