@@ -123,6 +123,7 @@ export const ServeDeploymentRow = ({
         </TableCell>
         <TableCell align="center">
           {/* placeholder for route_prefix, which does not apply to a deployment */}
+          -
         </TableCell>
         <TableCell align="center">
           {formatDateFromTimeMs(last_deployed_time_s * 1000)}
