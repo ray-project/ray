@@ -186,7 +186,9 @@ def test_no_deadlock_on_resource_contention(
     assert len(ds.take_all()) == num_blocks
 
 
-def test_no_deadlock_with_preserve_order(restore_data_context, shutdown_only):  # noqa: F811
+def test_no_deadlock_with_preserve_order(
+    restore_data_context, shutdown_only  # noqa: F811
+):
     """Test backpressure won't cause deadlocks when `preserve_order=True`."""
     num_blocks = 20
     block_size = 10 * 1024 * 1024
