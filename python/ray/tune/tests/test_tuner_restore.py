@@ -20,11 +20,7 @@ from ray.train import (
 )
 from ray.air._internal.uri_utils import URI
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train._internal.storage import (
-    get_fs_and_path,
-    _download_from_fs_path,
-    _upload_to_fs_path,
-)
+from ray.train._internal.storage import get_fs_and_path, _download_from_fs_path
 from ray.tune import Callback, Trainable
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
