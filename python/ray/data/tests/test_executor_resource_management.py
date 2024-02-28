@@ -133,6 +133,29 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         )
 
 
+def test_execution_options_resource_limit():
+    """Test ExecutionOptions.resource_limit."""
+    # Test that the default resource_limits should be inf.
+    options = ExecutionOptions()
+    assert options.resource_limits.cpu == float("inf")
+    assert options.resource_limits.gpu == float("inf")
+    assert options.resource_limits.object_store_memory == float("inf")
+
+    # Test when passing in the resource_limits parameter, missing
+    # fields should be set to inf.
+    options = ExecutionOptions(resource_limits=ExecutionResources(cpu=1))
+    assert options.resource_limits.cpu == 1
+    assert options.resource_limits.gpu == float("inf")
+    assert options.resource_limits.object_store_memory == float("inf")
+
+    # Test when modifying the resource_limits attribute,
+    # missing fields should be set to inf.
+    options.resource_limits = ExecutionResources(object_store_memory=100)
+    assert options.resource_limits.cpu == float("inf")
+    assert options.resource_limits.gpu == float("inf")
+    assert options.resource_limits.object_store_memory == 100
+
+
 def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_context):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator.create(
