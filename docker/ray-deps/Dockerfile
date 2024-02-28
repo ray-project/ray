@@ -1,5 +1,7 @@
 ARG BASE_IMAGE=""
-FROM rayproject/base-deps:nightly"$BASE_IMAGE"
+ARG FULL_BASE_IMAGE=rayproject/base-deps:nightly"$BASE_IMAGE"
+FROM "$FULL_BASE_IMAGE"
+
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"
 ARG WHEEL_PATH
