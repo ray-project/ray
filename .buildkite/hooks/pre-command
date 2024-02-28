@@ -9,20 +9,20 @@
 # remain on the node when a Buildkite runner is re-used.
 set -ex
 if [ -d "/tmp/artifacts" ]; then
-    echo "Cleaning up old artifacts before command."
-    echo "Artifact directory contents before cleanup:"
-    find /tmp/artifacts -print || true
+  echo "Cleaning up old artifacts before command."
+  echo "Artifact directory contents before cleanup:"
+  find /tmp/artifacts -print || true
 
-    if [ "$(ls -A /tmp/artifacts)" ]; then
-      echo "Directory not empty, cleaning up..."
-      # Need to run in docker to avoid permission issues
-      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*' || true
-    else
-      echo "Directory already empty, no need to clean up."
-    fi
+  if [ "$(ls -A /tmp/artifacts)" ]; then
+    echo "Directory not empty, cleaning up..."
+    # Need to run in docker to avoid permission issues
+    docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*' || true
+  else
+    echo "Directory already empty, no need to clean up."
+  fi
 
-    echo "Artifact directory contents after cleanup:"
-    find /tmp/artifacts -print || true
+  echo "Artifact directory contents after cleanup:"
+  find /tmp/artifacts -print || true
 fi
 
 echo "Creating artifact directory..."
@@ -35,6 +35,12 @@ elif [[ "${OSTYPE}" == msys ]]; then
   mkdir -p /c/tmp/artifacts
 fi
 
-
 RAYCI_CHECKOUT_DIR="$(pwd)"
 export RAYCI_CHECKOUT_DIR
+
+if [[ "${NIGHTLY}" == "1" ]]; then
+  echo "Running nightly build"
+  export NIGHTLY_ALIAS=true
+else
+  export NIGHTLY_ALIAS=false
+fi
