@@ -66,7 +66,7 @@ Usually, transforms are fused together and with the upstream read task.
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For the example above, each read task generates one output block. In the case where the read input file
+For the preceding example, each read task generates one output block. In the case where the read input file
 is large, a single read task may output multiple blocks. For more information on transforming data, see
 :ref:`Transforming data <transforming_data>`.
 
