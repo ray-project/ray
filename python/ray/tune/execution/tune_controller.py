@@ -1956,7 +1956,9 @@ class TuneController:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
+        logger_creator = partial(
+            _noop_logger_creator, logdir=trial.storage.trial_working_directory
+        )
 
         self._resetting_trials.add(trial)
         self._schedule_trial_task(

@@ -206,7 +206,9 @@ def _noop_logger_creator(config: Dict[str, Any], logdir: str):
 def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
 
-    logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
+    logger_creator = partial(
+        _noop_logger_creator, logdir=trial.storage.trial_working_directory
+    )
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)
