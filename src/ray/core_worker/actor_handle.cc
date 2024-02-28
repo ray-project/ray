@@ -49,8 +49,7 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_ray_namespace(ray_namespace);
   inner.set_execute_out_of_order(execute_out_of_order);
   inner.set_max_pending_calls(max_pending_calls);
-  inner.set_enable_task_events(
-      enable_task_events.value_or(RayConfig::instance().enable_task_events()));
+  inner.set_enable_task_events(enable_task_events.value_or(kDefaultTaskEventEnabled));
   return inner;
 }
 
