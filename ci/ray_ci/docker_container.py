@@ -58,7 +58,7 @@ class DockerContainer(LinuxContainer):
             return [sha_tag, "nightly"]
 
         formatted_date = datetime.now().strftime("%y%m%d")
-        if branch and branch.startswith("khluu"):
+        if branch and branch.startswith("refs/pull/43486"):
             print("Nightly khluu? ", self.nightly_alias)
             print("TAGS: ", [sha_tag, f"nightly.{formatted_date}"])
             return [sha_tag, f"nightly.{formatted_date}"] if self.nightly_alias else [sha_tag]
