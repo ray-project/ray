@@ -228,6 +228,13 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 the batch. This could be of advantage, if the `info` contains
                 values from the environment important for loss computation. If
                 `True`, the info at the `"new_obs"` in the batch is included.
+            include_extra_model_outputs: A boolean indicating, if
+                `extra_model_outputs` should be included in the batch. This could be
+                of advantage, if the `extra_mdoel_outputs`  contain outputs from the
+                model important for loss computation and only able to compute with the
+                actual state of model e.g. action log-probabilities, etc.). If `True`,
+                the extra model outputs at the `"obs"` in the batch is included (the
+                timestep at which the action is computed).
 
         Returns:
             A sample batch (observations, actions, rewards, new observations,
