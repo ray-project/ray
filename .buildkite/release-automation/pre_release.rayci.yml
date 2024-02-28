@@ -6,7 +6,7 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
-      - bash .buildkite/release-automation/check_release_blockers.sh
+      - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - block: "Trigger tests & image builds"
     depends_on:
