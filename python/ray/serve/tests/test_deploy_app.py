@@ -813,7 +813,7 @@ def test_update_autoscaling_config(client: ServeControllerClient):
                     "target_num_ongoing_requests_per_replica": 1,
                     "min_replicas": 1,
                     "max_replicas": 10,
-                    "metrics_interval_s": 1000,
+                    "metrics_interval_s": 15,
                     "upscale_delay_s": 0.5,
                     "downscale_delay_s": 0.5,
                     "look_back_period_s": 2,
