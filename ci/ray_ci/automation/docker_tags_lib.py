@@ -2,10 +2,11 @@ import subprocess
 from datetime import datetime
 from typing import List, Optional, Callable, Tuple
 import os
-import requests
 from dateutil import parser
 import runfiles
 import platform
+
+import requests
 
 from ci.ray_ci.utils import logger
 

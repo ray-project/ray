@@ -473,7 +473,7 @@ class LearnerGroup:
 
         Args:
             reduce_fn: See `update()` documentation for more details.
-            **kwargs: Keyword arguments to pass to each Learner.
+            \*\*kwargs: Keyword arguments to pass to each Learner.
 
         Returns:
             A list of dictionaries of results from the updates from each worker.
@@ -613,10 +613,10 @@ class LearnerGroup:
     def foreach_learner(
         self, func: Callable[[Learner, Optional[Any]], T], **kwargs
     ) -> List[T]:
-        """Calls the given function on each Learner L with the args: (L, **kwargs).
+        """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
-            func: The function to call on each Learner L with (L, **kwargs).
+            func: The function to call on each Learner L with (L, \*\*kwargs).
 
         Returns:
             A list of size len(Learners) with the return values of all calls to `func`.

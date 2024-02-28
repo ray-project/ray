@@ -1,7 +1,9 @@
 import asyncio
+import random
 import sys
+from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -10,6 +12,7 @@ from ray.serve._private.common import (
     DeploymentID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
+    RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.replica_scheduler import (
@@ -18,7 +21,10 @@ from ray.serve._private.replica_scheduler import (
     ReplicaWrapper,
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
-from ray.serve._private.router import Router
+from ray.serve._private.router import Router, RouterMetricsManager
+from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
+from ray.serve._private.utils import get_random_string
+from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 
 
@@ -487,6 +493,206 @@ class TestAssignRequest:
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
+
+
+def running_replica_info(replica_tag: str) -> RunningReplicaInfo:
+    return RunningReplicaInfo(
+        deployment_name="f",
+        replica_tag=replica_tag,
+        node_id="node_id",
+        availability_zone="some-az",
+        actor_handle=Mock(),
+        max_concurrent_queries=1,
+    )
+
+
+class TestRouterMetricsManager:
+    def test_num_router_requests(self):
+        metrics_manager = RouterMetricsManager(
+            DeploymentID("a", "b"),
+            "random",
+            get_or_create_event_loop(),
+            Mock(),
+            FakeCounter(tag_keys=("deployment", "route", "application")),
+            FakeGauge(tag_keys=("deployment", "application")),
+        )
+        assert metrics_manager.num_router_requests.get_count() == 0
+
+        n = random.randint(0, 10)
+        for _ in range(n):
+            metrics_manager.inc_num_total_requests(route="/alice")
+        assert metrics_manager.num_router_requests.get_count() == n
+        assert metrics_manager.num_router_requests.get_tags() == {
+            "deployment": "a",
+            "application": "b",
+            "route": "/alice",
+        }
+
+    def test_num_queued_requests_gauge(self):
+        metrics_manager = RouterMetricsManager(
+            DeploymentID("a", "b"),
+            "random",
+            get_or_create_event_loop(),
+            Mock(),
+            FakeCounter(tag_keys=("deployment", "route", "application")),
+            FakeGauge(tag_keys=("deployment", "application")),
+        )
+        assert metrics_manager.num_queued_requests_gauge.get_value() == 0
+
+        n, m = random.randint(0, 10), random.randint(0, 5)
+        for _ in range(n):
+            metrics_manager.inc_num_queued_requests()
+        assert metrics_manager.num_queued_requests_gauge.get_value() == n
+        for _ in range(m):
+            metrics_manager.dec_num_queued_requests()
+        assert metrics_manager.num_queued_requests_gauge.get_value() == n - m
+        assert metrics_manager.num_queued_requests_gauge.get_tags() == {
+            "deployment": "a",
+            "application": "b",
+        }
+
+    def test_track_requests_sent_to_replicas(self):
+        metrics_manager = RouterMetricsManager(
+            DeploymentID("a", "b"),
+            "random",
+            get_or_create_event_loop(),
+            Mock(),
+            FakeCounter(tag_keys=("deployment", "route", "application")),
+            FakeGauge(tag_keys=("deployment", "application")),
+        )
+
+        # r1: number requests -> 0, removed from list of running replicas -> prune
+        # r2: number requests -> 0, remains on list of running replicas -> don't prune
+        # r3: number requests > 0, removed from list of running replicas -> don't prune
+        # r4: number requests > 0, remains on list of running replicas -> don't prune
+        replica_tags = [get_random_string() for _ in range(4)]
+        r1, r2, r3, r4 = replica_tags
+
+        # ri has i requests
+        for i in range(4):
+            for _ in range(i + 1):
+                metrics_manager.inc_num_running_requests_for_replica(replica_tags[i])
+
+        # All 4 replicas should have a positive number of requests
+        for i, r in enumerate(replica_tags):
+            assert metrics_manager.num_requests_sent_to_replicas[r] == i + 1
+
+        # Requests at r1 and r2 drop to 0
+        for _ in range(1):
+            metrics_manager.process_finished_request(r1, None)
+        for _ in range(2):
+            metrics_manager.process_finished_request(r2, None)
+        assert metrics_manager.num_requests_sent_to_replicas[r1] == 0
+        assert metrics_manager.num_requests_sent_to_replicas[r2] == 0
+
+        # Running replicas reduces to [r2, r4]
+        metrics_manager.update_running_replicas(
+            [
+                running_replica_info(r2),
+                running_replica_info(r4),
+            ]
+        )
+
+        # Only r1 should be pruned, the rest should still be tracked.
+        assert r1 not in metrics_manager.num_requests_sent_to_replicas
+        assert r2 in metrics_manager.num_requests_sent_to_replicas
+        assert r3 in metrics_manager.num_requests_sent_to_replicas
+        assert r4 in metrics_manager.num_requests_sent_to_replicas
+
+    def test_should_send_scaled_to_zero_optimized_push(self):
+        metrics_manager = RouterMetricsManager(
+            DeploymentID("a", "b"),
+            "random",
+            get_or_create_event_loop(),
+            Mock(),
+            FakeCounter(tag_keys=("deployment", "route", "application")),
+            FakeGauge(tag_keys=("deployment", "application")),
+        )
+
+        # Not an autoscaling deployment, should not push metrics
+        assert not metrics_manager.should_send_scaled_to_zero_optimized_push(0)
+
+        # No queued requests at the handle, should not push metrics
+        metrics_manager.deployment_config = DeploymentConfig(
+            autoscaling_config=AutoscalingConfig()
+        )
+        assert not metrics_manager.should_send_scaled_to_zero_optimized_push(0)
+
+        # Current number of replicas is non-zero, should not push metrics
+        metrics_manager.inc_num_queued_requests()
+        assert not metrics_manager.should_send_scaled_to_zero_optimized_push(1)
+
+        # All 3 conditions satisfied, should push metrics
+        assert metrics_manager.should_send_scaled_to_zero_optimized_push(0)
+
+    @patch(
+        "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
+    )
+    def test_push_autoscaling_metrics_to_controller(self):
+        timer = MockTimer()
+        start = random.randint(50, 100)
+        timer.reset(start)
+        deployment_id = DeploymentID("a", "b")
+        handle_id = "random"
+        mock_controller_handle = Mock()
+
+        with patch("time.time", new=timer.time):
+            metrics_manager = RouterMetricsManager(
+                deployment_id,
+                handle_id,
+                get_or_create_event_loop(),
+                mock_controller_handle,
+                FakeCounter(tag_keys=("deployment", "route", "application")),
+                FakeGauge(tag_keys=("deployment", "application")),
+            )
+            metrics_manager.deployment_config = DeploymentConfig(
+                autoscaling_config=AutoscalingConfig()
+            )
+
+            # Set up some requests
+            n = random.randint(0, 5)
+            replica_tags = [get_random_string() for _ in range(3)]
+            running_requests = defaultdict(int)
+            for _ in range(n):
+                metrics_manager.inc_num_queued_requests()
+            for _ in range(20):
+                r = random.choice(replica_tags)
+                running_requests[r] += 1
+                metrics_manager.inc_num_running_requests_for_replica(r)
+
+            # Check metrics are pushed correctly
+            metrics_manager.push_autoscaling_metrics_to_controller()
+            mock_controller_handle.record_handle_metrics.remote.assert_called_with(
+                deployment_id=deployment_id,
+                handle_id=handle_id,
+                queued_requests=n,
+                running_requests=running_requests,
+                send_timestamp=start,
+            )
+
+    @patch(
+        "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
+    )
+    @patch("ray.serve._private.router.MetricsPusher")
+    def test_update_deployment_config(self, metrics_pusher_mock):
+        metrics_manager = RouterMetricsManager(
+            DeploymentID("a", "b"),
+            "random",
+            get_or_create_event_loop(),
+            Mock(),
+            FakeCounter(tag_keys=("deployment", "route", "application")),
+            FakeGauge(tag_keys=("deployment", "application")),
+        )
+
+        # Without autoscaling config, do nothing
+        metrics_manager.update_deployment_config(DeploymentConfig(), 0)
+        metrics_manager.metrics_pusher.register_or_update_task.assert_not_called()
+
+        # With autoscaling config, register or update task should be called
+        metrics_manager.update_deployment_config(
+            DeploymentConfig(autoscaling_config=AutoscalingConfig()), 0
+        )
+        metrics_manager.metrics_pusher.register_or_update_task.assert_called()
 
 
 if __name__ == "__main__":
