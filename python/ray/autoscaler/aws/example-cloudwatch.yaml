@@ -2,7 +2,7 @@
 cluster_name: cloudwatch
 
 # The maximum number of workers nodes to launch in addition to the head node.
-max_workers: 2
+max_worker_nodes: 2
 
 # Cloud-provider specific configuration.
 provider:
@@ -88,8 +88,8 @@ available_node_types:
         IamInstanceProfile:
           Name: ray-autoscaler-cloudwatch-v1
       resources: {}
-      min_workers: 0
-      max_workers: 2
+      min_worker_nodes: 0
+      max_worker_nodes: 2
 head_node_type: ray.head.default
 
 # If you want to export Ray's Prometheus system metrics to CloudWatch, you should first ensure that your cluster has the

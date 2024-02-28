@@ -54,7 +54,7 @@ class AutoscalingCluster:
         custom_config["available_node_types"]["ray.head.default"] = {
             "resources": head_resources,
             "node_config": {},
-            "max_workers": 0,
+            "max_worker_nodes": 0,
         }
         custom_config.update(config_kwargs)
         return custom_config

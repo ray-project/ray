@@ -5,7 +5,7 @@ docker:
 provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
-    worker_ips: []
+    worker_node_ips: []
 auth:
     ssh_user: YOUR_USERNAME
     ssh_private_key: ~/.ssh/id_rsa

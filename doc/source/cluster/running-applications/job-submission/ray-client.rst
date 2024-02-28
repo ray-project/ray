@@ -159,7 +159,7 @@ this can be done by modifying the security group to allow inbound access from yo
 
         .. code-block:: yaml
 
-            # An unique identifier for the head node and workers of this cluster.
+            # An unique identifier for the head node and worker nodes of this cluster.
             cluster_name: minimal_security_group
 
             # Cloud-provider specific configuration.

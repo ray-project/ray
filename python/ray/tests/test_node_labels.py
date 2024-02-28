@@ -122,8 +122,8 @@ def test_autoscaler_set_node_labels(shutdown_only):
                 "resources": {"CPU": 1},
                 "labels": {"region": "us"},
                 "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
+                "min_worker_nodes": 1,
+                "max_worker_nodes": 1,
             }
         },
     )

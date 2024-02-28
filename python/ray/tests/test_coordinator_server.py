@@ -76,12 +76,12 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
         cluster_config = {
             "cluster_name": "random_name",
-            "min_workers": 0,
-            "max_workers": 0,
+            "min_worker_nodes": 0,
+            "max_worker_nodes": 0,
             "provider": {
                 "type": "local",
                 "head_ip": head_ip,
-                "worker_ips": ["0.0.0.0:1"],
+                "worker_node_ips": ["0.0.0.0:1"],
                 "external_head_ip": "0.0.0.0.3",
             },
         }
@@ -98,7 +98,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "state": "terminated",
             "external_ip": "0.0.0.0.3",
         }
-        expected_workers[provider_config["worker_ips"][0]] = {
+        expected_workers[provider_config["worker_node_ips"][0]] = {
             "tags": {TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
             "state": "terminated",
         }
@@ -110,8 +110,8 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         assert workers == expected_workers
 
         # Test removing workers updates the cluster state.
-        del expected_workers[provider_config["worker_ips"][0]]
-        removed_ip = provider_config["worker_ips"].pop()
+        del expected_workers[provider_config["worker_node_ips"][0]]
+        removed_ip = provider_config["worker_node_ips"].pop()
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False
         )
@@ -123,7 +123,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "tags": {TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
             "state": "terminated",
         }
-        provider_config["worker_ips"].append(removed_ip)
+        provider_config["worker_node_ips"].append(removed_ip)
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False
         )
@@ -199,8 +199,8 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         """Integration test of CoordinatorSenderNodeProvider."""
         cluster_config = {
             "cluster_name": "random_name",
-            "min_workers": 0,
-            "max_workers": 0,
+            "min_worker_nodes": 0,
+            "max_worker_nodes": 0,
             "provider": {
                 "type": "local",
                 "coordinator_address": self.coordinator_address,

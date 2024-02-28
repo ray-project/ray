@@ -35,8 +35,8 @@ def test_implicit_resource_autoscaling(shutdown_only):
                     "CPU": 8,
                 },
                 "node_config": {},
-                "min_workers": 1,
-                "max_workers": 100,
+                "min_worker_nodes": 1,
+                "max_worker_nodes": 100,
             },
         },
     )

@@ -41,7 +41,7 @@ from ray.autoscaler._private.commands import (
     get_cluster_dump_archive,
     get_head_node_ip,
     get_local_dump_archive,
-    get_worker_node_ips,
+    get_worker_node_ips as autoscaler_get_worker_node_ips,
     kill_node,
     monitor_cluster,
     rsync,
@@ -1203,16 +1203,53 @@ def stop(force: bool, grace_period: int):
     ray._private.utils.reset_ray_address()
 
 
+def handle_rename(old_param, old_param_name, new_param, new_param_name):
+    """Handle deprecated parameter names. Returns the new parameter if both are set."""
+    if old_param is not None:
+        cli_logger.warning(
+            "`{}` is deprecated. Please use `{}` instead.",
+            cf.bold(old_param_name),
+            cf.bold(new_param_name),
+        )
+        if new_param is None:
+            return old_param
+        cli_logger.warning(
+            "Both `{}` and `{}` are set. Using `{}`.",
+            cf.bold(new_param_name),
+            cf.bold(old_param_name),
+            cf.bold(new_param_name),
+        )
+    return new_param
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--min-workers",
     required=False,
     type=int,
-    help="Override the configured min worker node count for the cluster.",
+    help=(
+        "DEPRECATED: Use `--min-worker-nodes` instead. "
+        "Override the configured min worker node count for the cluster."
+    ),
 )
 @click.option(
     "--max-workers",
+    required=False,
+    type=int,
+    help=(
+        "DEPRECATED: Use `--max-worker-nodes` instead. "
+        "Override the configured max worker node count for the cluster."
+    ),
+)
+@click.option(
+    "--min-worker-nodes",
+    required=False,
+    type=int,
+    help="Override the configured min worker node count for the cluster.",
+)
+@click.option(
+    "--max-worker-nodes",
     required=False,
     type=int,
     help="Override the configured max worker node count for the cluster.",
@@ -1277,6 +1314,8 @@ def stop(force: bool, grace_period: int):
 @PublicAPI
 def up(
     cluster_config_file,
+    min_worker_nodes,
+    max_worker_nodes,
     min_workers,
     max_workers,
     no_restart,
@@ -1291,6 +1330,13 @@ def up(
     """Create or update a Ray cluster."""
     if disable_usage_stats:
         usage_lib.set_usage_stats_enabled_via_env_var(False)
+
+    min_worker_nodes = handle_rename(
+        min_workers, "--min-workers", min_worker_nodes, "--min-worker-nodes"
+    )
+    max_worker_nodes = handle_rename(
+        max_workers, "--max-workers", max_worker_nodes, "--max-worker-nodes"
+    )
 
     if restart_only or no_restart:
         cli_logger.doassert(
@@ -1316,8 +1362,8 @@ def up(
             cli_logger.warning("Could not download remote cluster configuration file.")
     create_or_update_cluster(
         config_file=cluster_config_file,
-        override_min_workers=min_workers,
-        override_max_workers=max_workers,
+        override_min_worker_nodes=min_worker_nodes,
+        override_max_worker_nodes=max_worker_nodes,
         no_restart=no_restart,
         restart_only=restart_only,
         yes=yes,
@@ -1334,7 +1380,13 @@ def up(
     "--yes", "-y", is_flag=True, default=False, help="Don't ask for confirmation."
 )
 @click.option(
-    "--workers-only", is_flag=True, default=False, help="Only destroy the workers."
+    "--workers-only",
+    is_flag=True,
+    default=False,
+    help=("DEPRECATED: Use --worker-nodes-only instead. Only destroy the workers."),
+)
+@click.option(
+    "--worker-nodes-only", is_flag=True, default=False, help="Only destroy the workers."
 )
 @click.option(
     "--cluster-name",
@@ -1347,14 +1399,43 @@ def up(
     "--keep-min-workers",
     is_flag=True,
     default=False,
+    help=(
+        "DEPRECATED: Use --keep-min-workers instead. "
+        "Retain the minimal amount of workers specified in the config."
+    ),
+)
+@click.option(
+    "--keep-min-worker-nodes",
+    is_flag=True,
+    default=False,
     help="Retain the minimal amount of workers specified in the config.",
 )
 @add_click_logging_options
 @PublicAPI
-def down(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers):
+def down(
+    cluster_config_file,
+    yes,
+    workers_only,
+    worker_nodes_only,
+    cluster_name,
+    keep_min_workers,
+    keep_min_worker_nodes,
+):
     """Tear down a Ray cluster."""
+    worker_nodes_only = handle_rename(
+        workers_only,
+        "--workers-only",
+        worker_nodes_only,
+        "--worker-nodes-only",
+    )
+    keep_min_worker_nodes = handle_rename(
+        keep_min_workers,
+        "--keep-min-workers",
+        keep_min_worker_nodes,
+        "--keep-min-worker-nodes",
+    )
     teardown_cluster(
-        cluster_config_file, yes, workers_only, cluster_name, keep_min_workers
+        cluster_config_file, yes, worker_nodes_only, cluster_name, keep_min_worker_nodes
     )
 
 
@@ -1637,8 +1718,8 @@ def submit(
 
         create_or_update_cluster(
             config_file=cluster_config_file,
-            override_min_workers=None,
-            override_max_workers=None,
+            override_min_worker_nodes=None,
+            override_max_worker_nodes=None,
             no_restart=False,
             restart_only=False,
             yes=True,
@@ -1782,6 +1863,25 @@ def get_head_ip(cluster_config_file, cluster_name):
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
 
 
+def _get_worker_node_ips(cluster_config_file, cluster_name):
+    worker_node_ips = autoscaler_get_worker_node_ips(cluster_config_file, cluster_name)
+    click.echo("\n".join(worker_node_ips))
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.",
+)
+def get_worker_node_ips(cluster_config_file, cluster_name):
+    """Return the list of worker IPs of a Ray cluster."""
+    _get_worker_node_ips(cluster_config_file, cluster_name)
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -1792,9 +1892,17 @@ def get_head_ip(cluster_config_file, cluster_name):
     help="Override the configured cluster name.",
 )
 def get_worker_ips(cluster_config_file, cluster_name):
-    """Return the list of worker IPs of a Ray cluster."""
-    worker_ips = get_worker_node_ips(cluster_config_file, cluster_name)
-    click.echo("\n".join(worker_ips))
+    """Return the list of worker IPs of a Ray cluster.
+
+    Deprecated in favor of get_worker_node_ips.
+    """
+    # print deprecation warning and recommend using get_worker_node_ips
+    cli_logger.warning(
+        "`{}` is deprecated; please use `{}` instead.",
+        cf.bold("ray get-worker-ips"),
+        cf.bold("ray get-worker-node-ips"),
+    )
+    _get_worker_node_ips(cluster_config_file, cluster_name)
 
 
 @cli.command()
@@ -2558,7 +2666,7 @@ cli.add_command(down)
 add_command_alias(down, name="teardown", hidden=True)
 cli.add_command(kill_random_node)
 add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
-cli.add_command(get_worker_ips)
+cli.add_command(get_worker_node_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(status)

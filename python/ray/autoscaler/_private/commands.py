@@ -56,6 +56,7 @@ from ray.autoscaler._private.util import (
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
+    rewrite_deprecated_workers_fields,
     validate_config,
 )
 from ray.autoscaler.node_provider import NodeProvider
@@ -220,8 +221,8 @@ def request_resources(
 
 def create_or_update_cluster(
     config_file: str,
-    override_min_workers: Optional[int],
-    override_max_workers: Optional[int],
+    override_min_worker_nodes: Optional[int],
+    override_max_worker_nodes: Optional[int],
     no_restart: bool,
     restart_only: bool,
     yes: bool,
@@ -270,6 +271,7 @@ def create_or_update_cluster(
         CreateClusterEvent.up_started, {"cluster_config": config}
     )
 
+    config = rewrite_deprecated_workers_fields(config)
     # todo: validate file_mounts, ssh keys, etc.
 
     importer = _NODE_PROVIDERS.get(config["provider"]["type"])
@@ -301,8 +303,8 @@ def create_or_update_cluster(
                 )
             config[key] = override
 
-    handle_cli_override("min_workers", override_min_workers)
-    handle_cli_override("max_workers", override_max_workers)
+    handle_cli_override("min_worker_nodes", override_min_worker_nodes)
+    handle_cli_override("max_worker_nodes", override_max_worker_nodes)
     handle_cli_override("cluster_name", override_cluster_name)
 
     if printed_overrides:
@@ -431,13 +433,13 @@ def teardown_cluster(
     yes: bool,
     workers_only: bool,
     override_cluster_name: Optional[str],
-    keep_min_workers: bool,
+    keep_min_worker_nodes: bool,
 ) -> None:
     """Destroys all nodes of a Ray cluster described by a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-
+    config = rewrite_deprecated_workers_fields(config)
     config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
@@ -473,16 +475,16 @@ def teardown_cluster(
     def remaining_nodes():
         workers = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
-        if keep_min_workers:
-            min_workers = config.get("min_workers", 0)
+        if keep_min_worker_nodes:
+            min_worker_nodes = config.get("min_worker_nodes", 0)
             cli_logger.print(
                 "{} random worker nodes will not be shut down. "
                 + cf.dimmed("(due to {})"),
-                cf.bold(min_workers),
+                cf.bold(min_worker_nodes),
                 cf.bold("--keep-min-workers"),
             )
 
-            workers = random.sample(workers, len(workers) - min_workers)
+            workers = random.sample(workers, len(workers) - min_worker_nodes)
 
         # todo: it's weird to kill the head node but not all workers
         if workers_only:
@@ -571,6 +573,7 @@ def kill_node(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
+    config = rewrite_deprecated_workers_fields(config)
     config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "A random node will be killed.")
@@ -1126,6 +1129,7 @@ def exec_cluster(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
+    config = rewrite_deprecated_workers_fields(config)
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     head_node = _get_running_head_node(
@@ -1284,6 +1288,7 @@ def rsync(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
+    config = rewrite_deprecated_workers_fields(config)
     if should_bootstrap:
         config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
@@ -1355,6 +1360,7 @@ def get_head_node_ip(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
+    config = rewrite_deprecated_workers_fields(config)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     head_node = _get_running_head_node(config, config_file, override_cluster_name)
@@ -1374,6 +1380,7 @@ def get_worker_node_ips(
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
+    config = rewrite_deprecated_workers_fields(config)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})

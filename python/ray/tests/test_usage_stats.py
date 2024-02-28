@@ -892,7 +892,7 @@ def test_usage_lib_get_cluster_config_to_report(
     cluster_config_file_path.write_text(
         """
 cluster_name: minimal
-max_workers: 1
+max_worker_nodes: 1
 provider:
     type: aws
     region: us-west-2
@@ -903,15 +903,15 @@ provider:
         cluster_config_file_path
     )
     assert cluster_config_to_report.cloud_provider == "aws"
-    assert cluster_config_to_report.min_workers is None
-    assert cluster_config_to_report.max_workers == 1
+    assert cluster_config_to_report.min_worker_nodes is None
+    assert cluster_config_to_report.max_worker_nodes == 1
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types is None
 
     cluster_config_file_path.write_text(
         """
 cluster_name: full
-min_workers: 1
+min_worker_nodes: 1
 provider:
     type: gcp
 head_node_type: head_node
@@ -919,13 +919,13 @@ available_node_types:
     head_node:
         node_config:
             InstanceType: m5.large
-        min_workers: 0
-        max_workers: 0
+        min_worker_nodes: 0
+        max_worker_nodes: 0
     aws_worker_node:
         node_config:
             InstanceType: m3.large
-        min_workers: 0
-        max_workers: 0
+        min_worker_nodes: 0
+        max_worker_nodes: 0
     azure_worker_node:
         node_config:
             azure_arm_parameters:
@@ -939,8 +939,8 @@ available_node_types:
         cluster_config_file_path
     )
     assert cluster_config_to_report.cloud_provider == "gcp"
-    assert cluster_config_to_report.min_workers == 1
-    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.min_worker_nodes == 1
+    assert cluster_config_to_report.max_worker_nodes is None
     assert cluster_config_to_report.head_node_instance_type == "m5.large"
     assert set(cluster_config_to_report.worker_node_instance_types) == {
         "m3.large",
@@ -967,8 +967,8 @@ available_node_types:
         cluster_config_file_path
     )
     assert cluster_config_to_report.cloud_provider is None
-    assert cluster_config_to_report.min_workers is None
-    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.min_worker_nodes is None
+    assert cluster_config_to_report.max_worker_nodes is None
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types == ["m5.large"]
 
@@ -988,8 +988,8 @@ available_node_types:
         tmp_path / "does_not_exist.yaml"
     )
     assert cluster_config_to_report.cloud_provider == "kubernetes"
-    assert cluster_config_to_report.min_workers is None
-    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.min_worker_nodes is None
+    assert cluster_config_to_report.max_worker_nodes is None
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types is None
 
@@ -1021,7 +1021,7 @@ def test_usage_lib_report_data(
         cluster_config_file_path.write_text(
             """
 cluster_name: minimal
-max_workers: 1
+max_worker_nodes: 1
 provider:
     type: aws
     region: us-west-2
@@ -1085,17 +1085,28 @@ provider:
     sys.version_info >= (3, 11, 0),
     reason=("Currently not passing for Python 3.11"),
 )
+@pytest.mark.parametrize("legacy_worker_param", [True, False])
 def test_usage_report_e2e(
-    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
+    monkeypatch,
+    ray_start_cluster,
+    tmp_path,
+    reset_usage_stats,
+    gcs_storage_type,
+    legacy_worker_param,
 ):
     """
-    Test usage report works e2e with env vars.
+    Test usage report works end-to-end with environment variables.
     """
     cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+    if legacy_worker_param:
+        worker_setting = "max_workers: 1"
+    else:
+        worker_setting = "max_worker_nodes: 1"
+
     cluster_config_file_path.write_text(
-        """
+        f"""
 cluster_name: minimal
-max_workers: 1
+{worker_setting}
 provider:
     type: aws
     region: us-west-2

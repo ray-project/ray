@@ -303,8 +303,8 @@ def test_autoscaler_cluster_events(shutdown_only):
                     "CPU": 4,
                 },
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 1,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 1,
             },
             "gpu_node": {
                 "resources": {
@@ -312,8 +312,8 @@ def test_autoscaler_cluster_events(shutdown_only):
                     "GPU": 1,
                 },
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 1,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 1,
             },
         },
         idle_timeout_minutes=1,

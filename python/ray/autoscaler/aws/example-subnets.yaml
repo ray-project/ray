@@ -1,6 +1,6 @@
 cluster_name: subnets
 
-max_workers: 1
+max_worker_nodes: 1
 
 provider:
     type: aws

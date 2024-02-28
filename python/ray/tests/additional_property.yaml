@@ -2,9 +2,9 @@
 cluster_name: minimal
 hi: 1
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 0
-max_workers: 0
+# node. This takes precedence over min_worker_nodes. min_worker_nodes default to 0.
+min_worker_nodes: 0
+max_worker_nodes: 0
 
 provider:
     type: aws

@@ -24,7 +24,13 @@
             "type": "string"
         },
         "max_workers": {
-            "description": "The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_workers for all available node types.",
+            "description": "[DEPRECATED] The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_worker_nodes for all available node types.",
+            "type": "integer",
+            "minimum": 0,
+            "deprecated": true
+        },
+        "max_worker_nodes": {
+            "description": "The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_worker_nodes for all available node types.",
             "type": "integer",
             "minimum": 0
         },
@@ -343,8 +349,10 @@
                            "type": "object",
                            "description": "Provider-specific config for the node, e.g. instance type."
                        },
-                       "min_workers": {"type": "integer"},
-                       "max_workers": {"type": "integer"},
+                       "min_workers": {"type": "integer", "deprecated": true},
+                       "min_worker_nodes": {"type": "integer"},
+                       "max_workers": {"type": "integer", "deprecated": true},
+                       "max_worker_nodes": {"type": "integer"},
                        "resources": {
 						   "type": "object",
 						   "patternProperties": {

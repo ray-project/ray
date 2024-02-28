@@ -1,6 +1,6 @@
 cluster_name: launch_templates
 
-max_workers: 2
+max_worker_nodes: 2
 
 provider:
     type: aws
@@ -46,8 +46,8 @@ available_node_types:
       InstanceType: m5.large
 
   ray.worker.default:
-    min_workers: 0
-    max_workers: 1
+    min_worker_nodes: 0
+    max_worker_nodes: 1
     resources: {}
     node_config:
       LaunchTemplate:

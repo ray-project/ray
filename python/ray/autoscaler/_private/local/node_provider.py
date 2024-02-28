@@ -53,7 +53,7 @@ class ClusterState:
                 logger.info(
                     "ClusterState: Loaded cluster state: {}".format(list(workers))
                 )
-                for worker_ip in provider_config["worker_ips"]:
+                for worker_ip in provider_config["worker_node_ips"]:
                     if worker_ip not in workers:
                         workers[worker_ip] = {
                             "tags": {TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
@@ -76,7 +76,7 @@ class ClusterState:
                     )
                 # Relevant when a user reduces the number of workers
                 # without changing the headnode.
-                list_of_node_ips = list(provider_config["worker_ips"])
+                list_of_node_ips = list(provider_config["worker_node_ips"])
                 list_of_node_ips.append(provider_config["head_ip"])
                 for worker_ip in list(workers):
                     if worker_ip not in list_of_node_ips:
@@ -90,7 +90,7 @@ class ClusterState:
                     head = workers[provider_config["head_ip"]]
                     head["external_ip"] = external_head_ip
 
-                assert len(workers) == len(provider_config["worker_ips"]) + 1
+                assert len(workers) == len(provider_config["worker_node_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.debug(
                         "ClusterState: Writing cluster state: {}".format(workers)

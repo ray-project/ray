@@ -53,8 +53,8 @@ def set_kill_interval(request):
                 "node_config": {
                     "object_store_memory": int(200e6),
                 },
-                "min_workers": 0,
-                "max_workers": 3,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 3,
             },
         },
     }
@@ -315,8 +315,8 @@ def test_node_killer_filter():
                     "CPU": 1,
                 },
                 "node_config": {},
-                "min_workers": 2,
-                "max_workers": 2,
+                "min_worker_nodes": 2,
+                "max_worker_nodes": 2,
             },
         },
     )

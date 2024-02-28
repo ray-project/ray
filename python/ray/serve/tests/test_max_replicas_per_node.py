@@ -60,8 +60,8 @@ def check_alive_nodes(expected: int):
                         "CPU": 9999,
                     },
                     "node_config": {},
-                    "min_workers": 0,
-                    "max_workers": 100,
+                    "min_worker_nodes": 0,
+                    "max_worker_nodes": 100,
                 },
             },
         }
@@ -116,8 +116,8 @@ def test_basic(ray_autoscaling_cluster):
                         "CPU": 9999,
                     },
                     "node_config": {},
-                    "min_workers": 0,
-                    "max_workers": 100,
+                    "min_worker_nodes": 0,
+                    "max_worker_nodes": 100,
                 },
             },
         }

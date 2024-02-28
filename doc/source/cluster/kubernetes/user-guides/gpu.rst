@@ -34,7 +34,7 @@ Using Nvidia GPUs requires specifying `nvidia.com/gpu` resource `limits` and `re
 `headGroupSpec` and/or `workerGroupSpecs`.
 
 Here is a config snippet for a RayCluster workerGroup of up
-to 5 GPU workers.
+to 5 GPU worker nodes.
 
 .. code-block:: yaml
 
@@ -64,7 +64,7 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
 
 .. tip::
 
-    GPU instances are expensive -- consider setting up autoscaling for your GPU Ray workers,
+    GPU instances are expensive -- consider setting up autoscaling for your GPU Ray worker nodes,
     as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above.
     To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec`
     Finally, make sure you configured the group or pool of GPU Kubernetes nodes, to autoscale.
@@ -109,10 +109,10 @@ The Ray autoscaler is aware of each Ray worker group's GPU capacity.
 Say we have a RayCluster configured as in the config snippet above:
 
 - There is a worker group of Ray pods with 1 unit of GPU capacity each.
-- The Ray cluster does not currently have any workers from that group.
+- The Ray cluster does not currently have any worker nodes from that group.
 - `maxReplicas` for the group is at least 2.
 
-Then the following Ray program will trigger upscaling of 2 GPU workers.
+Then the following Ray program will trigger upscaling of 2 GPU worker nodes.
 
 .. code-block:: python
 
@@ -157,7 +157,7 @@ The following program will remove the resource request.
     ray.init()
     ray.autoscaler.sdk.request_resources(bundles=[])
 
-The GPU workers can then scale down.
+The GPU worker nodes can then scale down.
 
 .. _kuberay-gpu-override:
 

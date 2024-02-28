@@ -6,7 +6,7 @@ cluster_name: ray-cluster-xgboost-benchmark
 
 # The maximum number of worker nodes to launch in addition to the head
 # node.
-max_workers: 9
+max_worker_nodes: 9
 
 docker:
   image: "rayproject/ray-ml:2.0.0"
@@ -33,10 +33,10 @@ available_node_types:
 
   # Configurations for the worker nodes.
   worker:
-    # To experiment with autoscaling, set min_workers to 0.
-    # min_workers: 0
-    min_workers: 9
-    max_workers: 9
+    # To experiment with autoscaling, set min_worker_nodes to 0.
+    # min_worker_nodes: 0
+    min_worker_nodes: 9
+    max_worker_nodes: 9
     node_config:
       InstanceType: m5.4xlarge
       ImageId: latest_dlami

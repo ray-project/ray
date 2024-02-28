@@ -11,7 +11,7 @@ Syntax
 .. parsed-literal::
 
     :ref:`cluster_name <cluster-configuration-cluster-name>`: str
-    :ref:`max_workers <cluster-configuration-max-workers>`: int
+    :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`: int
     :ref:`upscaling_speed <cluster-configuration-upscaling-speed>`: float
     :ref:`idle_timeout_minutes <cluster-configuration-idle-timeout-minutes>`: int
     :ref:`docker <cluster-configuration-docker>`:
@@ -247,8 +247,8 @@ created according to cluster configuration and Ray resource demands.
             :ref:`Node config <cluster-configuration-node-config-type>`
         :ref:`resources <cluster-configuration-resources>`:
             :ref:`Resources <cluster-configuration-resources-type>`
-        :ref:`min_workers <cluster-configuration-node-min-workers>`: int
-        :ref:`max_workers <cluster-configuration-node-max-workers>`: int
+        :ref:`min_worker_nodes <cluster-configuration-node-min-worker-nodes>`: int
+        :ref:`max_worker_nodes <cluster-configuration-node-max-worker-nodes>`: int
         :ref:`worker_setup_commands <cluster-configuration-node-type-worker-setup-commands>`:
             - str
         :ref:`docker <cluster-configuration-node-docker>`:
@@ -348,10 +348,10 @@ The name of the cluster. This is the namespace of the cluster.
 * **Default:** "default"
 * **Pattern:** ``[a-zA-Z0-9_]+``
 
-.. _cluster-configuration-max-workers:
+.. _cluster-configuration-max-worker-nodes:
 
-``max_workers``
-~~~~~~~~~~~~~~~
+``max_worker_nodes``
+~~~~~~~~~~~~~~~~~~~~
 
 The maximum number of workers the cluster will have at any given time.
 
@@ -362,12 +362,19 @@ The maximum number of workers the cluster will have at any given time.
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
+.. _cluster-configuration-max-workers:
+
+``max_workers``
+~~~~~~~~~~~~~~~~~~~~
+
+Deprecated since Ray 2.10 in favor of :ref:`max_worker_nodes` <cluster-configuration-max-worker-nodes>, which has identical behavior but has a new name to avoid confusion with worker processes.
+
 .. _cluster-configuration-upscaling-speed:
 
 ``upscaling_speed``
 ~~~~~~~~~~~~~~~~~~~
 
-The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up.
+The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_worker_nodes` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up.
 
 * **Required:** No
 * **Importance:** Medium
@@ -468,7 +475,7 @@ Each node type is identified by a user-specified key.
                   InstanceMarketOptions:
                       MarketType: spot
                 resources: {"CPU": 2}
-                min_workers: 0
+                min_worker_nodes: 0
 
 .. _cluster-configuration-head-node-type:
 
@@ -1392,14 +1399,14 @@ The resources that a node type provides, which enables the autoscaler to automat
 * **Type:** :ref:`Resources <cluster-configuration-resources-type>`
 * **Default:** ``{}``
 
-In some cases, adding special nodes without any resources may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs. In order to manually add a node to an autoscaled cluster, the *ray-cluster-name* tag should be set and *ray-node-type* tag should be set to unmanaged. Unmanaged nodes can be created by setting the resources to ``{}`` and the :ref:`maximum workers <cluster-configuration-node-min-workers>` to 0. The Autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
+In some cases, adding special nodes without any resources may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs. In order to manually add a node to an autoscaled cluster, the *ray-cluster-name* tag should be set and *ray-node-type* tag should be set to unmanaged. Unmanaged nodes can be created by setting the resources to ``{}`` and the :ref:`maximum worker nodes <cluster-configuration-node-max-worker-nodes>` to 0. The Autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
 
-.. _cluster-configuration-node-min-workers:
+.. _cluster-configuration-node-min-worker-nodes:
 
-``available_node_types.<node_type_name>.node_type.min_workers``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``available_node_types.<node_type_name>.node_type.min_worker_nodes``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The minimum number of workers to maintain for this node type regardless of utilization.
+The minimum number of worker nodes to maintain for this node type regardless of utilization.
 
 * **Required:** No
 * **Importance:** High
@@ -1408,21 +1415,31 @@ The minimum number of workers to maintain for this node type regardless of utili
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
-.. _cluster-configuration-node-max-workers:
-
-``available_node_types.<node_type_name>.node_type.max_workers``
+``available_node_types.<node_type_name>.node_type.min_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
+Deprecated since Ray 2.10 in favor of :ref:`min_worker_nodes <cluster-configuration-node-min-worker-nodes>`, which has identical behavior but has a new name to avoid confusion with worker processes.
 
-Note, for the nodes of type ``head_node_type`` the default number of max workers is 0.
+.. _cluster-configuration-node-max-worker-nodes:
+
+``available_node_types.<node_type_name>.node_type.max_worker_nodes``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The maximum number of worker nodes to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-worker-nodes>`. By default, the number of worker nodes of a node type is unbounded, constrained only by the cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
+
+Note, for the nodes of type ``head_node_type`` the default number of max worker nodes is 0.
 
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
-* **Default:** cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`
+* **Default:** cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`
 * **Minimum:** ``0``
-* **Maximum:** cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`
+* **Maximum:** cluster-wide :ref:`max_worker_nodes <cluster-configuration-max-worker-nodes>`
+
+``available_node_types.<node_type_name>.node_type.max_workers``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Deprecated since Ray 2.10 in favor of :ref:`max_worker_nodes <cluster-configuration-node-max-worker-nodes>`, which has identical behavior but has a new name to avoid confusion with worker processes.
 
 .. _cluster-configuration-node-type-worker-setup-commands:
 

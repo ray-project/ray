@@ -13,7 +13,7 @@
 # python docker_monitor.py example_docker.yaml &
 # RAY_FAKE_DOCKER=1 ray up -y example_docker.yaml
 cluster_name: fake_docker
-max_workers: 8
+max_worker_nodes: 8
 provider:
     type: fake_multinode_docker
     disable_launch_config_check: True
@@ -41,22 +41,22 @@ available_node_types:
             CPU: 4
             GPU: 0
         node_config: {}
-        max_workers: 0
+        max_worker_nodes: 0
     ray.worker.cpu:
         resources:
             CPU: 2
             object_store_memory: 1000000000
         node_config: {}
-        min_workers: 1
-        max_workers: 4
+        min_worker_nodes: 1
+        max_worker_nodes: 4
     ray.worker.gpu:
         resources:
             CPU: 4
             GPU: 1
             object_store_memory: 1000000000
         node_config: {}
-        min_workers: 1
-        max_workers: 2
+        min_worker_nodes: 1
+        max_worker_nodes: 2
 head_node_type: ray.head.default
 upscaling_speed: 1.0
 idle_timeout_minutes: 0.1

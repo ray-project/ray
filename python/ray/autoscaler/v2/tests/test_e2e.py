@@ -29,8 +29,8 @@ def test_autoscaler_no_churn():
             "type-1": {
                 "resources": {"CPU": num_cpus_per_node},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 2 * expected_nodes,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 2 * expected_nodes,
             },
         },
     )
@@ -113,8 +113,8 @@ def test_scheduled_task_no_pending_demand(mode):
             "type-1": {
                 "resources": {"CPU": 1},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 1,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 1,
             },
         },
     )
@@ -179,8 +179,8 @@ def test_placement_group_consistent():
             "type-1": {
                 "resources": {"CPU": 1},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 2,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 2,
             },
         },
     )
@@ -244,8 +244,8 @@ def test_placement_group_removal_idle_node():
             "type-1": {
                 "resources": {"CPU": 2},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 2,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 2,
             },
         },
     )
@@ -323,8 +323,8 @@ def test_serve_num_replica_idle_node():
             "type-1": {
                 "resources": {"CPU": 4},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 30,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 30,
             },
         },
         idle_timeout_minutes=999,
@@ -405,8 +405,8 @@ def test_non_corrupted_resources():
             "type-1": {
                 "resources": {"CPU": 2},
                 "node_config": {},
-                "min_workers": num_worker_nodes,
-                "max_workers": num_worker_nodes,
+                "min_worker_nodes": num_worker_nodes,
+                "max_worker_nodes": num_worker_nodes,
             },
         },
     )
