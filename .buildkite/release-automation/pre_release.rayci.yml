@@ -34,5 +34,3 @@ steps:
       env:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "nightly"
-
-
