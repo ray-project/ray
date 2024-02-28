@@ -118,6 +118,7 @@ export const ServeApplicationRows = ({
             key={`${deployment.application.name}-${deployment.name}`}
             deployment={deployment}
             application={application}
+            showExpandColumn={true}
           />
         ))}
     </React.Fragment>

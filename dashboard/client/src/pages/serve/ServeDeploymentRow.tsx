@@ -47,7 +47,7 @@ export type ServeDeploymentRowProps = {
 export const ServeDeploymentRow = ({
   deployment,
   application: { last_deployed_time_s, name: applicationName },
-  showExpandColumn = true
+  showExpandColumn = false
 }: ServeDeploymentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
