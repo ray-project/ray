@@ -807,7 +807,6 @@ class MultiAgentEpisode:
             if len_lookback_buffer > 0
             else slice(None, 0)  # -> empty slice
         )
-        print("indices_obs_and_infos=", indices_obs_and_infos, "indices_rest=", indices_rest)
 
         successor = MultiAgentEpisode(
             # Same ID.
@@ -1699,13 +1698,13 @@ class MultiAgentEpisode:
         # the next step.
         agent_indices = {}
         agent_id = None
-        for agent_id, sa_episode in self.agent_episodes.items():
+        for agent_id in self.agent_episodes.keys():
             if agent_id not in agent_ids:
                 continue
             agent_indices[agent_id] = self.env_t_to_agent_t[agent_id].get(
                 indices,
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
-                fill=self.SKIP_ENV_TS_TAG,
+                fill=self.SKIP_ENV_TS_TAG,# if fill is not None else None,
                 # For those records where there is no "hanging" last timestep (all
                 # other than obs and infos), we have to ignore the last entry in
                 # the env_t_to_agent_t mappings.
@@ -1717,13 +1716,24 @@ class MultiAgentEpisode:
         for i in range(len(next(iter(agent_indices.values())))):
             ret2 = {}
             for agent_id, idxes in agent_indices.items():
+                buffer_val = self._get_buffer_value(what, agent_id)
+                inf_lookback_buffer, indices_to_use = (
+                    self._get_inf_lookback_buffer_or_dict(
+                        agent_id,
+                        what,
+                        extra_model_outputs_key,
+                        buffer_val,
+                        filter_for_skip_indices=idxes[i],
+                    )
+                )
                 agent_value = self._get_single_agent_data_by_index(
                     what=what,
+                    inf_lookback_buffer=inf_lookback_buffer,
                     agent_id=agent_id,
-                    index=idxes[i],
+                    index=indices_to_use,
                     fill=fill,
                     one_hot_discrete=one_hot_discrete,
-                    buffer_val=self._get_buffer_value(what, agent_id),
+                    buffer_val=buffer_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
                 if agent_value is not None:
@@ -1742,6 +1752,7 @@ class MultiAgentEpisode:
         one_hot_discrete,
         extra_model_outputs_key,
     ):
+        ignore_last_ts = what not in ["observations", "infos"]
         ret = {}
         for agent_id, sa_episode in self.agent_episodes.items():
             if agent_id not in agent_ids:
@@ -1754,7 +1765,11 @@ class MultiAgentEpisode:
                 # For those records where there is no "hanging" last timestep (all
                 # other than obs and infos), we have to ignore the last entry in
                 # the env_t_to_agent_t mappings.
-                _ignore_last_ts=what not in ["observations", "infos"],
+                _ignore_last_ts=ignore_last_ts,
+            )
+            inf_lookback_buffer, agent_indices = self._get_inf_lookback_buffer_or_dict(
+                agent_id, what, extra_model_outputs_key, buffer_val,
+                filter_for_skip_indices=agent_indices
             )
             if isinstance(agent_indices, list):
                 agent_values = self._get_single_agent_data_by_env_step_indices(
@@ -1766,11 +1781,17 @@ class MultiAgentEpisode:
                     buffer_val=buffer_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
-                if len(agent_values) == 0:
-                    continue
+                if len(agent_values) > 0:
+                    ret[agent_id] = agent_values
             else:
+                #if (
+                #    what not in ["observations", "infos"]
+                #    and agent_indices == len(inf_lookback_buffer) + inf_lookback_buffer.lookback
+                #):
+                #    agent_indices = "S"
                 agent_values = self._get_single_agent_data_by_index(
                     what=what,
+                    inf_lookback_buffer=inf_lookback_buffer,
                     agent_id=agent_id,
                     index=agent_indices,
                     fill=fill,
@@ -1778,15 +1799,15 @@ class MultiAgentEpisode:
                     buffer_val=buffer_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
-            if agent_values is None:
-                continue
-            ret[agent_id] = agent_values
+                if agent_values is not None:
+                    ret[agent_id] = agent_values
         return ret
 
     def _get_single_agent_data_by_index(
         self,
         *,
         what,
+        inf_lookback_buffer,
         agent_id,
         index,
         fill,
@@ -1814,8 +1835,6 @@ class MultiAgentEpisode:
             )
         # No skip timestep -> Provide value at given index for this agent.
         else:
-            inf_lookback_buffer = getattr(sa_episode, what)
-
             if what == "extra_model_outputs":
                 # Special case: extra_model_outputs and key=None (return all keys as
                 # a dict). Note that `inf_lookback_buffer` is NOT an infinite lookback
@@ -1832,11 +1851,6 @@ class MultiAgentEpisode:
                         )
                         for key, sub_buffer in inf_lookback_buffer.items()
                     }
-
-                # `what=extra_model_outputs` and `key` is given -> `inf_lookback_buffer`
-                # is not a buffer, but a dict -> extract actual buffer from this dict
-                # using `key`.
-                inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
 
             # Extract data directly from the infinite lookback buffer object.
             return inf_lookback_buffer.get(
@@ -1918,3 +1932,42 @@ class MultiAgentEpisode:
         self._agent_buffered_actions.pop(agent_id, None)
         self._agent_buffered_extra_model_outputs.pop(agent_id, None)
         self._agent_buffered_rewards.pop(agent_id, None)
+
+    def _get_inf_lookback_buffer_or_dict(
+        self,
+        agent_id,
+        what,
+        extra_model_outputs_key,
+        buffer_val,
+        filter_for_skip_indices=None,
+    ):
+        inf_lookback_buffer_or_dict = inf_lookback_buffer = getattr(self.agent_episodes[agent_id], what)
+        if what == "extra_model_outputs":
+            if extra_model_outputs_key is not None:
+                inf_lookback_buffer = inf_lookback_buffer_or_dict[extra_model_outputs_key]
+            elif inf_lookback_buffer_or_dict:
+                inf_lookback_buffer = next(iter(inf_lookback_buffer_or_dict.values()))
+            elif filter_for_skip_indices is not None:
+                return inf_lookback_buffer_or_dict, filter_for_skip_indices
+            else:
+                return inf_lookback_buffer_or_dict
+
+        if filter_for_skip_indices is not None:
+            inf_lookback_buffer_len = (
+                len(inf_lookback_buffer)
+                + inf_lookback_buffer.lookback
+                + (buffer_val is not None)
+            )
+            ignore_last_ts = what not in ["observations", "infos"]
+            if isinstance(filter_for_skip_indices, list):
+                filter_for_skip_indices = [
+                    "S"
+                    if ignore_last_ts and i == inf_lookback_buffer_len
+                    else i
+                    for i in filter_for_skip_indices
+                ]
+            elif ignore_last_ts and filter_for_skip_indices == inf_lookback_buffer_len:
+                filter_for_skip_indices = "S"
+            return inf_lookback_buffer_or_dict, filter_for_skip_indices
+        else:
+            return inf_lookback_buffer_or_dict

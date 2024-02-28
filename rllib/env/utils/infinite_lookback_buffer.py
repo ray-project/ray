@@ -455,7 +455,6 @@ class InfiniteLookbackBuffer:
                 data = data_to_use[idx]
         # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
         except IndexError as e:
-            print("data_to_use=", data_to_use, "idx=", idx)
             if fill is not None:
                 if self.space is None:
                     return fill

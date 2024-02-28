@@ -63,7 +63,6 @@ if __name__ == "__main__":
         .environment("env")
         # And new EnvRunner.
         .rollouts(
-            rollout_fragment_length=10,#TODO: debug weird crashes in multi-agent prev-a/prev-r
             env_to_module_connector=_env_to_module,
             num_rollout_workers=args.num_env_runners,
             # Set up the correct env-runner to use depending on
@@ -89,6 +88,7 @@ if __name__ == "__main__":
             model=dict(
                 {
                     "use_lstm": True,
+                    "max_seq_len": 50,
                     "fcnet_hiddens": [32],
                     "fcnet_activation": "linear",
                     "vf_share_layers": True,
