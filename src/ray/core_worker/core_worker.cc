@@ -132,7 +132,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   });
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
-  if (RayConfig::instance().kill_child_processes_on_worker_exit()) {
+  if (RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
     // Not setting sigchld = ignore: user may want to do waitpid on their own.
     // If user's bad code causes a zombie process, it will hang their in zombie status
     // until this worker exits and raylet reaps it.

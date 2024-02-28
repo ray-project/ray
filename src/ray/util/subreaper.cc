@@ -37,7 +37,7 @@ namespace ray {
 
 // Set this process as a subreaper.
 // Only works on Linux >= 3.4.
-void SetThisProcessAsSubreaper() {
+bool SetThisProcessAsSubreaper() {
   if (prctl(PR_SET_CHILD_SUBREAPER, 1) == -1) {
     RAY_LOG(WARNING) << "Failed to set this process as subreaper: " << strerror(errno);
     return false;

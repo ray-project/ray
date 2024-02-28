@@ -10,6 +10,13 @@ import sys
 logger = logging.getLogger(__name__)
 
 
+@pytest.fixture
+def enable_subreaper():
+    os.environ["RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper"] = "true"
+    yield
+    del os.environ["RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper"]
+
+
 def sleep_forever():
     while True:
         time.sleep(10000)
@@ -58,7 +65,8 @@ def test_ray_kill_can_kill_subprocess():
     sys.platform != "linux",
     reason="Orphan process killing only works on Linux.",
 )
-def test_sigkilled_worker_can_kill_subprocess():
+def test_sigkilled_worker_can_kill_subprocess(enable_subreaper, shutdown_only):
+    ray.init()
     # sigkill'd actor can't kill subprocesses
     b = BedMaker.remote()
     pid = ray.get(b.make_sleeper.remote())

@@ -84,10 +84,10 @@ class Process {
   // The subprocess is child of this process, so it's caller process's duty to handle
   // SIGCHLD signal and reap the zombie children.
   //
-  // NOTE: if `kill_child_processes_on_worker_exit` is true (default), raylet will kill
-  // any orphan subprocesses as grandchildren of the raylet process. This is to prevent
-  // leaked processes from dead core workers. If you intend to keep the subprocesses
-  // running after the parent process dies, you should set that to false.
+  // NOTE: if `RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper` is true,
+  // raylet will kill any orphan subprocesses as grandchildren of the raylet process. This
+  // is to prevent leaked processes from dead core workers. If you intend to keep the
+  // subprocesses running after the parent process dies, you should set that to false.
   explicit Process(const char *argv[],
                    void *io_service,
                    std::error_code &ec,

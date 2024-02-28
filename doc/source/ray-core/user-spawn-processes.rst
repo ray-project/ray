@@ -1,11 +1,9 @@
 Lifetimes of a User-Spawn Process
 =================================
 
-To avoid leaking user-spawned processes, Ray automatically kills all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch). 
+To avoid leaking user-spawned processes, Ray provides a flag to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch). 
 
-This document describes the lifecycle of a user-spawned process in Ray. A user-spawned process is a process that is started by a user and not by Ray.
-
-On Linux by default (controlled by the environment variable `RAY_kill_child_processes_on_worker_exit`), the lifetime of a user-spawned process is tied to the lifetime of the parent Ray worker process. When the parent Ray worker process exits, for example when actor is killed, all of its child processes are killed as well.
+On Linux if the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` is set to ``true``, Ray kills a user-spawned process when the parent Ray worker process exits, for example when actor is killed. This is recursive, that the grandchildren processes from a user-spawn process are killed as well.
 
 On other platforms, the lifetime of a user-spawned process is not controlled by Ray. The user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run.
 
@@ -45,14 +43,14 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
   assert not psutil.pid_exists(pid)
 
 
-Disabling the feature
+Enabling the feature
 -------------------------
 
-To disable the feature, set the environment variable ``RAY_kill_child_processes_on_worker_exit`` to ``false`` **when starting the Ray cluster**, for example in  If a Ray cluster is already running, you need to restart the Ray cluster to apply the change. Setting ``env_var`` in a runtime environment will NOT work.
+To enable the feature, set the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` to ``true`` **when starting the Ray cluster**, If a Ray cluster is already running, you need to restart the Ray cluster to apply the change. Setting ``env_var`` in a runtime environment will NOT work.
 
 .. code-block:: bash
 
-  RAY_kill_child_processes_on_worker_exit=false ray start --head
+  RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper=true ray start --head
 
 
 Platform support
