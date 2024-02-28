@@ -420,6 +420,7 @@ def test_scheduling_progress_when_output_blocked(
 def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
+    block_size = 10 * 1024*1024
 
     @ray.remote
     class Counter:
@@ -436,17 +437,21 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
 
     def func(x):
         ray.get(counter.inc.remote())
-        return x
+        return {
+            "data": [np.ones(block_size, dtype=np.uint8)],
+        }
 
     ctx = DataContext.get_current()
-    ctx.execution_options.resource_limits.object_store_memory = 10000
+    ctx.target_max_block_size = block_size
+    ctx.execution_options.resource_limits.object_store_memory = block_size
 
     # Only take the first item from the iterator.
-    ds = ray.data.range(100000, parallelism=100).map_batches(func, batch_size=None)
-    it = iter(ds.iter_batches(batch_size=None))
+    ds = ray.data.range(100, parallelism=100).map_batches(func, batch_size=None)
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
     next(it)
     time.sleep(3)  # Pause a little so anything that would be executed runs.
     num_finished = ray.get(counter.get.remote())
+    print(num_finished)
     assert num_finished < 20, num_finished
     # Check intermediate stats reporting.
     stats = ds.stats()
