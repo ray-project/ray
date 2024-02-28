@@ -8,10 +8,10 @@ from typing import Optional, Tuple
 import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    RAY_SERVE_DISABLE_STDOUT,
     RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
+    RAY_SERVE_LOG_TO_STDERR,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
@@ -154,11 +154,7 @@ def access_log_msg(*, method: str, status: str, latency_ms: float):
 
 
 def log_to_stderr_filter(record: logging.LogRecord) -> bool:
-    """Filters log records based on a parameter in the `extra` dictionary or
-    RAY_SERVE_DISABLE_STDOUT environment variable."""
-    if RAY_SERVE_DISABLE_STDOUT:
-        return False
-
+    """Filters log records based on a parameter in the `extra` dictionary."""
     if not hasattr(record, "log_to_stderr") or record.log_to_stderr is None:
         return True
 
@@ -196,7 +192,7 @@ class StreamToLogger(object):
     This comes from https://stackoverflow.com/a/36296215 directly.
     """
 
-    def __init__(self, logger, log_level=logging.INFO):
+    def __init__(self, logger, log_level):
         self.logger = logger
         self.log_level = log_level
         self.linebuf = ""
@@ -260,10 +256,12 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(ServeFormatter(component_name, component_id))
-    stream_handler.addFilter(log_to_stderr_filter)
-    logger.addHandler(stream_handler)
+    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
+    if RAY_SERVE_LOG_TO_STDERR:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+        stream_handler.addFilter(log_to_stderr_filter)
+        logger.addHandler(stream_handler)
 
     if logging_config.logs_dir:
         logs_dir = logging_config.logs_dir
@@ -304,7 +302,7 @@ def configure_component_logger(
         file_handler.addFilter(log_access_log_filter)
 
     # Redirect stdout and stderr to Serve logger.
-    if RAY_SERVE_DISABLE_STDOUT:
+    if not RAY_SERVE_LOG_TO_STDERR:
         sys.stdout = StreamToLogger(logger, logging.INFO)
         sys.stderr = StreamToLogger(logger, logging.ERROR)
 

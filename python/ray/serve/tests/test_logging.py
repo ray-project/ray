@@ -3,12 +3,12 @@ import json
 import logging
 import os
 import re
-import shutil
 import string
 import sys
 import time
 from contextlib import redirect_stderr
 from pathlib import Path
+from typing import List, Tuple
 from unittest.mock import patch
 
 import pytest
@@ -24,11 +24,23 @@ from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NA
 from ray.serve._private.logging_utils import (
     ServeFormatter,
     ServeJSONFormatter,
+    StreamToLogger,
     configure_component_logger,
     get_component_log_file_name,
     get_serve_logs_dir,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
+
+
+class FakeLogger:
+    def __init__(self):
+        self._logs: List[Tuple[int, str]] = []
+
+    def log(self, level: int, message: str):
+        self._logs.append((level, message))
+
+    def get_logs(self):
+        return self._logs
 
 
 @pytest.fixture
@@ -649,21 +661,17 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_DISABLE_STDOUT": "1"},
+        {"RAY_SERVE_LOG_TO_STDERR": "0"},
     ],
     indirect=True,
 )
-def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance):
-    """Test logging when RAY_SERVE_DISABLE_STDOUT is set.
+def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
+    """Test logging when RAY_SERVE_LOG_TO_STDERR is set.
 
-    When RAY_SERVE_DISABLE_STDOUT=1 is set, serve should redirect stdout and stderr to
+    When RAY_SERVE_LOG_TO_STDERR=0 is set, serve should redirect stdout and stderr to
     serve logger.
     """
-    # Clean up log directory.
-    logs_dir = Path("/tmp/fake_logs_dir")
-    if logs_dir.exists() and logs_dir.is_dir():
-        shutil.rmtree(logs_dir)
-
+    logs_dir = Path(tmp_dir)
     logging_config = LoggingConfig(encoding="JSON", logs_dir=str(logs_dir))
     serve_logger = logging.getLogger("ray.serve")
 
@@ -695,6 +703,30 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance):
     assert from_serve_logger_check
     assert from_print_check
     assert from_error_check
+
+
+def test_stream_to_logger():
+    """Test calling methods on StreamToLogger."""
+    logger = FakeLogger()
+    stream_to_logger = StreamToLogger(logger, logging.INFO)
+    assert logger.get_logs() == []
+
+    # Calling isatty() should return True.
+    assert stream_to_logger.isatty() is True
+
+    # Logs are buffered and not flushed to logger.
+    stream_to_logger.write("foo")
+    assert logger.get_logs() == []
+
+    # Logs are flushed when the message ends with newline "\n".
+    stream_to_logger.write("bar\n")
+    assert logger.get_logs() == [(20, "foobar")]
+
+    # Calling flush directly can also flush the message to the logger.
+    stream_to_logger.write("baz")
+    assert logger.get_logs() == [(20, "foobar")]
+    stream_to_logger.flush()
+    assert logger.get_logs() == [(20, "foobar"), (20, "baz")]
 
 
 if __name__ == "__main__":
