@@ -6,14 +6,15 @@ import math
 import os
 import sys
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Container,
     Dict,
+    List,
     Optional,
     Tuple,
     Type,
+    TYPE_CHECKING,
     Union,
 )
 
@@ -21,7 +22,10 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    DEFAULT_MODULE_ID,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -148,6 +152,14 @@ class AlgorithmConfig(_Config):
         tune.Tuner("PPO", param_space=config.to_dict())
     """
 
+    @staticmethod
+    def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
+        # The default agent ID to module ID mapping function to use in the multi-agent
+        # case if None is provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_MODULE_ID
+
+    # TODO (sven): Deprecate in new API stack.
     @staticmethod
     def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
         # The default policy mapping function to use if None provided.
@@ -397,18 +409,20 @@ class AlgorithmConfig(_Config):
         self.exploration_config = {}
 
         # `self.multi_agent()`
-        self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
         # `self.algorithm_config_overrides_per_module`.
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
+        self.count_steps_by = "env_steps"
+        # self.agent_to_module_mapping_fn = self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
+        # Soon to be Deprecated.
+        self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
         self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
         self.policy_states_are_swappable = False
         self.observation_fn = None
-        self.count_steps_by = "env_steps"
 
         # `self.offline_data()`
         self.input_ = "sampler"
@@ -433,6 +447,7 @@ class AlgorithmConfig(_Config):
         self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
+        self.custom_async_evaluation_function = None
         self.always_attach_evaluation_results = False
         self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
@@ -859,15 +874,18 @@ class AlgorithmConfig(_Config):
 
         pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
-            env=env,
+            input_observation_space=getattr(
+                env, "single_observation_space", env.observation_space
+            ),
+            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
         pipeline.append(
             DefaultEnvToModule(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
+                multi_agent=self.is_multi_agent(),
+                modules=set(self.policies),
+                agent_to_module_mapping_fn=self.policy_mapping_fn,
             )
         )
         return pipeline
@@ -897,15 +915,15 @@ class AlgorithmConfig(_Config):
 
         pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
-            input_observation_space=env.single_observation_space,
-            input_action_space=env.single_action_space,
-            env=env,
+            input_observation_space=getattr(
+                env, "single_observation_space", env.observation_space
+            ),
+            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
         pipeline.append(
             DefaultModuleToEnv(
                 input_observation_space=pipeline.observation_space,
                 input_action_space=pipeline.action_space,
-                env=env,
                 normalize_actions=self.normalize_actions,
                 clip_actions=self.clip_actions,
             )
@@ -1401,10 +1419,10 @@ class AlgorithmConfig(_Config):
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
         env_to_module_connector: Optional[
-            Callable[[EnvType], "ConnectorV2"]
+            Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         module_to_env_connector: Optional[
-            Callable[[EnvType, "RLModule"], "ConnectorV2"]
+            Callable[[EnvType, "RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
@@ -1686,7 +1704,7 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
-            Callable[["RLModule"], "ConnectorV2"]
+            Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         # Deprecated arg.
         _enable_learner_api: Optional[bool] = NotProvided,
@@ -1731,11 +1749,14 @@ class AlgorithmConfig(_Config):
                 clipping. Allowed values are `value`, `norm`, and `global_norm`.
             train_batch_size_per_learner: Train batch size per individual Learner
                 worker. This setting only applies to the new API stack. The number
-                of Learner workers can be set via
-                `config.resources(num_learner_workers=...)`.
+                of Learner workers can be set via `config.resources(
+                num_learner_workers=...)`. The total effective batch size is then
+                `num_learner_workers` x `train_batch_size_per_learner` and can
+                be accessed via the property `AlgorithmConfig.total_train_batch_size`.
             train_batch_size: Training batch size, if applicable. When on the new API
-                stack, this setting should no longer be used and instead
-                `train_batch_size_per_worker` should be used.
+                stack, this setting should no longer be used. Instead, use
+                `train_batch_size_per_learner` (in combination with
+                `num_learner_workers`).
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -1839,6 +1860,8 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    # TODO (sven): Deprecate this method. Move `explore` setting into `rollouts()`.
+    #  `exploration_config` should no longer be used on the new API stack.
     def exploration(
         self,
         *,
@@ -1887,6 +1910,7 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_workers: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
+        custom_async_evaluation_function: Optional[Callable] = NotProvided,
         always_attach_evaluation_results: Optional[bool] = NotProvided,
         enable_async_evaluation: Optional[bool] = NotProvided,
         # Deprecated args.
@@ -1956,6 +1980,19 @@ class AlgorithmConfig(_Config):
                 metrics: dict. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
+            custom_async_evaluation_function: In case the new `EnvRunner API` is used
+                and `enable_async_evaluation=True` customize the asynchronous evaluation
+                method. This must be a function of signature (algo: Algorithm,
+                eval_workers: WorkerSet, weights_ref: ObjectRef, weights_seq_no: int)
+                -> metrics: dict. See the `Algorithm._evaluate_async_with_env_runner()`
+                method to see the default implementation. The Algorithm guarantees all
+                eval workers have the latest module and connector states before this
+                function is called. Weights reference and weights sequence number are
+                passed over to avoid synching the weights too often. `weights_ref` is
+                a reference to the modules' weights in object store and `weigths_seq_no`
+                is the sequence number that identifies the last weights update, i.e.
+                if this number is identical to the one in stored by the workers, the
+                workers do not update weights again.
             always_attach_evaluation_results: Make sure the latest available evaluation
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
@@ -2010,6 +2047,8 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
+        if custom_async_evaluation_function is not NotProvided:
+            self.custom_async_evaluation_function = custom_async_evaluation_function
         if always_attach_evaluation_results is not NotProvided:
             self.always_attach_evaluation_results = always_attach_evaluation_results
         if enable_async_evaluation is not NotProvided:
@@ -2274,7 +2313,7 @@ class AlgorithmConfig(_Config):
 
         if policy_mapping_fn is not NotProvided:
             # Create `policy_mapping_fn` from a config dict.
-            # Helpful is users would like to specify custom callable classes in
+            # Helpful if users would like to specify custom callable classes in
             # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
@@ -2877,9 +2916,8 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                EnvRunner. If not provided, will try to infer from `env`. Otherwise
-                from `self.observation_space` and `self.action_space`. If no
-                information on spaces can be inferred, will raise an error.
+                EnvRunner. Note that if the `env` argument is provided, will try to
+                infer spaces from `env` first.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
@@ -2965,13 +3003,14 @@ class AlgorithmConfig(_Config):
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
                 elif env_obs_space is not None:
+                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
                     # Multi-agent case AND different agents have different spaces:
                     # Need to reverse map spaces (for the different agents) to certain
                     # policy IDs.
                     if (
-                        isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_obs_space_in_preferred_format")
-                        and env._obs_space_in_preferred_format
+                        isinstance(env_unwrapped, MultiAgentEnv)
+                        and hasattr(env_unwrapped, "_obs_space_in_preferred_format")
+                        and env_unwrapped._obs_space_in_preferred_format
                     ):
                         obs_space = None
                         mapping_fn = self.policy_mapping_fn
@@ -2983,7 +3022,7 @@ class AlgorithmConfig(_Config):
                         # Otherwise, we have to match the policy ID with all possible
                         # agent IDs and find the agent ID that matches.
                         elif mapping_fn:
-                            for aid in env.get_agent_ids():
+                            for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
@@ -3026,13 +3065,14 @@ class AlgorithmConfig(_Config):
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
                 elif env_act_space is not None:
+                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
                     # Multi-agent case AND different agents have different spaces:
                     # Need to reverse map spaces (for the different agents) to certain
                     # policy IDs.
                     if (
-                        isinstance(env, MultiAgentEnv)
-                        and hasattr(env, "_action_space_in_preferred_format")
-                        and env._action_space_in_preferred_format
+                        isinstance(env_unwrapped, MultiAgentEnv)
+                        and hasattr(env_unwrapped, "_action_space_in_preferred_format")
+                        and env_unwrapped._action_space_in_preferred_format
                     ):
                         act_space = None
                         mapping_fn = self.policy_mapping_fn
@@ -3044,7 +3084,7 @@ class AlgorithmConfig(_Config):
                         # Otherwise, we have to match the policy ID with all possible
                         # agent IDs and find the agent ID that matches.
                         elif mapping_fn:
-                            for aid in env.get_agent_ids():
+                            for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
@@ -3116,7 +3156,7 @@ class AlgorithmConfig(_Config):
 
         Raises:
             ValueError: If there is a mismatch between user provided
-            `rollout_fragment_length` and `train_batch_size`.
+            `rollout_fragment_length` and `total_train_batch_size`.
         """
         if (
             self.rollout_fragment_length != "auto"
@@ -3131,16 +3171,18 @@ class AlgorithmConfig(_Config):
             batch_size = min_batch_size
             while batch_size < self.total_train_batch_size:
                 batch_size += min_batch_size
-            if (
-                batch_size - train_batch_size > 0.1 * self.total_train_batch_size
-                or batch_size - min_batch_size - self.total_train_batch_size
-                > (0.1 * train_batch_size)
+            if batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
+            ) or batch_size - min_batch_size - self.total_train_batch_size > (
+                0.1 * self.total_train_batch_size
             ):
                 suggested_rollout_fragment_length = self.total_train_batch_size // (
                     self.num_envs_per_worker * (self.num_rollout_workers or 1)
                 )
                 raise ValueError(
-                    f"Your desired `train_batch_size` ({self.total_train_batch_size}) "
+                    "Your desired `total_train_batch_size` "
+                    f"({self.total_train_batch_size}={self.num_learner_workers} "
+                    f"learners x {self.train_batch_size_per_learner}) "
                     "or a value 10% off of that cannot be achieved with your other "
                     f"settings (num_rollout_workers={self.num_rollout_workers}; "
                     f"num_envs_per_worker={self.num_envs_per_worker}; "
@@ -3404,7 +3446,8 @@ class AlgorithmConfig(_Config):
                         "is passed in nor in the default module spec used in "
                         "the algorithm."
                     )
-
+            # TODO (sven): Find a good way to pack module specific parameters from
+            # the algorithms into the `model_config_dict`.
             if module_spec.observation_space is None:
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
@@ -3597,6 +3640,19 @@ class AlgorithmConfig(_Config):
                         f"`config.multi_agent(policies=..)`!"
                     )
 
+        # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
+        #  multi-agent.
+        if (
+            self.is_multi_agent()
+            and self.uses_new_env_runners
+            and self.num_envs_per_worker > 1
+        ):
+            raise ValueError(
+                "For now, using env vectorization (`config.num_envs_per_worker > 1`) "
+                "in combination with multi-agent AND the new EnvRunners is not "
+                "supported! Try setting `config.num_envs_per_worker = 1`."
+            )
+
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
         if (
@@ -3612,12 +3668,24 @@ class AlgorithmConfig(_Config):
                 "object to fix this problem."
             )
 
-        # If async evaluation is enabled, custom_eval_functions are not allowed.
-        if self.enable_async_evaluation and self.custom_evaluation_function:
-            raise ValueError(
-                "`config.custom_evaluation_function` not supported in combination "
-                "with `enable_async_evaluation=True` config setting!"
-            )
+        # If async evaluation is enabled, custom_eval_functions are not allowed iff
+        # the old `RolloutWorker`is used.
+        if self.custom_evaluation_function:
+            # Uses new `EnvRunner API`.
+            if self.uses_new_env_runners:
+                # If we can potentially use a custom asynchronous evaluation function,
+                # validate it.
+                self._validate_custom_async_evaluation_function(
+                    self.custom_evaluation_function
+                )
+            # Uses old `RolloutWorker`.
+            else:
+                if self.enable_async_evaluation:
+                    raise ValueError(
+                        "`config.custom_evaluation_function` not supported in "
+                        "combination with `enable_async_evaluation=True` config "
+                        "setting!"
+                    )
 
         # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
         # None.
@@ -3729,7 +3797,11 @@ class AlgorithmConfig(_Config):
         # new API stack.
         if self.uses_new_env_runners and self.callbacks_class is not DefaultCallbacks:
             default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
-            user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            try:
+                user_src = inspect.getsource(self.callbacks_class.on_episode_created)
+            # In case user has setup a `partial` instead of an actual Callbacks class.
+            except AttributeError:
+                user_src = default_src
             if default_src != user_src:
                 raise ValueError(
                     "When using the new API stack with EnvRunners, you cannot override "
@@ -3871,6 +3943,54 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+    def _validate_custom_async_evaluation_function(self, func: Callable):
+        """Checks if the custom async evaluation function conforms to standards.
+
+        First, it is checked, if the passed in element is indeed a function.
+        Then it is checked, if the signature contains the required number of
+        arguments, i.e. `algorithm`, `eval_workers`, `weights_ref`, and
+        `weights_seq_no`.
+        Finally, the source code of the element is checked for the usage of
+        `foreach_worker_async`.
+
+        All of these checks are only intended to guide the user when passing
+        in a custom function to evaluate asynchronously.
+
+        Args:
+            func: A callable passed into the configuration argument
+                `custom_async_evaluation_function`.
+
+        Raises:
+            `ValueError` if the callable is not a function, does not contain
+                three arguments and does not make use of
+                `eval_workers.foreach_worker_async`.
+        """
+
+        # Import the inspect module.
+        from inspect import getsourcelines, isfunction, signature
+
+        # Check, if we have indeed a function.
+        if not isfunction(func):
+            raise ValueError("`custom_async_evaluation_function` must be a function.")
+        # Check, if the signature is correct, i.e. three arguments:
+        #   eval_workers, weights_ref, weights_seq_no
+        func_signature = signature(func)
+        if len(func_signature.parameters) != 4:
+            raise ValueError(
+                "`custom_async_eval_function` expects a callable with four "
+                "arguments, namely `algorithm`, `eval_workers`, `weights_ref`, "
+                f"and `weights_seq_no`, but received signature {func_signature}."
+            )
+        # Check, if `foreach_worker_async` is indeed used inside of the
+        # custom evaluation routine.
+        lines, _ = getsourcelines(func)
+        if not any(["foreach_worker_async" in line for line in lines[0]]):
+            raise ValueError(
+                "`custom_async_evaluation_func` expects a callable that "
+                "evaluates asynchronous, i.e. it uses "
+                "`eval_workers.foreach_worker_async()`"
+            )
 
     @staticmethod
     def _serialize_dict(config):

@@ -17,6 +17,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    _skip_validating_runtime_env_uris,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -150,6 +151,17 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
+
+        # By default, runtime_envs with local URIs should be rejected.
+        with pytest.raises(ValueError):
+            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+        # Inside the context, runtime_envs with local URIs should not be rejected.
+        with _skip_validating_runtime_env_uris():
+            schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+            assert schema.runtime_env == env
+
+        # Check that the validation state is reset outside of the context manager.
         with pytest.raises(ValueError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
@@ -197,6 +209,7 @@ class TestDeploymentSchema:
             "num_replicas": 2,
             "route_prefix": "/shallow",
             "max_concurrent_queries": 32,
+            "max_queued_requests": 12,
             "user_config": {"threshold": 0.2, "pattern": "rainbow"},
             "autoscaling_config": None,
             "graceful_shutdown_wait_loop_s": 17,
@@ -254,6 +267,40 @@ class TestDeploymentSchema:
                 DeploymentSchema.parse_obj(deployment_schema)
             deployment_schema[field] = None
 
+    def test_validate_max_queued_requests(self):
+        # Ensure ValidationError is raised when max_queued_requests is not -1 or > 1.
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["max_queued_requests"] = -1
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 1
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 100
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = "hi"
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 1.5
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = 0
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = -2
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_queued_requests"] = -100
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
     def test_route_prefix(self):
         # Ensure that route_prefix is validated
 
@@ -301,6 +348,22 @@ class TestDeploymentSchema:
 
         deployment_schema["num_replicas"] = 5
         deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
+        with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_num_replicas_auto(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["autoscaling_config"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["autoscaling_config"] = {"max_replicas": 99}
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["num_replicas"] = "random_str"
+        deployment_schema["autoscaling_config"] = None
         with pytest.raises(ValueError):
             DeploymentSchema.parse_obj(deployment_schema)
 
@@ -418,6 +481,19 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
+        with pytest.raises(ValueError):
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        # By default, runtime_envs with local URIs should be rejected.
+        with pytest.raises(ValueError):
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        # Inside the context, runtime_envs with local URIs should not be rejected.
+        with _skip_validating_runtime_env_uris():
+            schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+            assert schema.runtime_env == env
+
+        # Check that the validation was reset after the above call.
         with pytest.raises(ValueError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
@@ -757,7 +833,7 @@ def test_serve_instance_details_is_json_serializable():
                             "name": "deployment1",
                             "autoscaling_config": {
                                 # Byte object will cause json serializable error
-                                "serialized_policy_def": serialized_policy_def
+                                "_serialized_policy_def": serialized_policy_def
                             },
                         },
                         "replicas": [],
@@ -804,7 +880,7 @@ def test_serve_instance_details_is_json_serializable():
     application = details["applications"]["app1"]
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
-    assert "serialized_policy_def" not in autoscaling_config
+    assert "_serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":

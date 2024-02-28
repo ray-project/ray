@@ -67,14 +67,15 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        #bootstrap_values_time_major = make_time_major(
-        #    batch[SampleBatch.VALUES_BOOTSTRAPPED],
-        #    trajectory_len=rollout_frag_or_episode_len,
-        #    recurrent_seq_len=recurrent_seq_len,
-        #)
-        #bootstrap_value = bootstrap_values_time_major[-1]
-        #TODO: Make sure this is already batch-only (similar to how we would structure STATE_INS)
-        bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.

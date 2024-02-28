@@ -14,32 +14,36 @@ from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
-from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
 from ray.serve.context import _get_global_client
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
     handle = serve.get_deployment_handle(deployment_name, app_name)
-    refs = []
     pids = set()
     start = time.time()
     while len(pids) < expected:
-        if len(refs) == 0:
-            refs = [handle.remote()._to_object_ref_sync() for _ in range(10)]
-
-        done, pending = ray.wait(refs)
-        for ref in done:
+        for r in [handle.remote() for _ in range(10)]:
             try:
-                pids.add(ray.get(ref))
+                pids.add(
+                    r.result(
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=timeout,
+                            start_time_s=start,
+                            curr_time_s=time.time(),
+                        )
+                    )
+                )
             except RayActorError:
                 # Handle sent request to dead actor before running replicas were updated
                 # This can happen because health check period = 1s
                 pass
-        refs = list(pending)
+
         if time.time() - start >= timeout:
             raise TimeoutError("Timed out waiting for pids.")
+
     return pids
 
 
@@ -156,7 +160,7 @@ def test_replica_startup_status_transitions(ray_cluster):
         async def __init__(self):
             await signal.wait.remote()
 
-    serve.run(E.bind(), _blocking=False)
+    serve._run(E.bind(), _blocking=False)
 
     def get_replicas(replica_state):
         controller = client._controller
@@ -310,7 +314,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     @serve.deployment(num_replicas=1, ray_actor_options={"num_cpus": 0})
     class Outer:
-        def __init__(self, inner_handle: RayServeHandle):
+        def __init__(self, inner_handle: DeploymentHandle):
             self._h = inner_handle.options(_prefer_local_routing=True)
 
         def get_node_id(self) -> str:
@@ -350,8 +354,8 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     should route to all replicas equally.
     """
 
-    if set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "1"
+    if not set_flag:
+        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "0"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)

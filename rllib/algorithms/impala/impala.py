@@ -370,9 +370,9 @@ class ImpalaConfig(AlgorithmConfig):
             if self.num_aggregation_workers > 0:
                 raise ValueError(
                     "Aggregation workers not supported on new API stack w/ new "
-                    "EnvRunner API! Set `config.num_aggregation_workers = 0` or disable "
-                    "the new API stack via `config.experimental(_enable_new_api_stack="
-                    "False)`."
+                    "EnvRunner API! Set `config.num_aggregation_workers = 0` or "
+                    "disable the new API stack via "
+                    "`config.experimental(_enable_new_api_stack=False)`."
                 )
             if self.replay_ratio != 0.0:
                 raise ValueError(
@@ -435,13 +435,13 @@ class ImpalaConfig(AlgorithmConfig):
                 and self.minibatch_size <= self.total_train_batch_size
             )
         ):
-                raise ValueError(
-                    f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
-                    "or a multiple of `rollout_fragment_length` "
-                    f"({self.rollout_fragment_length}) while at the same time smaller "
-                    "than or equal to `total_train_batch_size` "
-                    f"({self.total_train_batch_size})!"
-                )
+            raise ValueError(
+                f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
+                "or a multiple of `rollout_fragment_length` "
+                f"({self.rollout_fragment_length}) while at the same time smaller "
+                "than or equal to `total_train_batch_size` "
+                f"({self.total_train_batch_size})!"
+            )
 
     @property
     def replay_ratio(self) -> float:
@@ -457,7 +457,8 @@ class ImpalaConfig(AlgorithmConfig):
         # through the entire train batch). Otherwise, use user provided setting.
         return (
             (
-                self.train_batch_size_per_learner if self.uses_new_env_runners
+                self.train_batch_size_per_learner
+                if self.uses_new_env_runners
                 else self.train_batch_size
             )
             if self._minibatch_size == "auto"

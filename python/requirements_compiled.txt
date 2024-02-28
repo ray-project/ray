@@ -87,7 +87,6 @@ annotated-types==0.6.0
     # via pydantic
 anyio==3.7.1
     # via
-    #   fastapi
     #   httpcore
     #   jupyter-server
     #   starlette
@@ -137,9 +136,6 @@ attrs==21.4.0
     #   pytest
     #   sarif-om
     #   semgrep
-    #   sphinx-external-toc
-autodoc-pydantic==2.0.1
-    # via -r /ray/ci/../doc/requirements-doc.txt
 autograd==1.6.2
     # via pymoo
 autorom==0.6.1 ; platform_machine != "arm64"
@@ -151,7 +147,9 @@ aws-sam-translator==1.81.0
 aws-xray-sdk==2.12.1
     # via moto
 ax-platform==0.3.2
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    #   ax-platform
 azure-cli-core==2.40.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 azure-cli-telemetry==1.0.8
@@ -194,20 +192,19 @@ backoff==1.10.0
 base58==2.0.1
     # via aimrecords
 bayesian-optimization==1.4.3
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+    #   nevergrad
 bcrypt==4.0.1
     # via paramiko
 beautifulsoup4==4.11.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   nbconvert
-    #   pydata-sphinx-theme
 black==22.10.0
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
-blessed==1.20.0
-    # via gpustat
 bokeh==2.4.3
     # via dask
 boltons==21.0.0
@@ -233,6 +230,8 @@ botocore==1.29.76
     #   s3transfer
 botorch==0.8.5
     # via ax-platform
+braceexpand==0.1.7
+    # via webdataset
 bracex==2.4
     # via wcmatch
 cached-property==1.5.2
@@ -285,8 +284,6 @@ click==8.1.7
     #   mlflow
     #   ray
     #   semgrep
-    #   sphinx-click
-    #   sphinx-external-toc
     #   tensorflow-datasets
     #   typer
     #   uvicorn
@@ -306,7 +303,9 @@ cloudpickle==2.2.0
     #   pymars
     #   tensorflow-probability
 cma==3.2.2
-    # via pymoo
+    # via
+    #   nevergrad
+    #   pymoo
 cmaes==0.10.0
     # via optuna
 colorama==0.4.6
@@ -366,6 +365,7 @@ cython==0.29.32
 dask==2022.10.1
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
+    #   dask
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
@@ -426,11 +426,7 @@ docutils==0.17.1
     #   -r /ray/ci/../python/requirements/lint-requirements.txt
     #   myst-nb
     #   myst-parser
-    #   pydata-sphinx-theme
     #   sphinx
-    #   sphinx-click
-    #   sphinx-jsonschema
-    #   sphinx-tabs
     #   sphinx-togglebutton
 dopamine-rl==4.0.5 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
@@ -453,12 +449,15 @@ et-xmlfile==1.1.0
 etils==1.3.0
     # via
     #   array-record
+    #   etils
     #   orbax-checkpoint
     #   tensorflow-datasets
 evaluate==0.4.0
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
 everett==3.3.0
-    # via comet-ml
+    # via
+    #   comet-ml
+    #   everett
 exceptiongroup==1.2.0
     # via anyio
 execnet==2.0.2
@@ -471,7 +470,7 @@ fairscale==0.4.6
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.104.0
+fastapi==0.109.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -633,8 +632,6 @@ googleapis-common-protos==1.61.0
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorflow-metadata
-gpustat==1.1.1
-    # via -r /ray/ci/../python/requirements.txt
 gpy==1.10.0
     # via
     #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
@@ -761,8 +758,6 @@ importlib-metadata==4.10.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ale-py
-    #   alembic
-    #   autodoc-pydantic
     #   flask
     #   gym
     #   gymnasium
@@ -772,20 +767,13 @@ importlib-metadata==4.10.0
     #   markdown
     #   mlflow
     #   myst-nb
-    #   numba
 importlib-resources==5.13.0
     # via
     #   ale-py
-    #   alembic
-    #   autorom
-    #   autorom-accept-rom-license
     #   etils
     #   gradio
-    #   jsonschema
     #   matplotlib
-    #   openapi-spec-validator
     #   orbax-checkpoint
-    #   tensorflow-datasets
 iniconfig==2.0.0
     # via pytest
 ipykernel==6.27.1
@@ -860,8 +848,6 @@ jinja2==3.0.3
     #   nbdime
     #   notebook
     #   sphinx
-    #   sphinx-tabs
-    #   sphinxcontrib-redoc
     #   torch
     #   torch-geometric
 jmespath==1.0.1
@@ -891,7 +877,6 @@ jsonpointer==2.4
     # via
     #   jsonpatch
     #   jsonschema
-    #   sphinx-jsonschema
 jsonschema==4.17.3
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -908,7 +893,6 @@ jsonschema==4.17.3
     #   openapi-spec-validator
     #   ray
     #   semgrep
-    #   sphinxcontrib-redoc
 jsonschema-spec==0.1.6
     # via openapi-spec-validator
 junit-xml==1.9
@@ -966,9 +950,7 @@ jupyterlab-server==2.24.0
 jupyterlab-widgets==1.1.7
     # via ipywidgets
 jupytext==1.13.6
-    # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 kaggle-environments==1.7.11
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 keras==2.11.0
@@ -1076,7 +1058,9 @@ monotonic==1.6
 more-itertools==10.1.0
     # via configspace
 moto==4.0.7
-    # via -r /ray/ci/../python/requirements/test-requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   moto
 mpmath==1.3.0
     # via sympy
 msal==1.18.0b1
@@ -1132,12 +1116,9 @@ mypy-extensions==1.0.0
     #   black
     #   mypy
 myst-nb==0.13.1
-    # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 myst-parser==0.15.2
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   myst-nb
 nbclassic==1.0.0
@@ -1187,6 +1168,8 @@ networkx==3.1 ; python_version < "3.11"
     #   hyperopt
     #   scikit-image
     #   torch
+nevergrad==0.4.3.post7
+    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
 notebook==6.5.6
@@ -1205,7 +1188,7 @@ numexpr==2.8.4
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   pymars
-numpy==1.23.5 ; python_version < "3.9"
+numpy==1.23.5 ; python_version >= "3.9"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1253,6 +1236,7 @@ numpy==1.23.5 ; python_version < "3.9"
     #   modin
     #   msgpack-numpy
     #   mujoco
+    #   nevergrad
     #   numba
     #   numexpr
     #   onnx
@@ -1273,7 +1257,6 @@ numpy==1.23.5 ; python_version < "3.9"
     #   pyro-ppl
     #   pytorch-lightning
     #   pywavelets
-    #   ray
     #   raydp
     #   recsim
     #   scikit-image
@@ -1298,11 +1281,10 @@ numpy==1.23.5 ; python_version < "3.9"
     #   torchvision
     #   transformers
     #   tune-sklearn
+    #   webdataset
     #   xgboost
     #   xgboost-ray
     #   zoopt
-nvidia-ml-py==12.535.133
-    # via gpustat
 oauth2client==4.1.3
     # via
     #   gcs-oauth2-boto-plugin
@@ -1404,7 +1386,6 @@ packaging==21.3
     #   onnxruntime
     #   optuna
     #   plotly
-    #   pydata-sphinx-theme
     #   pytest
     #   pytest-rerunfailures
     #   pytest-sugar
@@ -1488,8 +1469,6 @@ pillow==9.2.0 ; platform_system != "Windows"
     #   torchvision
 pkginfo==1.9.6
     # via azure-cli-core
-pkgutil-resolve-name==1.3.10
-    # via jsonschema
 platformdirs==3.11.0
     # via
     #   black
@@ -1559,7 +1538,6 @@ psutil==5.9.6
     #   azure-cli-core
     #   deepspeed
     #   distributed
-    #   gpustat
     #   ipykernel
     #   modin
     #   pymars
@@ -1613,21 +1591,14 @@ pycparser==2.21
     # via cffi
 pydantic==2.5.0
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   autodoc-pydantic
     #   aws-sam-translator
     #   deepspeed
     #   fastapi
     #   gradio
-    #   pydantic-settings
 pydantic-core==2.14.1
     # via pydantic
-pydantic-settings==2.1.0
-    # via autodoc-pydantic
-pydata-sphinx-theme==0.8.1
-    # via sphinx-book-theme
 pydeprecate==0.3.2
     # via pytorch-lightning
 pydot==1.4.2
@@ -1644,7 +1615,6 @@ pyglet==1.5.15
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 pygments==2.13.0
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ipython
     #   knack
@@ -1652,7 +1622,6 @@ pygments==2.13.0
     #   nbdime
     #   rich
     #   sphinx
-    #   sphinx-tabs
 pyjwt==2.8.0
     # via
     #   adal
@@ -1765,10 +1734,10 @@ python-dateutil==2.8.2
     #   moto
     #   pandas
     #   segment-analytics-python
-python-dotenv==1.0.0
-    # via pydantic-settings
 python-jose==3.3.0
-    # via moto
+    # via
+    #   moto
+    #   python-jose
 python-json-logger==2.0.7
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
@@ -1783,7 +1752,6 @@ pytz==2022.7.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
-    #   babel
     #   mlflow
     #   moto
     #   pandas
@@ -1822,13 +1790,10 @@ pyyaml==6.0.1
     #   pymars
     #   pytorch-lightning
     #   ray
-    #   sphinx-book-theme
-    #   sphinx-external-toc
-    #   sphinx-jsonschema
-    #   sphinxcontrib-redoc
     #   timm
     #   transformers
     #   wandb
+    #   webdataset
     #   yq
 pyzmq==24.0.1
     # via
@@ -1840,7 +1805,6 @@ pyzmq==24.0.1
 querystring-parser==1.2.4
     # via mlflow
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   raydp
     #   tune-sklearn
     #   xgboost-ray
@@ -1892,7 +1856,6 @@ requests==2.31.0
     #   segment-analytics-python
     #   semgrep
     #   sphinx
-    #   sphinx-jsonschema
     #   tensorboard
     #   tensorflow-datasets
     #   tf2onnx
@@ -2045,7 +2008,6 @@ six==1.16.0
     #   azure-core
     #   azure-identity
     #   bleach
-    #   blessed
     #   catboost
     #   comet-ml
     #   configobj
@@ -2075,8 +2037,6 @@ six==1.16.0
     #   querystring-parser
     #   responses
     #   rfc3339-validator
-    #   sphinx-sitemap
-    #   sphinxcontrib-redoc
     #   tensorflow
     #   tensorflow-probability
     #   tf2onnx
@@ -2103,47 +2063,13 @@ soupsieve==2.5
     # via beautifulsoup4
 sphinx==4.3.2
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   autodoc-pydantic
     #   jupyter-sphinx
     #   myst-nb
     #   myst-parser
-    #   pydata-sphinx-theme
-    #   sphinx-book-theme
-    #   sphinx-click
-    #   sphinx-copybutton
-    #   sphinx-design
-    #   sphinx-external-toc
-    #   sphinx-remove-toctrees
-    #   sphinx-sitemap
-    #   sphinx-tabs
     #   sphinx-togglebutton
-    #   sphinx-version-warning
-    #   sphinxcontrib-redoc
-    #   sphinxemoji
-sphinx-book-theme==0.3.3
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-click==3.0.2
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-copybutton==0.4.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-design==0.4.1
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-external-toc==0.2.4
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-jsonschema==1.17.2
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-remove-toctrees==0.0.3
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-sitemap==2.2.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-tabs==3.4.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sphinx-togglebutton==0.2.3
     # via myst-nb
-sphinx-version-warning==1.1.2
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sphinxcontrib-applehelp==1.0.4
     # via sphinx
 sphinxcontrib-devhelp==1.0.2
@@ -2154,12 +2080,8 @@ sphinxcontrib-jsmath==1.0.1
     # via sphinx
 sphinxcontrib-qthelp==1.0.3
     # via sphinx
-sphinxcontrib-redoc==1.6.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sphinxcontrib-serializinghtml==1.1.5
     # via sphinx
-sphinxemoji==0.2.0
-    # via -r /ray/ci/../doc/requirements-doc.txt
 sqlalchemy==1.4.17
     # via
     #   aim
@@ -2175,7 +2097,7 @@ sshpubkeys==3.3.1
     # via moto
 stack-data==0.6.3
     # via ipython
-starlette==0.27.0
+starlette==0.36.3
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2226,8 +2148,9 @@ tensorflow-estimator==2.11.0
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
 tensorflow-io-gcs-filesystem==0.31.0
+    # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
-    # via tensorflow
+    #   tensorflow
 tensorflow-metadata==1.13.0
     # via tensorflow-datasets
 tensorflow-probability==0.19.0
@@ -2397,7 +2320,6 @@ typing-extensions==4.8.0
     #   ale-py
     #   alembic
     #   altair
-    #   annotated-types
     #   aws-sam-translator
     #   azure-core
     #   black
@@ -2413,18 +2335,17 @@ typing-extensions==4.8.0
     #   huggingface-hub
     #   ipython
     #   mypy
+    #   nevergrad
     #   onnx
     #   orbax-checkpoint
     #   polars
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
-    #   rich
     #   semgrep
     #   starlette
     #   tensorflow
     #   torch
-    #   torchmetrics
     #   typer
 ujson==5.8.0
     # via python-lsp-jsonrpc
@@ -2434,7 +2355,6 @@ uritemplate==4.1.1
     # via google-api-python-client
 urllib3==1.26.18
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   botocore
     #   databricks-cli
     #   distributed
@@ -2485,17 +2405,16 @@ wandb==0.13.4
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via
-    #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
 wcmatch==8.5
     # via semgrep
 wcwidth==0.2.12
-    # via
-    #   blessed
-    #   prompt-toolkit
+    # via prompt-toolkit
 webcolors==1.13
     # via jsonschema
+webdataset==0.2.86
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 webencodings==0.5.1
     # via
     #   bleach

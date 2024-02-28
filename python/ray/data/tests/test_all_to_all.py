@@ -148,17 +148,17 @@ def test_empty_shuffle(ray_start_regular_shared):
 
 def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2.num_blocks() == 5
+    assert ds2._plan.initial_num_blocks() == 5
     assert ds2.sum() == 190
     assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3.num_blocks() == 20
+    assert ds3._plan.initial_num_blocks() == 20
     assert ds3.sum() == 190
     assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
@@ -169,29 +169,29 @@ def test_repartition_shuffle(ray_start_regular_shared):
 
 def test_repartition_noshuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=False)
-    assert ds2.num_blocks() == 5
+    assert ds2._plan.initial_num_blocks() == 5
     assert ds2.sum() == 190
     assert ds2._block_num_rows() == [4, 4, 4, 4, 4]
 
     ds3 = ds2.repartition(20, shuffle=False)
-    assert ds3.num_blocks() == 20
+    assert ds3._plan.initial_num_blocks() == 20
     assert ds3.sum() == 190
     assert ds3._block_num_rows() == [1] * 20
 
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
-    assert ds4.num_blocks() == 40
+    assert ds4._plan.initial_num_blocks() == 40
 
     assert ds4.sum() == 190
     assert ds4._block_num_rows() == [1] * 20 + [0] * 20
 
     ds5 = ray.data.range(22).repartition(4)
-    assert ds5.num_blocks() == 4
+    assert ds5._plan.initial_num_blocks() == 4
     assert ds5._block_num_rows() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
@@ -201,17 +201,17 @@ def test_repartition_noshuffle(ray_start_regular_shared):
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 20
     assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2.num_blocks() == 5
+    assert ds2._plan.initial_num_blocks() == 5
     assert ds2.count() == 20
     assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3.num_blocks() == 20
+    assert ds3._plan.initial_num_blocks() == 20
     assert ds3.count() == 20
     assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
@@ -1132,20 +1132,11 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
-    context = DataContext.get_current()
-    try:
-        original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
-        context.optimize_fuse_read_stages = False
-
-        lazy_blocklist_ds = ray.data.range(12, parallelism=4)
-        lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
-        lazy_blocklist_results = lazy_blocklist_ds.take()
-        lazy_blocklist_expected = named_values(
-            "id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
-        )
-        assert lazy_blocklist_results == lazy_blocklist_expected
-    finally:
-        context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
+    lazy_blocklist_ds = ray.data.range(12, parallelism=4)
+    lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
+    lazy_blocklist_results = lazy_blocklist_ds.take()
+    lazy_blocklist_expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
+    assert lazy_blocklist_results == lazy_blocklist_expected
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
@@ -1161,7 +1152,10 @@ def test_random_shuffle(shutdown_only, use_push_based_shuffle):
     r2 = ray.data.range(100, parallelism=1).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
-    assert ray.data.range(100).random_shuffle().repartition(1).num_blocks() == 1
+    assert (
+        ray.data.range(100).random_shuffle().repartition(1)._plan.initial_num_blocks()
+        == 1
+    )
     r1 = ray.data.range(100).random_shuffle().repartition(1).take(999)
     r2 = ray.data.range(100).random_shuffle().repartition(1).take(999)
     assert r1 != r2, (r1, r2)

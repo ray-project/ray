@@ -3,10 +3,11 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import pyarrow.parquet as pq
 
+import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
@@ -25,6 +26,7 @@ class _BigQueryDatasink(Datasink):
         project_id: str,
         dataset: str,
         max_retry_cnt: int = DEFAULT_MAX_RETRY_CNT,
+        overwrite_table: Optional[bool] = True,
     ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -33,6 +35,7 @@ class _BigQueryDatasink(Datasink):
         self.project_id = project_id
         self.dataset = dataset
         self.max_retry_cnt = max_retry_cnt
+        self.overwrite_table = overwrite_table
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions
@@ -46,16 +49,22 @@ class _BigQueryDatasink(Datasink):
         dataset_id = self.dataset.split(".", 1)[0]
         try:
             client.get_dataset(dataset_id)
-            logger.info(
-                f"Dataset {dataset_id} already exists. "
-                "The table will be overwritten if it already exists."
-            )
         except exceptions.NotFound:
             client.create_dataset(f"{self.project_id}.{dataset_id}", timeout=30)
             logger.info("Created dataset " + dataset_id)
 
-        # Delete table if it already exists
-        client.delete_table(f"{self.project_id}.{self.dataset}", not_found_ok=True)
+        # Delete table if overwrite_table is True
+        if self.overwrite_table:
+            logger.info(
+                f"Attempting to delete table {self.dataset}"
+                + " if it already exists since kwarg overwrite_table = True."
+            )
+            client.delete_table(f"{self.project_id}.{self.dataset}", not_found_ok=True)
+        else:
+            logger.info(
+                f"The write will append to table {self.dataset}"
+                + " if it already exists since kwarg overwrite_table = False."
+            )
 
     def write(
         self,
@@ -112,6 +121,11 @@ class _BigQueryDatasink(Datasink):
         _write_single_block = cached_remote_fn(_write_single_block)
 
         # Launch a remote task for each block within this write task
-        for block in blocks:
-            _write_single_block.remote(block, self.project_id, self.dataset)
+        ray.get(
+            [
+                _write_single_block.remote(block, self.project_id, self.dataset)
+                for block in blocks
+            ]
+        )
+
         return "ok"

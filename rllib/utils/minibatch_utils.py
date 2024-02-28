@@ -44,7 +44,11 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     """
 
     def __init__(
-        self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1
+        self,
+        batch: MultiAgentBatch,
+        minibatch_size: int,
+        num_iters: int = 1,
+        uses_new_env_runners: bool = False,
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -55,6 +59,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._start = {mid: 0 for mid in batch.policy_batches.keys()}
         # mapping from module_id to the number of epochs covered for each module_id
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
+
+        self._uses_new_env_runners = uses_new_env_runners
 
     def __iter__(self):
         while min(self._num_covered_epochs.values()) < self._num_iters:
@@ -68,6 +74,19 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         "the same number of samples for each module_id."
                     )
                 s = self._start[module_id]  # start
+
+                # TODO (sven): Fix this bug for LSTMs:
+                #  In an RNN-setting, the Learner connector already has zero-padded
+                #  and added a timerank to the batch. Thus, n_step would still be based
+                #  on the BxT dimension, rather than the new B dimension (excluding T),
+                #  which then leads to minibatches way too large.
+                #  However, changing this already would break APPO/IMPALA w/o LSTMs as
+                #  these setups require sequencing, BUT their batches are not yet time-
+                #  ranked (this is done only in their loss functions via the
+                #  `make_time_major` utility).
+                #  Get rid of the _uses_new_env_runners c'tor arg, once this work is
+                #  done.
+                n_steps = self._minibatch_size
 
                 samples_to_concat = []
 
@@ -85,13 +104,14 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
 
-                    n_steps = int(
-                        get_len(module_batch)
-                        * (self._minibatch_size / len(module_batch))
-                    )
+                    if self._uses_new_env_runners:
+                        n_steps = int(
+                            get_len(module_batch)
+                            * (self._minibatch_size / len(module_batch))
+                        )
 
                 else:
-                    n_steps = self._minibatch_size
+                    # n_steps = self._minibatch_size
 
                     def get_len(b):
                         return len(b)

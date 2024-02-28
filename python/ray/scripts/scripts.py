@@ -14,6 +14,7 @@ import warnings
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
+from ray.dashboard.modules.metrics import install_and_start_prometheus
 
 import click
 import psutil
@@ -49,6 +50,7 @@ from ray.autoscaler._private.commands import (
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
+from ray.core.generated import autoscaler_pb2
 
 
 logger = logging.getLogger(__name__)
@@ -1948,8 +1950,7 @@ def memory(
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._raylet.check_health(address):
-        print(f"Ray cluster is not found at {address}")
-        sys.exit(1)
+        raise click.BadParameter(f"Ray cluster is not found at {address}")
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
@@ -1989,8 +1990,7 @@ def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._raylet.check_health(address):
-        print(f"Ray cluster is not found at {address}")
-        sys.exit(1)
+        raise click.BadParameter(f"Ray cluster is not found at {address}")
     gcs_client = ray._raylet.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
@@ -2222,6 +2222,89 @@ def global_gc(address):
     print("Triggered gc.collect() on all workers.")
 
 
+@cli.command(hidden=True)
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--node-id",
+    required=True,
+    type=str,
+    help="Hex ID of the worker node to be drained.",
+)
+@click.option(
+    "--reason",
+    required=True,
+    type=click.Choice(
+        [
+            item[0]
+            for item in autoscaler_pb2.DrainNodeReason.items()
+            if item[1] != autoscaler_pb2.DRAIN_NODE_REASON_UNSPECIFIED
+        ]
+    ),
+    help="The reason why the node will be drained.",
+)
+@click.option(
+    "--reason-message",
+    required=True,
+    type=str,
+    help="The detailed drain reason message.",
+)
+@click.option(
+    "--deadline-remaining-seconds",
+    required=False,
+    type=int,
+    default=None,
+    help="Inform GCS that the node to be drained will be force killed "
+    "after this many of seconds. "
+    "Default is None which means there is no deadline. "
+    "Note: This command doesn't actually force kill the node after the deadline, "
+    "it's the caller's responsibility to do that.",
+)
+def drain_node(
+    address: str,
+    node_id: str,
+    reason: str,
+    reason_message: str,
+    deadline_remaining_seconds: int,
+):
+    """
+    This is NOT a public API.
+
+    Manually drain a worker node.
+    """
+    deadline_timestamp_ms = 0
+    if deadline_remaining_seconds is not None:
+        if deadline_remaining_seconds < 0:
+            raise click.BadParameter(
+                "--deadline-remaining-seconds cannot be negative, "
+                f"got {deadline_remaining_seconds}"
+            )
+        deadline_timestamp_ms = (time.time_ns() // 1000000) + (
+            deadline_remaining_seconds * 1000
+        )
+
+    if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
+        raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+    if not ray._raylet.check_health(address):
+        raise click.BadParameter(f"Ray cluster is not found at {address}")
+
+    gcs_client = ray._raylet.GcsClient(address=address)
+    is_accepted, rejection_error_message = gcs_client.drain_node(
+        node_id,
+        autoscaler_pb2.DrainNodeReason.Value(reason),
+        reason_message,
+        deadline_timestamp_ms,
+    )
+
+    if not is_accepted:
+        raise click.ClickException(
+            f"The drain request is not accepted: {rejection_error_message}"
+        )
+
+
 @cli.command(name="kuberay-autoscaler", hidden=True)
 @click.option(
     "--cluster-name",
@@ -2277,7 +2360,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
 )
 def healthcheck(address, redis_password, component, skip_version_check):
     """
-    This is NOT a public api.
+    This is NOT a public API.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
@@ -2443,6 +2526,16 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@click.group(name="metrics")
+def metrics_group():
+    pass
+
+
+@metrics_group.command(name="launch-prometheus")
+def launch_prometheus():
+    install_and_start_prometheus.main()
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -2478,6 +2571,8 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
+cli.add_command(metrics_group)
+cli.add_command(drain_node)
 
 try:
     from ray.util.state.state_cli import (

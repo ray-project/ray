@@ -115,7 +115,7 @@ class TesterContainer(Container):
             )
             return
         self._upload_build_info(bazel_log_dir)
-        self._upload_test_results(team, bazel_log_dir)
+        TesterContainer.upload_test_results(team, bazel_log_dir)
 
     def _upload_build_info(self, bazel_log_dir) -> None:
         logger.info("Uploading bazel test logs")
@@ -127,15 +127,17 @@ class TesterContainer(Container):
             ]
         )
 
-    def _upload_test_results(self, team: str, bazel_log_dir: str) -> None:
-        for test, result in self._get_test_and_results(team, bazel_log_dir):
+    @classmethod
+    def upload_test_results(cls, team: str, bazel_log_dir: str) -> None:
+        for test, result in cls.get_test_and_results(team, bazel_log_dir):
             logger.info(f"Test {test.get_name()} run status is {result.status}")
             test.update_from_s3()
             test.persist_to_s3()
             test.persist_test_result_to_s3(result)
 
-    def _get_test_and_results(
-        self, team, bazel_log_dir: str
+    @classmethod
+    def get_test_and_results(
+        cls, team, bazel_log_dir: str
     ) -> List[Tuple[Test, TestResult]]:
         bazel_logs = []
         # Find all bazel logs

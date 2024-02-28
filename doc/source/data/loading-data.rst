@@ -835,6 +835,7 @@ To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the
     ds.write_bigquery(
         project_id="my_gcloud_project_id",
         dataset="destination_dataset.destination_table",
+        overwrite_table=True,
     )
 
 

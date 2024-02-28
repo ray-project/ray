@@ -32,7 +32,7 @@ def compute_value_targets(
     # Reverse back to correct (time) direction.
     value_targets = np.stack(list(reversed(Rs)), axis=0)
 
-    return value_targets
+    return value_targets.astype(np.float32)
 
 
 def extract_bootstrapped_values(vf_preds, episode_lengths, T):
@@ -91,7 +91,7 @@ def extract_bootstrapped_values(vf_preds, episode_lengths, T):
         # - Skip the additional timestep at the end and ,ove on with next episode.
         elif T == eps_len:
             bootstrapped_values.append(vf_preds[T])
-            vf_preds = vf_preds[T + 1:]
+            vf_preds = vf_preds[T + 1 :]
         # The episode fits entirely into the T-stride ->
         # - Move on to next episode ("fix" its length by make it seemingly longer).
         else:

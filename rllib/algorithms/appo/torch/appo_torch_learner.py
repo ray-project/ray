@@ -8,11 +8,11 @@ from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.appo.appo_learner import AppoLearner
+from ray.rllib.algorithms.impala.torch.impala_torch_learner import ImpalaTorchLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
     vtrace_torch,
 )
-from ray.rllib.algorithms.impala.torch.impala_torch_learner import ImpalaTorchLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -87,7 +87,15 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.

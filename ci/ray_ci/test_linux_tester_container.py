@@ -215,8 +215,7 @@ def test_get_test_results() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "bazel_log"), "w") as f:
             f.write("\n".join(_BAZEL_LOGS))
-        container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
-        results = container._get_test_and_results("manu", tmp)
+        results = LinuxTesterContainer.get_test_and_results("manu", tmp)
         results.sort(key=lambda x: x[0].get_name())
 
         test, result = results[0]

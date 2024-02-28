@@ -57,8 +57,8 @@ def attempt_count_timesteps(tensor_dict: dict):
         else:
             return int(sum(seq_lens))
 
-    for k in [SampleBatch.REWARDS, SampleBatch.OBS] + list(tensor_dict.keys()):
-        if k not in tensor_dict or k == SampleBatch.SEQ_LENS:
+    for k, v in tensor_dict.items():
+        if k == SampleBatch.SEQ_LENS:
             continue
 
         assert isinstance(k, str), tensor_dict
@@ -73,8 +73,6 @@ def attempt_count_timesteps(tensor_dict: dict):
             # Don't attempt to count on state since nesting can potentially mess
             # things up
             continue
-
-        v = tensor_dict[k]
 
         # If this is a nested dict (for example a nested observation),
         # try to flatten it, assert that all elements have the same length (batch
@@ -116,11 +114,13 @@ class SampleBatch(dict):
 
     # Observation that we compute SampleBatch.ACTIONS from.
     OBS = "obs"
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
-    # Action based on SampleBatch.OBS.
+    # Action computed/sampled by the RLModule.
     ACTIONS = "actions"
-    # Reward returned after stepping with SampleBatch.ACTIONS.
+    # Action actually sent to the (gymnasium) env. Note that we usually do not store
+    # this information anywhere (e.g. in Single/MultiAgentEpisodes), but normally only
+    # keep the RLModule-computed or connector-sampled actions around.
+    ACTIONS_FOR_ENV = "actions_sent_to_env"
+    # Reward returned after stepping.
     REWARDS = "rewards"
     # Action chosen before SampleBatch.ACTIONS.
     PREV_ACTIONS = "prev_actions"
@@ -132,6 +132,9 @@ class SampleBatch(dict):
     TRUNCATEDS = "truncateds"
     # Infos returned after stepping with SampleBatch.ACTIONS
     INFOS = "infos"
+
+    # Observation returned after stepping with SampleBatch.ACTIONS.
+    NEXT_OBS = "new_obs"
 
     # Additional keys filled by RLlib to manage the data above:
 
@@ -1177,10 +1180,9 @@ class SampleBatch(dict):
 
             infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure_with_path(map_, self)
-            if infos is not None and isinstance(infos, list):
-                data[SampleBatch.INFOS] = self[SampleBatch.INFOS] = (
-                    infos[start_unpadded:stop_unpadded]
-                )
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start_unpadded:stop_unpadded]
 
             return SampleBatch(
                 data,
@@ -1194,7 +1196,8 @@ class SampleBatch(dict):
             infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure(lambda s: s[start:stop], self)
             if infos is not None and isinstance(infos, (list, np.ndarray)):
-                data[SampleBatch.INFOS] = self[SampleBatch.INFOS] = infos[start:stop]
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start:stop]
 
             return SampleBatch(
                 data,

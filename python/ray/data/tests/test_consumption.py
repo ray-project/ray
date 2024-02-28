@@ -63,7 +63,7 @@ def test_schema(ray_start_regular):
         last_snapshot,
     )
 
-    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert str(ds2) == "Dataset(num_rows=10, schema={id: int64})"
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
@@ -124,7 +124,7 @@ def test_schema_cached(ray_start_regular):
     ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
     last_snapshot = check_schema_cached(ds, {}, last_snapshot)
 
-    # Add a map_batches stage so that we are forced to compute the schema.
+    # Add a map_batches operator so that we are forced to compute the schema.
     ds = ds.map_batches(lambda x: x)
     last_snapshot = check_schema_cached(
         ds,
@@ -312,12 +312,12 @@ def test_basic(ray_start_regular_shared):
 
 def test_range(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
     ds = ray.data.range(10, parallelism=2)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
@@ -418,50 +418,46 @@ def test_schema_repr(ray_start_regular_shared):
     assert repr(ds.schema()) == expected_repr
 
 
+def _check_none_computed(ds):
+    # In streaming executor, ds.take() will not invoke partial execution
+    # in LazyBlocklist.
+    assert ds._plan.execute()._num_computed() == 0
+
+
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-
-    def check_num_computed(expected):
-        if ray.data.context.DataContext.get_current().use_streaming_executor:
-            # In streaing executor, ds.take() will not invoke partial execution
-            # in LazyBlocklist.
-            assert ds._plan.execute()._num_computed() == 0
-        else:
-            assert ds._plan.execute()._num_computed() == expected
-
-    check_num_computed(0)
+    _check_none_computed(ds)
     assert extract_values("id", ds.take(10)) == list(range(10))
-    check_num_computed(2)
+    _check_none_computed(ds)
     assert extract_values("id", ds.take(20)) == list(range(20))
-    check_num_computed(4)
+    _check_none_computed(ds)
     assert extract_values("id", ds.take(30)) == list(range(30))
-    check_num_computed(8)
+    _check_none_computed(ds)
     assert extract_values("id", ds.take(50)) == list(range(50))
-    check_num_computed(16)
+    _check_none_computed(ds)
     assert extract_values("id", ds.take(100)) == list(range(100))
-    check_num_computed(20)
+    _check_none_computed(ds)
 
 
 def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
         "Filter(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
-        "   +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "   +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
-        "      +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "      +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.materialize()
     assert (
@@ -470,8 +466,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
 
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
@@ -485,15 +480,13 @@ def test_dataset_repr(ray_start_regular_shared):
     ds3 = ds1.union(ds2)
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
-    assert repr(ds3) == (
-        "Union\n+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
-    )
+    assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
     ds = ds.zip(ds3)
     assert repr(ds) == (
         "Zip\n"
         "+- MapBatches(<lambda>)\n"
         "+- Union\n"
-        "   +- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "   +- Dataset(num_rows=9, schema={id: int64})"
     )
 
     def my_dummy_fn(x):
@@ -502,8 +495,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
-        "MapBatches(my_dummy_fn)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "MapBatches(my_dummy_fn)\n" "+- Dataset(num_rows=10, schema={id: int64})"
     )
 
 
@@ -518,8 +510,11 @@ def test_limit(ray_start_regular_shared, lazy):
 
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
-@pytest.mark.parametrize("limit,min_read_tasks", [(10, 1), (20, 2), (30, 3), (60, 6)])
-def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks):
+@pytest.mark.parametrize("limit", [10, 20, 30, 60])
+def test_limit_no_redundant_read(
+    ray_start_regular_shared,
+    limit,
+):
     # Test that dataset truncation eliminates redundant reads.
     @ray.remote
     class Counter:
@@ -565,20 +560,26 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, min_read_tasks
 
     source = CountingRangeDatasource()
 
-    parallelism = 10
+    total_rows = 1000
+    parallelism = 100
     ds = ray.data.read_datasource(
         source,
         parallelism=parallelism,
-        n=10,
+        n=total_rows // parallelism,
     )
-    ds2 = ds.limit(limit)
+    # Apply multiple limit ops.
+    # Once the smallest limit is reached, the entire dataset should stop execution.
+    ds = ds.limit(total_rows)
+    ds = ds.limit(limit)
+    ds = ds.limit(total_rows)
     # Check content.
-    assert extract_values("id", ds2.take(limit)) == list(range(limit))
+    assert len(ds.take(limit)) == limit
     # Check number of read tasks launched.
     # min_read_tasks is the minimum number of read tasks needed for the limit.
     # We may launch more tasks than this number, in order to to maximize throughput.
     # But the actual number of read tasks should be less than the parallelism.
     count = ray.get(source.counter.get.remote())
+    min_read_tasks = limit // (total_rows // parallelism)
     assert min_read_tasks <= count < parallelism
 
 
@@ -632,7 +633,7 @@ def test_from_items_parallelism(ray_start_regular_shared, parallelism):
     ds = ray.data.from_items(records, parallelism=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == parallelism
+    assert ds._plan.initial_num_blocks() == parallelism
 
 
 def test_from_items_parallelism_truncated(ray_start_regular_shared):
@@ -644,7 +645,7 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     ds = ray.data.from_items(records, parallelism=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds.num_blocks() == n
+    assert ds._plan.initial_num_blocks() == n
 
 
 def test_take_batch(ray_start_regular_shared):
@@ -709,7 +710,7 @@ def test_iter_rows(ray_start_regular_shared):
         assert row == df_row.to_dict()
 
     # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
+    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
         assert isinstance(row, dict)
         assert row == t_row
 
@@ -1160,12 +1161,9 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        if ray.data.context.DataContext.get_current().use_streaming_executor:
-            # In streaming execution of ds.iter_batches(), there is no partial
-            # execution so _num_computed() in LazyBlocklist is 0.
-            assert ds._plan.execute()._num_computed() == 0
-        else:
-            assert ds._plan.execute()._num_computed() == expected
+        # In streaming execution of ds.iter_batches(), there is no partial
+        # execution so _num_computed() in LazyBlocklist is 0.
+        _check_none_computed(ds)
 
 
 def test_union(ray_start_regular_shared):
@@ -1173,7 +1171,7 @@ def test_union(ray_start_regular_shared):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds.num_blocks() == 50
+    assert ds._plan.initial_num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 
@@ -1537,7 +1535,7 @@ def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplo
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, parallelism=5000).materialize()
     assert (
-        "The requested parallelism of 5000 is "
+        "The requested number of read blocks of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
     ), caplog.text
 
@@ -1655,8 +1653,8 @@ class FlakyCSVDatasink(_CSVDatasink):
 
 
 def test_datasource(ray_start_regular):
-    source = ray.data.datasource.RandomIntRowDatasource()
-    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
+    assert len(ray.data.read_datasource(source).take()) == 10
     source = ray.data.datasource.RangeDatasource(n=10)
     assert extract_values(
         "value",
@@ -1748,9 +1746,8 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet", parallelism=8)
-    assert ds._plan.get_plan_as_string("Dataset") == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "Dataset(\n"
-        "   num_blocks=8,\n"
         "   num_rows=150,\n"
         "   schema={\n"
         "      sepal.length: double,\n"
@@ -1763,14 +1760,13 @@ def test_dataset_plan_as_string(ray_start_cluster):
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
-    assert ds._plan.get_plan_as_string("Dataset") == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
         "            +- Dataset(\n"
-        "                  num_blocks=8,\n"
         "                  num_rows=150,\n"
         "                  schema={\n"
         "                     sepal.length: double,\n"
@@ -1800,29 +1796,13 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
-    with patch.object(
-        logger,
-        "warning",
-        side_effect=LoggerWarningCalled,
-    ) as mock_logger:
-        try:
-            ds = ray.data.range(10)
-            ds = ds.map_batches(lambda x: x)
-            ds.take()
-        except Exception as e:
-            if ray.data.context.DataContext.get_current().use_streaming_executor:
-                assert isinstance(e, ValueError)
-                assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(
-                    e
-                )
-            else:
-                assert isinstance(e, LoggerWarningCalled)
-                logger_args, logger_kwargs = mock_logger.call_args
-                assert (
-                    "Warning: The Ray cluster currently does not have "
-                    in logger_args[0]
-                )
+    try:
+        ds = ray.data.range(10)
+        ds = ds.map_batches(lambda x: x)
+        ds.take()
+    except Exception as e:
+        assert isinstance(e, ValueError)
+        assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(e)
 
 
 def test_nowarning_execute_with_cpu(ray_start_cluster):

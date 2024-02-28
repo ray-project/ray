@@ -136,6 +136,39 @@ def split_and_pad_single_record(
 
 
 def unpad_data_if_necessary(episode_lens, data):
+    """Removes right-side zero-padding from data based on `episode_lens`.
+
+    ..testcode::
+
+        from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+        import numpy as np
+
+        unpadded = PPOLearner._unpad_data_if_necessary(
+            episode_lens=[4, 2],
+            data=np.array([
+                [2, 4, 5, 3, 0, 0, 0, 0],
+                [-1, 3, 0, 0, 0, 0, 0, 0],
+            ]),
+        )
+        assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
+
+        unpadded = PPOLearner._unpad_data_if_necessary(
+            episode_lens=[1, 5],
+            data=np.array([
+                [2, 0, 0, 0, 0],
+                [-1, -2, -3, -4, -5],
+            ]),
+        )
+        assert (unpadded == [2, -1, -2, -3, -4, -5]).all()
+
+    Args:
+        episode_lens: A list of actual episode lengths.
+        data: A 2D np.ndarray with right-side zero-padded rows.
+
+    Returns:
+        A 1D np.ndarray resulting from concatenation of the un-padded
+        input data along the 0-axis.
+    """
     # If data des NOT have time dimension, return right away.
     if len(data.shape) == 1:
         return data

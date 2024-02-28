@@ -23,6 +23,7 @@ class TaskPoolMapOperator(MapOperator):
         target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        concurrency: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an TaskPoolMapOperator instance.
@@ -37,6 +38,8 @@ class TaskPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            concurrency: The maximum number of Ray tasks to use concurrently,
+                or None to use as many tasks as possible.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
@@ -47,6 +50,7 @@ class TaskPoolMapOperator(MapOperator):
             min_rows_per_bundle,
             ray_remote_args,
         )
+        self._concurrency = concurrency
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
@@ -59,7 +63,14 @@ class TaskPoolMapOperator(MapOperator):
         data_context = DataContext.get_current()
         ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
         ray_remote_args["name"] = self.name
-        ray_remote_args.update(data_context._task_pool_data_task_remote_args)
+
+        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            ray_remote_args["_generator_backpressure_num_objects"] = (
+                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+            )
 
         gen = map_task.options(**ray_remote_args).remote(
             self._map_transformer_ref,
@@ -90,17 +101,22 @@ class TaskPoolMapOperator(MapOperator):
     def base_resource_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self.metrics.obj_store_mem_cur,
         )
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(
+        self, consider_autoscaling=True
+    ) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
-            object_store_memory=self._metrics.average_bytes_outputs_per_task,
+            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            or 0,
         )
+
+    def get_concurrency(self) -> Optional[int]:
+        return self._concurrency

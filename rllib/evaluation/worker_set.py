@@ -237,6 +237,7 @@ class WorkerSet:
         if (
             local_worker
             and self.__worker_manager.num_actors() > 0
+            and not config.uses_new_env_runners
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
@@ -362,47 +363,69 @@ class WorkerSet:
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI
-    def sync_connectors(self):
-        """TODO: (sven) """
+    def sync_env_runner_states(
+        self,
+        from_worker: Optional[EnvRunner] = None,
+        env_steps_sampled: Optional[int] = None,
+    ) -> None:
+        """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
-        # Only local EnvRunner worker: No need to do anything.
-        if self.num_remote_workers() == 0:
+        The exact procedure works as follows:
+        - Get all remote EnvRunners' ConnectorV2 states.
+        - Merge them into a resulting state.
+        - Broadcast the resulting state back to all remote EnvRunners AND the local
+        EnvRunner.
+
+        Args:
+            from_worker: The EnvRunner from which to synch. If None, will try to use the
+                local worker of this WorkerSet.
+        """
+        # Early out if the number of (healthy) remote workers is 0. In this case, the
+        # local worker is the only operating worker and thus of course always holds
+        # the reference connector state.
+        if self.num_healthy_remote_workers() == 0:
             return
 
-        local_worker = self.local_worker()
+        from_worker = from_worker or self.local_worker()
 
-        # Gather connector states of all remote EnvRunner workers.
+        env_runner_states = {}
         connector_states = self.foreach_worker(
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
-            local_worker=False,
             healthy_only=True,
+            local_worker=False,
         )
         env_to_module_states = [s[0] for s in connector_states]
         module_to_env_states = [s[1] for s in connector_states]
 
-        # If only one remote worker: No need to merge, only set state on local worker
-        # to the single remote worker's one.
-        if self.num_remote_workers() == 1:
-            local_worker._env_to_module.set_state(env_to_module_states[0])
-            local_worker._module_to_env.set_state(module_to_env_states[0])
-        else:
-            env_to_module_state = (
-                local_worker._env_to_module.merge_states(env_to_module_states)
-            )
-            ref_env_to_module_state = ray.put(env_to_module_state)
+        env_runner_states["connector_states"] = {
+            "env_to_module_states": from_worker._env_to_module.merge_states(
+                env_to_module_states
+            ),
+            "module_to_env_states": from_worker._module_to_env.merge_states(
+                module_to_env_states
+            ),
+        }
+        # Update the global number of environment steps, if necessary.
+        if env_steps_sampled:
+            env_runner_states["env_steps_sampled"] = env_steps_sampled
 
-            module_to_env_state = (
-                local_worker._module_to_env.merge_states(module_to_env_states)
-            )
-            ref_module_to_env_state = ray.put(module_to_env_state)
+        # Put the state dicitonary into Ray's object store.
+        ref_env_runner_states = ray.put(env_runner_states)
 
-            def _update(w):
-                w._env_to_module.set_state(ray.get(ref_env_to_module_state))
-                w._module_to_env.set_state(ray.get(ref_module_to_env_state))
-    
-            # Broadcast updated states back to all workers. Do this asynchronously to
-            # save time (fire and forget).
-            self.foreach_worker_async(_update, healthy_only=True)
+        def _update(w):
+            env_runner_states = ray.get(ref_env_runner_states)
+            w._env_to_module.set_state(
+                env_runner_states["connector_states"]["env_to_module_states"]
+            )
+            w._module_to_env.set_state(
+                env_runner_states["connector_states"]["module_to_env_states"]
+            )
+            # Update the global number of environment steps for each worker.
+            if "env_steps_sampled" in env_runner_states:
+                w.global_num_env_steps_sampled = env_runner_states["env_steps_sampled"]
+
+        # Broadcast updated states back to all workers.
+        self.foreach_worker(_update, local_worker=True, healthy_only=True)
 
     @DeveloperAPI
     def sync_weights(
