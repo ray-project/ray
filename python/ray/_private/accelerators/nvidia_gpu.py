@@ -2,8 +2,10 @@ import re
 import os
 import logging
 from typing import Optional, List, Tuple
+from packaging.version import Version
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,17 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
+
+# only newer version support mig uuid
+# for version < 470.42.01, mig uuid has format
+# MIG-{gpu-uuid}/{gpu instance id}/{compute instance id}
+MIG_UUID_DRIVER_VERSION = "470.42.01"
+
+
+def _decode(string):
+    if isinstance(string, bytes):
+        return string.decode("utf-8")
+    return string
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
@@ -50,9 +63,53 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             pynvml.nvmlInit()
         except pynvml.NVMLError:
             return 0  # pynvml init failed
+        driver_version = _decode(pynvml.nvmlSystemGetDriverVersion())
         device_count = pynvml.nvmlDeviceGetCount()
+        cuda_devices = []
+        mig_enabled = ray_constants.RAY_ENABLE_MIG_DETECTION
+        mig_uuid = None
+        for index in range(device_count):
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+            except pynvml.NVMLError_GpuIsLost:
+                continue
+            if mig_enabled:
+                try:
+                    max_mig_count = pynvml.nvmlDeviceGetMaxMigDeviceCount(handle)
+                except pynvml.NVMLError_NotSupported:
+                    cuda_devices.append(str(index))
+                    continue
+                if max_mig_count == 0:
+                    cuda_devices.append(str(index))
+                    continue
+                for mig_index in range(max_mig_count):
+                    try:
+                        mig_handle = pynvml.nvmlDeviceGetMigDeviceHandleByIndex(
+                            handle, mig_index
+                        )
+                        if Version(driver_version) >= Version(MIG_UUID_DRIVER_VERSION):
+                            mig_uuid = _decode(pynvml.nvmlDeviceGetUUID(mig_handle))
+                        else:
+                            gi_id = _decode(
+                                pynvml.nvmlDeviceGetGpuInstanceId(mig_handle)
+                            )
+                            ci_id = _decode(
+                                pynvml.nvmlDeviceGetComputeInstanceId(mig_handle)
+                            )
+                            mig_uuid = (
+                                f"MIG-{_decode(pynvml.nvmlDeviceGetUUID(handle))}"
+                                f"/{gi_id}/{ci_id}"
+                            )
+                        cuda_devices.append(mig_uuid)
+                    except pynvml.NVMLError:
+                        break
+            else:
+                cuda_devices.append(str(index))
+        os.environ[
+            NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join(cuda_devices)
         pynvml.nvmlShutdown()
-        return device_count
+        return len(cuda_devices)
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
@@ -66,9 +123,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_device_type = None
         if device_count > 0:
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            device_name = pynvml.nvmlDeviceGetName(handle)
-            if isinstance(device_name, bytes):
-                device_name = device_name.decode("utf-8")
+            device_name = _decode(pynvml.nvmlDeviceGetName(handle))
             cuda_device_type = (
                 NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(device_name)
             )
