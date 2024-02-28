@@ -89,8 +89,14 @@ class Humanify:
     """A class containing default methods to
     convert units into a human readable string."""
 
-    def timestamp(x: float):
-        """Converts miliseconds to a datetime object."""
+    def timestamp(x):
+        """
+        Converts milliseconds to a datetime object.
+        If the input is -1, return an empty string.
+        If the input is not an int or float, raise a ValueError.
+        """
+        if x == -1:
+            return ""
         return str(datetime.datetime.fromtimestamp(x / 1000))
 
     def memory(x: int):
@@ -104,7 +110,7 @@ class Humanify:
         return str(format(x, ".3f")) + " B"
 
     def duration(x: int):
-        """Converts miliseconds to a human readable duration."""
+        """Converts milliseconds to a human readable duration."""
         return str(datetime.timedelta(milliseconds=x))
 
     def events(events: List[dict]):
