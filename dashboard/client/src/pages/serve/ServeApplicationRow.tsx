@@ -29,29 +29,6 @@ const useStyles = makeStyles((theme) =>
       fontSize: "1.5em",
       verticalAlign: "middle",
     },
-    idCol: {
-      display: "block",
-      width: "50px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    OverflowCol: {
-      display: "block",
-      width: "100px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-    logicalResources: {
-      maxWidth: 200,
-    },
-    labels: {
-      maxWidth: 200,
-    },
   }),
 );
 export const ServeApplicationRows = ({

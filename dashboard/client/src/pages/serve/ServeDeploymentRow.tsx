@@ -29,11 +29,6 @@ const useStyles = makeStyles((theme) =>
     deploymentNameAsFirstColumn: {
       fontWeight: 500, // bold style for when name is the first column
     },
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
     statusMessage: {
       maxWidth: 400,
       display: "inline-flex",
