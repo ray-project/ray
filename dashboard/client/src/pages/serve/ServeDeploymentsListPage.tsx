@@ -152,7 +152,7 @@ export const ServeDeploymentsListPage = () => {
                       <ServeApplicationRows
                         key={`${application.name}`}
                         application={application}
-                        startExpanded={true}
+                        startExpanded
                       />
                     ))}
                 </TableBody>
