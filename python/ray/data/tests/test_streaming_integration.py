@@ -4,6 +4,7 @@ import threading
 import time
 from typing import Any, List
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -420,7 +421,7 @@ def test_scheduling_progress_when_output_blocked(
 def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
-    block_size = 10 * 1024*1024
+    block_size = 10 * 1024 * 1024
 
     @ray.remote
     class Counter:
