@@ -353,6 +353,11 @@ def test_amd_visible_devices(ray_2_node_2_gpu, worker_results):
         sorted_devices = [
             int(device) for device in sorted(cuda_visible_devices.split(","))
         ]
+
+        gpu_ids = ray.get_gpu_ids()
+        for gpu_id in gpu_ids:
+            assert gpu_id in sorted_devices
+
         return sorted_devices
 
     num_workers, expected_results = worker_results
@@ -399,6 +404,11 @@ def test_amd_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
         sorted_devices = [
             int(device) for device in sorted(cuda_visible_devices.split(","))
         ]
+
+        gpu_ids = ray.get_gpu_ids()
+        for gpu_id in gpu_ids:
+            assert gpu_id in sorted_devices
+
         return sorted_devices
 
     num_workers, expected_results = worker_results
@@ -432,6 +442,11 @@ def test_amd_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
         sorted_devices = [
             int(device) for device in sorted(cuda_visible_devices.split(","))
         ]
+
+        gpu_ids = ray.get_gpu_ids()
+        for gpu_id in gpu_ids:
+            assert gpu_id in sorted_devices
+
         return sorted_devices
 
     if worker_results[0] != len(worker_results[1]):
