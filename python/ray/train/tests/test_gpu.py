@@ -105,17 +105,24 @@ def test_torch_get_device(
 def test_torch_get_amd_device(
     shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch, tmp_path
 ):
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", False)
     if cuda_visible_devices:
         # Test if `get_device` is correct even with user specified env var.
         monkeypatch.setenv("ROCR_VISIBLE_DEVICES", cuda_visible_devices)
 
-    ray.init(num_cpus=4)
+    ray.init(num_cpus=4, num_gpu=2)
 
     def train_fn():
         # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
             visible_devices = os.environ["ROCR_VISIBLE_DEVICES"]
             assert visible_devices == "1,2"
+
+            devices = [int(device) for device in cuda_visible_devices.split(",")]
+
+            gpu_ids = ray.get_gpu_ids()
+            for gpu_id in gpu_ids:
+                assert gpu_id in devices
 
         devices = sorted([device.index for device in train.torch.get_devices()])
         write_rank_data(tmp_path, devices)
