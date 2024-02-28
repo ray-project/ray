@@ -44,11 +44,7 @@ export const ServeApplicationRows = ({
     deployed_app_config,
   } = application;
 
-  const deploymentsList = Object.values(deployments).map((d) => ({
-    ...d,
-    applicationName: name,
-    application: application,
-  }));
+  const deploymentsList = Object.values(deployments);
 
   const classes = useStyles();
 
@@ -115,7 +111,7 @@ export const ServeApplicationRows = ({
       {isExpanded &&
         deploymentsList.map((deployment) => (
           <ServeDeploymentRow
-            key={`${deployment.application.name}-${deployment.name}`}
+            key={`${application.name}-${deployment.name}`}
             deployment={deployment}
             application={application}
             showExpandColumn={true}
