@@ -34,12 +34,5 @@ steps:
       env:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "nightly"
-  
-  - wait
-
-  - label: "Pre-release checks finished"
-    key: pre-release-check-finished
-    commands:
-      - echo "Pre-release checks finished"
 
 
