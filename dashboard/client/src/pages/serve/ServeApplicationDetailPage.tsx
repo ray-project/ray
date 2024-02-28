@@ -250,6 +250,7 @@ export const ServeApplicationDetailPage = () => {
                     key={deployment.name}
                     deployment={deployment}
                     application={application}
+                    showFirstColumn={false}
                   />
                 ))}
             </TableBody>
