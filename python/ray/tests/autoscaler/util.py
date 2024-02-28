@@ -23,7 +23,7 @@ class TestGetPerNodeBreakdown(unittest.TestCase):
 
         expected_output = {
             "e9919752e5e8d757765d97d8bec910a2e78e8826f20bce46fd58f92e": (
-                "0.0/8.0 CPU\n0B/26.05GiB memory\n0B/13.02GiB object_store_memory"
+                "0/8 CPU\n0B/26.05GiB memory\n0B/13.02GiB object_store_memory"
             )
         }
 
@@ -56,7 +56,7 @@ class TestGetPerNodeBreakdown(unittest.TestCase):
         result = get_per_node_breakdown_as_dict(self.lm_summary_mock)
 
         expected_output = {
-            "e9919752e5e8d757765d97d8bec910a2e78e8826f20bce46fd58f92e": "0.0/8.0 CPU\n"
+            "e9919752e5e8d757765d97d8bec910a2e78e8826f20bce46fd58f92e": "0/8 CPU\n"
             "0B/13.02GiB object_store_memory"
         }
 

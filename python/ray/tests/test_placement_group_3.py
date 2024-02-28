@@ -630,15 +630,15 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
         if cpu_usage == "":
             return False
         cpu_usage = cpu_usage.split("\n")[0]
-        expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
+        expected = "0/4 CPU (0.0 used of 1.0 reserved in placement groups)"
         if cpu_usage != expected:
-            assert cpu_usage == "0.0/4.0 CPU"
+            assert cpu_usage == "0/4 CPU"
             return False
         return True
 
     wait_for_condition(is_usage_updated, AUTOSCALER_UPDATE_INTERVAL_S)
 
-    # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
+    # 2 CPU + 1 PG CPU == 3/4 CPU (1 used by pg)
     actors = [A.remote() for _ in range(2)]
     actors_in_pg = [
         A.options(
@@ -653,7 +653,7 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
     time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
     demand_output = get_ray_status_output(cluster.address)
     cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
+    expected = "3/4 CPU (1.0 used of 1.0 reserved in placement groups)"
     assert cpu_usage == expected
 
 

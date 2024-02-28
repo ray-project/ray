@@ -641,13 +641,24 @@ def parse_usage(usage: Usage, verbose: bool) -> List[str]:
             # https://github.com/ray-project/ray/issues/33272
             pass
         else:
-            line = f"{used}/{total} {resource}"
+            line = f"{format_resource(used)}/{format_resource(total)} {resource}"
             if used_in_pg:
                 line += (
                     f" ({pg_used} used of " f"{pg_total} reserved in placement groups)"
                 )
             usage_lines.append(line)
     return usage_lines
+
+
+def format_resource(number):
+    # Format the number with two decimal places
+    formatted_number = f"{number:.2f}"
+    # Convert it back to float and check if it's an integer
+    if float(formatted_number).is_integer():
+        # If it's an integer, print without decimal places
+        return f"{float(formatted_number):.0f}"
+    # Otherwise, print with two decimal places
+    return formatted_number
 
 
 def get_usage_report(lm_summary: LoadMetricsSummary, verbose: bool) -> str:
