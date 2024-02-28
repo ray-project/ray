@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import SampleBatchType
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     """Prioritized Replay Buffer that stores episodes by their ID.
 
-    This replay buffer stores episode data (more specifically `EpisodeV2`
+    This replay buffer stores episode data (more specifically `SingleAgentEpisode`
     objects) and implements prioritized experience replay first proposed
     in the paper by Schaul et al. (2016, https://arxiv.org/abs/1511.05952).
 
@@ -44,7 +44,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     sampled uniformly across the interval defined by the tuple (for each row in the
     batch).
 
-    Each batch contains in addition to the data tuples presented above two further
+    Each batch contains - in addition to the data tuples presented above - two further
     columns, namely `n_steps` and `weigths`. The former holds the `n_step` used for each
     row in the batch and the latter the corresponding (importance sampling) weight for
     each row in the batch.
@@ -320,6 +320,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 buffer.
             batch_size_B: The number of rows (transitions) to return in the
                 batch
+            batch_length_T: THe sequence length to sample. At this point in time
+                only sequences of length 1 are possible.
             n_step: The n-step to apply. For the default the batch contains in
                 `"new_obs"` the observation and in `"obs"` the observation `n`
                 time steps before. The reward will be the sum of rewards
