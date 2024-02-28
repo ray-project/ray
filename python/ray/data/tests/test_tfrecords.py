@@ -760,20 +760,6 @@ def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
         paths=paths, tfx_read_options=tfx_read_options, **read_opts
     )
 
-    # # if tfx read is enaled, we just return the dataset because, by default
-    # # tfx_read will be used in unit tests given that tfx-bsl dependency is
-    # # installed
-    # if tfx_read:
-    #     return tf_ds
-
-    # read_op = tf_ds._plan._logical_plan.dag
-    # datasource_override = read_op._datasource
-    # datasource_override._tfx_read = tfx_read
-    # parallelism = read_opts.pop("parallelism", -1)
-    # ds = ray.data.read_datasource(datasource_override, parallelism=parallelism)
-
-    # return ds
-
 
 if __name__ == "__main__":
     import sys

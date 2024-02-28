@@ -1592,7 +1592,8 @@ def read_tfrecords(
         datasets in production use cases. To use this implementation you should
         install tfx-bsl with:
             1. `pip install tfx_bsl --no-dependencies`
-            2. DatasetContext.get_current().enable_tfrecords_tfx_read = True
+            2. Pass tfx_read_options to read_tfrecords, for example:
+                `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -1682,6 +1683,8 @@ def read_tfrecords(
 
             tfx_read = True
         except ModuleNotFoundError:
+            # override the tfx_read_options given that tfx-bsl is not installed
+            tfx_read_options = None
             logger.warning(
                 "Please install tfx-bsl package with"
                 " `pip install tfx_bsl --no-dependencies`."

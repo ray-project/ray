@@ -26,6 +26,7 @@ DEFAULT_BATCH_SIZE = 2048
 logger = DatasetLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class TFXReadOptions:
     """
