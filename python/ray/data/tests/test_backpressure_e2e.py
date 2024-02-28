@@ -186,6 +186,33 @@ def test_no_deadlock_on_resource_contention(
     assert len(ds.take_all()) == num_blocks
 
 
+def test_no_deadlock_with_preserve_order(restore_data_context, shutdown_only):  # noqa: F811
+    """Test backpressure won't cause deadlocks when `preserve_order=True`."""
+    num_blocks = 20
+    block_size = 10 * 1024 * 1024
+    ray.init(num_cpus=num_blocks)
+    data_context = ray.data.DataContext.get_current()
+    data_context.target_max_block_size = block_size
+    data_context._max_num_blocks_in_streaming_gen_buffer = 1
+    data_context.execution_options.preserve_order = True
+    data_context.execution_options.resource_limits.object_store_memory = 5 * block_size
+
+    # Some tasks are slower than others.
+    # The faster tasks will finish first and occupy Map op's internal output buffer.
+    # Test that we won't backpressure the operator in this case.
+    def map_fn(batch):
+        idx = batch["id"][0]
+        print("map_fn", idx, time.time())
+        if idx % 2 == 0:
+            time.sleep(3)
+        batch["data"] = [np.zeros(block_size, dtype=np.uint8)]
+        return batch
+
+    ds = ray.data.range(num_blocks, parallelism=num_blocks)
+    ds = ds.map_batches(map_fn, batch_size=None, num_cpus=1)
+    assert len(ds.take_all()) == num_blocks
+
+
 def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F811
     # Tests that backpressure applies even when reading directly from the input
     # datasource. This relies on datasource metadata size estimation.
