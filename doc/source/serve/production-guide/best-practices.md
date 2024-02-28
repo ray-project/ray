@@ -46,7 +46,7 @@ This pattern is useful for prototyping, but it isn't sufficient for production. 
 
 ## Load shedding
 
-When a request is sent to a cluster, it is first received by the Serve proxy, which then forwards it to a replica for handling using a {ref}`DeploymentHandle <serve-key-concepts-deployment-handle>`.
+When a request is sent to a cluster, it is first received by the Serve proxy, which then forwards it to a replica for handling using a {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>`.
 Replicas can handle up to a configurable number of requests at a time (configured using the `max_ongoing_requests` option).
 If all replicas are busy and cannot accept more requests, the request will be queued in the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` until one becomes available.
 
