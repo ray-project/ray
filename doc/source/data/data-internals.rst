@@ -240,7 +240,7 @@ Operator Fusion Optimization
 ----------------------------
 
 In order to reduce memory usage and task overheads, Ray Data automatically fuses together
-lazy operators that are compatible:
+compatible operators which share the same compute pattern and strategy:
 
 * Same compute pattern: embarrassingly parallel map vs. all-to-all shuffle
 * Same compute strategy: Ray tasks vs Ray actors
