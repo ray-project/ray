@@ -67,6 +67,7 @@ Result for PG_SimpleCorridor_0de4e686:
 """
 
 import argparse
+import functools
 import os
 
 import ray
@@ -85,6 +86,7 @@ parser.add_argument(
     default="torch",
     help="The DL framework specifier.",
 )
+parser.add_argument("--async-eval", action="store_true")
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument(
     "--as-test",
@@ -144,13 +146,92 @@ def custom_eval_function(algorithm, eval_workers):
     return metrics
 
 
+def custom_async_eval_function(algorithm, eval_workers, weigths_ref, weights_seq_no):
+    """Example of a custom asynchronous evaluation function.
+
+    Args:
+        algorithm: Algorithm class to evaluate.
+        eval_workers: Evaluation WorkerSet.
+        weights_ref: Object reference (`ObjectRef`) to the module weights in Ray's
+            object store.
+        weights_seq_no: Integer, identifying the synchronization round. This
+            identifies during ayschnronous evaluation, if the weights are already
+            synched between evaluation workers and learners.
+
+    Returns:
+        metrics: Evaluation metrics dict.
+    """
+
+    def remote_fn(worker, weights_ref, weights_seq_no):
+
+        # Pass in weights seq-no so that eval workers may ignore this call if no update
+        # has happened since the last call to `remote_fn` (sample).
+        worker.set_weights(weights=ray.get(weights_ref), weights_seq_no=weights_seq_no)
+
+        # Set different env settings for each worker. Here we use the worker's
+        # `worker_index` property.
+        for env in worker.env.envs:
+            env.set_corridor_length(4 if worker.worker_index == 1 else 7)
+
+        # Sample 5 episodes.
+        episodes = worker.sample(explore=False, num_episodes=5)
+        # Get the metrics.
+        metrics = worker.get_metrics()
+
+        return worker.worker_index, episodes, metrics, weights_seq_no
+
+    # Create a partial to bake in the `weights_ref.` such that we can delete later this
+    # partial and resolve any pointers to `weigths_ref` in Ray's object store. Note,
+    # this avoids a memory leak.
+    partial_remote_fn = functools.partial(
+        remote_fn,
+        weigths_ref=weigths_ref,
+        weights_seq_no=weights_seq_no,
+    )
+
+    # Sample from all remote workers asynchronously.
+    eval_workers.foreach_worker_async(
+        func=partial_remote_fn,
+        healthy_only=True,
+    )
+
+    eval_results = eval_workers.fetch_ready_async_reqs()
+
+    episodes = []
+    rollout_metrics = []
+    for _, result in eval_results:
+        _, eps, metrics, seq_no = result
+
+        # Ignore results, if the weights seq-number does not match (is
+        # from a previous evaluation step) OR if we have already reached
+        # the configured duration (e.g. number of episodes to evaluate
+        # for).
+        if seq_no == algorithm._evaluation_weights_seq_no:
+            episodes.extend(eps)
+            rollout_metrics.extend(metrics)
+
+    # Remove the pointer to the weight reference.
+    del partial_remote_fn
+
+    sampler_results = summarize_episodes(rollout_metrics)
+    metrics = dict({"sampler_results": sampler_results})
+
+    return metrics
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.no_custom_eval:
         eval_fn = None
+        async_eval_fn = None
     else:
-        eval_fn = custom_eval_function
+        if args.async_eval:
+            async_eval_fn = custom_async_eval_function
+            eval_fn = None
+        else:
+            async_eval_fn = None
+            eval_fn = custom_eval_function
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
@@ -163,6 +244,7 @@ if __name__ == "__main__":
         # learner + 2 more for evaluation workers).
         .rollouts(num_rollout_workers=0)
         .evaluation(
+            enable_async_evaluation=args.async_eval,
             evaluation_num_workers=2,
             # Enable evaluation, once per training iteration.
             evaluation_interval=1,
@@ -178,6 +260,7 @@ if __name__ == "__main__":
                 },
             ),
             custom_evaluation_function=eval_fn,
+            custom_async_evaluation_function=async_eval_fn,
         )
         .framework(args.framework)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

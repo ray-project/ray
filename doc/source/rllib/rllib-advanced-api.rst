@@ -165,7 +165,7 @@ to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated 
 reported as part of training results. For a full example, take a look at
 `this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__
 and
-`these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks.py>`__.
+`these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks_old_stack.py>`__.
 
 .. tip::
     You can create custom logic that can run on each evaluation episode by checking
@@ -185,9 +185,10 @@ and
 Chaining Callbacks
 ~~~~~~~~~~~~~~~~~~
 
-Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
+Use the :py:func:`~ray.rllib.algorithms.callbacks.make_multi_callbacks` utility to chain
+multiple callbacks together.
 
-.. autoclass:: ray.rllib.algorithms.callbacks.MultiCallbacks
+.. autofunction:: ray.rllib.algorithms.callbacks.make_multi_callbacks
 
 
 Visualizing Custom Metrics

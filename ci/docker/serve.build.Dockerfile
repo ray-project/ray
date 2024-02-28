@@ -3,7 +3,6 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG PYTHON_VERSION
 ARG PYDANTIC_VERSION
 
 # Unset dind settings; we are using the host's docker daemon.
@@ -20,13 +19,6 @@ RUN <<EOF
 #!/bin/bash
 
 set -euo pipefail
-
-# Install custom Python version if requested.
-if [[ -n "${PYTHON_VERSION-}" ]]; then 
-  PYTHON=$PYTHON_VERSION ci/env/install-dependencies.sh 
-else 
-  echo "Not installing custom Python version" 
-fi
 
 pip install -U torch==2.0.1 torchvision==0.15.2
 pip install -U tensorflow==2.13.1 tensorflow-probability==0.21.0

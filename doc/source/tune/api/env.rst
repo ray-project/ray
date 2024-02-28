@@ -45,7 +45,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1``
+  to ``auto``, which will be updated to ``max(200, cluster_cpus * 1.1)`` for random/grid search and ``1``
   for any other search algorithms.
 * **TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD**: When syncing trial data between nodes, only sync if this many
   iterations were recorded for the trial or the minimum time threshold was met. This will prevent unnecessary
@@ -86,7 +86,7 @@ These are the environment variables Ray Tune currently considers:
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state is synced
-  multiple times in that many seconds. Defaults to 30 (seconds).
+  multiple times in that many seconds. Defaults to 5 (seconds).
 * **TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state syncing
   takes longer than this time in seconds. Defaults to 30 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).

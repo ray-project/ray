@@ -12,6 +12,7 @@ except ImportError as exc:
 
 
 from ray.tune.error import TuneError
+from ray.tune.tune_config import ResumeConfig, TuneConfig
 from ray.tune.tune import run_experiments, run
 from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
@@ -21,15 +22,6 @@ from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.callback import Callback
 from ray.tune.search import grid_search
-from ray.tune.trainable.session import (
-    report,
-    get_trial_dir,
-    get_trial_name,
-    get_trial_id,
-    get_trial_resources,
-    checkpoint_dir,
-    is_session_enabled,
-)
 from ray.tune.progress_reporter import (
     ProgressReporter,
     CLIReporter,
@@ -55,7 +47,6 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import with_parameters, with_resources
 from ray.tune.result_grid import ResultGrid
 from ray.tune.tuner import Tuner
-from ray.tune.tune_config import TuneConfig
 
 
 __all__ = [
@@ -87,19 +78,13 @@ __all__ = [
     "CLIReporter",
     "JupyterNotebookReporter",
     "ProgressReporter",
-    "report",
-    "get_trial_dir",
-    "get_trial_name",
-    "get_trial_id",
-    "get_trial_resources",
-    "is_session_enabled",
-    "checkpoint_dir",
     "ResultGrid",
     "create_searcher",
     "create_scheduler",
     "PlacementGroupFactory",
     "Tuner",
     "TuneConfig",
+    "ResumeConfig",
     # TODO(justinvyu): [Deprecated]
     "SyncConfig",
 ]

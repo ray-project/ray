@@ -19,7 +19,6 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
-from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
@@ -51,6 +50,7 @@ from ray.rllib.utils.typing import (
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.learner import LearnerGroup
 
 tf1, tf, tfv = try_import_tf()
 
@@ -237,6 +237,7 @@ class WorkerSet:
         if (
             local_worker
             and self.__worker_manager.num_actors() > 0
+            and not config.uses_new_env_runners
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
@@ -362,10 +363,75 @@ class WorkerSet:
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI
+    def sync_env_runner_states(
+        self,
+        from_worker: Optional[EnvRunner] = None,
+        env_steps_sampled: Optional[int] = None,
+    ) -> None:
+        """Synchronizes the connectors of this WorkerSet's EnvRunners.
+
+        The exact procedure works as follows:
+        - Get all remote EnvRunners' ConnectorV2 states.
+        - Merge them into a resulting state.
+        - Broadcast the resulting state back to all remote EnvRunners AND the local
+        EnvRunner.
+
+        Args:
+            from_worker: The EnvRunner from which to synch. If None, will try to use the
+                local worker of this WorkerSet.
+        """
+        # Early out if the number of (healthy) remote workers is 0. In this case, the
+        # local worker is the only operating worker and thus of course always holds
+        # the reference connector state.
+        if self.num_healthy_remote_workers() == 0:
+            return
+
+        from_worker = from_worker or self.local_worker()
+
+        env_runner_states = {}
+        connector_states = self.foreach_worker(
+            lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
+            healthy_only=True,
+            local_worker=False,
+        )
+        env_to_module_states = [s[0] for s in connector_states]
+        module_to_env_states = [s[1] for s in connector_states]
+
+        env_runner_states["connector_states"] = {
+            "env_to_module_states": from_worker._env_to_module.merge_states(
+                env_to_module_states
+            ),
+            "module_to_env_states": from_worker._module_to_env.merge_states(
+                module_to_env_states
+            ),
+        }
+        # Update the global number of environment steps, if necessary.
+        if env_steps_sampled:
+            env_runner_states["env_steps_sampled"] = env_steps_sampled
+
+        # Put the state dicitonary into Ray's object store.
+        ref_env_runner_states = ray.put(env_runner_states)
+
+        def _update(w):
+            env_runner_states = ray.get(ref_env_runner_states)
+            w._env_to_module.set_state(
+                env_runner_states["connector_states"]["env_to_module_states"]
+            )
+            w._module_to_env.set_state(
+                env_runner_states["connector_states"]["module_to_env_states"]
+            )
+            # Update the global number of environment steps for each worker.
+            if "env_steps_sampled" in env_runner_states:
+                w.global_num_env_steps_sampled = env_runner_states["env_steps_sampled"]
+
+        # Broadcast updated states back to all workers.
+        self.foreach_worker(_update, local_worker=True, healthy_only=True)
+
+    @DeveloperAPI
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker_or_learner_group: Optional[Union[EnvRunner, LearnerGroup]] = None,
+        from_worker_or_learner_group: Optional[Union[EnvRunner, "LearnerGroup"]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,

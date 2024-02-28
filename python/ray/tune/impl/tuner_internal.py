@@ -24,8 +24,7 @@ from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
-from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune import Experiment, ExperimentAnalysis, ResumeConfig, TuneError
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
@@ -85,7 +84,7 @@ class TunerInternal:
         self,
         restore_path: str = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
-        resume_config: Optional[_ResumeConfig] = None,
+        resume_config: Optional[ResumeConfig] = None,
         trainable: Optional[TrainableTypeOrTrainer] = None,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
@@ -321,11 +320,11 @@ class TunerInternal:
         path_or_uri: str,
         trainable: TrainableTypeOrTrainer,
         overwrite_param_space: Optional[Dict[str, Any]],
-        resume_config: _ResumeConfig,
+        resume_config: ResumeConfig,
         storage_filesystem: Optional[pyarrow.fs.FileSystem],
     ):
         fs, fs_path = get_fs_and_path(path_or_uri, storage_filesystem)
-        with fs.open_input_file(os.path.join(fs_path, _TUNER_PKL)) as f:
+        with fs.open_input_file(Path(fs_path, _TUNER_PKL).as_posix()) as f:
             tuner_state = pickle.loads(f.readall())
 
         old_trainable_name, flattened_param_space_keys = self._load_tuner_state(
@@ -635,26 +634,14 @@ class TunerInternal:
         self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
-        resume = "AUTO"
-
-        if self._resume_config:
-            if not self._resume_config.resume_unfinished:
-                if self._resume_config.resume_errored:
-                    resume += "+ERRORED_ONLY"
-                elif self._resume_config.restart_errored:
-                    resume += "+RESTART_ERRORED_ONLY"
-            else:
-                if self._resume_config.resume_errored:
-                    resume += "+ERRORED"
-                elif self._resume_config.restart_errored:
-                    resume += "+RESTART_ERRORED"
+        assert self._resume_config
 
         args = {
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
                 config=param_space,
-                resume=resume,
+                resume_config=self._resume_config,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
             ),

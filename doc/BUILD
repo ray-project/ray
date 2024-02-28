@@ -20,15 +20,6 @@ py_test(
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
 
-### Ray Data
-py_test(
-    name = "datasets_train",
-    size = "medium",
-    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
-    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
-)
-
 py_test(
     name = "plot_hyperparameter",
     size = "small",
@@ -109,7 +100,7 @@ py_test(
     size = "medium",
     main = "source/ray-core/doc_code/ray_oom_prevention.py",
     srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
-    tags = ["exclusive", "xcommit", "team:core"]
+    tags = ["exclusive", "mem_pressure", "team:core"]
 )
 
 py_test_run_all_subdirectory(
@@ -131,6 +122,10 @@ py_test_run_all_subdirectory(
     include = ["source/serve/doc_code/**/*.py"],
     exclude = [
         "source/serve/doc_code/aws_neuron_core_inference_serve.py",
+        "source/serve/doc_code/aws_neuron_core_inference_serve_stable_diffusion.py",
+        "source/serve/doc_code/hpu_inference_serve.py",
+        "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
+        "source/serve/doc_code/hpu_inference_client.py",
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
@@ -162,7 +157,11 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/object_detection.py",
     ],
     exclude = [
-        "source/serve/doc_code/aws_neuron_core_inference_serve.py"
+        "source/serve/doc_code/aws_neuron_core_inference_serve.py",
+        "source/serve/doc_code/aws_neuron_core_inference_serve_stable_diffusion.py",
+        "source/serve/doc_code/hpu_inference_serve.py",
+        "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
+        "source/serve/doc_code/hpu_inference_client.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
@@ -263,7 +262,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "large",
+    size = "enormous",
     include = ["external/*.py"],
     exclude = [],
     extra_srcs = [],
@@ -280,6 +279,7 @@ doctest(
         include=["source/**/*.rst", "source/**/*.md"],
         exclude=[
             "source/ray-contribute/getting-involved.rst",
+            "source/ray-contribute/testing-tips.rst",
             "source/ray-core/handling-dependencies.rst",
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
@@ -296,7 +296,7 @@ doctest(
             "source/workflows/**/*.md",
             "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
-            "source/templates/04_finetuning_llms_with_deepspeed/README.md"
+            "source/templates/04_finetuning_llms_with_deepspeed/README.md",
         ]
     ),
     size = "large",

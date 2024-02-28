@@ -1,5 +1,6 @@
 from typing import Callable, Iterator, Union
 
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -17,7 +18,7 @@ def generate_write_fn(
     datasink_or_legacy_datasource: Union[Datasink, Datasource], **write_args
 ) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
     # If the write op succeeds, the resulting Dataset is a list of
-    # WriteResult (one element per write task). Otherwise, an error will
+    # arbitrary objects (one object per write task). Otherwise, an error will
     # be raised. The Datasource can handle execution outcomes with the
     # on_write_complete() and on_write_failed().
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
@@ -28,7 +29,8 @@ def generate_write_fn(
                 blocks, ctx, **write_args
             )
 
-        # NOTE: `WriteResult` isn't a valid block type, so we need to wrap it up.
+        # NOTE: Write tasks can return anything, so we need to wrap it in a valid block
+        # type.
         import pandas as pd
 
         block = pd.DataFrame({"write_result": [write_result]})
@@ -50,4 +52,6 @@ def plan_write_op(op: Write, input_physical_dag: PhysicalOperator) -> PhysicalOp
         name="Write",
         target_max_block_size=None,
         ray_remote_args=op._ray_remote_args,
+        min_rows_per_bundle=op._min_rows_per_bundled_input,
+        compute_strategy=TaskPoolStrategy(op._concurrency),
     )

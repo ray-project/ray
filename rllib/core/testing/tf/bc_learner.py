@@ -1,13 +1,14 @@
 import tensorflow as tf
-from typing import Any, Mapping
+from typing import Any, Mapping, TYPE_CHECKING
 
-from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
-from ray.rllib.policy.sample_batch import SampleBatch
-
 from ray.rllib.core.testing.testing_learner import BaseTestingLearner
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 class BCTfLearner(TfLearner, BaseTestingLearner):
@@ -15,7 +16,7 @@ class BCTfLearner(TfLearner, BaseTestingLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
+        config: "AlgorithmConfig",
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> Mapping[str, Any]:

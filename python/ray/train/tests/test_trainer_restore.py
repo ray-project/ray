@@ -1,4 +1,5 @@
 import warnings
+from functools import partial
 from pathlib import Path
 from typing import Dict, List
 
@@ -143,9 +144,6 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     - Picks up at the right iteration. 2 before crash. 3 after. 5 total trees.
     - Results are being logged to the same directory as before.
     """
-    # TODO(krfricke): Re-enable this once gbdt trainers are supported.
-    # Also runs into the same problem as the test below.
-    pytest.skip("GBDT trainers are not supported yet.")
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {
@@ -167,6 +165,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
             num_workers=2, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 1}
         ),
         run_config=RunConfig(
+            storage_path=str(tmp_path),
             name=exp_name,
             checkpoint_config=CheckpointConfig(
                 num_to_keep=1, checkpoint_frequency=1, checkpoint_at_end=False
@@ -350,6 +349,46 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
         assert not result.error
         checkpoint = load_dict_checkpoint(result.checkpoint)
         assert checkpoint["iter"] == final_iter
+
+
+def test_restoration_after_termination(tmp_path):
+    """Test that the train loop can be run again if restoring the trainer
+    after the run finished running successfully."""
+
+    def train_func_per_worker(config, num_epochs=5):
+        ckpt = train.get_checkpoint()
+        start_iter = 1
+        if ckpt:
+            ckpt = load_dict_checkpoint(ckpt)
+            start_iter = ckpt["iter"] + 1
+
+        for i in range(start_iter, num_epochs + 1):
+            with create_dict_checkpoint(dict(iter=i)) as checkpoint:
+                train.report(dict(iter=i), checkpoint=checkpoint)
+
+    name = "exp_name"
+    path = tmp_path / name
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_func_per_worker,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name=name,
+            storage_path=tmp_path,
+            checkpoint_config=CheckpointConfig(num_to_keep=2),
+        ),
+    )
+    result = trainer.fit()
+    assert result.metrics["iter"] == 5
+
+    restored_trainer = DataParallelTrainer.restore(
+        str(path), train_loop_per_worker=partial(train_func_per_worker, num_epochs=10)
+    )
+    new_result = restored_trainer.fit()
+    assert new_result.metrics["iter"] == 10
+
+    assert new_result.path == result.path
+    assert len(list(Path(new_result.path).glob("checkpoint*"))) == 2
 
 
 if __name__ == "__main__":

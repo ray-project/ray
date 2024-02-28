@@ -360,6 +360,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             "CoreWorker.HandleException");
       }));
 
+  experimental_mutable_object_manager_.reset(new ExperimentalMutableObjectManager());
+
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
                                     const std::string &error_message,
@@ -1336,18 +1338,22 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
   }
 }
 
-Status CoreWorker::ExperimentalMutableObjectWriteAcquire(
+Status CoreWorker::ExperimentalChannelWriteAcquire(
     const ObjectID &object_id,
     const std::shared_ptr<Buffer> &metadata,
     uint64_t data_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
-  return plasma_store_provider_->ExperimentalMutableObjectWriteAcquire(
-      object_id, metadata, data_size, num_readers, data);
+  return experimental_mutable_object_manager_->WriteAcquire(
+      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, data);
 }
 
-Status CoreWorker::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
-  return plasma_store_provider_->ExperimentalMutableObjectWriteRelease(object_id);
+Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
+  return experimental_mutable_object_manager_->WriteRelease(object_id);
+}
+
+Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
+  return experimental_mutable_object_manager_->SetError(object_id);
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
@@ -1393,15 +1399,38 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExperimentalMutableObjectReadRelease(
+Status CoreWorker::ExperimentalChannelReadRelease(
     const std::vector<ObjectID> &object_ids) {
   RAY_CHECK(object_ids.size() == 1);
-  return plasma_store_provider_->ExperimentalMutableObjectReadRelease(object_ids[0]);
+  return experimental_mutable_object_manager_->ReadRelease(object_ids[0]);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/false);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
+  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/true);
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
+                                                             bool is_writer) {
+  std::unique_ptr<plasma::MutableObject> object = nullptr;
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
+  RAY_CHECK(object) << "Mutable object must be local to be registered";
+  if (is_writer) {
+    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterWriterChannel(
+        object_id, std::move(object)));
+  } else {
+    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterReaderChannel(
+        object_id, std::move(object)));
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
-                       bool is_experimental_mutable_object,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
@@ -1411,6 +1440,45 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   }
   results->resize(ids.size(), nullptr);
 
+  // Check whether these are experimental.Channel objects.
+  bool is_experimental_channel = false;
+  for (const auto &id : ids) {
+    if (experimental_mutable_object_manager_->ReaderChannelRegistered(id)) {
+      is_experimental_channel = true;
+    } else {
+      if (is_experimental_channel) {
+        return Status::NotImplemented(
+            "ray.get can only be called on all normal objects, or all "
+            "experimental.Channel objects");
+      }
+    }
+  }
+
+  // ray.get path for experimental.Channel objects.
+  if (is_experimental_channel) {
+    if (timeout_ms >= 0) {
+      return Status::NotImplemented(
+          "non-infinity timeout_ms not supported for experimental channels");
+    }
+    return GetExperimentalMutableObjects(ids, results);
+  } else {
+    return GetObjects(ids, timeout_ms, results);
+  }
+}
+
+Status CoreWorker::GetExperimentalMutableObjects(
+    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
+  for (size_t i = 0; i < ids.size(); i++) {
+    RAY_RETURN_NOT_OK(
+        experimental_mutable_object_manager_->ReadAcquire(ids[i], &(*results)[i]));
+  }
+  return Status::OK();
+}
+
+Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
+                              const int64_t timeout_ms,
+                              std::vector<std::shared_ptr<RayObject>> *results) {
+  // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
@@ -1469,7 +1537,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids,
                                                   local_timeout_ms,
-                                                  is_experimental_mutable_object,
                                                   worker_context_,
                                                   &result_map,
                                                   &got_exception));
@@ -2170,7 +2237,7 @@ Status CoreWorker::CreatePlacementGroup(
       if (resource.first == kBundle_ResourceLabel) {
         std::ostringstream stream;
         stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
-               << "allowed to be used in placement groupd ";
+               << "allowed to be used in placement group. ";
         return Status::Invalid(stream.str());
       }
     }
@@ -2184,6 +2251,7 @@ Status CoreWorker::CreatePlacementGroup(
       placement_group_creation_options.strategy,
       placement_group_creation_options.is_detached,
       placement_group_creation_options.max_cpu_fraction_per_node,
+      placement_group_creation_options.soft_target_node_id,
       worker_context_.GetCurrentJobID(),
       worker_context_.GetCurrentActorID(),
       worker_context_.CurrentActorDetached());
@@ -2930,12 +2998,8 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   reference_counter_->AddLocalReference(return_id, "<temporary (pin return object)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
 
-  auto status = plasma_store_provider_->Get({return_id},
-                                            0,
-                                            /*is_experimental_mutable_object=*/false,
-                                            worker_context_,
-                                            &result_map,
-                                            &got_exception);
+  auto status = plasma_store_provider_->Get(
+      {return_id}, 0, worker_context_, &result_map, &got_exception);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -3012,7 +3076,10 @@ Status CoreWorker::ReportGeneratorItemReturns(
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << ", id: " << dynamic_return_object.first;
 
-  waiter->IncrementObjectGenerated();
+  if (waiter) {
+    waiter->IncrementObjectGenerated();
+  }
+
   client->ReportGeneratorItemReturns(
       request,
       [waiter, generator_id, item_index](
@@ -3020,32 +3087,41 @@ Status CoreWorker::ReportGeneratorItemReturns(
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
-        RAY_CHECK(waiter != nullptr);
-        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                       << ". Total object generated: " << waiter->TotalObjectGenerated();
-        if (status.ok()) {
-          /// Since unary gRPC requests are not ordered, it is possible the stale
-          /// total value can be replied. Since total object consumed only can
-          /// increment, we always choose the larger value here.
-          waiter->UpdateTotalObjectConsumed(
-              std::max(waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
-        } else {
-          // TODO(sang): Handle network error more gracefully.
-          // If the request fails, we should just resume until task finishes without
-          // backpressure.
-          waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
-          RAY_LOG(WARNING) << "Failed to send the object ref.";
+        if (waiter) {
+          RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                         << ". Total object generated: "
+                         << waiter->TotalObjectGenerated();
+          if (status.ok()) {
+            /// Since unary gRPC requests are not ordered, it is possible the stale
+            /// total value can be replied. Since total object consumed only can
+            /// increment, we always choose the larger value here.
+            waiter->UpdateTotalObjectConsumed(std::max(
+                waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
+          } else {
+            // TODO(sang): Handle network error more gracefully.
+            // If the request fails, we should just resume until task finishes without
+            // backpressure.
+            waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
+            RAY_LOG(WARNING) << "Failed to send the object ref.";
+          }
         }
       });
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
+
+  auto check_signals_callback = [this]() {
     if (options_.check_signals) {
       return options_.check_signals();
     } else {
       return Status::OK();
     }
-  });
+  };
+
+  if (waiter) {
+    // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+    // details.
+    return waiter->WaitUntilObjectConsumed(check_signals_callback);
+  } else {
+    return check_signals_callback();
+  }
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
@@ -3130,12 +3206,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
-      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
-      // properly redirects to the plasma store.
-      if (!options_.is_local_mode) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
-      }
       const auto &arg_ref = task.ArgRef(i);
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
@@ -3156,6 +3226,14 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       reference_counter_->AddBorrowedObject(
           arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
       borrowed_ids->push_back(arg_id);
+      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+      // properly redirects to the plasma store.
+      // NOTE: This needs to be done after adding reference to reference counter
+      // otherwise, the put is a no-op.
+      if (!options_.is_local_mode) {
+        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      task.ArgId(i)));
+      }
     } else {
       // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
@@ -3198,13 +3276,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
     RAY_RETURN_NOT_OK(
         memory_store_->Get(by_ref_ids, -1, worker_context_, &result_map, &got_exception));
   } else {
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Get(by_ref_ids,
-                                    -1,
-                                    /*is_experimental_mutable_object=*/false,
-                                    worker_context_,
-                                    &result_map,
-                                    &got_exception));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
+        by_ref_ids, -1, worker_context_, &result_map, &got_exception));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
@@ -3903,6 +3976,11 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   }
 }
 
+int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
+  MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  return memory_store_stats.num_local_objects_bytes;
+}
+
 void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -4198,11 +4276,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id},
-            0,
-            /*is_experimental_mutable_object=*/false,
-            &vec)
-            .ok()) {
+    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);
@@ -4281,11 +4355,6 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
 bool CoreWorker::IsExiting() const {
   absl::MutexLock lock(&mutex_);
   return exiting_detail_.has_value();
-}
-
-std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
-    const {
-  return task_counter_.AsMap();
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {

@@ -120,12 +120,13 @@ def run_xgboost_prediction(model_path: str, data_path: str):
             dmatrix = xgb.DMatrix(data)
             return {"predictions": self.model.predict(dmatrix)}
 
+    concurrency = int(ray.cluster_resources()["CPU"] // 2)
     result = ds.map_batches(
         XGBoostPredictor,
         # Improve prediction throughput for xgboost with larger
         # batch size than default 4096
         batch_size=8192,
-        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=None),
+        concurrency=concurrency,
         fn_constructor_kwargs={"model": model},
         batch_format="pandas",
     )

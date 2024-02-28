@@ -474,6 +474,12 @@ class ClientActorHandle(ClientStub):
     def _actor_id(self) -> ClientActorRef:
         return self.actor_ref
 
+    def __hash__(self) -> int:
+        return hash(self._actor_id)
+
+    def __eq__(self, __value) -> bool:
+        return hash(self) == hash(__value)
+
     def __getattr__(self, key):
         if key == "_method_num_returns":
             # We need to explicitly handle this value since it is used below,

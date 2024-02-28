@@ -1,10 +1,8 @@
 import logging
 from typing import Dict
 
-from ray.rllib.core.learner.learner import (
-    POLICY_LOSS_KEY,
-    LearnerHyperparameters,
-)
+from ray.rllib.algorithms.bc.bc import BCConfig
+from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -27,7 +25,7 @@ class BCTfLearner(TfLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
+        config: BCConfig,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:

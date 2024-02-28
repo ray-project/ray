@@ -130,7 +130,7 @@ The node manager and object manager run as separate processes with their own por
 The following options specify the ports used by dashboard agent process.
 
 - ``--dashboard-agent-grpc-port``: The port to listen for grpc on. Default: Random value.
-- ``--dashboard-agent-listen-port``: The port to listen for http on. Default: Random value.
+- ``--dashboard-agent-listen-port``: The port to listen for http on. Default: 52365.
 - ``--metrics-export-port``: The port to use to expose Ray metrics. Default: Random value.
 
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.

@@ -250,8 +250,10 @@ class RAY_EXPORT PythonGcsClient {
   Status DrainNode(const std::string &node_id,
                    int32_t reason,
                    const std::string &reason_message,
+                   int64_t deadline_timestamp_ms,
                    int64_t timeout_ms,
-                   bool &is_accepted);
+                   bool &is_accepted,
+                   std::string &rejection_reason_message);
   Status DrainNodes(const std::vector<std::string> &node_ids,
                     int64_t timeout_ms,
                     std::vector<std::string> &drained_node_ids);

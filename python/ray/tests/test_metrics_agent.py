@@ -180,9 +180,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
     worker_should_exit = SignalActor.remote()
 
+    extra_tags = {"ray_version": ray.__version__}
+
     # Generate a metric in the driver.
     counter = Counter("test_driver_counter", description="desc")
-    counter.inc()
+    counter.inc(tags=extra_tags)
 
     # Generate some metrics from actor & tasks.
     @ray.remote
@@ -190,8 +192,8 @@ def _setup_cluster_for_test(request, ray_start_cluster):
         counter = Counter("test_counter", description="desc")
         counter.inc()
         counter = ray.get(ray.put(counter))  # Test serialization.
-        counter.inc()
-        counter.inc(2)
+        counter.inc(tags=extra_tags)
+        counter.inc(2, tags=extra_tags)
         ray.get(worker_should_exit.wait.remote())
 
     # Generate some metrics for the placement group.
@@ -206,7 +208,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
                 "test_histogram", description="desc", boundaries=[0.1, 1.6]
             )
             histogram = ray.get(ray.put(histogram))  # Test serialization.
-            histogram.observe(1.5)
+            histogram.observe(1.5, tags=extra_tags)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
@@ -717,7 +719,7 @@ def test_basic_custom_metrics(metric_mock):
     # -- Gauge --
     gauge = Gauge("gauge", description="gauge")
     gauge._metric = metric_mock
-    gauge.record(4)
+    gauge.set(4)
     metric_mock.record.assert_called_with(4, tags={})
 
     # -- Histogram
@@ -728,6 +730,58 @@ def test_basic_custom_metrics(metric_mock):
     tags = {"a": "10", "b": "b"}
     histogram.observe(8, tags=tags)
     metric_mock.record.assert_called_with(8, tags=tags)
+
+
+def test_custom_metrics_with_extra_tags(metric_mock):
+    base_tags = {"a": "1"}
+    extra_tags = {"a": "1", "b": "2"}
+
+    # -- Counter --
+    count = Counter("count", tag_keys=("a",))
+    with pytest.raises(ValueError):
+        count.inc(1)
+
+    count._metric = metric_mock
+
+    # Increment with base tags
+    count.inc(1, tags=base_tags)
+    metric_mock.record.assert_called_with(1, tags=base_tags)
+    metric_mock.reset_mock()
+
+    # Increment with extra tags
+    count.inc(1, tags=extra_tags)
+    metric_mock.record.assert_called_with(1, tags=extra_tags)
+    metric_mock.reset_mock()
+
+    # -- Gauge --
+    gauge = Gauge("gauge", description="gauge", tag_keys=("a",))
+    gauge._metric = metric_mock
+
+    # Record with base tags
+    gauge.set(4, tags=base_tags)
+    metric_mock.record.assert_called_with(4, tags=base_tags)
+    metric_mock.reset_mock()
+
+    # Record with extra tags
+    gauge.set(4, tags=extra_tags)
+    metric_mock.record.assert_called_with(4, tags=extra_tags)
+    metric_mock.reset_mock()
+
+    # -- Histogram
+    histogram = Histogram(
+        "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a",)
+    )
+    histogram._metric = metric_mock
+
+    # Record with base tags
+    histogram.observe(8, tags=base_tags)
+    metric_mock.record.assert_called_with(8, tags=base_tags)
+    metric_mock.reset_mock()
+
+    # Record with extra tags
+    histogram.observe(8, tags=extra_tags)
+    metric_mock.record.assert_called_with(8, tags=extra_tags)
+    metric_mock.reset_mock()
 
 
 def test_custom_metrics_info(metric_mock):
@@ -820,11 +874,6 @@ def test_custom_metrics_validation(shutdown_only):
 
     with pytest.raises(ValueError):
         metric.inc(1.0, {"a": "2"})
-
-    # Extra tag not in tag_keys.
-    metric = Counter("name", tag_keys=("a",))
-    with pytest.raises(ValueError):
-        metric.inc(1.0, {"a": "1", "b": "2"})
 
     # tag_keys must be tuple.
     with pytest.raises(TypeError):

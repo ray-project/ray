@@ -19,7 +19,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
 from dataclasses import dataclass
 
@@ -421,6 +421,40 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
             )
         out = ray._private.utils.decode(output, encode_type=encode)
     return out
+
+
+def run_string_as_driver_stdout_stderr(
+    driver_script: str, env: Dict = None, encode: str = "utf-8"
+) -> Tuple[str, str]:
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
+
+    Returns:
+        The script's stdout and stderr.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    with proc:
+        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        out_str, err_str = [
+            ray._private.utils.decode(output, encode_type=encode)
+            for output in outputs_bytes
+        ]
+        if proc.returncode:
+            print(out_str)
+            print(err_str)
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args, out_str, err_str
+            )
+        return out_str, err_str
 
 
 def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
@@ -1121,12 +1155,17 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
     return fetch_prometheus_metrics([metrics_page])
 
 
-def load_test_config(config_file_name):
-    """Loads a config yaml from tests/test_cli_patterns."""
+def get_test_config_path(config_file_name):
+    """Resolve the test config path from the config file dir"""
     here = os.path.realpath(__file__)
     path = pathlib.Path(here)
     grandparent = path.parent.parent
-    config_path = os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+    return os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+
+
+def load_test_config(config_file_name):
+    """Loads a config yaml from tests/test_cli_patterns."""
+    config_path = get_test_config_path(config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
 
@@ -2112,3 +2151,11 @@ def skip_flaky_core_test_premerge(reason: str):
         )(func)
 
     return wrapper
+
+
+def get_ray_default_worker_file_path():
+    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    return (
+        f"/home/ray/anaconda3/lib/python{py_version}/"
+        "site-packages/ray/_private/workers/default_worker.py"
+    )

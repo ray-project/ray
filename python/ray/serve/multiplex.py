@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
-from ray._private.async_compat import sync_to_async
+from ray._private.utils import get_or_create_event_loop
 from ray.serve import metrics
 from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.constants import (
@@ -13,8 +13,8 @@ from ray.serve._private.constants import (
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import MetricsPusher
 from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -34,6 +34,8 @@ class _ModelMultiplexWrapper:
     model's __del__ attribute if it exists to clean up the model resources eagerly.
 
     """
+
+    _PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME = "push_multiplexed_model_ids"
 
     def __init__(
         self,
@@ -111,8 +113,9 @@ class _ModelMultiplexWrapper:
         # failed to load.
         self._model_load_tasks: Set[str] = set()
 
-        self.metrics_pusher = MetricsPusher()
-        self.metrics_pusher.register_task(
+        self.metrics_pusher = MetricsPusher(get_or_create_event_loop())
+        self.metrics_pusher.register_or_update_task(
+            self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
             self._push_model_ids_info,
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
         )
@@ -247,7 +250,7 @@ class _ModelMultiplexWrapper:
             if not inspect.iscoroutinefunction(model.__del__):
                 await asyncio.get_running_loop().run_in_executor(None, model.__del__)
             else:
-                await sync_to_async(model.__del__)()
+                await model.__del__()
             setattr(model, "__del__", lambda _: None)
         unloaded_time = time.time() - unload_start_time
         self.model_unload_latency_ms.observe(unloaded_time * 1000.0)

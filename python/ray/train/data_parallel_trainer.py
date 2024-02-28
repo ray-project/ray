@@ -1,6 +1,5 @@
-import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray._private.thirdparty.tabulate.tabulate import tabulate
@@ -10,14 +9,11 @@ from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
-from ray.train._internal.utils import construct_train_func
+from ray.train._internal.utils import construct_train_func, count_required_parameters
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -192,11 +188,12 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datasets to use for training. Use
-            the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
+        datasets: Ray Datasets to use for training and evaluation.
+            This is a dict where the key is the name of the dataset, which
+            can be accessed from within the ``train_loop_per_worker`` by calling
+            ``train.get_dataset_shard(dataset_key)``.
+            By default, all datasets are sharded equally across workers.
+            This can be configured via ``dataset_config``.
         metadata: Dict that should be made available via
             `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
@@ -234,8 +231,6 @@ class DataParallelTrainer(BaseTrainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
@@ -260,7 +255,6 @@ class DataParallelTrainer(BaseTrainer):
             run_config=run_config,
             datasets=datasets,
             metadata=metadata,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
@@ -315,21 +309,14 @@ class DataParallelTrainer(BaseTrainer):
             self._train_loop_per_worker, "train_loop_per_worker"
         )
 
-    def preprocess_datasets(self) -> None:
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        self.datasets = self._data_config._legacy_preprocessing(
-            self.datasets, self.preprocessor
-        )
-
     def _validate_train_loop_per_worker(
         self, train_loop_per_worker: Callable, fn_name: str
     ) -> None:
-        num_params = len(inspect.signature(train_loop_per_worker).parameters)
-        if num_params > 1:
+        num_required_params = count_required_parameters(train_loop_per_worker)
+        if num_required_params > 1:
             raise ValueError(
                 f"{fn_name} should take in 0 or 1 arguments, "
-                f"but it accepts {num_params} arguments instead."
+                f"but it accepts {num_required_params} arguments instead."
             )
 
     @classmethod
@@ -435,11 +422,10 @@ class DataParallelTrainer(BaseTrainer):
         train_loop_per_worker = construct_train_func(
             self._train_loop_per_worker,
             self._train_loop_config,
+            train_func_context=self._backend_config.train_func_context,
             fn_arg_name="train_loop_per_worker",
             discard_returns=True,
         )
-
-        additional_resources_per_worker = scaling_config.additional_resources_per_worker
 
         trial_info = TrialInfo(
             name=session.get_trial_name(),
@@ -454,9 +440,7 @@ class DataParallelTrainer(BaseTrainer):
             backend_config=self._backend_config,
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
-            num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
-            additional_resources_per_worker=additional_resources_per_worker,
+            resources_per_worker=scaling_config._resources_per_worker_not_none,
             max_retries=0,
         )
 

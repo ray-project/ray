@@ -36,7 +36,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
-        self.config = config
+        self.config = config.copy(copy_frozen=False)
         super().__init__(**kwargs)
 
         # This eager check is necessary for certain all-framework tests
@@ -79,6 +79,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         Returns:
             The current state of this EnvRunner.
         """
+        # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
+        # this an empty worker state and in `Algorithm.from_checkpoint()`
+        # the empty state (not `None`) must be ensured separately. Shall we
+        # return here as a default `None`?
         return {}
 
     def set_state(self, state: Dict[str, Any]) -> None:

@@ -21,6 +21,8 @@ if not PYDANTIC_INSTALLED:
     NonNegativeInt = None
     PositiveFloat = None
     PositiveInt = None
+    PrivateAttr = None
+    StrictInt = None
     ValidationError = None
     root_validator = None
     validator = None
@@ -28,7 +30,7 @@ if not PYDANTIC_INSTALLED:
 # In pydantic <1.9.0, __version__ attribute is missing, issue ref:
 # https://github.com/pydantic/pydantic/issues/2572, so we need to check
 # the existence prior to comparison.
-elif hasattr(pydantic, "__version__") and packaging.version.parse(
+elif not hasattr(pydantic, "__version__") or packaging.version.parse(
     pydantic.__version__
 ) < packaging.version.parse("2.0"):
     IS_PYDANTIC_2 = False
@@ -40,6 +42,8 @@ elif hasattr(pydantic, "__version__") and packaging.version.parse(
         NonNegativeInt,
         PositiveFloat,
         PositiveInt,
+        PrivateAttr,
+        StrictInt,
         ValidationError,
         root_validator,
         validator,
@@ -58,6 +62,8 @@ else:
         NonNegativeInt,
         PositiveFloat,
         PositiveInt,
+        PrivateAttr,
+        StrictInt,
         ValidationError,
         root_validator,
         validator,

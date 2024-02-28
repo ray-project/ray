@@ -2,6 +2,7 @@ from typing import Optional
 
 import random
 import pytest
+from unittest.mock import MagicMock
 
 import ray
 from ray import train
@@ -166,6 +167,32 @@ def test_configure_execution_options_carryover_context(ray_start_4_cpus):
     ingest_options = data_config.default_ingest_options()
     assert ingest_options.preserve_order is True
     assert ingest_options.verbose_progress is True
+
+
+@pytest.mark.parametrize("enable_locality", [True, False])
+def test_configure_locality(enable_locality):
+    options = DataConfig.default_ingest_options()
+    options.locality_with_output = enable_locality
+    data_config = DataConfig(execution_options=options)
+
+    mock_ds = MagicMock()
+    mock_ds.streaming_split = MagicMock()
+    mock_ds.copy = MagicMock(return_value=mock_ds)
+    world_size = 2
+    worker_handles = [MagicMock() for _ in range(world_size)]
+    worker_node_ids = ["node" + str(i) for i in range(world_size)]
+    data_config.configure(
+        datasets={"train": mock_ds},
+        world_size=world_size,
+        worker_handles=worker_handles,
+        worker_node_ids=worker_node_ids,
+    )
+    mock_ds.streaming_split.assert_called_once()
+    mock_ds.streaming_split.assert_called_with(
+        world_size,
+        equal=True,
+        locality_hints=worker_node_ids if enable_locality else None,
+    )
 
 
 class CustomConfig(DataConfig):

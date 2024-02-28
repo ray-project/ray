@@ -55,8 +55,6 @@ struct PlasmaObjectHeader {
 
   // Protects all following state, used to signal from writer to readers.
   pthread_mutex_t wr_mut;
-  // Used to signal to readers when the writer is done writing a new version.
-  pthread_cond_t cond;
   // The object version. For immutable objects, this gets incremented to 1 on
   // the first write and then should never be modified. For mutable objects,
   // each new write must increment the version before releasing to readers.
@@ -67,6 +65,9 @@ struct PlasmaObjectHeader {
   // has been WriteRelease'd. A reader may read the actual object value if
   // is_sealed=true and num_read_acquires_remaining != 0.
   bool is_sealed = false;
+  // Set to indicate an error was encountered computing the next version of
+  // the mutable object. Lockless access allowed.
+  std::atomic_bool has_error = false;
   // The total number of reads allowed before the writer can write again. This
   // value should be set by the writer before releasing to readers.
   // For immutable objects, this is set to -1 and infinite reads are allowed.
@@ -92,26 +93,18 @@ struct PlasmaObjectHeader {
   // different data/metadata size.
   uint64_t data_size = 0;
   uint64_t metadata_size = 0;
-
   /// Blocks until all readers for the previous write have ReadRelease'd the
-  /// value. Protects against concurrent writers. Caller must pass consecutive
-  /// versions on each new write, starting with write_version=1.
+  /// value. Protects against concurrent writers.
   ///
-  /// \param write_version The new version for write.
   /// \param data_size The new data size of the object.
   /// \param metadata_size The new metadata size of the object.
   /// \param num_readers The number of readers for the object.
-  void WriteAcquire(int64_t write_version,
-                    uint64_t data_size,
-                    uint64_t metadata_size,
-                    int64_t num_readers);
+  /// \return if the acquire was successful.
+  Status WriteAcquire(uint64_t data_size, uint64_t metadata_size, int64_t num_readers);
 
   /// Call after completing a write to signal that readers may read.
   /// num_readers should be set before calling this.
-  ///
-  /// \param write_version The new version for write. This must match the
-  /// version previously passed to WriteAcquire.
-  void WriteRelease(int64_t write_version);
+  Status WriteRelease();
 
   // Blocks until the given version is ready to read. Returns false if the
   // maximum number of readers have already read the requested version.
@@ -119,16 +112,16 @@ struct PlasmaObjectHeader {
   // \param[in] read_version The version to read.
   // \param[out] version_read For normal immutable objects, this will be set to
   // 0. Otherwise, the current version.
-  // \return success Whether the correct version was read and there were still
+  // \return Whether the correct version was read and there were still
   // reads remaining.
-  bool ReadAcquire(int64_t version_to_read, int64_t *version_read);
+  Status ReadAcquire(int64_t version_to_read, int64_t *version_read);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.
   ///
   /// \param read_version This must match the version previously passed in
   /// ReadAcquire.
-  void ReadRelease(int64_t read_version);
+  Status ReadRelease(int64_t read_version);
 #endif
 
   /// Setup synchronization primitives.
@@ -136,6 +129,18 @@ struct PlasmaObjectHeader {
 
   /// Destroy synchronization primitives.
   void Destroy();
+
+  /// Helper method to acquire the writer mutex while aborting if the
+  /// error bit is set.
+  /// \return if the mutex was acquired successfully.
+  Status TryAcquireWriterMutex();
+
+  /// Set the error bit. This is a non-blocking method.
+  void SetErrorUnlocked() {
+#ifdef __linux__
+    has_error = true;
+#endif
+  }
 };
 
 /// A struct that includes info about the object.

@@ -216,9 +216,9 @@ class DashboardAgent:
         tasks = [m.run(self.server) for m in modules]
         if sys.platform not in ["win32", "cygwin"]:
 
-            def callback():
+            def callback(msg):
                 logger.info(
-                    f"Terminated Raylet: ip={self.ip}, node_id={self.node_id}. "
+                    f"Terminated Raylet: ip={self.ip}, node_id={self.node_id}. {msg}"
                 )
 
             check_parent_task = create_check_raylet_task(

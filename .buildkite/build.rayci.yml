@@ -6,7 +6,7 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
       - "3.8"
       - "3.9"
@@ -22,7 +22,7 @@ steps:
       - oss
     instance_type: medium-arm64
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
     matrix:
       - "3.8"
       - "3.9"
@@ -39,7 +39,7 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.8 --build-type debug
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
     depends_on:
       - manylinux
       - forge
@@ -52,6 +52,7 @@ steps:
       - python
       - core_cpp
     job_env: WINDOWS
+    mount_windows_artifacts: true
     instance_type: windows
     commands:
       - export BUILD_ONE_PYTHON_ONLY={{matrix}}
@@ -149,13 +150,3 @@ steps:
       - "3.8"
       - "3.9"
       - "3.10"
-
-  - label: ":tapioca: build: pip-compile dependencies"
-    instance_type: small
-    commands:
-      - rm ./python/requirements_compiled.txt
-      - ./ci/ci.sh compile_pip_dependencies
-      - cp -f ./python/requirements_compiled.txt /artifact-mount/
-    soft_fail: true
-    depends_on:
-      - forge
