@@ -8,7 +8,7 @@ import tensorflow as tf
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-from ray.data import DataContext
+from ray.data.datasource.tfrecords_datasource import TFXReadOptions
 from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
@@ -752,11 +752,13 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
 def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
     infer_schema = read_opts.pop("tfx_read_auto_infer_schema", tfx_read)
 
-    context = DataContext.get_current()
-    context.enable_tfrecords_tfx_read = tfx_read
-    context.tfrecords_tfx_read_auto_infer_schema = infer_schema
+    tfx_read_options = None
+    if tfx_read:
+        tfx_read_options = TFXReadOptions(auto_infer_schema=infer_schema)
 
-    return ray.data.read_tfrecords(paths=paths, **read_opts)
+    return ray.data.read_tfrecords(
+        paths=paths, tfx_read_options=tfx_read_options, **read_opts
+    )
 
     # # if tfx read is enaled, we just return the dataset because, by default
     # # tfx_read will be used in unit tests given that tfx-bsl dependency is

@@ -156,20 +156,6 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
-# Whether using TFX read implementation for tfrecords
-# datasource is enabled.
-DEFAULT_ENABLE_TFRECORDS_TFX_READ = False
-
-# An int representing the number of consecutive elements of
-# this dataset to combine in a single batch when tfx-bsl is used to read
-# the tfrecord files.
-DEFAULT_TFX_READ_BATCH_SIZE = None
-
-# Toggles the schema inference applied; applicable
-# only if tfx-bsl is used and tf_schema argument is missing.
-# Defaults to True.
-DEFAULT_TFX_READ_AUTO_INFER_SCHEMA = True
-
 
 @DeveloperAPI
 class DataContext:
@@ -267,17 +253,6 @@ class DataContext:
         self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
         # The reservation ratio for ReservationOpResourceLimiter.
         self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
-        # Whether using TFX read implementation for tfrecords
-        # datasource is enabled
-        self.enable_tfrecords_tfx_read = DEFAULT_ENABLE_TFRECORDS_TFX_READ
-        # An int representing the number of consecutive elements of
-        # this dataset to combine in a single batch when tfx-bsl is used to read
-        # the tfrecord files.
-        self.tfrecords_tfx_read_batch_size = DEFAULT_TFX_READ_BATCH_SIZE
-        # Toggles the schema inference applied; applicable
-        # only if tfx-bsl is used and tf_schema argument is missing.
-        # Defaults to True.
-        self.tfrecords_tfx_read_auto_infer_schema = DEFAULT_TFX_READ_AUTO_INFER_SCHEMA
 
     @staticmethod
     def get_current() -> "DataContext":
