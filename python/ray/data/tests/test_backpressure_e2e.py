@@ -107,6 +107,9 @@ def _build_dataset(
 
     ds = ray.data.range(1, parallelism=1).materialize()
     ds = ds.map_batches(producer, batch_size=None, num_cpus=producer_num_cpus)
+    # Add a limit op in the middle, to test that ReservationOpResourceAllocator
+    # will account limit op's resource usage to the previous producer map op.
+    ds = ds.limit(num_blocks)
     ds = ds.map_batches(consumer, batch_size=None, num_cpus=consumer_num_cpus)
     return ds
 

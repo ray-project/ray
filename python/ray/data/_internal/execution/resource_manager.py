@@ -255,7 +255,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     resource usages to limit the resources that each operator can use.
 
     It works in the following way:
-    1. Currently we only limit map operators. Non-map operators get unlimited resources.
+    1. Currently we only limit map operators. Non-map operators are not throttled, but
+       their usage will be accounted for their upstream map operators. E.g., for such
+       a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
+       a group and "map2->streaming_split" as another group.
     2. For each map operator, we reserve `reservation_ratio * global_resources /
         num_map_ops` resources, half of which is reserved only for the operator outputs,
         excluding pending task outputs.
@@ -462,7 +465,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # launch tasks. Then we should temporarily unblock the streaming output
         # backpressure by allowing reading at least 1 block. So the current operator
         # can finish at least one task and yield resources to the downstream operators.
-        for next_op in op.output_dependencies:
+        for next_op in self._get_downstream_map_ops(op):
             if not self._reserved_min_resources[next_op]:
                 # Case 1: the downstream operator hasn't reserved the minimum resources
                 # to run at least one task.
@@ -476,30 +479,52 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return False
 
     def _op_outputs_reserved_remaining(self, op: PhysicalOperator) -> int:
+        # Outputs usage of the current operator.
         outputs_usage = self._resource_manager._mem_op_outputs[op]
+        # Also account the downstream non-Map operators' memory usage.
+        outputs_usage += sum(
+            self._resource_manager.get_op_usage(next_op).object_store_memory
+            for next_op in self._get_downstream_non_map_ops(op)
+        )
         return max(self._reserved_for_op_outputs[op] - outputs_usage, 0)
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
-        res = self._op_budgets[
-            op
-        ].object_store_memory + self._op_outputs_reserved_remaining(op)
+        res = self._op_budgets[op].object_store_memory
+        res += self._op_outputs_reserved_remaining(op)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
             res = 1
         return res
 
-    def _get_downstream_non_map_op_memory_usage(self, op: PhysicalOperator) -> int:
-        """Get the total memory usage of the downstream non-Map operators."""
-        usage = 0
+    def _get_downstream_non_map_ops(
+        self, op: PhysicalOperator
+    ) -> List[PhysicalOperator]:
+        """Get the downstream non-Map operators of the given operator.
+
+        E.g.,
+          - "cur_map->downstream_map" will return an empty list.
+          - "cur_map->limit1->limi2->downstream_map" will return [limit1, limit2].
+        """
         for next_op in op.output_dependencies:
             if not isinstance(next_op, MapOperator):
-                usage += self._resource_manager.get_op_usage(
-                    next_op
-                ).object_store_memory
-                usage += self._get_downstream_non_map_op_memory_usage(next_op)
-        return usage
+                yield next_op
+                yield from self._get_downstream_non_map_ops(next_op)
+
+    def _get_downstream_map_ops(self, op: PhysicalOperator) -> List[PhysicalOperator]:
+        """Get the downstream Map operators of the given operator, ignoring intermediate
+        non-Map operators.
+
+        E.g.,
+          - "cur_map->downstream_map" will return [downstream_map].
+          - "cur_map->limit1->limi2->downstream_map" will return [downstream_map].
+        """
+        for next_op in op.output_dependencies:
+            if isinstance(next_op, MapOperator):
+                yield next_op
+            else:
+                yield from self._get_downstream_map_ops(next_op)
 
     def update_usages(self):
         self._update_reservation()
@@ -527,7 +552,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # This is because we don't directly throttle non-Map operators.
             # So if they are using too much memory, we should throttle their
             # upstream Map operator.
-            op_mem_usage += self._get_downstream_non_map_op_memory_usage(op)
+            op_mem_usage += sum(
+                self._resource_manager.get_op_usage(next_op).object_store_memory
+                for next_op in self._get_downstream_non_map_ops(op)
+            )
             op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
             op_usage.object_store_memory = op_mem_usage
             op_reserved = self._op_reserved[op]
