@@ -396,9 +396,7 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def incremental_resource_usage(
-        self, consider_autoscaling=True
-    ) -> ExecutionResources:
+    def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
 
