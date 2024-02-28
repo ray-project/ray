@@ -54,13 +54,9 @@ class DockerContainer(LinuxContainer):
         branch = os.environ.get("BUILDKITE_BRANCH")
         sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        if branch == "master":
-            return [sha_tag, "nightly"]
 
-        formatted_date = datetime.now().strftime("%y%m%d")
-        if branch and branch.startswith("refs/pull/43486"):
-            print("Nightly khluu? ", self.nightly_alias)
-            print("TAGS: ", [sha_tag, f"nightly.{formatted_date}"])
+        if branch == "master":
+            formatted_date = datetime.now().strftime("%y%m%d")
             return (
                 [sha_tag, f"nightly.{formatted_date}"]
                 if self.nightly_alias

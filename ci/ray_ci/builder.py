@@ -83,7 +83,6 @@ def main(
     """
     Build a wheel or jar artifact
     """
-    print("Nightly builder? ", nightly_alias)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
@@ -144,7 +143,6 @@ def build_docker(
     """
     Build a container artifact.
     """
-    print("Nightly build_docker? ", nightly_alias)
     BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(

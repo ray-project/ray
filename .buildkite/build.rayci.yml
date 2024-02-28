@@ -1,5 +1,87 @@
 group: build
 steps:
+  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+    tags:
+      - linux_wheels
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    depends_on:
+      - manylinux
+      - forge
+
+  - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
+    tags:
+      - linux_wheels
+      - oss
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    depends_on:
+      - manylinux-aarch64
+      - forge-aarch64
+    job_env: forge-aarch64
+
+  - label: ":tapioca: build: debug wheel"
+    tags:
+      - linux_wheels
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
+    depends_on:
+      - manylinux
+      - forge
+
+  - label: ":windows: wheel {{matrix}}"
+    # we have linux/mac wheels tag, but do not have a windows wheels tag..
+    # so using python and core_cpp here, to make sure at least it builds
+    tags:
+      - oss
+      - python
+      - core_cpp
+    job_env: WINDOWS
+    mount_windows_artifacts: true
+    instance_type: windows
+    commands:
+      - export BUILD_ONE_PYTHON_ONLY={{matrix}}
+      - bash /c/workdir/.buildkite/windows_ci.sh wheels
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: ":tapioca: build: jar"
+    tags:
+      - java
+      - oss
+    instance_type: medium
+    commands:
+      - ./ci/build/build-manylinux-ray.sh
+      - ./ci/build/build-manylinux-jar.sh
+      - ./ci/build/copy_build_artifacts.sh jar
+    depends_on: manylinux
+    job_env: manylinux
+
+  - label: ":tapioca: build: doc"
+    instance_type: medium
+    commands:
+      - FAST=True make -C doc/ html
+    depends_on: docbuild
+    job_env: docbuild
+
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
