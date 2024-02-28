@@ -169,7 +169,7 @@ class TestSchedulingNode:
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
         assert node.ray_node_id == "r1"
         assert node.im_instance_id == "1"
-        assert node.available_resources == {
+        assert node.available_resources_for_sched == {
             ResourceRequestSource.PENDING_DEMAND: {"CPU": 0},
             ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
         }
@@ -210,7 +210,7 @@ class TestSchedulingNode:
         assert node is not None
         assert node.node_type == "type_1"
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
-        assert node.available_resources == {
+        assert node.available_resources_for_sched == {
             ResourceRequestSource.PENDING_DEMAND: {"CPU": 1},
             ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
         }

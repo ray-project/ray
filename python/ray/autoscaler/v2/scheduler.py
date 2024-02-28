@@ -144,6 +144,95 @@ class SchedulingNode:
         One could also extend the scheduling behavior by overriding `try_schedule`
     """
 
+    # Node type name.
+    node_type: NodeType
+    # Status
+    status: SchedulingNodeStatus
+    # Resource requests scheduled on this nodes for different sources.
+    sched_requests: Dict[ResourceRequestSource, List[ResourceRequest]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    # Available resources for different sources of requests.
+    available_resources_for_sched: Dict[
+        ResourceRequestSource, Dict[str, float]
+    ] = field(default_factory=dict)
+    # The node's current resource capacity.
+    total_resources: Dict[str, float] = field(default_factory=dict)
+    # Node's labels, including static or dynamic labels.
+    labels: Dict[str, str] = field(default_factory=dict)
+    # Observability descriptive message for why the node was launched in the
+    # first place.
+    launch_reason: Optional[str] = None
+    # Termination request, none when the node is not being terminated.
+    termination_request: Optional[TerminationRequest] = None
+    # The instance id of the IM(Instance Manager) instance. None if the node
+    # is not yet in IM.
+    im_instance_id: Optional[str] = None
+    # The ray node id of the ray node. None if the node is not included in
+    # ray cluster's GCS report yet (not running ray yet).
+    ray_node_id: Optional[str] = None
+    # Idle duration in ms. Default not idle.
+    idle_duration_ms: int = 0
+    # Launch config hash.
+    launch_config_hash: Optional[str] = None
+    # node kind.
+    node_kind: NodeKind = NodeKind.WORKER
+
+    def __init__(
+        self,
+        node_type: NodeType,
+        total_resources: Dict[str, float],
+        available_resources: Dict[str, float],
+        labels: Dict[str, str],
+        status: SchedulingNodeStatus,
+        im_instance_id: str = "",
+        ray_node_id: str = "",
+        idle_duration_ms: int = 0,
+        launch_config_hash: str = "",
+        node_kind: NodeKind = NodeKind.WORKER,
+        termination_request: Optional[TerminationRequest] = None,
+    ):
+        self.node_type = node_type
+        self.total_resources = total_resources
+        self.available_resources_for_sched = {
+            ResourceRequestSource.PENDING_DEMAND: dict(available_resources),
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: dict(total_resources),
+        }
+        self.sched_requests = {
+            ResourceRequestSource.PENDING_DEMAND: [],
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: [],
+        }
+        self.labels = labels
+        self.status = status
+        self.im_instance_id = im_instance_id
+        self.ray_node_id = ray_node_id
+        self.idle_duration_ms = idle_duration_ms
+        self.launch_config_hash = launch_config_hash
+        self.node_kind = node_kind
+        self.termination_request = termination_request
+
+    def get_available_resources(self, resource_request_source: ResourceRequestSource):
+        """Get the available resources for the given resource request source."""
+        return self.available_resources_for_sched[resource_request_source]
+
+    def get_sched_requests(self, resource_request_source: ResourceRequestSource):
+        """Get the resource requests for the given resource request source."""
+        return self.sched_requests[resource_request_source]
+
+    def add_sched_request(
+        self,
+        request: ResourceRequest,
+        resource_request_source: ResourceRequestSource,
+    ):
+        """
+        Add the resource requests to the node.
+
+        Args:
+            request: The resource request to be added.
+            resource_request_source: The source of the resource request.
+        """
+        self.sched_requests[resource_request_source].append(request)
+
     @staticmethod
     def new(
         instance: AutoscalerInstance,
@@ -177,17 +266,7 @@ class SchedulingNode:
                 total_resources=dict(instance.ray_node.total_resources),
                 # Available resources for scheduling requests of different
                 # sources.
-                available_resources={
-                    # Demand are fulfilled with available resources.
-                    ResourceRequestSource.PENDING_DEMAND: dict(
-                        instance.ray_node.available_resources
-                    ),
-                    # Cluster resource constraints are fulfilled with total
-                    # resources of a node.
-                    ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: dict(
-                        instance.ray_node.total_resources
-                    ),
-                },
+                available_resources=dict(instance.ray_node.available_resources),
                 # Use ray node's dynamic labels.
                 labels=dict(instance.ray_node.dynamic_labels),
                 status=SchedulingNodeStatus.SCHEDULABLE,
@@ -216,6 +295,9 @@ class SchedulingNode:
             # node_type_configs for this node type. We should terminate it.
             return SchedulingNode(
                 node_type=instance.im_instance.instance_type,
+                total_resources={},
+                available_resources={},
+                labels={},
                 status=SchedulingNodeStatus.TO_TERMINATE,
                 im_instance_id=instance.im_instance.instance_id,
                 termination_request=TerminationRequest(
@@ -283,12 +365,7 @@ class SchedulingNode:
         return SchedulingNode(
             node_type=node_config.name,
             total_resources=dict(node_config.resources),
-            available_resources={
-                ResourceRequestSource.PENDING_DEMAND: dict(node_config.resources),
-                ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: dict(
-                    node_config.resources
-                ),
-            },
+            available_resources=dict(node_config.resources),
             labels=dict(node_config.labels),
             status=status,
             im_instance_id=im_instance_id,
@@ -297,40 +374,6 @@ class SchedulingNode:
 
     def __post_init__(self):
         assert self.node_type, "node_type should be set"
-
-    # Node type name.
-    node_type: NodeType
-    # Status
-    status: SchedulingNodeStatus
-    # Resource requests scheduled on this nodes for different sources.
-    sched_requests: Dict[ResourceRequestSource, List[ResourceRequest]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
-    # Available resources for different sources of requests.
-    available_resources: Dict[ResourceRequestSource, Dict[str, float]] = field(
-        default_factory=dict
-    )
-    # The node's current resource capacity.
-    total_resources: Dict[str, float] = field(default_factory=dict)
-    # Node's labels, including static or dynamic labels.
-    labels: Dict[str, str] = field(default_factory=dict)
-    # Observability descriptive message for why the node was launched in the
-    # first place.
-    launch_reason: Optional[str] = None
-    # Termination request, none when the node is not being terminated.
-    termination_request: Optional[TerminationRequest] = None
-    # The instance id of the IM(Instance Manager) instance. None if the node
-    # is not yet in IM.
-    im_instance_id: Optional[str] = None
-    # The ray node id of the ray node. None if the node is not included in
-    # ray cluster's GCS report yet (not running ray yet).
-    ray_node_id: Optional[str] = None
-    # Idle duration in ms. Default not idle.
-    idle_duration_ms: int = 0
-    # Launch config hash.
-    launch_config_hash: Optional[str] = None
-    # node kind.
-    node_kind: NodeKind = NodeKind.WORKER
 
     def try_schedule(
         self,
@@ -402,8 +445,8 @@ class SchedulingNode:
             A utilization score for this node.
         """
 
-        sched_requests = self.sched_requests[resource_request_source]
-        available_resources = self.available_resources[resource_request_source]
+        sched_requests = self.get_sched_requests(resource_request_source)
+        available_resources = self.get_available_resources(resource_request_source)
 
         # Compute the number of resource types being scheduled.
         num_matching_resource_types = 0
@@ -470,7 +513,7 @@ class SchedulingNode:
 
         # TODO: add labels when implementing the gang scheduling.
 
-        available_resources_dict = self.available_resources[resource_request_source]
+        available_resources_dict = self.get_available_resources(resource_request_source)
 
         # Check if there's enough resources to schedule the request.
         if not _fits(available_resources_dict, dict(request.resources_bundle)):
@@ -480,7 +523,7 @@ class SchedulingNode:
         _inplace_subtract(available_resources_dict, dict(request.resources_bundle))
 
         # Add the request to the node.
-        self.sched_requests[resource_request_source].append(request)
+        self.add_sched_request(request, resource_request_source)
 
         return True
 
@@ -510,10 +553,10 @@ class SchedulingNode:
             else None,
             status=self.status,
             total_resources=self.total_resources,
-            available_resources_for_demand=self.available_resources[
+            available_resources_for_demand=self.available_resources_for_sched[
                 ResourceRequestSource.PENDING_DEMAND
             ],
-            available_resources_for_cluster_resource_constraints=self.available_resources[  # noqa
+            available_resources_for_cluster_resource_constraints=self.available_resources_for_sched[  # noqa
                 ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT
             ],
             labels=self.labels,
@@ -986,17 +1029,20 @@ class ResourceDemandScheduler(IResourceScheduler):
         Such that nodes sorted earlier will be terminated first.
         """
 
-        running_ray = node.ray_node_id is not None
+        running_ray = len(node.ray_node_id) > 0
         # Reverse the idle duration such that the nodes with the largest idle duration
         # will be terminated first.
         idle_dur = -1 * node.idle_duration_ms
+        available_resources = node.get_available_resources(
+            ResourceRequestSource.PENDING_DEMAND
+        )
 
         utils_per_resources = {}
         for resource, total in node.total_resources.items():
             if total <= 0:
                 continue
             utils_per_resources[resource] = (
-                total - node.available_resources.get(resource, 0)
+                total - available_resources.get(resource, 0)
             ) / total
 
         avg_util = (
