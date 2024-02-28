@@ -142,13 +142,10 @@ class PPOTorchPolicy(
             )
             vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
-            mean_vf_loss_unclipped = reduce_mean_valid(vf_loss)
         # Ignore the value function.
         else:
             value_fn_out = torch.tensor(0.0).to(surrogate_loss.device)
-            vf_loss_clipped = mean_vf_loss = mean_vf_loss_unclipped = torch.tensor(
-                0.0
-            ).to(surrogate_loss.device)
+            vf_loss_clipped = mean_vf_loss = torch.tensor(0.0).to(surrogate_loss.device)
 
         total_loss = reduce_mean_valid(
             -surrogate_loss
@@ -166,7 +163,6 @@ class PPOTorchPolicy(
         model.tower_stats["total_loss"] = total_loss
         model.tower_stats["mean_policy_loss"] = reduce_mean_valid(-surrogate_loss)
         model.tower_stats["mean_vf_loss"] = mean_vf_loss
-        model.tower_stats["mean_vf_loss_unclipped"] = mean_vf_loss_unclipped
         model.tower_stats["vf_explained_var"] = explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS], value_fn_out
         )
@@ -198,9 +194,6 @@ class PPOTorchPolicy(
                 ),
                 "vf_explained_var": torch.mean(
                     torch.stack(self.get_tower_stats("vf_explained_var"))
-                ),
-                "vf_loss_unclipped": torch.mean(
-                    torch.stack(self.get_tower_stats("mean_vf_loss_unclipped"))
                 ),
                 "kl": torch.mean(torch.stack(self.get_tower_stats("mean_kl_loss"))),
                 "entropy": torch.mean(

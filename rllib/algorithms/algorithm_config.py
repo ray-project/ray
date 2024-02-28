@@ -2761,18 +2761,17 @@ class AlgorithmConfig(_Config):
         return self._is_atari
 
     @property
+    def uses_new_env_runners(self):
+        return self.env_runner_cls is not None and not issubclass(
+            self.env_runner_cls, RolloutWorker
+        )
+
+    @property
     def total_train_batch_size(self):
         if self.train_batch_size_per_learner is not None:
             return self.train_batch_size_per_learner * (self.num_learner_workers or 1)
         else:
             return self.train_batch_size
-
-    @property
-    def uses_new_env_runners(self):
-        return (
-            self.env_runner_cls is not None
-            and not issubclass(self.env_runner_cls, RolloutWorker)
-        )
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.

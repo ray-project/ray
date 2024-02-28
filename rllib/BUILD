@@ -777,24 +777,24 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "connectors/tests/test_connectors",
+    name = "connectors/tests/test_connector",
     tags = ["team:rllib", "connector"],
     size = "small",
-    srcs = ["connectors/tests/test_connectors.py"]
+    srcs = ["connectors/tests/test_connector.py"]
 )
 
 py_test(
-    name = "connectors/tests/test_action_connectors",
+    name = "connectors/tests/test_action",
     tags = ["team:rllib", "connector"],
     size = "small",
-    srcs = ["connectors/tests/test_action_connectors.py"]
+    srcs = ["connectors/tests/test_action.py"]
 )
 
 py_test(
-    name = "connectors/tests/test_agent_connectors",
+    name = "connectors/tests/test_agent",
     tags = ["team:rllib", "connector"],
     size = "medium",
-    srcs = ["connectors/tests/test_agent_connectors.py"]
+    srcs = ["connectors/tests/test_agent.py"]
 )
 
 # --------------------------------------------------------------------

@@ -16,11 +16,6 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.postprocessing.zero_padding import (
-    create_mask_and_seq_lens,
-    split_and_pad,
-    split_and_pad_single_record,
-)
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -223,3 +218,67 @@ class DefaultLearnerConnector(ConnectorV2):
             },
             env_steps=sum(len(e) for e in episodes),
         )
+
+
+def split_and_pad(episodes_data, T):
+    all_chunks = []
+
+    for data in episodes_data:
+        num_chunks = int(np.ceil(data.shape[0] / T))
+
+        for i in range(num_chunks):
+            start_index = i * T
+            end_index = start_index + T
+
+            # Extract the chunk
+            chunk = data[start_index:end_index]
+
+            # Pad the chunk if it's shorter than T
+            if chunk.shape[0] < T:
+                padding_shape = [(0, T - chunk.shape[0])] + [
+                    (0, 0) for _ in range(chunk.ndim - 1)
+                ]
+                chunk = np.pad(chunk, pad_width=padding_shape, mode="constant")
+
+            all_chunks.append(chunk)
+
+    # Combine all chunks into a single array
+    result = np.concatenate(all_chunks, axis=0)
+
+    # Reshape the array to include the time dimension T.
+    # The new shape should be (-1, T) + original dimensions (excluding the batch
+    # dimension)
+    result = result.reshape((-1, T) + result.shape[1:])
+
+    return result
+
+
+def split_and_pad_single_record(data, episodes, T):
+    episodes_data = []
+    idx = 0
+    for episode in episodes:
+        len_ = len(episode)
+        episodes_data.append(data[idx : idx + len_])
+        idx += len_
+    return split_and_pad(episodes_data, T)
+
+
+def create_mask_and_seq_lens(episode_lens, T):
+    mask = []
+    seq_lens = []
+    for episode_len in episode_lens:
+        len_ = min(episode_len, T)
+        seq_lens.append(len_)
+        row = [1] * len_ + [0] * (T - len_)
+        mask.append(row)
+
+        # Handle sequence lengths greater than T.
+        overflow = episode_len - T
+        while overflow > 0:
+            len_ = min(overflow, T)
+            seq_lens.append(len_)
+            extra_row = [1] * len_ + [0] * (T - len_)
+            mask.append(extra_row)
+            overflow -= T
+
+    return np.array(mask, dtype=np.bool_), np.array(seq_lens, dtype=np.int32)

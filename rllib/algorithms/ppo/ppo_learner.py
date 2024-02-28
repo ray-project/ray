@@ -1,7 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
-
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     PPOConfig,

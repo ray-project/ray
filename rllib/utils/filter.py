@@ -41,6 +41,10 @@ class Filter:
     def as_serializable(self) -> "Filter":
         raise NotImplementedError
 
+    @Deprecated(new="Filter.reset_buffer()", error=True)
+    def clear_buffer(self):
+        pass
+
 
 @DeveloperAPI
 class NoFilter(Filter):
@@ -308,9 +312,10 @@ class MeanStdFilter(Filter):
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
+        # TODO: Remove these safe-guards if not needed anymore.
         self.running_stats = tree.map_structure(
             lambda rs: rs.copy(),
-            other.running_stats,
+            other.running_stats if hasattr(other, "running_stats") else other.rs,
         )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
@@ -362,11 +367,11 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
         super(ConcurrentMeanStdFilter, self).__init__(*args, **kwargs)
         deprecation_warning(
             old="ConcurrentMeanStdFilter",
+            error=False,
             help="ConcurrentMeanStd filters are only used for testing and will "
             "therefore be deprecated in the course of moving to the "
             "Connetors API, where testing of filters will be done by other "
             "means.",
-            error=False,
         )
 
         self._lock = threading.RLock()

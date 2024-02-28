@@ -1354,7 +1354,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             # unnecessary, making subsequent disk access unnecessary.
             func(self.policy_map[pid], pid, **kwargs)
             for pid in self.policy_map.keys()
-                if self.is_policy_to_train is None or self.is_policy_to_train(pid, None)
+            if self.is_policy_to_train is None or self.is_policy_to_train(pid, None)
         ]
 
     def sync_filters(self, new_filters: dict) -> None:

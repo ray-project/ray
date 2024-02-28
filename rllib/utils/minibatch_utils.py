@@ -64,6 +64,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
     def __iter__(self):
         while min(self._num_covered_epochs.values()) < self._num_iters:
+
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 

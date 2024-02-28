@@ -123,69 +123,48 @@ class TorchMLP(nn.Module):
             # Whether we are already processing the last (special) output layer.
             is_output_layer = output_dim is not None and i == len(dims) - 2
 
-
-            # TEST: sven: Try SlimFC b/c of the different initializer?
-            from ray.rllib.models.torch.misc import SlimFC
-
-            layers.append(
-                # nn.Linear(
-                #    dims[i],
-                #    dims[i + 1],
-                #    bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
-                # )
-                SlimFC(
-                    in_size=dims[i],
-                    out_size=dims[i + 1],
-                    activation_fn=hidden_layer_activation
-                    if not is_output_layer
-                    else None,
-                    use_bias=output_use_bias
-                    if is_output_layer
-                    else hidden_layer_use_bias,
-                )
+            layer = nn.Linear(
+                dims[i],
+                dims[i + 1],
+                bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
             )
-            #layer = nn.Linear(
-            #    dims[i],
-            #    dims[i + 1],
-            #    bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
-            #)
-            ## Initialize layers, if necessary.
-            #if is_output_layer:
-            #    # Initialize output layer weigths if necessary.
-            #    if output_weights_initializer:
-            #        output_weights_initializer(
-            #            layer.weight, **output_weights_initializer_config or {}
-            #        )
-            #    # Initialize output layer bias if necessary.
-            #    if output_bias_initializer:
-            #        output_bias_initializer(
-            #            layer.bias, **output_bias_initializer_config or {}
-            #        )
-            ## Must be hidden.
-            #else:
-            #    # Initialize hidden layer weights if necessary.
-            #    if hidden_layer_weights_initializer:
-            #        hidden_weights_initializer(
-            #            layer.weight, **hidden_layer_weights_initializer_config or {}
-            #        )
-            #    # Initialize hidden layer bias if necessary.
-            #    if hidden_layer_bias_initializer:
-            #        hidden_bias_initializer(
-            #            layer.bias, **hidden_layer_bias_initializer_config or {}
-            #        )
-            #layers.append(layer)
-            #END: TEST
+            # Initialize layers, if necessary.
+            if is_output_layer:
+                # Initialize output layer weigths if necessary.
+                if output_weights_initializer:
+                    output_weights_initializer(
+                        layer.weight, **output_weights_initializer_config or {}
+                    )
+                # Initialize output layer bias if necessary.
+                if output_bias_initializer:
+                    output_bias_initializer(
+                        layer.bias, **output_bias_initializer_config or {}
+                    )
+            # Must be hidden.
+            else:
+                # Initialize hidden layer weights if necessary.
+                if hidden_layer_weights_initializer:
+                    hidden_weights_initializer(
+                        layer.weight, **hidden_layer_weights_initializer_config or {}
+                    )
+                # Initialize hidden layer bias if necessary.
+                if hidden_layer_bias_initializer:
+                    hidden_bias_initializer(
+                        layer.bias, **hidden_layer_bias_initializer_config or {}
+                    )
+
+            layers.append(layer)
 
             # We are still in the hidden layer section: Possibly add layernorm and
             # hidden activation.
-            # if not is_output_layer:
-            #    # Insert a layer normalization in between layer's output and
-            #    # the activation.
-            #    if hidden_layer_use_layernorm:
-            #        layers.append(nn.LayerNorm(dims[i + 1]))
-            #    # Add the activation function.
-            #    if hidden_activation is not None:
-            #        layers.append(hidden_activation())
+            if not is_output_layer:
+                # Insert a layer normalization in between layer's output and
+                # the activation.
+                if hidden_layer_use_layernorm:
+                    layers.append(nn.LayerNorm(dims[i + 1]))
+                # Add the activation function.
+                if hidden_activation is not None:
+                    layers.append(hidden_activation())
 
         # Add output layer's (if any) activation.
         output_activation = get_activation_fn(output_activation, framework="torch")
