@@ -8,8 +8,12 @@ steps:
     commands:
       - bash .buildkite/release-automation/check_release_blockers.sh
 
+  - block: "Release blockers found"
+    depends_on:
+      - step: check-release-blockers
+        allow_failure: true
+
   - label: "Trigger Postmerge test"
-    depends_on: check-release-blockers
     trigger: "postmerge"
     if: build.env("COMMIT") != null && build.env("BRANCH") != null
     build:
@@ -18,7 +22,6 @@ steps:
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
   
   - label: "Trigger Release nightly test"
-    depends_on: check-release-blockers
     trigger: "release"
     if: build.env("COMMIT") != null && build.env("BRANCH") != null
     build:
@@ -29,26 +32,11 @@ steps:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "nightly"
   
-  - label: "Trigger Release nightly-3x test"
-    depends_on: check-release-blockers
-    trigger: "release"
-    if: build.env("COMMIT") != null && build.env("BRANCH") != null
-    build:
-      commit: "${COMMIT}"
-      branch: "${BRANCH}"
-      message: "Nightly-3x test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
-      env:
-        AUTOMATIC: 1
-        RELEASE_FREQUENCY: "nightly-3x"
-  
-  - label: "Trigger Release weekly test"
-    depends_on: check-release-blockers
-    trigger: "release"
-    if: build.env("COMMIT") != null && build.env("BRANCH") != null
-    build:
-      commit: "${COMMIT}"
-      branch: "${BRANCH}"
-      message: "Weekly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
-      env:
-        AUTOMATIC: 1
-        RELEASE_FREQUENCY: "weekly"
+  - wait
+
+  - label: "Pre-release checks finished"
+    key: pre-release-check-finished
+    commands:
+      - echo "Pre-release checks finished"
+
+
