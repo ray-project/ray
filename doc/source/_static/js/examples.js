@@ -51,6 +51,14 @@ function panelMatchesFilters(tags, filters) {
       return true;
     }
 
+    // If "Any" is checked, consider the panel to be matched
+    if (
+      groupTags.filter(({name, isChecked}) => name === 'any' && isChecked)
+        .length > 0
+    ) {
+      return true;
+    }
+
     // Otherwise show the panel if any checked item matches the tags of the panel
     return groupTags
       .filter(({isChecked}) => isChecked)

@@ -443,6 +443,7 @@ class Framework(ExampleEnum):
     HOROVOD = "Horovod"
     XGBOOST = "XGBoost"
     HUGGINGFACE = "Hugging Face"
+    ANY = "Any"
 
     @classmethod
     def formatted_name(cls):
@@ -499,16 +500,12 @@ class Example:
         self.library = library
 
         self.frameworks = []
-        framework_config = config.get("frameworks")
-        if framework_config is not None:
-            for framework in framework_config.split(","):
-                self.frameworks.append(Framework(framework.strip()))
+        for framework in config.get("frameworks", []):
+            self.frameworks.append(Framework(framework.strip()))
 
         self.use_cases = []
-        use_case_config = config.get("use_cases")
-        if use_case_config is not None:
-            for use_case in use_case_config.split(","):
-                self.use_cases.append(UseCase(use_case.strip()))
+        for use_case in config.get("use_cases", []):
+            self.use_cases.append(UseCase(use_case.strip()))
 
         self.skill_level = SkillLevel(config.get("skill_level"))
         self.title = config.get("title")
@@ -520,7 +517,11 @@ class Example:
                 "that is part of the Ray docs."
             )
 
-        self.link = str(config_dir / config.get("link"))
+        link = config["link"]
+        if link.startswith("http"):
+            self.link = link
+        else:
+            self.link = str(config_dir / link)
 
         if self.title is None:
             raise ValueError(f"Title of an example {config} must be set.")
@@ -550,7 +551,6 @@ class ExampleConfig:
             path = pathlib.Path(path)
 
         if not path.exists():
-            breakpoint()
             raise ValueError(f"No configuration file found at {path}.")
 
         with open(path, "r") as f:
@@ -560,6 +560,37 @@ class ExampleConfig:
         self.library = Library.from_path(path)
         self.examples = self.parse_examples(config.get("examples", []), src_dir)
         self.text = config.get("text", "")
+        self.columns_to_show = self.parse_columns_to_show(
+            config.get("columns_to_show", [])
+        )
+
+    def parse_columns_to_show(self, columns: str) -> Dict[str, type]:
+        """Parse the columns to show in the library example page for the config.
+
+        Note that a link to the example is always shown, and cannot be hidden.
+
+        Parameters
+        ----------
+        columns : str
+            Column names to show; valid names are any subclass of ExampleEnum, e.g.
+            UseCase, Framework, etc.
+
+        Returns
+        -------
+        List[type]
+            A list of the ExampleEnum classes for which columns are to be shown
+        """
+        cols = {}
+        for col in columns:
+            if col == "use_cases":
+                cols["use_cases"] = UseCase
+            elif col == "frameworks":
+                cols["frameworks"] = Framework
+            else:
+                raise ValueError(
+                    f"Invalid column name {col} specified in {self.config_path}"
+                )
+        return cols
 
     def parse_examples(
         self, example_config: List[Dict[str, str]], src_dir: Union[pathlib.Path, str]
@@ -625,11 +656,9 @@ def setup_context(app, pagename, templatename, context, doctree):
         }
         # Keep track of whether any of the examples have frameworks metadata; the
         # column will not be shown if no frameworks metadata exists on any example.
-        render_framework_col = False
         example_config = ExampleConfig(config, app.srcdir)
         for example in example_config:
             examples[example.skill_level].append(example)
-            render_framework_col = render_framework_col or len(example.frameworks) != 0
 
         # Construct a table of examples
         soup = bs4.BeautifulSoup()
@@ -654,15 +683,19 @@ def setup_context(app, pagename, templatename, context, doctree):
 
             table = soup.new_tag("table", attrs={"class": ["table", "example-table"]})
 
-            if render_framework_col:
+            # If there are additional columns to show besides just the example link,
+            # include column titles in the table header
+            if len(example_config.columns_to_show) > 0:
                 thead = soup.new_tag("thead")
                 thead_row = soup.new_tag("tr")
 
-                framework_col = soup.new_tag("th")
-                framework_label = soup.new_tag("p")
-                framework_label.append("Framework")
-                framework_col.append(framework_label)
-                thead_row.append(framework_col)
+                for example_enum in example_config.columns_to_show.values():
+                    col_header = soup.new_tag("th")
+                    col_label = soup.new_tag("p")
+                    col_label.append(example_enum.formatted_name())
+
+                    col_header.append(col_label)
+                    thead_row.append(col_header)
 
                 link_col = soup.new_tag("th")
                 link_label = soup.new_tag("p")
@@ -677,14 +710,24 @@ def setup_context(app, pagename, templatename, context, doctree):
             for example in examples:
                 tr = soup.new_tag("tr")
 
-                if render_framework_col:
-                    framework_td = soup.new_tag("td")
-                    framework_p = soup.new_tag("p")
-                    framework_p.append(
-                        ", ".join(framework.value for framework in example.frameworks)
-                    )
-                    framework_td.append(framework_p)
-                    tr.append(framework_td)
+                # The columns specify which attributes of each example to show;
+                # for each attribute, a new cell value is added with the attribute from
+                # the example
+                if len(example_config.columns_to_show) > 0:
+                    for attribute in example_config.columns_to_show:
+                        col_td = soup.new_tag("td")
+                        col_p = soup.new_tag("p")
+
+                        attribute_value = getattr(example, attribute, "")
+                        if isinstance(attribute_value, str):
+                            col_p.append(attribute_value)
+                        elif isinstance(attribute_value, list):
+                            col_p.append(
+                                ", ".join(item.value for item in attribute_value)
+                            )
+
+                        col_td.append(col_p)
+                        tr.append(col_td)
 
                 link_td = soup.new_tag("td")
                 link_p = soup.new_tag("p")
@@ -974,6 +1017,18 @@ def add_nav_chevrons(input_soup: bs4.BeautifulSoup) -> bs4.BeautifulSoup:
 
 
 def render_example_gallery_dropdown(cls: type) -> bs4.BeautifulSoup:
+    """Render a dropdown menu selector for the example gallery.
+
+    Parameters
+    ----------
+    cls : type
+        ExampleEnum class type to use to populate the dropdown
+
+    Returns
+    -------
+    bs4.BeautifulSoup
+        Soup containing the dropdown element
+    """
     soup = bs4.BeautifulSoup()
 
     dropdown_name = cls.formatted_name().lower().replace(" ", "-")
