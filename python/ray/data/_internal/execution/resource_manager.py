@@ -55,10 +55,12 @@ class ResourceManager:
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Object store memory usage of the pending task outputs.
-        self._mem_pending_task_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
-        # Object store memory usage of the internal/external output buffers, and
-        # the output buffers of the output dependency operators.
+        # Object store memory usage internal to the operator, including the
+        # pending task outputs and op's internal output buffers.
+        self._mem_op_internal: Dict[PhysicalOperator, int] = defaultdict(int)
+        # Object store memory usage of the blocks that have been taken out of
+        # the operator, including the external output buffer in OpState, and the
+        # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
         # Whether to print debug information.
         self._debug = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
@@ -86,22 +88,23 @@ class ResourceManager:
         if isinstance(op, InputDataBuffer):
             return 0
 
-        pending_task_outputs = op.metrics.obj_store_mem_pending_task_outputs or 0
+        # Pending task outputs.
+        mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
+        # Op's internal output buffers.
+        mem_op_internal += op.metrics.obj_store_mem_internal_outqueue
 
-        output_buffers = op.metrics.obj_store_mem_internal_outqueue
-        output_buffers += state.outqueue_memory_usage()
-
-        next_op_input_buffers = 0
+        # Op's external output buffer.
+        mem_op_outputs = state.outqueue_memory_usage()
         for next_op in op.output_dependencies:
-            next_op_input_buffers += (
+            mem_op_outputs += (
                 next_op.metrics.obj_store_mem_internal_inqueue
                 + next_op.metrics.obj_store_mem_pending_task_inputs
             )
 
-        self._mem_pending_task_outputs[op] = pending_task_outputs
-        self._mem_op_outputs[op] = output_buffers + next_op_input_buffers
+        self._mem_op_internal[op] = mem_op_internal
+        self._mem_op_outputs[op] = mem_op_outputs
 
-        return pending_task_outputs + output_buffers + next_op_input_buffers
+        return mem_op_internal + mem_op_outputs
 
     def update_usages(self):
         """Recalculate resource usages."""
@@ -191,14 +194,17 @@ class ResourceManager:
         usage_str += f", objects: {self._op_usages[op].object_store_memory_str()}"
         if self._debug:
             usage_str += (
-                f" (task_pending: {memory_string(self._mem_pending_task_outputs[op])}, "  # noqa
-                f"op_outputs: {memory_string(self._mem_op_outputs[op])})"
+                f" (internal: {memory_string(self._mem_op_internal[op])}, "
+                f"outputs: {memory_string(self._mem_op_outputs[op])})"
             )
             if (
-                self.op_resource_allocator_enabled()
+                isinstance(self._op_resource_allocator, ReservationOpResourceAllocator)
                 and op in self._op_resource_allocator._op_budgets
             ):
-                usage_str += f", budget: {self._op_resource_allocator._op_budgets[op]}"
+                budget = self._op_resource_allocator._op_budgets[op]
+                usage_str += f", budget: [cpu={budget.cpu:.1f}"
+                usage_str += f" ,gpu={budget.gpu:.1f}" if budget.gpu else ""
+                usage_str += f" ,objects={budget.object_store_memory_str()}]"
         return usage_str
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
@@ -342,12 +348,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
         # Memory reserved exclusively for the outputs of each operator.
-        # "Op outputs" refer to the operator's internal and external output buffers
-        # and next operator's input buffers, but not including the pending task outputs.
+        # "Op outputs" refer to blocks that have been taken out of an operator,
+        # i.e., `RessourceManager._mem_op_outputs`.
         #
         # Note, if we don't reserve memory for op outputs, all the budget may be used by
-        # by the pending task outputs. Then we'll have no budget to pull the outputs
-        # from the running tasks.
+        # the pending task outputs, and/or op' internal output buffers (the latter can
+        # happen when `preserve_order=True`.
+        # Then we'll have no budget to pull blocks from the op.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
@@ -400,8 +407,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         )
         for op in eligible_ops:
             # Reserve at least half of the default reserved resources for the outputs.
-            # This makes sure that we will have enough budget to pull the outputs from
-            # the running tasks.
+            # This makes sure that we will have enough budget to pull blocks from the
+            # op.
             self._reserved_for_op_outputs[op] = max(
                 default_reserved.object_store_memory // 2, 1
             )
@@ -541,7 +548,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_mem_usage = 0
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += self._resource_manager._mem_pending_task_outputs[op]
+            op_mem_usage += self._resource_manager._mem_op_internal[op]
             op_mem_usage += max(
                 self._resource_manager._mem_op_outputs[op]
                 - self._reserved_for_op_outputs[op],
