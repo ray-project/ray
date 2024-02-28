@@ -698,6 +698,7 @@ class BaseTrainer(abc.ABC):
         # class. This will mean the Tune trial name will match the name of Trainer on
         # stdout messages and the results directory.
         train_coordinator_fn.__name__ = trainer_cls.__name__
+        print("ABC")
 
         trainable_cls = wrap_function(train_coordinator_fn)
         has_base_dataset = bool(self.datasets)
