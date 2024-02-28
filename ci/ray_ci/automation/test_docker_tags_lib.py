@@ -244,7 +244,8 @@ def test_is_release_tag(tag, release_versions, expected_value):
 def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
     tag = "test_namespace/test_repository:test_tag"
     mock_call_crane_cp.return_value = (
-        "aws-ecr/name/repo:test_tag: digest: sha256:sample-sha256 size: 1788"
+        0,
+        "aws-ecr/name/repo:test_tag: digest: sha256:sample-sha256 size: 1788",
     )
 
     is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
@@ -257,7 +258,7 @@ def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
 @mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
 def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
     tag = "test_namespace/test_repository:test_tag"
-    mock_call_crane_cp.return_value = "Error: Failed to copy tag."
+    mock_call_crane_cp.return_value = (1, "Error: Failed to copy tag.")
 
     is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
     mock_call_crane_cp.assert_called_once_with(

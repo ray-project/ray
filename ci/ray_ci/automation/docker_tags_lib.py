@@ -1,6 +1,6 @@
 import subprocess
 from datetime import datetime
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Tuple
 import os
 import requests
 from dateutil import parser
@@ -282,7 +282,7 @@ def _crane_binary():
     return r.Rlocation("crane_linux_x86_64/crane")
 
 
-def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
+def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
     try:
         with subprocess.Popen(
             [
@@ -301,9 +301,9 @@ def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str):
             return_code = proc.wait()
             if return_code:
                 raise subprocess.CalledProcessError(return_code, proc.args)
-            return output
+            return return_code, output
     except subprocess.CalledProcessError as e:
-        return f"Error: {e.output}"
+        return e.returncode, e.output
 
 
 def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
@@ -317,15 +317,16 @@ def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     _, repo_tag = tag.split("/")
     tag_name = repo_tag.split(":")[1]
     logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
-    result = _call_crane_cp(
+    return_code, output = _call_crane_cp(
         tag=tag_name,
         source=tag,
         aws_ecr_repo=aws_ecr_repo,
     )
-    if "Error" in result:
-        logger.info(f"Failed to copy {tag} to AWS ECR: {result}")
+    if return_code:
+        logger.info(f"Failed to copy {tag} to {aws_ecr_repo}:{tag_name}......")
+        logger.info(f"Error: {output}")
         return False
-    logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name}......")
+    logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name} successfully")
     return True
 
 
