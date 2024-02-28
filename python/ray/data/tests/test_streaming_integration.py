@@ -451,7 +451,6 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     next(it)
     time.sleep(3)  # Pause a little so anything that would be executed runs.
     num_finished = ray.get(counter.get.remote())
-    print(num_finished)
     assert num_finished < 20, num_finished
     # Check intermediate stats reporting.
     stats = ds.stats()
