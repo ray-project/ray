@@ -56,7 +56,7 @@ This technique is called "load shedding," and it allows the system to gracefully
 
 You can configure load shedding for your Serve deployments using the `max_queued_requests` parameter to the {mod}`@serve.deployment <ray.serve.deployment>` decorator.
 This controls the maximum number of requests that can be queued in each {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` (including each Serve proxy).
-Once the limit is reached, enqueueing any new requests will immediately raise a {mod}`BackPressureError <ray.serve.exceptions.BackPressureError>` (TODO: API ref for exception).
+Once the limit is reached, enqueueing any new requests will immediately raise a {mod}`BackPressureError <ray.serve.exceptions.BackPressureError>`.
 HTTP requests will return a `503` status code (service unavailable).
 
 The following example defines a deployment that emulates slow request handling and has `max_concurrent_queries` and `max_queued_requests` configured.
