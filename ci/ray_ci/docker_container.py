@@ -1,5 +1,6 @@
 import os
 from typing import List
+from datetime import datetime
 
 from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
@@ -29,6 +30,7 @@ class DockerContainer(LinuxContainer):
         architecture: str = DEFAULT_ARCHITECTURE,
         canonical_tag: str = None,
         upload: bool = False,
+        nightly_alias: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
@@ -38,6 +40,7 @@ class DockerContainer(LinuxContainer):
         self.architecture = architecture
         self.canonical_tag = canonical_tag
         self.upload = upload
+        self.nightly_alias = nightly_alias
 
         super().__init__(
             "forge" if architecture == "x86_64" else "forge-aarch64",
@@ -53,6 +56,12 @@ class DockerContainer(LinuxContainer):
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
         if branch == "master":
             return [sha_tag, "nightly"]
+
+        formatted_date = datetime.now().strftime("%y%m%d")
+        if branch and branch.startswith("khluu"):
+            print("Nightly khluu? ", self.nightly_alias)
+            print("TAGS: ", [sha_tag, f"nightly.{formatted_date}"])
+            return [sha_tag, f"nightly.{formatted_date}"] if self.nightly_alias else [sha_tag]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]

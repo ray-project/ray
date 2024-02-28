@@ -63,6 +63,12 @@ from ci.ray_ci.utils import logger, docker_login
     default=False,
     help=("Upload the build artifacts"),
 )
+@click.option(
+    "--nightly-alias",
+    type=bool,
+    default=False,
+    help=("Tag nightly alias"),
+)
 def main(
     artifact_type: str,
     image_type: str,
@@ -72,10 +78,12 @@ def main(
     architecture: str,
     canonical_tag: str,
     upload: bool,
+    nightly_alias: bool,
 ) -> None:
     """
     Build a wheel or jar artifact
     """
+    print("Nightly builder? ", nightly_alias)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
@@ -92,6 +100,7 @@ def main(
             architecture,
             canonical_tag,
             upload,
+            nightly_alias,
         )
         return
 
@@ -130,14 +139,16 @@ def build_docker(
     architecture: str,
     canonical_tag: str,
     upload: bool,
+    nightly_alias: bool,
 ) -> None:
     """
     Build a container artifact.
     """
+    print("Nightly build_docker? ", nightly_alias)
     BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(
-            python_version, p, image_type, architecture, canonical_tag, upload
+            python_version, p, image_type, architecture, canonical_tag, upload, nightly_alias
         ).run()
 
 
