@@ -1,7 +1,9 @@
-SERVER_IP = "http://172.31.40.126:8000"
+import os
+
+SERVER_IP = os.getenv("SERVER_IP", "http://172.31.81.213:8000") 
+DATA_IP= os.getenv("DATA_IP", "")
 
 MAX_COMPLEXITY_SCORE = 100000000000
-DATA_IP="172.31.40.126"
 
 # spec constant
 HPC_DIR = "working_dir"
@@ -68,6 +70,7 @@ TOTAL_COMPLEXITY_SCORE = "total_complexity_score"
 RUNNING_OR_PENDING_TASKS = "running_or_pending_tasks"
 
 PENDING_TASKS = "pending_tasks"
+FINISHED_TASKS = "finished_tasks"
 PENDING_TASKS_COUNT = "pending_tasks_count"
 
 MAX_PENDING_TASK= 2

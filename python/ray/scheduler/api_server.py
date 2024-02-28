@@ -6,7 +6,12 @@ import queue
 from fastapi import Body
 import logging
 from scheduler_constant import *
+from render import *
+from datetime import datetime
+import pandas as pd
 import ray
+import os
+
 
 app = FastAPI()
 
@@ -16,6 +21,8 @@ class Apiserver:
     def __init__(self):
         self.unfinished_user_tasks = queue.Queue()
         self.node_info = {}
+        self.gantt_chart_renderer = GanttChartRenderer()
+        self.table_renderer = TableRenderer()
         
         nodes = ray.nodes()
         for node in nodes:
@@ -33,11 +40,44 @@ class Apiserver:
                 self.node_info[node[NODE_ID]][TOTAL_COMPLEXITY_SCORE] = 0
                 self.node_info[node[NODE_ID]][SPEED] = MAX_COMPLEXITY_SCORE
                 self.node_info[node[NODE_ID]][RUNNING_OR_PENDING_TASKS] = {}
-
                 self.node_info[node[NODE_ID]][PENDING_TASKS] = {}
+                self.node_info[node[NODE_ID]][FINISHED_TASKS] = {}
+
                 self.node_info[node[NODE_ID]][PENDING_TASKS_COUNT] = 0
                 
                 
+    @app.get("/render")
+    def render(self):
+        node_htmls = ""
+        for node_id, node_info in self.node_info.items():
+            time_info = []
+            for task_id, task in node_info[FINISHED_TASKS].items():
+                time_info.append(dict(
+                    Name= "User Task: " + task.spec[HPC_DIR],
+                    Start= datetime.utcfromtimestamp(task.status[USER_TASK_START_TIME] / 1000),
+                    Finish= datetime.utcfromtimestamp(task.status[USER_TASK_END_TIME] / 1000),
+                ))
+                time_info.append(dict(
+                    Name= "Transfer Task: " + task.spec[HPC_DIR],
+                    Start= datetime.utcfromtimestamp(task.status[BIND_TASK_START_TIME] / 1000),
+                    Finish= datetime.utcfromtimestamp(task.status[BIND_TASK_END_TIME] / 1000),
+                ))
+            if len(time_info) != 0:
+                gantt_chart_html = self.gantt_chart_renderer.render(df= pd.DataFrame(time_info), chart_width = 1400)
+                table_html = self.table_renderer.render(
+                    df = pd.DataFrame(time_info),
+                    header_labels =["Name", "Start Time(s)", "Finish Time(s)"],
+                    table_width=1400
+                )
+                node_htmls = gantt_chart_html + table_html
+                
+            else:
+                return "No finished task"
+            
+        with open(f"{os.path.dirname(os.path.abspath(__file__))}/time_line_web_page/timeline.html", "w") as f:
+            f.write(node_htmls)
+        
+        return "See the timeline.html under time_line_web_page folder"
 
 
     @app.post("/apply")
@@ -126,7 +166,9 @@ class Apiserver:
 
     def _remove_node_running_task(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
+        self.node_info[assign_node][FINISHED_TASKS][user_task.spec[USER_TASK_ID]] = user_task
         del self.node_info[assign_node][RUNNING_OR_PENDING_TASKS][user_task.spec[USER_TASK_ID]]
+
 
         self.node_info[assign_node][AVAILABLE_CPU] += user_task.spec[CPU] if CPU in user_task.spec else 0
         self.node_info[assign_node][AVAILABLE_GPU] += user_task.spec[GPU] if GPU in user_task.spec else 0

@@ -276,7 +276,6 @@ class RemoteFunction:
         # it in "_remote()".
 
         if HPC_DIR in kwargs:
-            print(kwargs[HPC_DIR], type(kwargs[HPC_DIR]))
             task_options[SCHEDULING_STRATEGY] = NodeLabelSchedulingStrategy(
                 hard={ kwargs[HPC_DIR]: In(kwargs[HPC_DIR])}
             )
@@ -474,9 +473,7 @@ class RemoteFunction:
             spec['s3']=kwargs['s3'] if 's3' in kwargs else False
             spec[BUCKET_NAME]=kwargs[BUCKET_NAME] if BUCKET_NAME in kwargs else ""
             spec[OBJECT_KEY]=kwargs[OBJECT_KEY] if OBJECT_KEY in kwargs else ""
-
             requests.post(SERVER_IP + "/apply", json=spec)
-            print(spec)
         return task_id
 
 

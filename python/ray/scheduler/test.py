@@ -116,19 +116,20 @@ from time import sleep
 
 ray.init()
 
-dir = "/tmp/apple/9" 
+dir = "/tmp/test/16" 
 # ray.get_runtime_context().set_label({dir: dir})
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=5)
 def user_function(working_dir, complexity_score, time):
     # print(ray.get_runtime_context().get_task_id())
-    # print(ray.get_runtime_context().get_node_id())
-    sleep(time)
+    ray.get_runtime_context().set_label({working_dir: working_dir})
+    print(ray.get_runtime_context().get_node_id())
+    sleep(3)
     return "ok"
 
-task_id_1 = user_function.remote(working_dir=dir, complexity_score=1, time=30)
+task_ids = []
+for i in range(3):
+    task_id = user_function.remote(working_dir=dir + str(i), complexity_score=1, time=1)
+    task_ids.append(task_id)
 
-
-task_id_2 = user_function.remote(working_dir=dir, complexity_score=1, time=1)
-print(ray.get(task_id_1))
-print(ray.get(task_id_2))
+print(ray.get(task_ids))
