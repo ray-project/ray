@@ -5,6 +5,7 @@ import shutil
 import time
 import unittest
 
+import pyarrow.fs
 import pytest
 
 import ray
@@ -501,26 +502,22 @@ def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path)
 
 
 def test_tuner_restore_from_cloud_manual_path(
-    ray_start_2_cpus, tmpdir, mock_s3_bucket_uri, monkeypatch
+    ray_start_2_cpus, tmpdir, mock_s3_bucket_uri
 ):
     _test_tuner_restore_from_cloud(
         tmpdir,
         configure_storage_path=mock_s3_bucket_uri,
         storage_path=mock_s3_bucket_uri,
-        monkeypatch=monkeypatch,
     )
 
 
-def test_tuner_restore_from_cloud_ray_storage(
-    ray_shutdown, tmpdir, mock_s3_bucket_uri, monkeypatch
-):
+def test_tuner_restore_from_cloud_ray_storage(ray_shutdown, tmpdir, mock_s3_bucket_uri):
     ray.init(num_cpus=2, configure_logging=False, storage=mock_s3_bucket_uri)
 
     _test_tuner_restore_from_cloud(
         tmpdir / "local",
         configure_storage_path=None,
         storage_path=mock_s3_bucket_uri,
-        monkeypatch=monkeypatch,
     )
 
 
@@ -964,24 +961,22 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_ty
     assert [load_dict_checkpoint(ckpt)["it"] for ckpt in checkpoints] == [2, 3, 4, 5]
 
 
-def test_tuner_can_restore(tmp_path, monkeypatch):
+def test_tuner_can_restore(tmp_path):
     """Make sure that `can_restore` detects an existing experiment at a
     path and only returns True if it's at the experiment dir root.
     """
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-
     name = "exp_name"
-    Tuner(lambda _: print("dummy"), run_config=RunConfig(name=name))
-
-    fs, fs_path = get_fs_and_path("mock:///bucket/exp_name")
-    _upload_to_fs_path(local_path=str(tmp_path / name), fs=fs, fs_path=fs_path)
+    Tuner(
+        lambda _: print("dummy"),
+        run_config=RunConfig(name=name, storage_path=str(tmp_path)),
+    )
 
     assert Tuner.can_restore(tmp_path / name)
+    assert Tuner.can_restore(
+        tmp_path / name, storage_filesystem=pyarrow.fs.LocalFileSystem()
+    )
     assert not Tuner.can_restore(tmp_path)
     assert not Tuner.can_restore(tmp_path / name / "other")
-    assert Tuner.can_restore("/bucket/exp_name", storage_filesystem=fs)
-    assert not Tuner.can_restore("/bucket", storage_filesystem=fs)
-    assert not Tuner.can_restore("/bucket/exp_name/other", storage_filesystem=fs)
 
 
 def testParamSpaceOverwriteValidation(ray_start_4_cpus, tmp_path):
