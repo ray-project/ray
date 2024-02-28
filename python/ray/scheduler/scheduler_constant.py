@@ -1,7 +1,8 @@
 import os
 
-SERVER_IP = os.getenv("SERVER_IP", "http://172.31.81.213:8000") 
-DATA_IP= os.getenv("DATA_IP", "")
+HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", "http://10.0.0.183") 
+SERVER_IP = HEAD_NODE_IP + ":8000"
+DATA_IP= HEAD_NODE_IP
 
 MAX_COMPLEXITY_SCORE = 100000000000
 
