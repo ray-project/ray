@@ -144,9 +144,6 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     - Picks up at the right iteration. 2 before crash. 3 after. 5 total trees.
     - Results are being logged to the same directory as before.
     """
-    # TODO(krfricke): Re-enable this once gbdt trainers are supported.
-    # Also runs into the same problem as the test below.
-    pytest.skip("GBDT trainers are not supported yet.")
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {
@@ -168,6 +165,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
             num_workers=2, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 1}
         ),
         run_config=RunConfig(
+            storage_path=str(tmp_path),
             name=exp_name,
             checkpoint_config=CheckpointConfig(
                 num_to_keep=1, checkpoint_frequency=1, checkpoint_at_end=False
