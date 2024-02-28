@@ -20,6 +20,9 @@ steps:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        NIGHTLY: 1
+        RAYCI_CONTINUOUS_BUILD: 1
   
   - label: "Trigger Release nightly test"
     trigger: "release"
