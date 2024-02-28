@@ -13,6 +13,7 @@ import pytest
 
 import ray
 from ray.data.context import DataContext
+from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
@@ -198,8 +199,9 @@ def test_concurrent_callable_classes(shutdown_only):
         def __call__(self, x):
             raise ValueError
 
-    with pytest.raises(ValueError):
-        ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(ValueError):
+            ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
 
 
 def test_transform_failure(shutdown_only):
@@ -319,8 +321,9 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
             {"col3": 3}
         ]
         # Test dropping non-existent column
-        with pytest.raises(KeyError):
-            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
+        with pytest.raises(UserCodeException):
+            with pytest.raises(KeyError):
+                ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
 
 def test_select_columns(ray_start_regular_shared):
@@ -348,8 +351,9 @@ def test_select_columns(ray_start_regular_shared):
             "col2",
         ]
         # Test selecting a column that is not in the dataset schema
-        with pytest.raises(KeyError):
-            each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
+        with pytest.raises(UserCodeException):
+            with pytest.raises(KeyError):
+                each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_context):
@@ -767,11 +771,17 @@ def test_map_batches_batch_zero_copy(
 
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
-    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
-        ds = ds.map_batches(
-            mutate, batch_format="pandas", batch_size=batch_size, zero_copy_batch=True
-        )
-        ds.materialize()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(
+            ValueError, match="tried to mutate a zero-copy read-only batch"
+        ):
+            ds = ds.map_batches(
+                mutate,
+                batch_format="pandas",
+                batch_size=batch_size,
+                zero_copy_batch=True,
+            )
+            ds.materialize()
 
 
 BLOCK_BUNDLING_TEST_CASES = [

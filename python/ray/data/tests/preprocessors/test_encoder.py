@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data.exceptions import UserCodeException
 from ray.data.preprocessor import PreprocessorNotFittedException
 from ray.data.preprocessors import (
     Categorizer,
@@ -96,8 +97,9 @@ def test_ordinal_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
-        null_encoder.transform(null_ds).materialize()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(ValueError):
+            null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.
@@ -298,8 +300,9 @@ def test_one_hot_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
-        null_encoder.transform(null_ds).materialize()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(ValueError):
+            null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.
@@ -407,8 +410,9 @@ def test_multi_hot_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
-        null_encoder.transform(null_ds).materialize()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(ValueError):
+            null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.
@@ -529,8 +533,9 @@ def test_label_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(ValueError):
-        null_encoder.transform(null_ds).materialize()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(ValueError):
+            null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.

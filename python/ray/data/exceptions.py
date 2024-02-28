@@ -33,6 +33,7 @@ class SystemException(Exception):
 data_exception_logger = DatasetLogger(__name__)
 
 
+@DeveloperAPI
 def omit_traceback_stdout(fn: Callable) -> Callable:
     """Decorator which runs the function, and if there is an exception raised,
     drops the stack trace before re-raising the exception. The original exception,

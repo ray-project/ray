@@ -49,7 +49,7 @@ def test_dataset_logger(shutdown_only):
 def check_full_stack_trace_logged_to_file():
     # Checks that the prefix text for the full stack trace is present
     # in the Ray Data log file.
-    log_path = ray.data.exceptions.data_exception_logger._log_file_path
+    log_path = ray.data.exceptions.data_exception_logger._datasets_log_path
     with open(log_path, "r") as file:
         data = file.read()
         assert "Full stack trace:" in data
