@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 
 logger = DatasetLogger(__name__)
+DEBUG_RESOURCE_MANAGER = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
 
 
 class ResourceManager:
@@ -63,7 +64,7 @@ class ResourceManager:
         # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
         # Whether to print debug information.
-        self._debug = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
+        self._debug = DEBUG_RESOURCE_MANAGER
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
         self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
@@ -194,17 +195,17 @@ class ResourceManager:
         usage_str += f", objects: {self._op_usages[op].object_store_memory_str()}"
         if self._debug:
             usage_str += (
-                f" (internal: {memory_string(self._mem_op_internal[op])}, "
-                f"outputs: {memory_string(self._mem_op_outputs[op])})"
+                f" (in={memory_string(self._mem_op_internal[op])},"
+                f"out={memory_string(self._mem_op_outputs[op])})"
             )
             if (
                 isinstance(self._op_resource_allocator, ReservationOpResourceAllocator)
                 and op in self._op_resource_allocator._op_budgets
             ):
                 budget = self._op_resource_allocator._op_budgets[op]
-                usage_str += f", budget: [cpu={budget.cpu:.1f}"
-                usage_str += f" ,gpu={budget.gpu:.1f}" if budget.gpu else ""
-                usage_str += f" ,objects={budget.object_store_memory_str()}]"
+                usage_str += f", budget=(cpu={budget.cpu:.1f}"
+                usage_str += f",gpu={budget.gpu:.1f}"
+                usage_str += f",objects={budget.object_store_memory_str()})"
         return usage_str
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
