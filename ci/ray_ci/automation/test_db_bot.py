@@ -1,6 +1,7 @@
 import os
 
 import click
+
 from ci.ray_ci.utils import logger
 from ci.ray_ci.tester_container import TesterContainer, PIPELINE_POSTMERGE
 from ray_release.configs.global_config import init_global_config

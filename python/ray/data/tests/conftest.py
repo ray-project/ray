@@ -243,13 +243,11 @@ def assert_base_partitioned_ds():
                 ds_str = ds_str.replace(c, "")
             return ds_str
 
-        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
-            num_input_files,
+        assert "Dataset(num_rows={},schema={})".format(
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(str(ds)), ds
-        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
-            num_input_files,
+        assert "Dataset(num_rows={},schema={})".format(
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(repr(ds)), ds
