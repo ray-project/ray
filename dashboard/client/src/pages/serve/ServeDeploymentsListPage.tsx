@@ -94,7 +94,7 @@ export const ServeDeploymentsListPage = () => {
             serveDetails={serveDetails}
           />
           <CollapsibleSection
-            title="Applications/Deployments"
+            title="Applications / Deployments"
             startExpanded
             className={classes.deploymentsSection}
           >
