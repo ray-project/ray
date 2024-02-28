@@ -11,13 +11,12 @@ from ray.rllib.algorithms.ppo.ppo import (
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.models.base import ENCODER_OUT, CRITIC
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor, explained_variance
+from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
@@ -54,7 +53,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 return torch.sum(data_[batch["loss_mask"]]) / num_valid
 
         else:
-
             possibly_masked_mean = torch.mean
 
         action_dist_class_train = (
@@ -166,20 +164,3 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
         return results
-
-    @override(PPOLearner)
-    def _compute_values(self, batch):
-        infos = batch.pop(SampleBatch.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=self._device)
-        if infos is not None:
-            batch[SampleBatch.INFOS] = infos
-
-        # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
-
-        # Shared encoder.
-        encoder_outs = module.encoder(batch)
-        # Value head.
-        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)

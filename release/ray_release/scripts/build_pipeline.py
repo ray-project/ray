@@ -56,7 +56,10 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     "--run-per-test",
     default=1,
     type=int,
-    help=("The number of time we run test on the same commit"),
+    help=(
+        "The number of time we run test on the same commit. This number might be "
+        "overridden by the local test config (whichever is higher)."
+    ),
 )
 def main(
     test_collection_file: Tuple[str],
@@ -142,14 +145,7 @@ def main(
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule or it's a release branch (i.e.
-    # both the buildkite wheel branch and the test branch started with 'releases/')
     _, buildkite_branch = get_buildkite_repo_branch()
-    report = (
-        bool(int(os.environ.get("REPORT", "0")))
-        or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
-        or buildkite_branch.startswith("releases/")
-    )
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
@@ -158,12 +154,16 @@ def main(
         tests = grouped_tests[group]
         group_steps = []
         for test, smoke_test in tests:
+            # run the tests as many time as the global or its local configuration allows
+            run_per_test = max(test.get("repeated_run", 1), run_per_test)
             for run_id in range(run_per_test):
                 step = get_step(
                     test,
                     test_collection_file,
                     run_id=run_id,
-                    report=report,
+                    # Always report performance data to databrick. Since the data is
+                    # indexed by branch and commit hash, we can always filter data later
+                    report=True,
                     smoke_test=smoke_test,
                     env=env,
                     priority_val=priority.value,

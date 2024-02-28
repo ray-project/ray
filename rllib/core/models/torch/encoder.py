@@ -329,16 +329,22 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             bias=config.use_bias,
         )
 
-        # Initialize LSTM layer weigths, if necessary.
-        if lstm_weights_initializer:
-            lstm_weights_initializer(
-                self.lstm.all_weights, **config.hidden_weights_initializer_config or {}
-            )
-        # Initialize LSTM layer bias, if necessary.
-        if lstm_bias_initializer:
-            lstm_bias_initializer(
-                self.lstm.bias, **config.hidden_bias_initializer_config or {}
-            )
+        # Initialize LSTM layer weigths and biases, if necessary.
+        for layer in self.lstm.all_weights:
+            if lstm_weights_initializer:
+                lstm_weights_initializer(
+                    layer[0], **config.hidden_weights_initializer_config or {}
+                )
+                lstm_weights_initializer(
+                    layer[1], **config.hidden_weights_initializer_config or {}
+                )
+            if lstm_bias_initializer:
+                lstm_bias_initializer(
+                    layer[2], **config.hidden_bias_initializer_config or {}
+                )
+                lstm_bias_initializer(
+                    layer[3], **config.hidden_bias_initializer_config or {}
+                )
 
         self._state_in_out_spec = {
             "h": TensorSpec(

@@ -466,10 +466,3 @@ class Episode:
     @Deprecated(new="Episode.last_extra_action_outs_for", error=True)
     def last_pi_info_for(self, *args, **kwargs):
         return self.last_extra_action_outs_for(*args, **kwargs)
-
-
-# Backward compatibility. The name Episode implies that there is
-# also a (single agent?) Episode.
-@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=True)
-class MultiAgentEpisode(Episode):
-    pass

@@ -18,6 +18,7 @@ from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_TIMEOUT_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
+    RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -613,10 +614,11 @@ class ProxyStateManager:
         that are no longer exist. Update all proxy states. Kill and restart
         unhealthy proxies.
         """
-        # Ensure head node always has a proxy.
         if proxy_nodes is None:
-            proxy_nodes = {self._head_node_id}
-        else:
+            proxy_nodes = set()
+
+        # Ensure head node always has a proxy (unless FF'd off).
+        if RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE:
             proxy_nodes.add(self._head_node_id)
 
         target_nodes = self._get_target_nodes(proxy_nodes)

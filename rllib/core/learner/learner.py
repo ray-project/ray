@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import partial
 import json
 import logging
 import pathlib
@@ -32,7 +33,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
-    SampleBatch,
 )
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -243,7 +243,8 @@ class Learner:
                 help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
                 error=True,
             )
-        self.config = config
+        # TODO (sven): Figure out how to do this
+        self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
         self._module_obj = module
         self._device = None
@@ -289,25 +290,23 @@ class Learner:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
-        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        setting up the LearnerConnectorPipeline, the RLModule, optimizer(s), and
+        (optionally) the optimizers' learning rate schedulers.
         """
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        # TODO (sven): Support multi-agent cases.
-        if self.config.uses_new_env_runners and not self.config.is_multi_agent():
-            module_spec = self._module_spec.as_multi_agent().module_specs[
-                DEFAULT_POLICY_ID
-            ]
+        if self.config.uses_new_env_runners:
+            # TODO (sven): Figure out which space to provide here. For now,
+            #  it doesn't matter, as the default connector piece doesn't use
+            #  this information anyway.
+            #  module_spec = self._module_spec.as_multi_agent()
             self._learner_connector = self.config.build_learner_connector(
-                input_observation_space=module_spec.observation_space,
-                input_action_space=module_spec.action_space,
+                input_observation_space=None,
+                input_action_space=None,
             )
-            # Adjust module spec based on connector's (possibly transformed) spaces.
-            module_spec.observation_space = self._learner_connector.observation_space
-            module_spec.action_space = self._learner_connector.action_space
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -870,6 +869,27 @@ class Learner:
         self.module.remove_module(module_id)
 
     @OverrideToImplementCustomLogic
+    def should_module_be_updated(self, module_id, multi_agent_batch=None):
+        """Returns whether a module should be updated or not based on `self.config`.
+
+        Args:
+            module_id: The ModuleID that we want to query on whether this module
+                should be updated or not.
+            multi_agent_batch: An optional MultiAgentBatch to possibly provide further
+                information on the decision on whether the RLModule should be updated
+                or not.
+        """
+        should_module_be_updated_fn = self.config.policies_to_train
+        # If None, return True (by default, all modules should be updated).
+        if should_module_be_updated_fn is None:
+            return True
+        # If container given, return whether `module_id` is in that container.
+        elif not callable(should_module_be_updated_fn):
+            return module_id in set(should_module_be_updated_fn)
+
+        return should_module_be_updated_fn(module_id, multi_agent_batch)
+
+    @OverrideToImplementCustomLogic
     def compute_loss(
         self,
         *,
@@ -1283,20 +1303,25 @@ class Learner:
 
         """
         self._check_is_built()
+
+        module_state = state.get("module_state")
         # TODO: once we figure out the optimizer format, we can set/get the state
-        if "module_state" not in state:
+        if module_state is None:
             raise ValueError(
                 "state must have a key 'module_state' for the module weights"
             )
-        if "optimizer_state" not in state:
+        self.set_module_state(module_state)
+
+        optimizer_state = state.get("optimizer_state")
+        if optimizer_state is None:
             raise ValueError(
                 "state must have a key 'optimizer_state' for the optimizer weights"
             )
-
-        module_state = state.get("module_state")
-        optimizer_state = state.get("optimizer_state")
-        self.set_module_state(module_state)
         self.set_optimizer_state(optimizer_state)
+
+        # Update our trainable Modules information/function via our config.
+        # If not provided in state (None), all Modules will be trained by default.
+        self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
 
     def get_state(self) -> Dict[str, Any]:
         """Get the state of the learner.
@@ -1309,6 +1334,7 @@ class Learner:
         return {
             "module_state": self.get_module_state(),
             "optimizer_state": self.get_optimizer_state(),
+            "modules_to_train": self.config.policies_to_train,
         }
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
@@ -1361,24 +1387,26 @@ class Learner:
             raise ValueError("`num_iters` must be >= 1")
 
         # Call the learner connector.
-        # TODO (sven): make multi-agent capable.
         if self._learner_connector is not None:
             # Call the train data preprocessor.
             batch, episodes = self._preprocess_train_data(
                 batch=batch, episodes=episodes
             )
             batch = self._learner_connector(
-                rl_module=self.module["default_policy"],
+                rl_module=self.module,
                 data=batch,
                 episodes=episodes,
             )
-            if episodes is not None:
-                batch = MultiAgentBatch(
-                    policy_batches={DEFAULT_POLICY_ID: SampleBatch(batch)},
-                    env_steps=sum(len(e) for e in episodes),
-                )
 
-        if minibatch_size:
+        # Filter out those RLModules from the final train batch that should not be
+        # updated.
+        for module_id in list(batch.policy_batches.keys()):
+            if not self.should_module_be_updated(module_id, batch):
+                del batch.policy_batches[module_id]
+
+        if minibatch_size and self._learner_connector is not None:
+            batch_iter = partial(MiniBatchCyclicIterator, uses_new_env_runners=True)
+        elif minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
             # `minibatch_size` was not set but `num_iters` > 1.
@@ -1419,7 +1447,7 @@ class Learner:
             # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
-            results.append(convert_to_numpy(result))
+            results.append(result)
 
         self._set_slicing_by_batch_id(batch, value=False)
 

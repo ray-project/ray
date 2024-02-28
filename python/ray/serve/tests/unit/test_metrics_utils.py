@@ -11,11 +11,25 @@ from ray.serve._private.test_utils import MockTimer
 
 class TestMetricsPusher:
     def test_no_tasks(self):
-        """Test that a metrics pusher can't be started with zero tasks."""
+        """Test that a metrics pusher can be started with zero tasks.
 
+        After a task is registered, it should work.
+        """
+        val = 0
+
+        def inc():
+            nonlocal val
+            val += 1
+
+        MetricsPusher.NO_TASKS_REGISTERED_INTERVAL_S = 0.01
         metrics_pusher = MetricsPusher()
-        with pytest.raises(ValueError):
-            metrics_pusher.start()
+        metrics_pusher.start()
+        assert len(metrics_pusher.tasks) == 0
+        assert metrics_pusher.pusher_thread.is_alive()
+
+        metrics_pusher.register_or_update_task("inc", inc, 0.01)
+
+        wait_for_condition(lambda: val > 0, timeout=10)
 
     def test_basic(self):
         start = 0

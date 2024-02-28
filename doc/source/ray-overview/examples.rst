@@ -228,6 +228,13 @@ Ray Examples
         :link-type: doc
 
         Serving a Bert Model on AWS NeuronCore
+        
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item serving inference aws-neuron-core
+        :link: /serve/tutorials/aws-neuron-core-inference-stable-diffusion
+        :link-type: doc
+
+        Serving a Stable Diffusion Model on AWS NeuronCore    
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item computer-vision serving
@@ -335,6 +342,13 @@ Ray Examples
         :link-type: doc
 
         How To Use Tune With TuneBOHB
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tuning
+        :link: /tune/examples/nevergrad_example
+        :link-type: doc
+
+        How To Use Tune With Nevergrad
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning

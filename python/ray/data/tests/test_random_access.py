@@ -32,7 +32,7 @@ def test_basic(ray_start_regular_shared, pandas):
 
 def test_empty_blocks(ray_start_regular_shared):
     ds = ray.data.range(10).repartition(20)
-    assert ds.num_blocks() == 20
+    assert ds._plan.initial_num_blocks() == 20
     rad = ds.to_random_access_dataset("id")
     for i in range(10):
         assert ray.get(rad.get_async(i)) == {"id": i}

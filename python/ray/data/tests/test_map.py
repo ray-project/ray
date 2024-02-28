@@ -14,6 +14,7 @@ import pytest
 import ray
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -640,6 +641,34 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     assert values == [11, 15, 19]
 
 
+def test_map_with_memory_resources(shutdown_only):
+    """Test that we can use memory resource to limit the concurrency."""
+    num_blocks = 50
+    memory_per_task = 100 * 1024**2
+    max_concurrency = 5
+    ray.init(num_cpus=num_blocks, _memory=memory_per_task * max_concurrency)
+
+    concurrency_counter = ConcurrencyCounter.remote()
+
+    def map_batches(batch):
+        ray.get(concurrency_counter.inc.remote())
+        time.sleep(0.5)
+        ray.get(concurrency_counter.decr.remote())
+        return batch
+
+    ds = ray.data.range(num_blocks, parallelism=num_blocks)
+    ds = ds.map_batches(
+        map_batches,
+        batch_size=None,
+        num_cpus=1,
+        memory=memory_per_task,
+    )
+    assert len(ds.take(num_blocks)) == num_blocks
+
+    actual_max_concurrency = ray.get(concurrency_counter.get_max_concurrency.remote())
+    assert actual_max_concurrency <= max_concurrency
+
+
 def test_map_batches_generator(ray_start_regular_shared, tmp_path):
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -760,15 +789,17 @@ def test_map_batches_block_bundling_auto(
     num_blocks = max(10, 2 * batch_size // block_size)
     ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
     # Confirm that we have the expected number of initial blocks.
-    assert ds.num_blocks() == num_blocks
+    assert ds._plan.initial_num_blocks() == num_blocks
 
     # Blocks should be bundled up to the batch size.
     ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
-    assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+    assert ds1._plan.initial_num_blocks() == math.ceil(
+        num_blocks / max(batch_size // block_size, 1)
+    )
 
     # Blocks should not be bundled up when batch_size is not specified.
     ds2 = ds.map_batches(lambda x: x).materialize()
-    assert ds2.num_blocks() == num_blocks
+    assert ds2._plan.initial_num_blocks() == num_blocks
 
 
 @pytest.mark.parametrize(
@@ -792,11 +823,11 @@ def test_map_batches_block_bundling_skewed_manual(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds.num_blocks() == num_blocks
+    assert ds._plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
 
     # Blocks should be bundled up to the batch size.
-    assert ds.num_blocks() == expected_num_blocks
+    assert ds._plan.initial_num_blocks() == expected_num_blocks
 
 
 BLOCK_BUNDLING_SKEWED_TEST_CASES = [
@@ -818,7 +849,7 @@ def test_map_batches_block_bundling_skewed_auto(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds.num_blocks() == num_blocks
+    assert ds._plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
     curr = 0
     num_out_blocks = 0
@@ -831,7 +862,7 @@ def test_map_batches_block_bundling_skewed_auto(
         num_out_blocks += 1
 
     # Blocks should be bundled up to the batch size.
-    assert ds.num_blocks() == num_out_blocks
+    assert ds._plan.initial_num_blocks() == num_out_blocks
 
 
 def test_map_with_mismatched_columns(ray_start_regular_shared):
@@ -860,7 +891,7 @@ def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds = ds.map_batches(lambda x: [])
     ds = ds.map_batches(lambda x: x)
-    assert ds.num_blocks() == 10, ds
+    assert ds._plan.initial_num_blocks() == 10, ds
 
 
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):

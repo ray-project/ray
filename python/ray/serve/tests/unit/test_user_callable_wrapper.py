@@ -14,12 +14,12 @@ from ray import serve
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
+    RequestMetadata,
     RequestProtocol,
     StreamingHTTPRequest,
     gRPCRequest,
 )
 from ray.serve._private.replica import UserCallableWrapper
-from ray.serve._private.router import RequestMetadata
 from ray.serve.generated import serve_pb2
 
 

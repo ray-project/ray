@@ -55,12 +55,13 @@ py_test(
 )
 
 py_test(
-    name = "test_instance_launcher",
+    name = "test_subscribers",
     size = "small",
-    srcs = ["tests/test_instance_launcher.py"],
+    srcs = ["tests/test_subscribers.py"],
     tags = ["team:core"],
     deps = ["//:ray_lib",],
 )
+
 
 py_test(
     name = "test_reconciler",
@@ -110,6 +111,13 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_instance_manager",
+    size = "small",
+    srcs = ["tests/test_instance_manager.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
 
 py_test(
     name = "test_instance_util",
