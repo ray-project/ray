@@ -1,7 +1,7 @@
 group: Pre-release checks
 steps:
   - label: "Check release blockers"
-    name: check-release-blockers
+    key: check-release-blockers
     depends_on: forge
     job_env: forge
     instance_type: small_branch
