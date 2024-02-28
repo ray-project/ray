@@ -8,7 +8,7 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class TensorToNumpy(ConnectorV2):
-    """TODO"""
+    """Converts (framework) tensors across the entire input data into numpy arrays."""
 
     @override(ConnectorV2)
     def __call__(

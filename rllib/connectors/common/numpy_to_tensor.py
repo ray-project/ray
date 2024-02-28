@@ -12,7 +12,11 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class NumpyToTensor(ConnectorV2):
-    """TODO"""
+    """Converts numpy arrays across the entire input data into (framework) tensors.
+
+    The framework information is received via the provided `rl_module` arg in the
+    `__call__`.
+    """
 
     def __init__(
         self,
@@ -51,6 +55,8 @@ class NumpyToTensor(ConnectorV2):
             module_data = convert_to_tensor(module_data, framework=rl_module.framework)
             if infos is not None:
                 module_data[SampleBatch.INFOS] = infos
+            # Early out if not multi-agent AND not learner connector (which
+            # does always operate on a MARLModule).
             if not is_multi_agent and not self._as_learner_connector:
                 return module_data
             data[module_id] = module_data

@@ -1049,14 +1049,6 @@ class AlgorithmConfig(_Config):
                 )
             # Batch all data.
             pipeline.append(BatchIndividualItems())
-            # Convert to Tensors.
-            # pipeline.append(NumpyToTensor(as_learner_connector=True))
-            # pipeline.append(
-            #    DefaultLearnerConnector(
-            #        input_observation_space=pipeline.observation_space,
-            #        input_action_space=pipeline.action_space,
-            #    )
-            # )
         return pipeline
 
     def build_learner_group(
