@@ -1,3 +1,4 @@
+# flake8: noqa
 #  __deployment_json_start__
 import requests
 from ray import serve
