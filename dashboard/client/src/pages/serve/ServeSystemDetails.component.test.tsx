@@ -15,7 +15,7 @@ const mockedUseFetchActor = jest.mocked(useFetchActor);
 
 describe("ServeSystemDetails", () => {
   it("renders", async () => {
-    expect.assertions(6);
+    expect.assertions(7);
 
     mockedUseFetchActor.mockReturnValue({
       data: {
@@ -73,12 +73,10 @@ describe("ServeSystemDetails", () => {
     );
     await screen.findByText("STARTING");
     // Controller, Proxy, and Deployment
-    expect(screen.getAllByText("HEALTHY")).toHaveLength(4);
+    expect(screen.getAllByText("HEALTHY")).toHaveLength(2);
     expect(screen.getByText("STARTING")).toBeInTheDocument();
-    // Other deployments
-    expect(screen.getByText("UPDATING")).toBeInTheDocument();
-    expect(screen.getByText("UNHEALTHY")).toBeInTheDocument();
     // Applications
+    expect(screen.getByText("UNHEALTHY")).toBeInTheDocument();
     expect(screen.getByText("RUNNING")).toBeInTheDocument();
     expect(screen.getByText("DEPLOYING")).toBeInTheDocument();
     expect(
