@@ -16,7 +16,7 @@ steps:
   - label: "Check commit hash"
     key: check-commit-hash
     commands:
-      - if [[ "${BUILDKITE_COMMIT}" != "$(git rev-parse HEAD)" ]]; then echo "Commit hash mismatch"; exit 1; else echo "Commit hash matches"; fi
+      - if [[ "${BUILDKITE_COMMIT}" != "$(git rev-parse HEAD)" ]]; then echo "Commit hash mismatch"; echo "$(git rev-parse HEAD)"; exit 1; else echo "Commit hash matches"; fi
 
   - label: "Trigger Postmerge test"
     trigger: "postmerge"
