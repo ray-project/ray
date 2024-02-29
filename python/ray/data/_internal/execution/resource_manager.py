@@ -487,31 +487,26 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 return True
         return False
 
-    def _op_outputs_reserved_remaining(self, op: PhysicalOperator) -> int:
+    def _get_op_outputs_usage_with_downstream(self, op: PhysicalOperator) -> int:
+        """Get the outputs memory usage of the given operator, including the downstream
+        non-Map operators.
+        """
         # Outputs usage of the current operator.
-        outputs_usage = self._resource_manager._mem_op_outputs[op]
+        op_outputs_usage = self._resource_manager._mem_op_outputs[op]
         # Also account the downstream non-Map operators' memory usage.
-        outputs_usage += sum(
+        op_outputs_usage += sum(
             self._resource_manager.get_op_usage(next_op).object_store_memory
             for next_op in self._get_downstream_non_map_ops(op)
         )
-        return max(self._reserved_for_op_outputs[op] - outputs_usage, 0)
-
-    def _op_outputs_reserved_exceeded(self, op: PhysicalOperator) -> bool:
-        # Outputs usage of the current operator.
-        outputs_usage = self._resource_manager._mem_op_outputs[op]
-        # Also account the downstream non-Map operators' memory usage.
-        outputs_usage += sum(
-            self._resource_manager.get_op_usage(next_op).object_store_memory
-            for next_op in self._get_downstream_non_map_ops(op)
-        )
-        return max(outputs_usage - self._reserved_for_op_outputs[op], 0)
+        return op_outputs_usage
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
         res = self._op_budgets[op].object_store_memory
-        res += self._op_outputs_reserved_remaining(op)
+        # Add the remaining of `_reserved_for_op_outputs`.
+        op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
+        res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
             res = 1
@@ -561,7 +556,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
             op_mem_usage += self._resource_manager._mem_op_internal[op]
-            op_mem_usage += self._op_outputs_reserved_exceeded(op)
+            # Add the op outputs usage that has exceeded `_reserved_for_op_outputs`.
+            op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
+            op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
             op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
             op_usage.object_store_memory = op_mem_usage
             op_reserved = self._op_reserved[op]
