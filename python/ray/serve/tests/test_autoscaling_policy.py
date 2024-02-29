@@ -20,6 +20,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
+    ReplicaID,
     ReplicaState,
 )
 from ray.serve._private.constants import (
@@ -39,13 +40,13 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.schema import ServeDeploySchema
 
 
-def get_running_replica_tags(name: str, controller: ServeController) -> List:
+def get_running_replica_ids(name: str, controller: ServeController) -> List[ReplicaID]:
     """Get the replica tags of running replicas for given deployment"""
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(DeploymentID(name=name))
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
-    return [replica.replica_tag for replica in running_replicas]
+    return [replica.replica_id for replica in running_replicas]
 
 
 def get_deployment_start_time(controller: ServeController, name: str):
@@ -56,37 +57,49 @@ def get_deployment_start_time(controller: ServeController, name: str):
 
 
 def assert_no_replicas_deprovisioned(
-    replica_tags_1: Iterable[str], replica_tags_2: Iterable[str]
+    replica_ids_1: Iterable[ReplicaID], replica_ids_2: Iterable[ReplicaID]
 ) -> None:
     """
-    Checks whether any replica tags from replica_tags_1 are absent from
-    replica_tags_2. Assumes that this indicates replicas were de-provisioned.
+    Checks whether any replica ids from replica_ids_1 are absent from
+    replica_ids_2. Assumes that this indicates replicas were de-provisioned.
 
-    replica_tags_1: Replica tags of running replicas at the first timestep
-    replica_tags_2: Replica tags of running replicas at the second timestep
+    replica_ids_1: Replica ids of running replicas at the first timestep
+    replica_ids_2: Replica ids of running replicas at the second timestep
     """
 
-    replica_tags_1, replica_tags_2 = set(replica_tags_1), set(replica_tags_2)
-    num_matching_replicas = len(replica_tags_1.intersection(replica_tags_2))
+    replica_ids_1, replica_ids_2 = set(replica_ids_1), set(replica_ids_2)
+    num_matching_replicas = len(replica_ids_1.intersection(replica_ids_2))
 
     print(
         f"{num_matching_replicas} replica(s) stayed provisioned between "
-        f"both deployments. All {len(replica_tags_1)} replica(s) were "
+        f"both deployments. All {len(replica_ids_1)} replica(s) were "
         f"expected to stay provisioned. "
-        f"{len(replica_tags_1) - num_matching_replicas} replica(s) were "
+        f"{len(replica_ids_1) - num_matching_replicas} replica(s) were "
         f"de-provisioned."
     )
 
-    assert len(replica_tags_1) == num_matching_replicas
+    assert len(replica_ids_1) == num_matching_replicas
 
 
 def test_assert_no_replicas_deprovisioned():
-    replica_tags_1 = ["a", "b", "c"]
-    replica_tags_2 = ["a", "b", "c", "d", "e"]
+    deployment_id = DeploymentID(name="hi")
+    replica_ids_1 = [
+        ReplicaID("a", deployment_id=deployment_id),
+        ReplicaID("b", deployment_id=deployment_id),
+        ReplicaID("c", deployment_id=deployment_id),
+    ]
 
-    assert_no_replicas_deprovisioned(replica_tags_1, replica_tags_2)
+    replica_ids_2 = [
+        ReplicaID("a", deployment_id=deployment_id),
+        ReplicaID("b", deployment_id=deployment_id),
+        ReplicaID("c", deployment_id=deployment_id),
+        ReplicaID("d", deployment_id=deployment_id),
+        ReplicaID("e", deployment_id=deployment_id),
+    ]
+
+    assert_no_replicas_deprovisioned(replica_ids_1, replica_ids_2)
     with pytest.raises(AssertionError):
-        assert_no_replicas_deprovisioned(replica_tags_2, replica_tags_1)
+        assert_no_replicas_deprovisioned(replica_ids_2, replica_ids_1)
 
 
 def test_autoscaling_metrics(serve_instance):
@@ -543,7 +556,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     wait_for_condition(check_num_replicas_gte, name="A", target=10)
     print("Scaled to 10 replicas.")
-    first_deployment_replicas = get_running_replica_tags("A", controller)
+    first_deployment_replicas = get_running_replica_ids("A", controller)
 
     check_num_replicas_lte("A", 20)
 
@@ -558,7 +571,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     wait_for_condition(check_num_replicas_gte, name="A", target=20)
     print("Scaled up to 20 requests.")
-    second_deployment_replicas = get_running_replica_tags("A", controller)
+    second_deployment_replicas = get_running_replica_ids("A", controller)
 
     # Confirm that none of the original replicas were de-provisioned
     assert_no_replicas_deprovisioned(
@@ -634,7 +647,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=2)
     print("Scaled up to 1 replica.")
 
-    first_deployment_replicas = get_running_replica_tags("A", controller)
+    first_deployment_replicas = get_running_replica_ids("A", controller)
 
     app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
@@ -648,7 +661,7 @@ def test_e2e_raise_min_replicas(serve_instance):
         wait_for_condition(check_num_replicas_gte, name="A", target=3, timeout=5)
     print("Autoscaled to 2 without issuing any new requests.")
 
-    second_deployment_replicas = get_running_replica_tags("A", controller)
+    second_deployment_replicas = get_running_replica_ids("A", controller)
 
     # Confirm that none of the original replicas were de-provisioned
     assert_no_replicas_deprovisioned(

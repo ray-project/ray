@@ -95,9 +95,10 @@ class _ModelMultiplexWrapper:
         context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
-                "Fail to retrieve serve replica context, the model multiplexer ",
-                "can only be used within `Deployment`.",
+                "`@serve.multiplex` can only be used within a deployment "
+                "(failed to retrieve Serve replica context)."
             )
+
         self._app_name: str = context.app_name
         self._deployment_name: str = context.deployment
         self._replica_id: str = context.replica_id

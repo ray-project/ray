@@ -1011,7 +1011,7 @@ class DeploymentReplica(VersionedReplica):
             # Graceful period passed, kill it forcefully.
             # This will be called repeatedly until the replica shuts down.
             logger.info(
-                f"Replica {self.replica_id.unique_id} did not shut down after grace "
+                f"{self.replica_id} did not shut down after grace "
                 "period, force-killing it. "
             )
 
@@ -1895,7 +1895,7 @@ class DeploymentState:
                     )
 
                     self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-                    logger.debug(f"Adding STARTING to {replica_id.unique_id}.")
+                    logger.debug(f"Adding STARTING to {replica_id}.")
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -2020,7 +2020,7 @@ class DeploymentState:
                     replica.replica_id, replica.actor_node_id
                 )
                 logger.info(
-                    f"Replica {replica.replica_id.unique_id} started successfully "
+                    f"{replica.replica_id} started successfully "
                     f"on node {replica.actor_node_id}.",
                     extra={"log_to_stderr": False},
                 )
@@ -2078,10 +2078,7 @@ class DeploymentState:
         2. Change the replica into stopping state.
         3. Set the health replica stats to 0.
         """
-        logger.debug(
-            f"Adding STOPPING to replica: {replica.replica_id.unique_id}, "
-            f"deployment_name: {self.deployment_name}, app_name: {self.app_name}"
-        )
+        logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)

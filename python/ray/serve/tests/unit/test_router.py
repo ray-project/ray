@@ -10,6 +10,7 @@ import pytest
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import (
     DeploymentID,
+    ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
@@ -495,10 +496,11 @@ class TestAssignRequest:
         )
 
 
-def running_replica_info(replica_tag: str) -> RunningReplicaInfo:
+def running_replica_info(replica_id: str) -> RunningReplicaInfo:
     return RunningReplicaInfo(
-        deployment_name="f",
-        replica_tag=replica_tag,
+        replica_id=ReplicaID(
+            unique_id=replica_id, deployment_id=DeploymentID(name="test-deployment")
+        ),
         node_id="node_id",
         availability_zone="some-az",
         actor_handle=Mock(),
@@ -565,16 +567,16 @@ class TestRouterMetricsManager:
         # r2: number requests -> 0, remains on list of running replicas -> don't prune
         # r3: number requests > 0, removed from list of running replicas -> don't prune
         # r4: number requests > 0, remains on list of running replicas -> don't prune
-        replica_tags = [get_random_string() for _ in range(4)]
-        r1, r2, r3, r4 = replica_tags
+        replica_ids = [get_random_string() for _ in range(4)]
+        r1, r2, r3, r4 = replica_ids
 
         # ri has i requests
         for i in range(4):
             for _ in range(i + 1):
-                metrics_manager.inc_num_running_requests_for_replica(replica_tags[i])
+                metrics_manager.inc_num_running_requests_for_replica(replica_ids[i])
 
         # All 4 replicas should have a positive number of requests
-        for i, r in enumerate(replica_tags):
+        for i, r in enumerate(replica_ids):
             assert metrics_manager.num_requests_sent_to_replicas[r] == i + 1
 
         # Requests at r1 and r2 drop to 0
@@ -651,12 +653,12 @@ class TestRouterMetricsManager:
 
             # Set up some requests
             n = random.randint(0, 5)
-            replica_tags = [get_random_string() for _ in range(3)]
+            replica_ids = [get_random_string() for _ in range(3)]
             running_requests = defaultdict(int)
             for _ in range(n):
                 metrics_manager.inc_num_queued_requests()
             for _ in range(20):
-                r = random.choice(replica_tags)
+                r = random.choice(replica_ids)
                 running_requests[r] += 1
                 metrics_manager.inc_num_running_requests_for_replica(r)
 
