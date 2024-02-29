@@ -682,6 +682,9 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     def disable_stdout():
         serve_logger.info("from_serve_logger")
         print("from_print")
+        sys.stdout.write("direct_from_stdout\n")
+        sys.stderr.write("direct_from_stderr\n")
+        print("this\nis\nmultiline\nlog\n")
         raise RuntimeError("from_error")
 
     app = disable_stdout.bind()
@@ -692,6 +695,9 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     from_serve_logger_check = False
     from_print_check = False
     from_error_check = False
+    direct_from_stdout = False
+    direct_from_stderr = False
+    multiline_log = False
     for log_file in os.listdir(logs_dir):
         if log_file.startswith("replica_default_disable_stdout"):
             with open(logs_dir / log_file) as f:
@@ -703,9 +709,18 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
                         from_print_check = True
                     elif "from_error" in structured_log["message"]:
                         from_error_check = True
+                    elif "direct_from_stdout" in structured_log["message"]:
+                        direct_from_stdout = True
+                    elif "direct_from_stderr" in structured_log["message"]:
+                        direct_from_stderr = True
+                    elif "this\nis\nmultiline\nlog\n" in structured_log["message"]:
+                        multiline_log = True
     assert from_serve_logger_check
     assert from_print_check
     assert from_error_check
+    assert direct_from_stdout
+    assert direct_from_stderr
+    assert multiline_log
 
 
 def test_stream_to_logger():

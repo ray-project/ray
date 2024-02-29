@@ -1,3 +1,4 @@
+import builtins
 import copy
 import json
 import logging
@@ -35,6 +36,7 @@ except ImportError:
 
 
 LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"
+buildin_print = builtins.print
 
 
 class ServeJSONFormatter(logging.Formatter):
@@ -222,6 +224,21 @@ class StreamToLogger(object):
         return True
 
 
+def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
+    """Implement python's print function to redirect logs to Serve's logger.
+
+    If the file is set to anything other than stdout, stderr, or None, call the
+    builtin print. Else, construct the message and redirect to Serve's logger.
+    See https://docs.python.org/3/library/functions.html#print
+    """
+    if file not in [sys.stdout, sys.stderr, None]:
+        return buildin_print(objects, sep=sep, end=end, file=file, flush=flush)
+
+    serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
+    message = sep.join(map(str, objects)) + end
+    serve_logger.info(message)
+
+
 def configure_component_logger(
     *,
     component_name: str,
@@ -303,8 +320,9 @@ def configure_component_logger(
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
 
-    # Redirect stdout and stderr to Serve logger.
+    # Redirect print, stdout, and stderr to Serve logger.
     if not RAY_SERVE_LOG_TO_STDERR:
+        builtins.print = redirected_print
         sys.stdout = StreamToLogger(logger, logging.INFO)
         sys.stderr = StreamToLogger(logger, logging.ERROR)
 
