@@ -41,13 +41,14 @@ def test_checkpoint_freq_dir_name(
 
     def num_checkpoints(trial):
         return sum(
-            item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
+            item.startswith("checkpoint_")
+            for item in os.listdir(trial.storage.trial_fs_path)
         )
 
     def last_checkpoint_dir(trial):
         return max(
             item
-            for item in os.listdir(trial.local_path)
+            for item in os.listdir(trial.storage.trial_fs_path)
             if item.startswith("checkpoint_")
         )
 
