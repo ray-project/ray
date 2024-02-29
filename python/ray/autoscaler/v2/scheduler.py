@@ -424,9 +424,6 @@ class SchedulingNode:
         A "higher" score means that this node is more suitable for scheduling the
         current scheduled resource requests.
 
-        Args:
-            is_constraint: Whether the requests are from cluster constraints.
-
         The score is a tuple of 4 values:
             1. Whether this node is a GPU node and the current resource request has
                 GPU requirements:
