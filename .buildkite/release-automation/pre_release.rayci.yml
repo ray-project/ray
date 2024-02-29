@@ -15,7 +15,6 @@ steps:
 
   - label: "Check commit hash"
     key: check-commit-hash
-    depends_on: forge
     job_env: forge
     instance_type: small_branch
     commands:

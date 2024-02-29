@@ -38,7 +38,7 @@ usermod -a -G docker0 forge
 usermod -a -G docker forge
 
 EOF
-
+USER forge
 ENV CC=clang
 ENV CXX=clang++-12
 ENV USE_BAZEL_VERSION=5.4.1
