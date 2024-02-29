@@ -1410,6 +1410,28 @@ class MultiAgentEpisode:
         """
         return set(self.get_observations(-1).keys())
 
+    def env_steps(self) -> int:
+        """Returns the number of environment steps.
+
+        Note, this episode instance could be a chunk of an actual episode.
+
+        Returns:
+            An integer that counts the number of environment steps this episode instance
+            has seen.
+        """
+        return len(self)
+
+    def agent_steps(self) -> int:
+        """Number of agent steps.
+
+        Note, there are >= 1 agent steps per environment step.
+
+        Returns:
+            An integer counting the number of agent steps executed during the time this
+            episode instance records.
+        """
+        return sum(len(eps) for eps in self.agent_episodes)
+
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
     #  agent_ids in the constructor - the episode does not deduce the agents).
