@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray import serve
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def test_deploy_with_consistent_constructor_failure(serve_instance):
@@ -25,9 +24,7 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 
     # Assert no replicas are running in deployment deployment after failed
     # deploy call
-    deployment_id = DeploymentID(
-        "ConstructorFailureDeploymentOneReplica", SERVE_DEFAULT_APP_NAME
-    )
+    deployment_id = DeploymentID(name="ConstructorFailureDeploymentOneReplica")
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     assert deployment_dict[deployment_id] == []
 
@@ -45,9 +42,7 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 
     # Assert no replicas are running in deployment deployment after failed
     # deploy call
-    deployment_id = DeploymentID(
-        "ConstructorFailureDeploymentTwoReplicas", SERVE_DEFAULT_APP_NAME
-    )
+    deployment_id = DeploymentID(name="ConstructorFailureDeploymentTwoReplicas")
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     assert deployment_dict[deployment_id] == []
 
@@ -83,9 +78,7 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy call
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    deployment_id = DeploymentID(
-        "PartialConstructorFailureDeployment", SERVE_DEFAULT_APP_NAME
-    )
+    deployment_id = DeploymentID(name="PartialConstructorFailureDeployment")
     assert len(deployment_dict[deployment_id]) == 2
 
 
@@ -112,9 +105,7 @@ def test_deploy_with_transient_constructor_failure(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    deployment_id = DeploymentID(
-        "TransientConstructorFailureDeployment", SERVE_DEFAULT_APP_NAME
-    )
+    deployment_id = DeploymentID(name="TransientConstructorFailureDeployment")
     assert len(deployment_dict[deployment_id]) == 2
 
 
