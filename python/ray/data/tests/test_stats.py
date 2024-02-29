@@ -120,24 +120,25 @@ EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 
 def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     # Dataset UUID expression.
-    s0 = re.sub("([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
-    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
+    canonicalized_stats = re.sub("[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
-    s2 = re.sub("[0-9\.]+(B|MB|GB)", "M", s1)
+    canonicalized_stats = re.sub("[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
     # Handle floats in (0, 1)
-    s3 = re.sub(" (0\.0*[1-9][0-9]*)", " N", s2)
+    canonicalized_stats = re.sub(" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
     # Handle zero values specially so we can check for missing values.
-    s4 = re.sub(" [0]+(\.[0])?", " Z", s3)
+    canonicalized_stats = re.sub(" [0]+(\.[0])?", " Z", canonicalized_stats)
     # Other numerics.
-    s5 = re.sub("[0-9]+(\.[0-9]+)?", "N", s4)
+    canonicalized_stats = re.sub("[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
+    # Scientific notation for small or large numbers
+    canonicalized_stats = re.sub("\d+(\.\d+)?[eE][-+]?\d+", "N", canonicalized_stats)
     # Replace tabs with spaces.
-    s6 = re.sub("\t", "    ", s5)
+    canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
     if filter_global_stats:
-        s7 = s6.replace(CLUSTER_MEMORY_STATS, "")
-        s8 = s7.replace(DATASET_MEMORY_STATS, "")
-        return s8
-    return s6
+        canonicalized_stats = canonicalized_stats.replace(CLUSTER_MEMORY_STATS, "")
+        canonicalized_stats = canonicalized_stats.replace(DATASET_MEMORY_STATS, "")
+    return canonicalized_stats
 
 
 def dummy_map_batches(x):
@@ -179,7 +180,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     stats = it.stats()
     extra_metrics = gen_expected_metrics(
         is_map=False,
-        extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': Ne-N"],
+        extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
     assert (
         canonicalize(stats)
