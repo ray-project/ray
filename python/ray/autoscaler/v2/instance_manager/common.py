@@ -88,27 +88,39 @@ class InstanceUtil:
         """
         Returns True if the instance is in a status where the ray process is
         running on the cloud instance.
+            i.e. RAY_RUNNING, RAY_STOP_REQUESTED, RAY_STOPPING
         """
         assert instance_status != Instance.UNKNOWN
-        return instance_status in {
-            Instance.RAY_RUNNING,
-            Instance.RAY_STOPPING,
-            Instance.RAY_STOP_REQUESTED,
-        }
+
+        if instance_status in InstanceUtil.get_reachable_statuses(
+            Instance.RAY_STOPPING
+        ):
+            return False
+
+        if instance_status in InstanceUtil.get_reachable_statuses(Instance.RAY_RUNNING):
+            return True
+
+        return False
 
     @staticmethod
     def is_ray_pending(instance_status: Instance.InstanceStatus) -> bool:
         """
         Returns True if the instance is in a status where the ray process is
         pending to be started on the cloud instance.
+
         """
         assert instance_status != Instance.UNKNOWN
-        return instance_status in {
-            Instance.QUEUED,
-            Instance.REQUESTED,
-            Instance.ALLOCATED,
-            Instance.RAY_INSTALLING,
-        }
+        # Not gonna be in a RAY_RUNNING status.
+        if Instance.RAY_RUNNING not in InstanceUtil.get_reachable_statuses(
+            instance_status
+        ):
+            return False
+
+        # Already running ray.
+        if instance_status in InstanceUtil.get_reachable_statuses(Instance.RAY_RUNNING):
+            return False
+
+        return True
 
     def is_ray_running_reachable(instance_status: Instance.InstanceStatus) -> bool:
         """

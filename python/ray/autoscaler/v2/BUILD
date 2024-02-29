@@ -12,149 +12,38 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
-py_test(
-    name = "test_instance_storage",
+# Unit test. (These should not have ray started)
+py_test_module_list(
+    files = [
+        "test_instance_storage",
+        "test_storage",
+        "test_config",
+        "test_node_provider",
+        "test_ray_installer",
+        "test_subscribers",
+        "test_reconciler",
+        "test_threaded_ray_installer",
+        "test_utils",
+        "test_scheduler",
+        "test_instance_manager",
+        "test_instance_util",
+        "test_schema",
+        "test_event_logger",
+        "test_metrics_reporter",
+    ],
     size = "small",
-    srcs = ["tests/test_instance_storage.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_storage",
-    size = "small",
-    srcs = ["tests/test_storage.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_config",
-    size = "small",
-    srcs = ["tests/test_config.py"],
-    tags = ["team:core"],
-    deps = [
-        "//:ray_lib",
-    ]
-)
-
-py_test(
-    name = "test_node_provider",
-    size = "small",
-    srcs = ["tests/test_node_provider.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_ray_installer",
-    size = "small",
-    srcs = ["tests/test_ray_installer.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_subscribers",
-    size = "small",
-    srcs = ["tests/test_subscribers.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-
-py_test(
-    name = "test_reconciler",
-    size = "small",
-    srcs = ["tests/test_reconciler.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_threaded_ray_installer",
-    size = "small",
-    srcs = ["tests/test_threaded_ray_installer.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_sdk",
-    size = "medium",
-    srcs = ["tests/test_sdk.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_utils",
-    size = "small",
-    srcs = ["tests/test_utils.py"],
     tags = ["team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
-py_test(
-    name = "test_e2e",
-    size = "medium",
-    srcs = ["tests/test_e2e.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_scheduler",
-    size = "small",
-    srcs = ["tests/test_scheduler.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_instance_manager",
-    size = "small",
-    srcs = ["tests/test_instance_manager.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_instance_util",
-    size = "small",
-    srcs = ["tests/test_instance_util.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_schema",
-    size = "small",
-    srcs = ["tests/test_schema.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_autoscaler",
-    size = "medium",
-    srcs = ["tests/test_autoscaler.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_event_logger",
-    size = "small",
-    srcs = ["tests/test_event_logger.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_metrics_reporter",
-    size = "small",
-    srcs = ["tests/test_metrics_reporter.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
+# Integration test.
+py_test_module_list(
+    files=[
+        "test_sdk",
+        "test_e2e",
+        "test_autoscaler",
+    ],
+    size="medium",
+    tags=["team:core", "exclusive"],
+    deps=[":ray_lib", ":conftest"],
 )

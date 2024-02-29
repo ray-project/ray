@@ -38,52 +38,59 @@ class TestResourceRequestUtil:
         AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
         ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
 
-        rq1 = ResourceRequestUtil.make(
-            {"CPU": 1},
-            [(AFFINITY, "1", "1"), (ANTI_AFFINITY, "2", "2")],
-        )
+        rqs = [
+            ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "1", "1")]),  # 1
+            ResourceRequestUtil.make({"CPU": 1, "GPU": 1}, [(AFFINITY, "1", "1")]),  # 1
+            ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "2", "2")]),  # 2
+            ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "2", "2")]),  # 2
+            ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "2", "2")]),  # 3
+            ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "2", "2")]),  # 4
+            ResourceRequestUtil.make({"CPU": 1}),  # 5
+        ]
 
-        rq2 = ResourceRequestUtil.make(
-            {"CPU": 1, "GPU": 1},
-            [(AFFINITY, "1", "1"), (ANTI_AFFINITY, "3", "3")],
-        )
-
-        rq_result = ResourceRequestUtil.combine_requests_with_affinity([rq1, rq2])
-        assert len(rq_result) == 1
-        assert ResourceRequestUtil.to_dict(rq_result[0]) == ResourceRequestUtil.to_dict(
-            ResourceRequestUtil.make(
-                {"CPU": 2, "GPU": 1},  # Combined
-                [
-                    (AFFINITY, "1", "1"),
-                    (ANTI_AFFINITY, "2", "2"),
-                    (ANTI_AFFINITY, "3", "3"),
-                ],
-            )
-        )
-
-        # Affinities should also be combined
-        rq3 = ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "4", "4")])
-
-        rq_result = ResourceRequestUtil.combine_requests_with_affinity([rq1, rq2, rq3])
-        assert len(rq_result) == 2
-        assert ResourceRequestUtil.to_dict_list(rq_result) == [
+        rq_result = ResourceRequestUtil.combine_requests_with_affinity(rqs)
+        assert len(rq_result) == 5
+        actual = ResourceRequestUtil.to_dict_list(rq_result)
+        expected = [
             ResourceRequestUtil.to_dict(
                 ResourceRequestUtil.make(
                     {"CPU": 2, "GPU": 1},  # Combined
                     [
                         (AFFINITY, "1", "1"),
-                        (ANTI_AFFINITY, "2", "2"),
-                        (ANTI_AFFINITY, "3", "3"),
                     ],
                 )
             ),
             ResourceRequestUtil.to_dict(
                 ResourceRequestUtil.make(
-                    {"CPU": 1},  # Combined
-                    [(AFFINITY, "4", "4")],
+                    {"CPU": 2},  # Combined
+                    [
+                        (AFFINITY, "2", "2"),
+                    ],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
+                    [(ANTI_AFFINITY, "2", "2")],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
+                    [(ANTI_AFFINITY, "2", "2")],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
                 )
             ),
         ]
+
+        actual_str_serialized = [str(x) for x in actual]
+        expected_str_serialized = [str(x) for x in expected]
+
+        assert sorted(actual_str_serialized) == sorted(expected_str_serialized)
 
 
 def test_cluster_status_parser_cluster_resource_state():
