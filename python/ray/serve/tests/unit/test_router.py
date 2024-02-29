@@ -511,6 +511,7 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID("a", "b"),
             "random",
+            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -531,6 +532,7 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID("a", "b"),
             "random",
+            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -553,6 +555,7 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID("a", "b"),
             "random",
+            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -600,6 +603,7 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID("a", "b"),
             "random",
+            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -636,6 +640,7 @@ class TestRouterMetricsManager:
             metrics_manager = RouterMetricsManager(
                 deployment_id,
                 handle_id,
+                get_or_create_event_loop(),
                 mock_controller_handle,
                 FakeCounter(tag_keys=("deployment", "route", "application")),
                 FakeGauge(tag_keys=("deployment", "application")),
@@ -668,11 +673,12 @@ class TestRouterMetricsManager:
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
     )
-    @patch("ray.serve._private.router.MetricsPusher", new=Mock)
-    def test_update_deployment_config(self):
+    @patch("ray.serve._private.router.MetricsPusher")
+    def test_update_deployment_config(self, metrics_pusher_mock):
         metrics_manager = RouterMetricsManager(
             DeploymentID("a", "b"),
             "random",
+            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
