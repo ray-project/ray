@@ -26,7 +26,7 @@ def assert_deployments_live(ids: List[DeploymentID]):
     running_actor_names = [actor["name"] for actor in list_actors()]
 
     for deployment_id in ids:
-        prefix = f"{deployment_id.app}#{deployment_id.name}"
+        prefix = f"{deployment_id.app_name}#{deployment_id.name}"
         msg = f"Deployment {deployment_id} is not live"
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
 
@@ -83,9 +83,9 @@ def test_deploy_basic(ray_start_stop):
         print("Deployments are reachable over HTTP.")
 
         deployments = [
-            DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Multiplier", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Adder", SERVE_DEFAULT_APP_NAME),
+            DeploymentID(name="Router"),
+            DeploymentID(name="Multiplier"),
+            DeploymentID(name="Adder"),
         ]
         assert_deployments_live(deployments)
         print("All deployments are live.\n")
@@ -112,9 +112,9 @@ def test_deploy_basic(ray_start_stop):
         print("Deployments are reachable over HTTP.")
 
         deployments = [
-            DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Add", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Subtract", SERVE_DEFAULT_APP_NAME),
+            DeploymentID(name="Router"),
+            DeploymentID(name="Add"),
+            DeploymentID(name="Subtract"),
         ]
         assert_deployments_live(deployments)
         print("All deployments are live.\n")
@@ -202,12 +202,12 @@ def test_deploy_multi_app_basic(ray_start_stop):
         print('Application "app2" is reachable over HTTP.')
 
         deployment_names = [
-            DeploymentID("Router", "app1"),
-            DeploymentID("Multiplier", "app1"),
-            DeploymentID("Adder", "app1"),
-            DeploymentID("Router", "app2"),
-            DeploymentID("Multiplier", "app2"),
-            DeploymentID("Adder", "app2"),
+            DeploymentID(name="Router", app_name="app1"),
+            DeploymentID(name="Multiplier", app_name="app1"),
+            DeploymentID(name="Adder", app_name="app1"),
+            DeploymentID(name="Router", app_name="app2"),
+            DeploymentID(name="Multiplier", app_name="app2"),
+            DeploymentID(name="Adder", app_name="app2"),
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -237,11 +237,11 @@ def test_deploy_multi_app_basic(ray_start_stop):
         print('Application "app2" is reachable over HTTP.')
 
         deployment_names = [
-            DeploymentID("BasicDriver", "app1"),
-            DeploymentID("f", "app1"),
-            DeploymentID("Router", "app2"),
-            DeploymentID("Multiplier", "app2"),
-            DeploymentID("Adder", "app2"),
+            DeploymentID(name="BasicDriver", app_name="app1"),
+            DeploymentID(name="f", app_name="app1"),
+            DeploymentID(name="Router", app_name="app2"),
+            DeploymentID(name="Multiplier", app_name="app2"),
+            DeploymentID(name="Adder", app_name="app2"),
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
