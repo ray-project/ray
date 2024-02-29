@@ -103,7 +103,7 @@ def check_endpoint(endpoint: str, json: Union[List, Dict], expected: str):
 
 
 def check_deployments_dead(deployment_ids: List[DeploymentID]):
-    prefixes = [f"{id.app}#{id.name}" for id in deployment_ids]
+    prefixes = [f"{id.app_name}#{id.name}" for id in deployment_ids]
     actor_names = [
         actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
     ]
