@@ -58,7 +58,7 @@ class LongestPrefixRouter(ProxyRouter):
         for endpoint, info in endpoints.items():
             routes.append(info.route)
             route_info[info.route] = endpoint
-            app_to_is_cross_language[endpoint.app] = info.app_is_cross_language
+            app_to_is_cross_language[endpoint.app_name] = info.app_is_cross_language
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
