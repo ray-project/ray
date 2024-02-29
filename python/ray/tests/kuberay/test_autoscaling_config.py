@@ -178,7 +178,7 @@ def _get_ray_cr_with_autoscaler_options() -> dict:
     return cr
 
 
-def _get_cached_config_with_options() -> dict:
+def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
     config["upscaling_speed"] = 1
     config["idle_timeout_minutes"] = 5.0
@@ -240,7 +240,7 @@ TEST_DATA = (
         ),
         pytest.param(
             _get_ray_cr_with_autoscaler_options(),
-            _get_cached_config_with_options(),
+            _get_autoscaling_config_with_options(),
             None,
             None,
             None,
