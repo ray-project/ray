@@ -27,15 +27,8 @@ chmod +x /usr/local/bin/bazelisk
 
 ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
-# Needs to be synchronized to the host group id as we map /var/run/docker.sock
-# into the container.
-addgroup --gid 1001 docker0  # Used on old buildkite AMIs.
-addgroup --gid 993 docker
-
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
-usermod -a -G docker0 forge
-usermod -a -G docker forge
 
 EOF
 USER forge
