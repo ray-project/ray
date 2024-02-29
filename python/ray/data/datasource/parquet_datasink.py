@@ -1,4 +1,3 @@
-import itertools
 import posixpath
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional
 
