@@ -1112,7 +1112,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.storage = StorageContext(
             storage_path=tmpdir, experiment_dir_name="test_trial_scheduler"
         )
-        self.storage.storage_local_path = tmpdir
         runner = _MockTrialRunner(pbt)
         for i in range(num_trials):
             trial_hyperparams = hyperparams or {
@@ -1122,6 +1121,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 "id_factor": i,
             }
             trial = _MockTrial(i, trial_hyperparams, self.storage)
+            trial.init_local_path()
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
         for i in range(num_trials):

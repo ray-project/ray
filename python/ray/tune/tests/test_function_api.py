@@ -1,10 +1,8 @@
 import json
 import os
 import sys
-import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
 
 import ray
 from ray.air.constants import TRAINING_ITERATION

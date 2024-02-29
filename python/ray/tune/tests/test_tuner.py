@@ -448,7 +448,9 @@ def test_trainer_no_chdir_to_trial_dir(
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runtime_env):
+def test_tuner_relative_pathing_with_env_vars(
+    shutdown_only, chdir_tmpdir, tmp_path, runtime_env
+):
     """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
     relative paths to the original working directory.
     """
@@ -471,14 +473,21 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
         data_path = orig_working_dir / "read.txt"
         assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
 
-        trial_dir = Path(train.get_context().get_trial_dir())
-        # Tune should have changed the working directory to the trial directory
-        assert str(trial_dir) == os.getcwd()
+        # Tune chdirs to the trial working directory
+        storage = train.get_context().get_storage()
+        assert Path(storage.trial_working_directory).resolve() == Path.cwd().resolve()
 
-        with open(trial_dir / "write.txt", "w") as f:
+        with open("write.txt", "w") as f:
             f.write(f"{config['id']}")
 
-    tuner = Tuner(train_func, param_space={"id": tune.grid_search(list(range(4)))})
+    tuner = Tuner(
+        train_func,
+        param_space={"id": tune.grid_search(list(range(4)))},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        ),
+    )
     results = tuner.fit()
     assert not results.errors
     for result in results:
