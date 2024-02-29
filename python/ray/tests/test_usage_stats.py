@@ -3,6 +3,7 @@ import os
 import pathlib
 import sys
 import time
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
@@ -1000,11 +1001,6 @@ available_node_types:
     assert cluster_config_to_report.cloud_provider == "kuberay"
 
 
-# TODO(https://github.com/ray-project/ray/issues/33486)
-@pytest.mark.skipif(
-    sys.version_info >= (3, 11, 0),
-    reason=("Currently not passing for Python 3.11"),
-)
 def test_usage_lib_report_data(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats
 ):
@@ -1080,11 +1076,6 @@ provider:
         )
 
 
-# TODO(https://github.com/ray-project/ray/issues/33486)
-@pytest.mark.skipif(
-    sys.version_info >= (3, 11, 0),
-    reason=("Currently not passing for Python 3.11"),
-)
 def test_usage_report_e2e(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
 ):
@@ -1300,12 +1291,46 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+
+        class UsageStatsServer(BaseHTTPRequestHandler):
+            num_reports = 0
+            report_payload = None
+
+            def do_POST(self):
+                content_length = int(self.headers["Content-Length"])
+                post_data = self.rfile.read(content_length)
+                UsageStatsServer.num_reports += 1
+                UsageStatsServer.report_payload = json.loads(post_data)
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+
+        server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
+        server_thread = threading.Thread(target=server.serve_forever)
+        # Exit the server thread when the main thread terminates
+        server_thread.daemon = True
+        server_thread.start()
+
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
         ray.init(address=cluster.address)
-        # Wait enough so that usage report should happen.
-        time.sleep(5)
 
+        """
+        Verify the disabled usage stat is reported to the server.
+        """
+        wait_for_condition(lambda: UsageStatsServer.num_reports == 1)
+        # We should have one and only one report to the server.
+        time.sleep(5)
+        assert UsageStatsServer.num_reports == 1
+        payload = UsageStatsServer.report_payload
+        assert payload["schema_version"] == "0.1"
+        assert payload["source"] == "OSS"
+        assert payload["collect_timestamp_ms"] > 0
+        assert len({k: v for k, v in payload.items() if v is not None}) == 3
+
+        """
+        Verify the correct logs are printed.
+        """
         session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
         session_path = Path(session_dir)
         log_dir_path = session_path / "logs"
@@ -1320,7 +1345,7 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
                 break
         assert contents is not None
         assert any(["Usage reporting is disabled" in c for c in contents])
-        assert all(["Failed to report usage stats" not in c for c in contents])
+        assert all(["Usage report request failed" not in c for c in contents])
 
 
 def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_stats):
@@ -1421,11 +1446,6 @@ if os.environ.get("RAY_MINIMAL") != "1":
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
-)
-# TODO(https://github.com/ray-project/ray/issues/33486)
-@pytest.mark.skipif(
-    sys.version_info >= (3, 11, 0),
-    reason=("Currently not passing for Python 3.11"),
 )
 def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
     """
