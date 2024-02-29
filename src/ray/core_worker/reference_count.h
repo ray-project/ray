@@ -344,6 +344,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Returns the total number of actors owned by this worker.
   size_t NumActorsOwnedByUs() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Calculate the Current LineageObjectSize
+  int64_t GetLineageSize() const;
+
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const ABSL_LOCKS_EXCLUDED(mutex_);
 
