@@ -29,18 +29,10 @@ class DeploymentID:
     app_name: str = SERVE_DEFAULT_APP_NAME
 
     def __str__(self):
-        # TODO(zcin): remove this once we no longer use the concatenated
-        # string for metrics
-        if self.app_name:
-            return f"{self.app_name}_{self.name}"
-        else:
-            return self.name
+        return f"{self.app_name}_{self.name}"
 
     def to_replica_actor_class_name(self):
-        if self.app_name:
-            return f"ServeReplica:{self.app_name}:{self.name}"
-        else:
-            return f"ServeReplica:{self.name}"
+        return f"ServeReplica:{self.app_name}:{self.name}"
 
 
 ReplicaTag = str

@@ -34,7 +34,7 @@ if [[ "$OSTYPE" == "msys" ]]; then
 fi
 
 export PATH=/opt/python/cp38-cp38/bin:$PATH
-pip install -q aws_requests_auth boto3
+pip install -q -c python/requirements_compiled.txt aws_requests_auth boto3 pyopenssl
 ./ci/env/env_info.sh
 
 # Sync the directory to buildkite artifacts
