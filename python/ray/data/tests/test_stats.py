@@ -129,10 +129,10 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     canonicalized_stats = re.sub(" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
     # Handle zero values specially so we can check for missing values.
     canonicalized_stats = re.sub(" [0]+(\.[0])?", " Z", canonicalized_stats)
-    # Other numerics.
-    canonicalized_stats = re.sub("[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
     # Scientific notation for small or large numbers
     canonicalized_stats = re.sub("\d+(\.\d+)?[eE][-+]?\d+", "N", canonicalized_stats)
+    # Other numerics.
+    canonicalized_stats = re.sub("[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
     if filter_global_stats:
