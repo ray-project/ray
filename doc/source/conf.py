@@ -284,7 +284,7 @@ html_theme_options = {
         "csat",
     ],
     "navigation_depth": 4,
-    "analytics": {"google_analytics_id": "UA-110413294-1"},
+    "analytics": {"google_analytics_id": "G-0LCWHW1N3S"},
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
 }
