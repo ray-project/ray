@@ -113,8 +113,6 @@ class OpRuntimeMetrics:
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
-    # Total time spent in UDFs
-    total_udfs_time: float = field(default=0, metadata={"export": False})
     # Time operator spent in task submission backpressure
     task_submission_backpressure_time: float = field(
         default=0, metadata={"export": False}
