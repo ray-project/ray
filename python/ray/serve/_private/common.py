@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, NamedTuple, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME

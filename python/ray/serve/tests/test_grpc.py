@@ -46,6 +46,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
         "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
     ]
 
+    app_name = "app"
     serve.start(
         grpc_options=gRPCOptions(
             port=grpc_port,
@@ -57,7 +58,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     # Ensures the not found is responding correctly.
     ping_grpc_call_method(channel, app_name, test_not_found=True)
 
-    serve.run(g)
+    serve.run(g, name=app_name)
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
