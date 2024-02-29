@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
 import pytest
@@ -44,6 +44,34 @@ class MockTimer(TimerBase):
     def realistic_sleep(self, amt: float):
         with self._lock:
             self._curr += amt + 0.001
+
+
+class MockAsyncTimer:
+    def __init__(self, start_time: Optional[float] = 0):
+        self.reset(start_time=start_time)
+        self._num_sleepers = 0
+
+    def reset(self, start_time: 0):
+        self._curr = start_time
+
+    def time(self) -> float:
+        return self._curr
+
+    async def sleep(self, amt: float):
+        self._num_sleepers += 1
+        end = self._curr + amt
+
+        # Give up the event loop
+        while self._curr < end:
+            await asyncio.sleep(0)
+
+        self._num_sleepers -= 1
+
+    def advance(self, amt: float):
+        self._curr += amt
+
+    def num_sleepers(self):
+        return self._num_sleepers
 
 
 class MockKVStore:
@@ -381,3 +409,55 @@ class FakeGrpcContext:
 
     def invocation_metadata(self):
         return self._invocation_metadata
+
+
+class FakeGauge:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.value = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+        self.value = value
+        if tags:
+            self.tags.update(tags)
+
+    def get_value(self):
+        return self.value
+
+    def get_tags(self):
+        return self.tags
+
+
+class FakeCounter:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.count: int = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        self.count += value
+        if tags:
+            self.tags.update(tags)
+
+    def get_count(self) -> int:
+        return self.count
+
+    def get_tags(self):
+        return self.tags

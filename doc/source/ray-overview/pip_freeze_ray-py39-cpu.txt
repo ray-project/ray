@@ -32,7 +32,7 @@ click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///croot/conda_1706737954207/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1707843821892/work
 conda-content-trust @ file:///croot/conda-content-trust_1693490622020/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
@@ -44,7 +44,7 @@ distro @ file:///croot/distro_1701455004953/work
 dm-tree==0.1.8
 exceptiongroup==1.2.0
 Farama-Notifications==0.0.4
-fastapi==0.108.0
+fastapi==0.109.2
 filelock==3.13.1
 flatbuffers==23.5.26
 frozenlist==1.4.0
@@ -123,9 +123,9 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.4.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=e9773e8ecf1d4d8eb60499205d32600a6b4124cb1e4dea4c01ca48e86cf3d568
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=c915d3a317600a021219d86f46109f941593e9f56b93db079fcb99ebb67c7265
 redis==3.5.3
-requests @ file:///croot/requests_1690400202158/work
+requests @ file:///croot/requests_1707355572290/work
 requests-oauthlib==1.3.1
 rich==12.6.0
 rsa==4.7.2
@@ -137,7 +137,7 @@ scipy==1.10.1
 six==1.16.0
 smart-open==6.2.0
 sniffio==1.3.0
-starlette==0.29.0
+starlette==0.36.3
 tabulate==0.9.0
 tensorboardX==2.6
 tifffile==2023.7.10
@@ -145,7 +145,7 @@ tqdm @ file:///croot/tqdm_1679561862951/work
 typer==0.9.0
 typing_extensions==4.8.0
 uritemplate==3.0.1
-urllib3 @ file:///croot/urllib3_1698257533958/work
+urllib3==1.26.18
 uvicorn==0.22.0
 uvloop==0.19.0
 virtualenv==20.21.0

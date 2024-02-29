@@ -312,3 +312,6 @@ SERVE_GRPC_OPTIONS = [
 RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
     os.environ.get("RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS", "1") == "1"
 )
+
+# Timeout for gracefully shutting down metrics pusher, e.g. in routers or replicas
+METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10

@@ -3973,10 +3973,12 @@ cdef class CoreWorker:
                             c_vector[unordered_map[c_string, double]] bundles,
                             c_string strategy,
                             c_bool is_detached,
-                            double max_cpu_fraction_per_node):
+                            double max_cpu_fraction_per_node,
+                            soft_target_node_id):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
+            CNodeID c_soft_target_node_id = CNodeID.Nil()
 
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
@@ -3990,6 +3992,9 @@ cdef class CoreWorker:
             else:
                 raise TypeError(strategy)
 
+        if soft_target_node_id is not None:
+            c_soft_target_node_id = CNodeID.FromHex(soft_target_node_id)
+
         with nogil:
             check_status(
                         CCoreWorkerProcess.GetCoreWorker().
@@ -3999,7 +4004,8 @@ cdef class CoreWorker:
                                 c_strategy,
                                 bundles,
                                 is_detached,
-                                max_cpu_fraction_per_node),
+                                max_cpu_fraction_per_node,
+                                c_soft_target_node_id),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())
