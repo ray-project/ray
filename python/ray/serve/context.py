@@ -44,7 +44,7 @@ class ReplicaContext:
 
     @property
     def deployment(self) -> str:
-        return self.replica_id.deployment_id.deployment
+        return self.replica_id.deployment_id.name
 
     @property
     def replica_tag(self) -> str:

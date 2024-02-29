@@ -116,7 +116,7 @@ class LongestPrefixRouter(ProxyRouter):
                     return (
                         route,
                         self.handles[endpoint],
-                        self.app_to_is_cross_language[endpoint.app],
+                        self.app_to_is_cross_language[endpoint.app_name],
                     )
 
         return None
