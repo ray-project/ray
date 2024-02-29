@@ -16,7 +16,6 @@ steps:
   - label: "Check commit hash"
     key: check-commit-hash
     job_env: forge
-    instance_type: small_branch
     commands:
       - if [[ "${BUILDKITE_COMMIT}" != "$(git rev-parse HEAD)" ]]; then echo "Commit hash mismatch"; echo "$(git rev-parse HEAD)"; exit 1; else echo "Commit hash matches"; fi
 
