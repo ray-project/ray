@@ -2,7 +2,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -499,7 +499,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def _get_downstream_non_map_ops(
         self, op: PhysicalOperator
-    ) -> List[PhysicalOperator]:
+    ) -> Iterable[PhysicalOperator]:
         """Get the downstream non-Map operators of the given operator.
 
         E.g.,
@@ -511,7 +511,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 yield next_op
                 yield from self._get_downstream_non_map_ops(next_op)
 
-    def _get_downstream_map_ops(self, op: PhysicalOperator) -> List[PhysicalOperator]:
+    def _get_downstream_map_ops(
+        self, op: PhysicalOperator
+    ) -> Iterable[PhysicalOperator]:
         """Get the downstream Map operators of the given operator, ignoring intermediate
         non-Map operators.
 
