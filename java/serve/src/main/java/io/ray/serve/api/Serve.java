@@ -304,35 +304,6 @@ public class Serve {
   }
 
   /**
-   * Returns a dictionary of all active deployments.
-   *
-   * <p>Dictionary maps deployment name to Deployment objects.
-   *
-   * @return
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   */
-  @Deprecated
-  public static Map<String, Deployment> listDeployments() {
-    LOGGER.warn(Constants.MIGRATION_MESSAGE);
-    Map<String, DeploymentRoute> infos = getGlobalClient().listDeployments();
-    if (infos == null || infos.size() == 0) {
-      return Collections.emptyMap();
-    }
-    Map<String, Deployment> deployments = new HashMap<>(infos.size());
-    for (Map.Entry<String, DeploymentRoute> entry : infos.entrySet()) {
-      deployments.put(
-          entry.getKey(),
-          new Deployment(
-              entry.getKey(),
-              entry.getValue().getDeploymentInfo().getDeploymentConfig(),
-              entry.getValue().getDeploymentInfo().getReplicaConfig(),
-              entry.getValue().getDeploymentInfo().getVersion(),
-              entry.getValue().getRoute()));
-    }
-    return deployments;
-  }
-
-  /**
    * Run an application and return a handle to its ingress deployment.
    *
    * @param target A Serve application returned by `Deployment.bind()`.
