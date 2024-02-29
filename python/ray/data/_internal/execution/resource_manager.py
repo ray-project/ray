@@ -95,6 +95,7 @@ class ResourceManager:
 
         # Op's external output buffer.
         mem_op_outputs = state.outqueue_memory_usage()
+        # Input buffers of the downstream operators.
         for next_op in op.output_dependencies:
             mem_op_outputs += (
                 next_op.metrics.obj_store_mem_internal_inqueue
@@ -342,8 +343,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # i.e., `RessourceManager._mem_op_outputs`.
         #
         # Note, if we don't reserve memory for op outputs, all the budget may be used by
-        # the pending task outputs, and/or op' internal output buffers (the latter can
-        # happen when `preserve_order=True`.
+        # the pending task outputs, and/or op's internal output buffers (the latter can
+        # happen when `preserve_order=True`).
         # Then we'll have no budget to pull blocks from the op.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
         # Total shared resources.
