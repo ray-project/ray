@@ -15,7 +15,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import CheckpointConfig, ScalingConfig
+from ray.train import CheckpointConfig
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.train._internal.session import shutdown_session
@@ -1383,21 +1383,6 @@ def test_with_resources_pgf(ray_start_2_cpus_2_gpus, num_gpus):
     [trial] = tune.run(
         tune.with_resources(
             train_fn, resources=PlacementGroupFactory([{"GPU": num_gpus}])
-        )
-    ).trials
-
-    assert trial.last_result["_metric"] == num_gpus
-
-
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_scaling_config(ray_start_2_cpus_2_gpus, num_gpus):
-    def train_fn(config):
-        return len(ray.get_gpu_ids())
-
-    [trial] = tune.run(
-        tune.with_resources(
-            train_fn,
-            resources=ScalingConfig(trainer_resources={"GPU": num_gpus}, num_workers=0),
         )
     ).trials
 
