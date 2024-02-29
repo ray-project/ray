@@ -260,7 +260,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         num_map_ops` resources, half of which is reserved only for the operator outputs,
         excluding pending task outputs.
     3. Non-reserved resources are shared among all operators.
-    3. In each scheduling iteration, each map operator will get "remaining of their own
+    4. In each scheduling iteration, each map operator will get "remaining of their own
        reserved resources" + "remaining of shared resources / num_map_ops" resources.
 
     The `reservation_ratio` is set to 50% by default. Users can tune this value to
