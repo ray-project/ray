@@ -497,6 +497,8 @@ message TaskSpec {
   // TODO(sang): Maybe we should consolidate all streaming generator related config
   // to a separate message?
   int64 generator_backpressure_num_objects = 38;
+  // Boolean if task events enabled, i.e tasks events would be reported.
+  bool enable_task_events = 39;
 }
 
 message TaskInfoEntry {

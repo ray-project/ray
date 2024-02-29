@@ -210,6 +210,10 @@ class RemoteFunction:
                 placement group based scheduling;
                 `NodeAffinitySchedulingStrategy`:
                 node id based affinity scheduling.
+            enable_task_events: This specifies whether to enable task events for this
+                task. If set to True, task events such as (task running, finished)
+                are emitted, and available to Ray Dashboard and State API.
+                See :ref:`state-api-overview-ref` for more details.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -411,6 +415,9 @@ class RemoteFunction:
         if _task_launch_hook:
             _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
+        # Override enable_task_events to default for actor if not specified (i.e. None)
+        enable_task_events = task_options.get("enable_task_events")
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language._format_args(worker, args, kwargs)
@@ -439,6 +446,7 @@ class RemoteFunction:
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
+                enable_task_events,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
