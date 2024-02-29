@@ -211,12 +211,12 @@ class TestResourceManager:
             assert op_usage.object_store_memory == expected_mem
             if op != o1:
                 assert (
-                    resource_manager._mem_pending_task_outputs[op]
-                    == mock_pending_task_outputs[op]
+                    resource_manager._mem_op_internal[op]
+                    == mock_pending_task_outputs[op] + mock_internal_outqueue[op]
                 )
                 assert (
                     resource_manager._mem_op_outputs[op]
-                    == expected_mem - mock_pending_task_outputs[op]
+                    == expected_mem - resource_manager._mem_op_internal[op]
                 )
             global_cpu += mock_cpu[op]
             global_mem += expected_mem
@@ -319,7 +319,7 @@ class TestReservationOpResourceAllocator:
         o4 = LimitOperator(1, o3)
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-        pending_task_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
+        op_internal_usage = {op: 0 for op in [o1, o2, o3, o4]}
         op_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
 
         topo, _ = build_streaming_topology(o4, ExecutionOptions())
@@ -332,7 +332,7 @@ class TestReservationOpResourceAllocator:
 
         resource_manager = ResourceManager(topo, ExecutionOptions())
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager._mem_pending_task_outputs = pending_task_outputs_usages
+        resource_manager._mem_op_internal = op_internal_usage
         resource_manager._mem_op_outputs = op_outputs_usages
 
         resource_manager.get_global_limits = MagicMock(
@@ -378,10 +378,10 @@ class TestReservationOpResourceAllocator:
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
-        pending_task_outputs_usages[o2] = 400
+        op_internal_usage[o2] = 400
         op_outputs_usages[o2] = 100
         op_usages[o3] = ExecutionResources(2, 0, 125)
-        pending_task_outputs_usages[o3] = 30
+        op_internal_usage[o3] = 30
         op_outputs_usages[o3] = 25
         op_usages[o4] = ExecutionResources(0, 0, 50)
 
@@ -393,20 +393,20 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # | op2 | 125/0            | 100/25           | 400-125=275  |
         # +-----+------------------+------------------+--------------+
-        # | op3 | (30+50)/45       | 25/100           | 0            |
+        # | op3 | 30/95            | (25+50)/50       | 0            |
         # +-----+------------------+------------------+--------------+
         # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
         # memory_budget[o2] = 0 + 225/2 = 112.5
         assert allocator._op_budgets[o2] == ExecutionResources(3, float("inf"), 112.5)
-        # memory_budget[o3] = 45 + 225/2 = 157.5
-        assert allocator._op_budgets[o3] == ExecutionResources(5, float("inf"), 157.5)
+        # memory_budget[o3] = 95 + 225/2 = 207.5
+        assert allocator._op_budgets[o3] == ExecutionResources(5, float("inf"), 207.5)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 137.5
         assert allocator.max_task_output_bytes_to_read(o2) == 137.5
-        # max_task_output_bytes_to_read(o3) = 157.5 + 100 = 257.5
+        # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257.5
         assert allocator.max_task_output_bytes_to_read(o3) == 257.5
 
         # Test global_limits updated.
@@ -419,7 +419,7 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # | op2 | 100/0            | 100/0            | 400-100=300  |
         # +-----+------------------+------------------+--------------+
-        # | op3 | (30+50)/20       | 25/75            | 0            |
+        # | op3 | 30/70            | (25+50)/25       | 0            |
         # +-----+------------------+------------------+--------------+
         # remaining shared = 800/2 - 300 = 100
         # Test reserved resources for o2 and o3.
@@ -433,14 +433,14 @@ class TestReservationOpResourceAllocator:
         # Test budgets.
         # memory_budget[o2] = 0 + 100/2 = 50
         assert allocator._op_budgets[o2] == ExecutionResources(1.5, float("inf"), 50)
-        # memory_budget[o3] = 20 + 100/2 = 70
-        assert allocator._op_budgets[o3] == ExecutionResources(2.5, float("inf"), 70)
+        # memory_budget[o3] = 70 + 100/2 = 120
+        assert allocator._op_budgets[o3] == ExecutionResources(2.5, float("inf"), 120)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
         assert allocator.max_task_output_bytes_to_read(o2) == 50
-        # max_task_output_bytes_to_read(o3) = 70 + 75 = 145
+        # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
         assert allocator.max_task_output_bytes_to_read(o3) == 145
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
