@@ -1923,7 +1923,7 @@ class DeploymentState:
                 self._last_retry = time.time()
                 logger.info(
                     f"Adding {to_add} replica{'s' if to_add > 1 else ''} to deployment "
-                    f"{self.deployment_name} in application '{self.app_name}'."
+                    f"'{self.deployment_name}' in application '{self.app_name}'."
                 )
                 for _ in range(to_add):
                     replica_name = ReplicaName(
@@ -2068,7 +2068,7 @@ class DeploymentState:
                 )
                 logger.info(
                     f"Replica {replica.replica_tag} started successfully "
-                    f"on node {replica.actor_node_id}.",
+                    f"on node '{replica.actor_node_id}'.",
                     extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
