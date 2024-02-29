@@ -1074,9 +1074,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             min_count = node_type_config.min_worker_nodes
             if cur_count < min_count:
                 logger.info(
-                    "Adding {} nodes to satisfy min count for node type: {}".format(
-                        min_count - cur_count, node_type
-                    )
+                    f"Adding {min_count - cur_count} nodes to satisfy min count for "
+                    f"node type: {node_type}."
                 )
                 new_nodes.extend(
                     [
@@ -1410,10 +1409,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node.node_kind == NodeKind.HEAD:
                 # We should not be terminating the head node even if it's outdated.
                 logger.warning(
-                    "Head node {}(ray={}) is outdated with node config changes. "
+                    f"Head node {node.im_instance_id}(ray={node.ray_node_id}) is "
+                    "outdated with node config changes. "
                     "Please check the node's config or restart the cluster or restart "
                     "the head node. Autoscaler is not able to shutdown the outdated "
-                    "head node".format(node.im_instance_id, node.ray_node_id)
+                    "head node"
                 )
                 continue
             node_type = node.node_type
