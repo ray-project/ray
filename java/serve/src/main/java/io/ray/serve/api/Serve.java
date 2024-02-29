@@ -275,6 +275,35 @@ public class Serve {
   }
 
   /**
+   * Dynamically fetch a handle to a Deployment object.
+   *
+   * <p>This can be used to update and redeploy a deployment without access to the original
+   * definition.
+   *
+   * @param name name of the deployment. This must have already been deployed.
+   * @return Deployment
+   * @deprecated {@value Constants#MIGRATION_MESSAGE}
+   */
+  @Deprecated
+  public static Deployment getDeployment(String name) {
+    LOGGER.warn(Constants.MIGRATION_MESSAGE);
+    DeploymentRoute deploymentRoute = getGlobalClient().getDeploymentInfo(name);
+    if (deploymentRoute == null) {
+      throw new RayServeException(
+          MessageFormatter.format(
+              "Deployment {} was not found. Did you call Deployment.deploy?", name));
+    }
+
+    // TODO use DeploymentCreator
+    return new Deployment(
+        name,
+        deploymentRoute.getDeploymentInfo().getDeploymentConfig(),
+        deploymentRoute.getDeploymentInfo().getReplicaConfig(),
+        deploymentRoute.getDeploymentInfo().getVersion(),
+        deploymentRoute.getRoute());
+  }
+
+  /**
    * Run an application and return a handle to its ingress deployment.
    *
    * @param target A Serve application returned by `Deployment.bind()`.
