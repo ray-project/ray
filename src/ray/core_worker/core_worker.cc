@@ -133,6 +133,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   if (RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+#ifdef __linux__
     // Not setting sigchld = ignore: user may want to do waitpid on their own.
     // If user's bad code causes a zombie process, it will hang their in zombie status
     // until this worker exits and raylet reaps it.
@@ -143,6 +144,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           << "Failed to set this core_worker process as subreaper. If Raylet is set as "
              "subreaper, user-spawn daemon processes may be killed by raylet.";
     }
+#else
+    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Raylet will not "
+                        "kill unknown children.";
+#endif
   }
 
   // Initialize task receivers.

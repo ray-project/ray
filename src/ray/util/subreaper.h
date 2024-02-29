@@ -30,6 +30,7 @@ typedef int pid_t;
 
 namespace ray {
 
+#ifdef __linux__
 // Utility functions to enable subreaper functionality in Linux.
 //
 // In Ray, raylet creates core_worker processes, which may create grandchild processes.
@@ -69,6 +70,8 @@ bool SetThisProcessAsSubreaper();
 //
 // Note: this function is one-time. Raylet should call it periodically.
 void KillUnknownChildren();
+
+#endif
 
 // Thread-safe tracker for owned children.
 // Only works in Linux.

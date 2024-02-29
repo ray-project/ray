@@ -99,11 +99,6 @@ std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
 // Windows implementation.
 // Windows does not have signals or subreaper, so we do no-op for all functions.
 
-bool SetThisProcessAsSubreaper() {
-  RAY_LOG(WARNING) << "Subreaper is only supported on Linux >= 3.4, not on Windows";
-  return false;
-}
-
 void KnownChildrenTracker::addKnownChild(pid_t pid) {}
 void KnownChildrenTracker::removeKnownChild(pid_t pid) {}
 std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
@@ -112,11 +107,6 @@ std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
 }
 
 #elif defined(__APPLE__)
-
-bool SetThisProcessAsSubreaper() {
-  RAY_LOG(WARNING) << "Subreaper is only supported on Linux >= 3.4, not on MacOS";
-  return false;
-}
 
 // MacOS implementation.
 // MacOS has signals, but does not support subreaper, so we ignore SIGCHLD.

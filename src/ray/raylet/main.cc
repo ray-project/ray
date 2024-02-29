@@ -208,6 +208,7 @@ int main(int argc, char *argv[]) {
         // Only works on Linux >= 3.4.
         if (RayConfig::instance()
                 .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+#ifdef __linux__
           if (ray::SetThisProcessAsSubreaper()) {
             auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
             runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
@@ -220,6 +221,10 @@ int main(int argc, char *argv[]) {
             RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
                                 "unknown children.";
           }
+#else
+          RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
+                              "kill unknown children.";
+#endif
         }
 
         // Parse the worker port list.

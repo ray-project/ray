@@ -41,6 +41,17 @@ class BedMaker:
         p.start()
         return p.pid
 
+    def spawn_daemon(self):
+        import subprocess
+
+        # Spawns a bash script (shell=True) that starts a daemon process
+        # which sleeps 1000s. The bash exits immediately, leaving the daemon
+        # running in the background. We don't want to kill the daemon when
+        # the actor is alive; we want to kill it after the actor is killed.
+        command = "nohup sleep 1000 >/dev/null 2>&1 & echo $!"
+        output = subprocess.check_output(command, shell=True, text=True)
+        return int(output.strip())
+
     def my_pid(self):
         return os.getpid()
 
@@ -80,9 +91,31 @@ def test_sigkilled_worker_can_kill_subprocess(enable_subreaper, shutdown_only):
 
     logger.info(get_process_info(pid))  # shows the process
     psutil.Process(actor_pid).kill()  # sigkill
-    time.sleep(1)
+    time.sleep(11)  # unowned processes are killed every 10s.
     with pytest.raises(psutil.NoSuchProcess):
         logger.info(get_process_info(pid))  # subprocess killed
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_daemon_processes_not_killed_until_actor_dead(enable_subreaper, shutdown_only):
+    ray.init()
+    # sigkill'd actor can't kill subprocesses
+    b = BedMaker.remote()
+    daemon_pid = ray.get(b.spawn_daemon.remote())
+    actor_pid = ray.get(b.my_pid.remote())
+
+    # The pid refers to a daemon process that should not be killed, although
+    # it's already reparented to the core worker.
+    time.sleep(11)  # even after a cycle of killing...
+    assert psutil.Process(daemon_pid).ppid == actor_pid
+
+    psutil.Process(actor_pid).kill()  # sigkill
+    time.sleep(11)  # unowned processes are killed every 10s.
+    with pytest.raises(psutil.NoSuchProcess):
+        logger.info(get_process_info(daemon_pid))  # subprocess killed
 
 
 if __name__ == "__main__":
