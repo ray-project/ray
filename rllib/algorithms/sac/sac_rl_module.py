@@ -20,6 +20,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 CRITIC_TARGET = "critic_target"
 QF_PREDS = "qf_preds"
+QF_NEXT_PREDS = "qf_next_preds"
 QF_TWIN_PREDS = "qf_twin_preds"
 ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 
@@ -33,11 +34,11 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     The policy (actor) contains a state encoder (`pi_encoder`) and
     a head (`pi_head`) that feeds into an action distribution (a
-    squashed Gaussian, i.e. outputs defione the location and the log
+    squashed Gaussian, i.e. outputs define the location and the log
     scale parameters).
 
-    In addition, two (or three in case `twin_q=True`) Q networks are
-    defined, the second one (and third, if `twin_q=True`) of them the
+    In addition, two (or four in case `twin_q=True`) Q networks are
+    defined, the second one (and fourth, if `twin_q=True`) of them the
     Q target network(s). All of these in turn are - similar to the
     policy network - composed of an encoder and a head network. Each of
     the encoders forms a state-action encoding that feeds into the
