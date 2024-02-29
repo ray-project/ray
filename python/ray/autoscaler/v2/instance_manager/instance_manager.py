@@ -3,9 +3,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from ray._private.protobuf_compat import message_to_dict
 
-from ray.autoscaler.v2.instance_manager.common import (
-    InstanceUtil,
-)
+from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.core.generated.instance_manager_pb2 import (
     GetInstanceManagerStateReply,
@@ -190,6 +188,14 @@ class InstanceManager:
             assert (
                 update.cloud_instance_id
             ), "ALLOCATED update must have cloud_instance_id"
+            assert update.node_kind in [
+                NodeKind.WORKER,
+                NodeKind.HEAD,
+            ], "ALLOCATED update must have node_kind as WORKER or HEAD"
+            assert update.instance_type, "ALLOCATED update must have instance_type"
+            assert (
+                update.cloud_instance_id
+            ), "ALLOCATED update must have cloud_instance_id"
             instance.cloud_instance_id = update.cloud_instance_id
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
@@ -204,13 +210,18 @@ class InstanceManager:
             instance.launch_request_id = update.launch_request_id
             instance.instance_type = update.instance_type
         elif update.new_instance_status == Instance.TERMINATING:
-            instance.cloud_instance_id = update.cloud_instance_id
+            assert (
+                update.cloud_instance_id
+            ), "TERMINATING update must have cloud instance id"
+            pass
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
         """
         Create a new instance from the given update.
         """
+
+        assert update.upsert, "upsert must be true for creating new instance."
 
         assert update.new_instance_status in [
             # For unmanaged instance not initialized by InstanceManager,
@@ -233,6 +244,7 @@ class InstanceManager:
             details=update.details,
         )
 
+        logger.info(InstanceUtil.get_log_str_for_update(instance, update))
         # Apply the status specific updates.
         InstanceManager._apply_update(instance, update)
         return instance
@@ -249,9 +261,11 @@ class InstanceManager:
         Returns:
             The updated instance.
         """
+        logger.info(InstanceUtil.get_log_str_for_update(instance, update))
         assert InstanceUtil.set_status(instance, update.new_instance_status), (
-            f"Invalid status transition from {instance.status} to "
-            f"{update.new_instance_status}"
+            "Invalid status transition from "
+            f"{Instance.InstanceStatus.Name(instance.status)} to "
+            f"{Instance.InstanceStatus.Name(update.new_instance_status)}"
         )
         InstanceManager._apply_update(instance, update)
         logger.info(

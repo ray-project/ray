@@ -3,7 +3,7 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
-from typing import Type
+from typing import Any, Type
 
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -27,12 +27,15 @@ class PPORLModule(RLModule, abc.ABC):
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
         # __sphinx_doc_end__
 
+    @override(RLModule)
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
+    @override(RLModule)
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
+    @override(RLModule)
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
@@ -69,3 +72,19 @@ class PPORLModule(RLModule, abc.ABC):
             SampleBatch.VF_PREDS,
             SampleBatch.ACTION_DIST_INPUTS,
         ]
+
+    @abc.abstractmethod
+    def _compute_values(self, batch) -> Any:
+        """Computes values using the vf-specific network(s) and given a batch of data.
+
+        Args:
+            batch: The input batch to pass through this RLModule (value function
+                encoder and vf-head).
+
+        Returns:
+            A dict mapping ModuleIDs to batches of value function outputs (already
+            squeezed on the last dimension (which should have shape (1,) b/c of the
+            single value output node). However, for complex multi-agent settings with
+            shareed value networks, the output might look differently (e.g. a single
+            return batch without the ModuleID-based mapping).
+        """

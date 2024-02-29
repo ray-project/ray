@@ -1287,7 +1287,6 @@ def test_num_replicas_auto(client: ServeControllerClient):
         "downscale_smoothing_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
-        "policy": "ray.serve.autoscaling_policy:default_autoscaling_policy",
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)

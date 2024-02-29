@@ -52,8 +52,8 @@ class RayStopper(InstanceUpdatedSubscriber):
                 def _log_on_error(fut):
                     try:
                         fut.result()
-                    except Exception as e:
-                        logger.exception(f"Error stopping/drain ray: {e}")
+                    except Exception:
+                        logger.exception("Error stopping/drain ray.")
 
                 fut.add_done_callback(_log_on_error)
 
@@ -104,17 +104,22 @@ class RayStopper(InstanceUpdatedSubscriber):
             reason: The reason to drain the node.
             reason_str: The reason message to drain the node.
         """
-        accepted = gcs_client.drain_node(
-            node_id=ray_node_id,
-            reason=reason,
-            reason_message=reason_str,
-            # TODO: we could probably add a deadline here that's derived
-            # from the stuck instance reconcilation configs.
-            deadline_timestamp_ms=0,
-        )
-        logger.info(f"Draining ray on {ray_node_id}(success={accepted}): {reason_str}")
-        if not accepted:
-            error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
+        try:
+            accepted = gcs_client.drain_node(
+                node_id=ray_node_id,
+                reason=reason,
+                reason_message=reason_str,
+                # TODO: we could probably add a deadline here that's derived
+                # from the stuck instance reconcilation configs.
+                deadline_timestamp_ms=0,
+            )
+            logger.info(
+                f"Draining ray on {ray_node_id}(success={accepted}): {reason_str}"
+            )
+            if not accepted:
+                error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
+        except Exception:
+            logger.exception("Error draining ray.")
 
     @staticmethod
     def _stop_ray_node(
@@ -130,11 +135,14 @@ class RayStopper(InstanceUpdatedSubscriber):
             gcs_client: The gcs client to use.
             ray_node_id: The ray node id to stop.
         """
-        drained = gcs_client.drain_nodes(node_ids=[hex_to_binary(ray_node_id)])
-        success = len(drained) > 0
-        logger.info(
-            f"Stopping ray on {ray_node_id}(instance={instance_id}): success={success})"
-        )
-
-        if not success:
-            error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
+        try:
+            drained = gcs_client.drain_nodes(node_ids=[hex_to_binary(ray_node_id)])
+            success = len(drained) > 0
+            logger.info(
+                f"Stopping ray on {ray_node_id}(instance={instance_id}): success={success})"
+            )
+            if not success:
+                if not success:
+                    error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
+        except Exception:
+            logger.exception("Error stopping ray.")

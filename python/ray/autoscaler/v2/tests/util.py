@@ -9,7 +9,7 @@ import ray
 from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, ResourceUsage
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.core.generated import autoscaler_pb2
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
 
 
 class MockEventLogger:
@@ -91,6 +91,7 @@ def create_instance(
     version=0,
     cloud_instance_id="",
     ray_node_id="",
+    node_kind=NodeKind.WORKER,
 ):
 
     if not status_times:
@@ -108,6 +109,7 @@ def create_instance(
         ],
         cloud_instance_id=cloud_instance_id,
         node_id=ray_node_id,
+        node_kind=node_kind,
     )
 
 
