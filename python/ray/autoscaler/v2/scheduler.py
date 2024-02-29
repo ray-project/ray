@@ -524,8 +524,8 @@ class SchedulingNode:
                     return False
 
             # We don't need to check for affinity constraints here since
-            # affinity doesn't affect if a request can be scheduled on a node.
-            # Affinity constraints are only used for scoring.
+            # we have already combined resource requests with the affinity
+            # constraints into the same request at `combine_requests_with_affinity`.
             pass
 
         available_resources_dict = self.get_available_resources(resource_request_source)
@@ -542,10 +542,10 @@ class SchedulingNode:
 
         # Update the dynamic labels if there's any
         for constraint in request.placement_constraints:
-            if constraint.HasField("affinity"):
-                affinity = constraint.affinity
-                self._add_label(affinity.label_name, affinity.label_value)
-
+            # We don't need to check for affinity constraints here since
+            # we have already combined resource requests with the affinity
+            # constraints into the same request at `combine_requests_with_affinity`.
+            # We don't need node labels for enforcing affinity.
             if constraint.HasField("anti_affinity"):
                 anti_affinity = constraint.anti_affinity
                 self._add_label(anti_affinity.label_name, anti_affinity.label_value)
@@ -1215,6 +1215,18 @@ class ResourceDemandScheduler(IResourceScheduler):
         These requests should be scheduled atomically, i.e. either all of the resources
         requests in a gang request are scheduled or none of them are scheduled.
 
+        For now, the gang resource requests represent Ray's placement groups, while it
+        could be more general in the future:
+        - For STRICT_PACK placement group requests, we combine them into a single
+            request and try to schedule them together.
+        - For STRICT_SPREAD placement groups requests, they should be scheduled on
+            different nodes by leveraging on the node labels that are associated with
+            the placement group.
+            If there are requests from rescheduling placement groups due to node
+            failures, these requests should not be scheduled on nodes with requests
+            from the same placement group.
+
+
         Args:
             ctx: The schedule context.
             gang_requests: The gang resource requests.
@@ -1230,8 +1242,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 2. the number of resource requests in the gang request.
             """
             total_placement_constraints = 0
-            for rr in req.requests:
-                total_placement_constraints += len(rr.placement_constraints)
+            for resource_request in req.requests:
+                total_placement_constraints += len(
+                    resource_request.placement_constraints
+                )
 
             return (total_placement_constraints, len(req.requests))
 
