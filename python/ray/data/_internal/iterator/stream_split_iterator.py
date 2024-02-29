@@ -180,11 +180,11 @@ class SplitCoordinator:
         self._next_epoch = gen_epochs()
         self._output_iterator = None
 
-    def stats(self) -> DatasetStatsSummary:
+    def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats().to_summary()
-        return self._base_dataset._get_stats_summary()
+            return self._executor.get_stats()
+        return self._base_dataset._plan.stats()
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -236,11 +236,7 @@ class SplitCoordinator:
         except StopIteration:
             return None
         finally:
-            stats = (
-                self._executor.get_stats()
-                if self._executor
-                else self._base_dataset._plan.stats()
-            )
+            stats = self.stats()
             if stats and stats.streaming_split_coordinator_s:
                 stats.streaming_split_coordinator_s.add(
                     time.perf_counter() - start_time
