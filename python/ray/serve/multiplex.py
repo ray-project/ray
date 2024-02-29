@@ -222,7 +222,7 @@ class _ModelMultiplexWrapper:
                         )
                     loaded_time = time.time() - load_start_time
                     logger.info(
-                        f"Successfully loaded model '{model_id}' in {loaded_time}s."
+                        f"Successfully loaded model '{model_id}' in {loaded_time:.3f}s."
                     )
                     self._model_load_tasks.discard(model_id)
                     self.model_load_latency_ms.observe(
@@ -254,5 +254,5 @@ class _ModelMultiplexWrapper:
             setattr(model, "__del__", lambda _: None)
         unloaded_time = time.time() - unload_start_time
         self.model_unload_latency_ms.observe(unloaded_time * 1000.0)
-        logger.info(f"Successfully unloaded model '{model_id}' in {unloaded_time}s.")
+        logger.info(f"Successfully unloaded model '{model_id}' in {unloaded_time:.3f}s.")
         self.registered_model_gauge.set(0, tags={"model_id": model_id})
