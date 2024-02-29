@@ -153,9 +153,6 @@ def get_replica_context() -> ReplicaContext:
                     # Prints "MyDeployment"
                     print(serve.get_replica_context().deployment)
 
-                    # Prints "MyDeployment#<replica_tag>"
-                    print(serve.get_replica_context().replica_tag)
-
     """
     internal_replica_context = _get_internal_replica_context()
     if internal_replica_context is None:

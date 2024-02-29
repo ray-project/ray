@@ -117,7 +117,9 @@ class RouterMetricsManager:
         in memory as the deployment upscales and downscales over time.
         """
 
-        running_replica_set = {replica.replica_tag for replica in running_replicas}
+        running_replica_set = {
+            replica.replica_id.unique_id for replica in running_replicas
+        }
         with self._queries_lock:
             self.num_requests_sent_to_replicas = defaultdict(
                 int,
@@ -189,13 +191,13 @@ class RouterMetricsManager:
         self.num_queued_requests -= 1
         self.num_queued_requests_gauge.set(self.num_queued_requests)
 
-    def inc_num_running_requests_for_replica(self, replica_tag: str):
+    def inc_num_running_requests_for_replica(self, replica_id: str):
         with self._queries_lock:
-            self.num_requests_sent_to_replicas[replica_tag] += 1
+            self.num_requests_sent_to_replicas[replica_id] += 1
 
-    def process_finished_request(self, replica_tag, *args):
+    def process_finished_request(self, replica_id: str, *args):
         with self._queries_lock:
-            self.num_requests_sent_to_replicas[replica_tag] -= 1
+            self.num_requests_sent_to_replicas[replica_id] -= 1
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
@@ -470,7 +472,7 @@ class Router:
                 request_args, request_kwargs = await self._resolve_deployment_responses(
                     request_args, request_kwargs
                 )
-                ref, replica_tag = await self.schedule_and_send_request(
+                ref, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
                         args=list(request_args),
                         kwargs=request_kwargs,
@@ -481,10 +483,10 @@ class Router:
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
                     self._metrics_manager.inc_num_running_requests_for_replica(
-                        replica_tag
+                        replica_id
                     )
                     callback = partial(
-                        self._metrics_manager.process_finished_request, replica_tag
+                        self._metrics_manager.process_finished_request, replica_id
                     )
                     if isinstance(ref, ray.ObjectRef):
                         ref._on_completed(callback)

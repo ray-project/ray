@@ -104,7 +104,7 @@ class ActorReplicaWrapper:
 
     @property
     def replica_id(self) -> str:
-        return self._replica_info.replica_tag
+        return self._replica_info.replica_id.unique_id
 
     @property
     def node_id(self) -> str:
