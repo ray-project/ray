@@ -14,7 +14,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     DeploymentID,
-    EndpointInfo,
     EndpointTag,
     MultiplexedReplicaInfo,
     NodeId,
@@ -34,7 +33,6 @@ from ray.serve._private.constants import (
     SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
@@ -55,12 +53,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
-from ray.serve.generated.serve_pb2 import (
-    ActorNameList,
-    DeploymentArgs,
-    DeploymentRoute,
-    DeploymentRouteList,
-)
+from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
