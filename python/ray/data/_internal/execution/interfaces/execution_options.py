@@ -227,7 +227,7 @@ class ExecutionOptions:
         exclude_resources: Optional[ExecutionResources] = None,
         locality_with_output: Union[bool, List[NodeIdStr]] = False,
         preserve_order: bool = False,
-        # TODO(hchen): Re-enable by default after fixing
+        # TODO(hchen): Re-enable `actor_locality_enabled` by default after fixing
         # https://github.com/ray-project/ray/issues/43466
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
