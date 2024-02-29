@@ -78,6 +78,6 @@ Community Examples
   * - Topic
     - Example
   * - HPU
-    - `BERT Model Training with HPU <hpu_bert_training>`
+    - :ref:`BERT Text Classification Model Training with HPU <hpu_bert_training>`
   * - HPU
-    - `ResNet Model Training with HPU <hpu_resnet_training>`
+    - :ref:`ResNet Image Classification Model Training with HPU <hpu_resnet_training>`
