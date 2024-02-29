@@ -211,7 +211,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     # Feed data and implement streaming exec.
     output = []
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=True))
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         while not op.has_next():
