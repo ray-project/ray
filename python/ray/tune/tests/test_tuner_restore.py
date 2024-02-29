@@ -412,6 +412,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="test_tuner_resume_errored_only",
+            storage_path=str(tmpdir),
             failure_config=FailureConfig(fail_fast=False),
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
