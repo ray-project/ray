@@ -153,7 +153,7 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
     manager->AllocateLocalTaskResources(resource_request, task_allocation);
   }
 
-  manager->SetLocalNodeDraining();
+  manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max());
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Make the node idle so that the node is drained and terminated.
@@ -178,7 +178,7 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
   *used_object_store = 1;
   manager->UpdateAvailableObjectStoreMemResource();
 
-  manager->SetLocalNodeDraining();
+  manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max());
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Free object store memory so that the node is drained and terminated.

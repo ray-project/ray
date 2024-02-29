@@ -101,10 +101,10 @@ def bq_query_result_mock_fail():
 
 
 @pytest.fixture
-def ray_remote_function_mock():
-    with mock.patch.object(ray.remote_function.RemoteFunction, "_remote") as remote_fn:
-        remote_fn.return_value = 1
-        yield remote_fn
+def ray_get_mock():
+    with mock.patch.object(ray, "get") as ray_get:
+        ray_get.return_value = None
+        yield ray_get
 
 
 class TestReadBigQuery:
@@ -196,7 +196,7 @@ class TestReadBigQuery:
 class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
-    def test_write(self):
+    def test_write(self, ray_get_mock):
         bq_datasink = _BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
@@ -209,7 +209,7 @@ class TestWriteBigQuery:
         )
         assert status == "ok"
 
-    def test_write_dataset_exists(self, ray_remote_function_mock):
+    def test_write_dataset_exists(self, ray_get_mock):
         bq_datasink = _BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset="existingdataset" + "." + _TEST_BQ_TABLE_ID,

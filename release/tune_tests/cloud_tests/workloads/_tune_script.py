@@ -68,7 +68,6 @@ class IndicatorCallback(tune.Callback):
 
 
 def run_tune(
-    no_syncer: bool,
     storage_path: Optional[str] = None,
     experiment_name: str = "cloud_test",
     indicator_file: str = "/tmp/tune_cloud_indicator",
@@ -114,8 +113,6 @@ def run_tune(
         config=config,
         storage_path=storage_path,
         sync_config=train.SyncConfig(
-            syncer="auto" if not no_syncer else None,
-            sync_on_checkpoint=True,
             sync_period=0.5,
             sync_artifacts=True,
         ),
@@ -128,27 +125,20 @@ def run_tune(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-
-    parser.add_argument("--no-syncer", action="store_true", default=False)
-
     parser.add_argument("--storage-path", required=False, default=None, type=str)
-
     parser.add_argument("--experiment-name", required=False, default=None, type=str)
-
     parser.add_argument(
         "--indicator-file",
         required=False,
         default="/tmp/tune_cloud_indicator",
         type=str,
     )
-
     args = parser.parse_args()
 
     trainable = str(os.environ.get("TUNE_TRAINABLE", "function"))
     num_cpus_per_trial = int(os.environ.get("TUNE_NUM_CPUS_PER_TRIAL", "2"))
 
     run_kwargs = dict(
-        no_syncer=args.no_syncer or False,
         storage_path=args.storage_path or None,
         experiment_name=args.experiment_name or "cloud_test",
         indicator_file=args.indicator_file,

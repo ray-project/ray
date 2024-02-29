@@ -44,15 +44,13 @@ class DummyTrainer(DataParallelTrainer):
         num_epochs: int = 1,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 4096,
-        # Deprecated.
-        prefetch_blocks: int = 0,
         **kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
-                num_epochs, prefetch_batches, prefetch_blocks, batch_size
+                num_epochs, prefetch_batches, batch_size
             ),
             *args,
             scaling_config=scaling_config,
@@ -63,7 +61,6 @@ class DummyTrainer(DataParallelTrainer):
     def make_train_loop(
         num_epochs: int,
         prefetch_batches: int,
-        prefetch_blocks: int,
         batch_size: Optional[int],
     ):
         """Make a debug train loop that runs for the given amount of epochs."""
@@ -83,7 +80,6 @@ class DummyTrainer(DataParallelTrainer):
                 batch_start = time.perf_counter()
                 for batch in data_shard.iter_batches(
                     prefetch_batches=prefetch_batches,
-                    prefetch_blocks=prefetch_blocks,
                     batch_size=batch_size,
                 ):
                     batch_delay = time.perf_counter() - batch_start

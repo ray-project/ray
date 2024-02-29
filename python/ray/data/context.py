@@ -79,11 +79,6 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
-# Whether to use the runtime object store memory metrics for scheduling.
-DEFAULT_USE_RUNTIME_METRICS_SCHEDULING = bool(
-    int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "0"))
-)
-
 # Whether to eagerly free memory (new backend only).
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
@@ -102,6 +97,10 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 # If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
+# Whether stats logs should be verbose. This will include fields such
+# as `extra_metrics` in the stats output, which are excluded by default.
+DEFAULT_VERBOSE_STATS_LOG = False
+
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
@@ -117,10 +116,7 @@ WARN_PREFIX = "⚠️ "
 OK_PREFIX = "✔️ "
 
 # Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 4096
-
-# Default batch size for batch transformations in strict mode.
-STRICT_MODE_DEFAULT_BATCH_SIZE = 1024
+DEFAULT_BATCH_SIZE = 1024
 
 # Whether to enable progress bars.
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(
@@ -141,6 +137,25 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
 # Set to `True` to retry all errors, or set to a list of errors to retry.
 # This follows same format as `retry_exceptions` in Ray Core.
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
+
+# Whether to enable ReservationOpResourceAllocator by default.
+DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = bool(
+    os.environ.get("RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", "1")
+)
+
+# The default reservation ratio for ReservationOpResourceAllocator.
+DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
+    os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
+)
+
+# Default value of the max number of blocks that can be buffered at the
+# streaming generator of each `DataOpTask`.
+# Note, if this value is too large, we'll need to allocate more memory
+# buffer for the pending task outputs, which may lead to bad performance
+# as we may not have enough memory buffer for the operator outputs.
+# If the value is too small, the task may be frequently blocked due to
+# streaming generator backpressure.
+DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
 
 @DeveloperAPI
@@ -170,12 +185,12 @@ class DataContext:
         min_parallelism: bool,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
+        verbose_stats_log: bool,
         trace_allocations: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         enable_progress_bars: bool,
         enable_get_object_locations_for_metrics: bool,
-        use_runtime_metrics_scheduling: bool,
         write_file_retry_on_errors: List[str],
         warn_on_driver_memory_usage_bytes: int,
         actor_task_retry_on_errors: Union[bool, List[BaseException]],
@@ -200,6 +215,7 @@ class DataContext:
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
+        self.verbose_stats_logs = verbose_stats_log
         self.trace_allocations = trace_allocations
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
@@ -208,7 +224,6 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
-        self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
         self.write_file_retry_on_errors = write_file_retry_on_errors
         self.warn_on_driver_memory_usage_bytes = warn_on_driver_memory_usage_bytes
         self.actor_task_retry_on_errors = actor_task_retry_on_errors
@@ -230,9 +245,13 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
-        # The max number of blocks that can be buffered at the streaming generator of
-        # each `DataOpTask`.
-        self._max_num_blocks_in_streaming_gen_buffer = None
+        self._max_num_blocks_in_streaming_gen_buffer = (
+            DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
+        )
+        # Whether to enable ReservationOpResourceAllocator.
+        self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
+        # The reservation ratio for ReservationOpResourceAllocator.
+        self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -271,12 +290,12 @@ class DataContext:
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
+                    verbose_stats_log=DEFAULT_VERBOSE_STATS_LOG,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
-                    use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
                     write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
                     warn_on_driver_memory_usage_bytes=(
                         DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES

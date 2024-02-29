@@ -17,14 +17,16 @@ class _MetricTask:
     def __init__(self, task_func, interval_s, callback_func):
         """
         Args:
-            task_func: a callable that MetricsPusher will try to call in each loop.
+            task_func: a callable that MetricsPusher will try to call in
+                each loop. It should take no arguments, and return a
+                kwargs dictionary to be used to call the callback_func.
             interval_s: the interval of each task_func is supposed to be called.
             callback_func: callback function is called when task_func is done, and
                 the result of task_func is passed to callback_func as the first
                 argument, and the timestamp of the call is passed as the second
                 argument.
         """
-        self.task_func: Callable = task_func
+        self.task_func: Callable[[], Dict[str]] = task_func
         self.interval_s: float = interval_s
         self.callback_func: Callable[[Any, float]] = callback_func
         self.last_ref: Optional[ray.ObjectRef] = None
@@ -36,9 +38,11 @@ class MetricsPusher:
     Metrics pusher is a background thread that run the registered tasks in a loop.
     """
 
-    def __init__(
-        self,
-    ):
+    # If no tasks are registered, sleep for 1s between iterations (until one is
+    # registered).
+    NO_TASKS_REGISTERED_INTERVAL_S = 1
+
+    def __init__(self):
         self.tasks: Dict[str, _MetricTask] = dict()
         self.pusher_thread: Union[threading.Thread, None] = None
         self.stop_event = threading.Event()
@@ -66,9 +70,6 @@ class MetricsPusher:
         fair timeshare to execute and run.
         """
 
-        if len(self.tasks) == 0:
-            raise ValueError("MetricsPusher has zero tasks registered.")
-
         if self.pusher_thread and self.pusher_thread.is_alive():
             return
 
@@ -85,11 +86,11 @@ class MetricsPusher:
                                 ready_refs, _ = ray.wait([task.last_ref], timeout=0)
                                 if len(ready_refs) == 0:
                                     continue
-                            data = task.task_func()
+                            kwargs = task.task_func()
                             task.last_call_succeeded_time = time.time()
                             if task.callback_func and ray.is_initialized():
                                 task.last_ref = task.callback_func(
-                                    data, send_timestamp=time.time()
+                                    **kwargs, send_timestamp=time.time()
                                 )
                     except Exception as e:
                         logger.warning(
@@ -99,11 +100,15 @@ class MetricsPusher:
                 # For all tasks, check when the task should be executed
                 # next. Sleep until the next closest time.
                 least_interval_s = math.inf
-                for task in self.tasks.values():
-                    time_until_next_push = task.interval_s - (
-                        time.time() - task.last_call_succeeded_time
-                    )
-                    least_interval_s = min(least_interval_s, time_until_next_push)
+                if self.tasks:
+                    for task in self.tasks.values():
+                        time_until_next_push = task.interval_s - (
+                            time.time() - task.last_call_succeeded_time
+                        )
+                        least_interval_s = min(least_interval_s, time_until_next_push)
+                else:
+                    # If there are no tasks registered, fall back to the default.
+                    least_interval_s = self.NO_TASKS_REGISTERED_INTERVAL_S
 
                 time.sleep(max(least_interval_s, 0))
 

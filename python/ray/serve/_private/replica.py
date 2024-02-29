@@ -22,7 +22,9 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaName,
+    ReplicaQueueLengthInfo,
     ReplicaTag,
+    RequestMetadata,
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
@@ -32,7 +34,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
-    RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -54,7 +56,6 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
@@ -148,21 +149,9 @@ class ReplicaMetricsManager:
             tag_keys=("route",),
         )
 
-        # User-facing Prometheus gauges.
-        self._num_pending_items = metrics.Gauge(
-            "serve_replica_pending_queries",
-            description="The current number of pending queries.",
-        )
-        self._num_processing_items = metrics.Gauge(
+        self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-        )
-
-        # Set user-facing gauges periodically.
-        self._metrics_pusher.register_or_update_task(
-            self.SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME,
-            self._set_replica_requests_metrics,
-            RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
 
         self.set_autoscaling_config(autoscaling_config)
@@ -180,7 +169,10 @@ class ReplicaMetricsManager:
 
         self._autoscaling_config = autoscaling_config
 
-        if self._autoscaling_config:
+        if (
+            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            and self._autoscaling_config
+        ):
             # Push autoscaling metrics to the controller periodically.
             self._metrics_pusher.register_or_update_task(
                 self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
@@ -191,21 +183,22 @@ class ReplicaMetricsManager:
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
-                self.get_num_ongoing_requests,
+                self._add_autoscaling_metrics_point,
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
                     self._autoscaling_config.metrics_interval_s,
                 ),
-                self._add_autoscaling_metrics_point,
             )
 
     def inc_num_ongoing_requests(self) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
+        self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
     def dec_num_ongoing_requests(self) -> int:
         """Decrement the current total queue length of requests for this replica."""
         self._num_ongoing_requests -= 1
+        self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
     def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
@@ -221,20 +214,20 @@ class ReplicaMetricsManager:
         else:
             self._request_counter.inc(tags={"route": route})
 
-    def _collect_autoscaling_metrics(self):
+    def _collect_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        return self._replica_tag, self._metrics_store.window_average(
-            self._replica_tag, time.time() - look_back_period
-        )
+        return {
+            "replica_id": self._replica_tag,
+            "window_avg": self._metrics_store.window_average(
+                self._replica_tag, time.time() - look_back_period
+            ),
+        }
 
-    def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
+    def _add_autoscaling_metrics_point(self) -> None:
         self._metrics_store.add_metrics_point(
-            {self._replica_tag: data},
-            send_timestamp,
+            {self._replica_tag: self._num_ongoing_requests},
+            time.time(),
         )
-
-    def _set_replica_requests_metrics(self):
-        self._num_processing_items.set(self.get_num_ongoing_requests())
 
 
 class ReplicaActor:
@@ -401,7 +394,7 @@ class ReplicaActor:
         *request_args,
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
-        """Entrypoint for all `stream=False` calls."""
+        """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
@@ -490,6 +483,61 @@ class ReplicaActor:
                 request_kwargs,
             ):
                 yield result
+
+    async def handle_request_with_rejection(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncGenerator[Any, None]:
+        """Entrypoint for all requests with strict max_concurrent_queries enforcement.
+
+        The first response from this generator is always a system message indicating
+        if the request was accepted (the replica has capacity for the request) or
+        rejected (the replica is already at max_concurrent_queries).
+
+        For non-streaming requests, there will only be one more message, the unary
+        result of the user request handler.
+
+        For streaming requests, the subsequent messages will be the results of the
+        user request handler (which must be a generator).
+        """
+        request_metadata = pickle.loads(pickled_request_metadata)
+        limit = self._deployment_config.max_concurrent_queries
+        num_ongoing_requests = self.get_num_ongoing_requests()
+        if num_ongoing_requests >= limit:
+            logger.warning(
+                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"rejecting request {request_metadata.request_id}."
+            )
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=False, num_ongoing_requests=num_ongoing_requests
+                )
+            )
+            return
+
+        with self._wrap_user_method_call(request_metadata):
+            yield pickle.dumps(
+                ReplicaQueueLengthInfo(
+                    accepted=True,
+                    # NOTE(edoakes): `_wrap_user_method_call` will increment the number
+                    # of ongoing requests to include this one, so re-fetch the value.
+                    num_ongoing_requests=self.get_num_ongoing_requests(),
+                )
+            )
+
+            if request_metadata.is_streaming:
+                async for result in self._call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                ):
+                    yield result
+            else:
+                yield await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
 
     async def handle_request_from_java(
         self,
@@ -1018,7 +1066,7 @@ class UserCallableWrapper:
         self._raise_if_not_initialized("call_user_method")
 
         logger.info(
-            f"Started executing request {request_metadata.request_id}",
+            f"Started executing request to method '{request_metadata.call_method}'.",
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 

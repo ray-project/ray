@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import pyarrow.fs
@@ -9,8 +10,7 @@ from ray.air.config import RunConfig
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
-from ray.tune import TuneError
-from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune import ResumeConfig, TuneError
 from ray.tune.experimental.output import (
     get_air_verbosity,
 )
@@ -187,6 +187,7 @@ class Tuner:
         restart_errored: bool = False,
         param_space: Optional[Dict[str, Any]] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        _resume_config: Optional[ResumeConfig] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -247,16 +248,23 @@ class Tuner:
             storage_filesystem: Custom ``pyarrow.fs.FileSystem``
                 corresponding to the ``path``. This may be necessary if the original
                 experiment passed in a custom filesystem.
+            _resume_config: [Experimental] Config object that controls how to resume
+                trials of different statuses. Can be used as a substitute to
+                `resume_*` and `restart_*` flags above.
         """
-        # TODO(xwjiang): Add some comments to clarify the config behavior across
-        #  retored runs.
-        #  For example, is callbacks supposed to be automatically applied
-        #  when a Tuner is restored and fit again?
+        unfinished = (
+            ResumeConfig.ResumeType.RESUME
+            if resume_unfinished
+            else ResumeConfig.ResumeType.SKIP
+        )
+        errored = ResumeConfig.ResumeType.SKIP
+        if resume_errored:
+            errored = ResumeConfig.ResumeType.RESUME
+        elif restart_errored:
+            errored = ResumeConfig.ResumeType.RESTART
 
-        resume_config = _ResumeConfig(
-            resume_unfinished=resume_unfinished,
-            resume_errored=resume_errored,
-            restart_errored=restart_errored,
+        resume_config = _resume_config or ResumeConfig(
+            unfinished=unfinished, errored=errored
         )
 
         if not ray.util.client.ray.is_connected():
@@ -327,7 +335,7 @@ class Tuner:
             bool: True if this path exists and contains the Tuner state to resume from
         """
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
+        return _exists_at_fs_path(fs, Path(fs_path, _TUNER_PKL).as_posix())
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
