@@ -2807,7 +2807,7 @@ class DeploymentStateManager:
         if deployment_id not in self._deployment_states:
             app_msg = f" in application '{deployment_id.app_name}'"
             logger.error(
-                f"Deployment {deployment_id.name}{app_msg} not found in state "
+                f"Deployment '{deployment_id.name}'{app_msg} not found in state "
                 "manager."
             )
             return
