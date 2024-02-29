@@ -10,7 +10,7 @@ from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
@@ -100,8 +100,12 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         # Merge the locally recorded iter stats and the remotely recorded
         # stream execution stats.
-        summary = ray.get(self._coord_actor.stats.remote())
+        stats = ray.get(self._coord_actor.stats.remote())
+        summary = stats.to_summary()
         summary.iter_stats = self._iter_stats.to_summary().iter_stats
+        summary.iter_stats.streaming_split_coord_time.add(
+            stats.streaming_split_coordinator_s.get()
+        )
         return summary.to_string()
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:

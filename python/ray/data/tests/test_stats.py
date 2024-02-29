@@ -178,7 +178,8 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     list(it.iter_batches())
     stats = it.stats()
     extra_metrics = gen_expected_metrics(
-        is_map=False, extra_metrics=["'num_output_N': N"]
+        is_map=False,
+        extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': Ne-N"],
     )
     assert (
         canonicalize(stats)
@@ -206,6 +207,7 @@ Dataset iterator time breakdown:
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
+* Streaming split coordinator overhead time: T
 """
     )
 
