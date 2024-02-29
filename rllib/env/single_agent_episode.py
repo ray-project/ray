@@ -1,6 +1,7 @@
 import functools
 from collections import defaultdict
 import numpy as np
+import time
 import uuid
 
 import gymnasium as gym
@@ -143,21 +144,24 @@ class SingleAgentEpisode:
     """
 
     __slots__ = (
-        "id_",
-        "agent_id",
-        "module_id",
-        "_observation_space",
-        "_action_space",
-        "observations",
-        "infos",
         "actions",
-        "rewards",
+        "agent_id",
         "extra_model_outputs",
+        "id_",
+        "infos",
         "is_terminated",
         "is_truncated",
+        "module_id",
+        "observations",
         "render_images",
-        "t_started",
+        "rewards",
         "t",
+        "t_started",
+
+        "_action_space",
+        "_last_step_time",
+        "_observation_space",
+        "_start_time",
     )
 
     def __init__(
@@ -334,6 +338,10 @@ class SingleAgentEpisode:
         # The current (global) timestep in the episode (possibly an episode chunk).
         self.t = len(self.rewards) + self.t_started
 
+        # Keep timer stats on deltas between steps.
+        self._start_time = None
+        self._last_step_time = None
+
         # Validate the episode data thus far.
         self.validate()
 
@@ -430,6 +438,8 @@ class SingleAgentEpisode:
         # Validate our data.
         self.validate()
 
+        self._start_time = time.time()
+
     def add_env_step(
         self,
         observation: ObsType,
@@ -499,10 +509,12 @@ class SingleAgentEpisode:
                 )
 
         # Validate our data.
-        try:  # TODO
-            self.validate()
-        except Exception as e:
-            raise e
+        self.validate()
+
+        # Step time stats.
+        self._last_step_time = time.time()
+        if self._start_time is None:
+            self._start_time = self._last_step_time
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -1523,6 +1535,12 @@ class SingleAgentEpisode:
             chunk.
         """
         return sum(self.get_rewards())
+
+    def get_duration_s(self) -> float:
+        """Returns the duration of this Episode (chunk) in seconds."""
+        if self._last_step_time is None:
+            return 0.0
+        return self._last_step_time - self._start_time
 
     @property
     def observation_space(self):

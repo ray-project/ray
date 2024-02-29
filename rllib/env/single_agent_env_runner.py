@@ -3,7 +3,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import DefaultDict, Dict, List, Optional
+from typing import Any, Container, DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -13,8 +13,11 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, WEIGHTS_SEQ_NO
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType, ModelWeights
@@ -270,7 +273,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled + ts
+                        to_module, t=self.global_num_env_steps_sampled
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -295,6 +298,7 @@ class SingleAgentEnvRunner(EnvRunner):
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
+            self.global_num_env_steps_sampled += self.num_envs
 
             for env_index in range(self.num_envs):
                 # TODO (simon): This might be unfortunate if a user needs to set a
@@ -462,7 +466,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled + ts
+                        to_module, t=self.global_num_env_steps_sampled
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -546,6 +550,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         "on_episode_step", env_index, episodes
                     )
             ts += self.num_envs
+            self.global_num_env_steps_sampled += self.num_envs
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
@@ -564,17 +569,20 @@ class SingleAgentEnvRunner(EnvRunner):
             assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
+            episode_duration_s = eps.get_duration_s()
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                     episode_length += len(eps2)
                     episode_reward += eps2.get_return()
+                    episode_duration_s += eps2.get_duration_s()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             metrics.append(
                 RolloutMetrics(
                     episode_length=episode_length,
                     episode_reward=episode_reward,
+                    episode_duration_s=episode_duration_s,
                 )
             )
 
@@ -582,40 +590,52 @@ class SingleAgentEnvRunner(EnvRunner):
 
         return metrics
 
-    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
-    #  API. Replace by proper state overriding via `EnvRunner.set_state()`
-    def set_weights(
+    def get_state(
         self,
-        weights: ModelWeights,
-        global_vars: Optional[Dict] = None,
-        weights_seq_no: int = 0,
-    ) -> None:
-        """Writes the weights of our (single-agent) RLModule.
+        components: Optional[Container[str]] = None,
+    ) -> Dict[str, Any]:
+        components = force_list(components)
+        state = {
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
+            NUM_ENV_STEPS_SAMPLED: self.global_num_env_steps_sampled,
+        }
+        if components is None or "rl_module" in components:
+            state["rl_module"] = self.module.get_state()
+        if components is None or "env_to_module_connector" in components:
+            state["env_to_module_connector"] = self._env_to_module.get_state()
+        if components is None or "module_to_env_connector" in components:
+            state["module_to_env_connector"] = self._module_to_env.get_state()
 
-        Args:
-            weigths: A dictionary mapping `ModuleID`s to the new weigths to
-                be used in the `MultiAgentRLModule` stored in this instance.
-            global_vars: An optional global vars dictionary to set this
-                worker to. If None, do not update the global_vars.
-            weights_seq_no: If needed, a sequence number for the weights version
-                can be passed into this method. If not None, will store this seq no
-                (in self.weights_seq_no) and in future calls - if the seq no did not
-                change wrt. the last call - will ignore the call to save on performance.
+        return state
 
-        """
+    def set_state(self, state: Dict[str, Any]) -> None:
+        # Update the RLModule state.
+        if "rl_module" in state:
+            # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
+            # update.
+            weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
-        # Only update the weigths, if this is the first synchronization or
-        # if the weights of this `EnvRunner` lacks behind the actual ones.
-        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-            if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
-                weights = weights[DEFAULT_POLICY_ID]
-            weights = self._convert_to_tensor(weights)
-            self.module.set_state(weights)
+            # Only update the weigths, if this is the first synchronization or
+            # if the weights of this `EnvRunner` lacks behind the actual ones.
+            if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+                weights = state["rl_module"]
+                if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
+                    weights = weights[DEFAULT_POLICY_ID]
+                weights = self._convert_to_tensor(weights)
+                self.module.set_state(weights)
+            # Update our weights_seq_no, if the new one is > 0.
+            if weights_seq_no > 0:
+                self._weights_seq_no = weights_seq_no
 
-    def get_weights(self, modules=None):
-        """Returns the weights of our (single-agent) RLModule."""
+        # Update the Connectors.
+        if "env_to_module_connector" in state:
+            self._env_to_module.set_state(state["env_to_module_connector"])
+        if "module_to_env_connector" in state:
+            self._module_to_env.set_state(state["module_to_env_connector"])
 
-        return self.module.get_state()
+        # Update our counters.
+        if NUM_ENV_STEPS_SAMPLED in state:
+            self.global_num_env_steps_sampled = state[NUM_ENV_STEPS_SAMPLED]
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -652,3 +672,20 @@ class SingleAgentEnvRunner(EnvRunner):
             return convert_to_torch_tensor(struct)
         else:
             return tree.map_structure(tf.convert_to_tensor, struct)
+
+    @Deprecated(new="get_state(components='rl_module')", error=False)
+    def get_weights(self, modules=None):
+        return self.get_state(components="rl_module")["rl_module"]
+
+    @Deprecated(new="SingleAgentEnvRunner.set_state()", error=False)
+    def set_weights(
+        self,
+        weights: ModelWeights,
+        global_vars: Optional[Dict] = None,
+        weights_seq_no: int = 0,
+    ) -> None:
+        assert global_vars is None
+        return self.set_state({
+            "rl_module": weights,
+            WEIGHTS_SEQ_NO: weights_seq_no,
+        })

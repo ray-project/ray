@@ -629,7 +629,7 @@ class Algorithm(Trainable, AlgorithmBase):
         )
 
         # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights()
+        #self.workers.sync_weights()
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -771,11 +771,16 @@ class Algorithm(Trainable, AlgorithmBase):
                     lambda w: w.set_is_policy_to_train(policies_to_train),
                     healthy_only=True,
                 )
-
-            # Sync the weights from the learner group to the rollout workers.
-            weights = self.learner_group.get_weights()
-            local_worker.set_weights(weights)
-            self.workers.sync_weights()
+                # Sync the weights from the learner group to the rollout workers.
+                weights = self.learner_group.get_weights()
+                local_worker.set_weights(weights)
+                self.workers.sync_weights()
+            # New stack/EnvRunner APIs: Use get/set_state (no more get/set_weights).
+            else:
+                # Sync the weights from the learner group to the rollout workers.
+                weights = self.learner_group.get_weights()
+                local_worker.set_state({"rl_module": weights})
+                self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -866,11 +871,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.config,
             )
 
-        episodes_this_iter = collect_episodes(
-            self.workers,
-            self._remote_worker_ids_for_metrics(),
-            timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-        )
+        episodes_this_iter = results.pop("_episodes_this_iter", None)
+        if episodes_this_iter is None:
+            episodes_this_iter = collect_episodes(
+                self.workers,
+                self._remote_worker_ids_for_metrics(),
+                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+            )
         results = self._compile_iteration_results(
             episodes_this_iter=episodes_this_iter,
             step_ctx=train_iter_ctx,
@@ -1376,9 +1383,15 @@ class Algorithm(Trainable, AlgorithmBase):
         with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
             # Merge connector states from all EnvRunners and broadcast updated
             # states back to all EnvRunners.
-            self.evaluation_workers.sync_env_runner_states(
-                from_worker=self.workers.local_worker(),
-                env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+            self.evaluation_workers.broadcast_state(
+                state={
+                    self.workers.local_worker().get_state(components=[
+                        NUM_ENV_STEPS_SAMPLED,
+                        "env_to_module_connector",
+                        "module_to_env_connector",
+                    ])
+                },
+                local_worker=True,
             )
 
         if self.evaluation_workers is None and (
@@ -3172,6 +3185,7 @@ class Algorithm(Trainable, AlgorithmBase):
             tf1.enable_eager_execution()
 
         results = None
+        episodes_this_iter = []
         # Create a step context ...
         with TrainIterCtx(algo=self) as train_iter_ctx:
             # .. so we can query it whether we should stop the iteration loop (e.g.
@@ -3180,9 +3194,16 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Try to train one step.
                 with self._timers[TRAINING_ITERATION_TIMER]:
                     results = self.training_step()
+                    if "_episodes_this_training_step" in results:
+                        episodes_this_iter.extend(
+                            results.pop("_episodes_this_training_step")
+                        )
 
         # With training step done. Try to bring failed workers back.
         self.restore_workers(self.workers)
+
+        if episodes_this_iter:
+            results["_episodes_this_iter"] = episodes_this_iter
 
         return results, train_iter_ctx
 

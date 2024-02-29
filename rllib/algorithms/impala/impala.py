@@ -27,7 +27,11 @@ from ray.rllib.utils.actor_manager import (
     RemoteCallResults,
 )
 from ray.rllib.utils.actors import create_colocated_actors
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    OldAPIStack,
+    override,
+    OverrideToImplementCustomLogic,
+)
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -508,47 +512,6 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
 
-def make_learner_thread(local_worker, config):
-    if not config["simple_optimizer"]:
-        logger.info(
-            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".format(
-                config["num_gpus"], config["num_multi_gpu_tower_stacks"]
-            )
-        )
-        num_stacks = config["num_multi_gpu_tower_stacks"]
-        buffer_size = config["minibatch_buffer_size"]
-        if num_stacks < buffer_size:
-            logger.warning(
-                "In multi-GPU mode you should have at least as many "
-                "multi-GPU tower stacks (to load data into on one device) as "
-                "you have stack-index slots in the buffer! You have "
-                f"configured {num_stacks} stacks and a buffer of size "
-                f"{buffer_size}. Setting "
-                f"`minibatch_buffer_size={num_stacks}`."
-            )
-            config["minibatch_buffer_size"] = num_stacks
-
-        learner_thread = MultiGPULearnerThread(
-            local_worker,
-            num_gpus=config["num_gpus"],
-            lr=config["lr"],
-            train_batch_size=config["train_batch_size"],
-            num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
-            num_sgd_iter=config["num_sgd_iter"],
-            learner_queue_size=config["learner_queue_size"],
-            learner_queue_timeout=config["learner_queue_timeout"],
-        )
-    else:
-        learner_thread = LearnerThread(
-            local_worker,
-            minibatch_buffer_size=config["minibatch_buffer_size"],
-            num_sgd_iter=config["num_sgd_iter"],
-            learner_queue_size=config["learner_queue_size"],
-            learner_queue_timeout=config["learner_queue_timeout"],
-        )
-    return learner_thread
-
-
 class Impala(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
@@ -667,12 +630,119 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        if self.config.uses_new_env_runners:
-            return self._training_step_new_api_stack()
-        else:
+        # Old and hybrid API stacks.
+        if not self.config.uses_new_env_runners:
             return self._training_step_old_and_hybrid_api_stacks()
 
-    def _training_step_new_api_stack(self):
+        # Asynchronously request all EnvRunners to sample and return their current
+        # (e.g. ConnectorV2) states and sampling metrics/stats.
+        # Note that each returned item in `episode_refs` is itself a reference to a
+        # list of Episodes.
+        workers_to_update, episode_refs, env_runner_states, env_runner_metrics = (
+            self._training_step_sample_and_get_states()
+        )
+
+        # Concatenate single batches into batches of size `train_batch_size`.
+        episode_refs_for_learner_group = (
+            self._training_step_pre_queue_episode_refs(episode_refs)
+        )
+        # Call the LearnerGroup's `update_from_episodes` method.
+        train_results = {}
+        learner_state = None
+        for to_learner_group in episode_refs_for_learner_group:
+            train_results, learner_state = self.learner_group.update_from_episodes(
+                episodes=episode_refs_for_learner_group,
+                async_update=True,
+                return_state=True,
+                reduce_fn=_reduce_impala_results,
+            )
+        # Note: `train_results` is now a List of ResultDict, each item in the list
+        # representing the results of a different async update request to all Learners.
+
+        additional_train_results = self.learner_group.additional_update(
+            async_update=True,
+            reduce_fn=_reduce_impala_results,
+            timestep=self._counters[NUM_ENV_STEPS_SAMPLED],
+        )
+        train_results.update(additional_train_results)
+
+        # Merge EnvRunner states into local worker's EnvRunner state.
+        self.workers.local_worker().merge_states(env_runner_states)
+        self.workers.local_worker().set_state(learner_state)
+        # Broadcast updated weights and (merged) EnvRunner states back to all EnvRunner
+        # workers.
+        self.workers.sync_weights(timeout_seconds=0.0)
+
+        # Add already collected metrics to results for later processing.
+        train_results.update({
+            "_episodes_this_training_step": env_runner_metrics
+        })
+
+        return train_results
+
+    def _training_step_sample_and_get_states(self):
+        workers_to_update = set()
+        episode_refs = []
+        env_runner_states = []
+        env_runner_metrics = []
+
+        def _remote_sample_and_get_state(worker):
+            episodes = worker.sample()
+            # Get the EnvRunner's connector states.
+            connector_states = worker.get_state(
+                components=["env_to_module_connector", "module_to_env_connector"]
+            )
+            metrics = worker.get_metrics()
+            # Return episode lists by reference so we don't have to send them to the
+            # main algo process, but to the Learner workers directly.
+            return ray.put(episodes), connector_states, metrics
+
+        num_healthy_remote_workers = self.workers.num_healthy_remote_workers()
+
+        with self._timers[SAMPLE_TIMER]:
+            # Perform asynchronous sampling on all (healthy) remote rollout workers.
+            if num_healthy_remote_workers > 0:
+                num_requests_made = self.workers.foreach_worker_async(
+                    _remote_sample_and_get_state, healthy_only=True
+                )
+                self._counters["_remote_env_runner_calls_dropped"] += (
+                    num_healthy_remote_workers - num_requests_made
+                )
+                async_results: List[Tuple[int, ObjectRef]] = (
+                    self.workers.fetch_ready_async_reqs(
+                        timeout_seconds=self.config.timeout_s_sampler_manager,
+                        return_obj_refs=True,
+                    )
+                )
+                # Split up results from the n different async calls.
+                for async_result in async_results:
+                    worker_id, ref = async_result
+                    workers_to_update.add(worker_id)
+                    episodes, states, metrics = ray.get(ref)
+                    episode_refs.append(episodes)
+                    env_runner_states.append(states)
+                    env_runner_metrics.append(metrics)
+
+            else:
+                raise NotImplementedError
+                ## Sample from the local EnvRunner worker.
+                #episodes = self.workers.local_worker().sample()
+                #metrics = self.workers.local_worker().get_metrics()
+                #episodes_ref = ray.put(episodes)
+                #return [], [episodes_ref],
+                #sample_batches = [(0, sample_batch)]
+
+        return (
+            workers_to_update,
+            episode_refs,
+            env_runner_states,
+            tree.flatten_up_to(
+                [[None] * len(e) for e in env_runner_metrics],
+                env_runner_metrics,
+            ),
+        )
+
+    def XYZ_training_step_new_api_stack(self):
         # Get sampled Episodes from our workers (by ray references).
         unprocessed_episodes = self.get_samples_from_workers(
             return_object_refs=True,
@@ -694,11 +764,11 @@ class Impala(Algorithm):
         self._counters[NUM_AGENT_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
 
         # Concatenate single batches into batches of size `train_batch_size`.
-        self.pre_queue_episode_refs(episode_refs)
+        self._training_step_pre_queue_episode_refs(episode_refs)
 
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
-        train_results, learner_state = self.learn_on_processed_samples()
+        train_results, learner_state = self._learn_on_processed_samples()
         module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
         #print("additional_update ...")
         if train_results:
@@ -756,111 +826,6 @@ class Impala(Algorithm):
             self._results = train_results
         return self._results
 
-    def _training_step_old_and_hybrid_api_stacks(self):
-        # First, check, whether our learner thread is still healthy.
-        if (
-            not self.config._enable_new_api_stack
-            and not self._learner_thread.is_alive()
-        ):
-            raise RuntimeError("The learner thread died while training!")
-
-        use_tree_aggregation = (
-            self._aggregator_actor_manager
-            and self._aggregator_actor_manager.num_healthy_actors() > 0
-        )
-
-        # Get sampled SampleBatches from our workers (by ray references if we use
-        # tree-aggregation).
-        unprocessed_sample_batches = self.get_samples_from_workers(
-            return_object_refs=use_tree_aggregation,
-        )
-        # Tag workers that actually produced ready sample batches this iteration.
-        # Those workers will have to get updated at the end of the iteration.
-        workers_that_need_updates = {
-            worker_id for worker_id, _ in unprocessed_sample_batches
-        }
-
-        # Send the collected batches (still object refs) to our aggregation workers.
-        if use_tree_aggregation:
-            batches = self.process_experiences_tree_aggregation(
-                unprocessed_sample_batches
-            )
-        # Resolve collected batches here on local process (using the mixin buffer).
-        else:
-            batches = self.process_experiences_directly(unprocessed_sample_batches)
-
-        # Increase sampling counters now that we have the actual SampleBatches on
-        # the local process (and can measure their sizes).
-        for batch in batches:
-            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-        # Concatenate single batches into batches of size `train_batch_size`.
-        self.concatenate_batches_and_pre_queue(batches)
-        # Using the Learner API. Call `update()` on our LearnerGroup object with
-        # all collected batches.
-        if self.config._enable_new_api_stack:
-            train_results, _ = self.learn_on_processed_samples()
-            module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=module_ids_to_update,
-                timestep=self._counters[
-                    NUM_ENV_STEPS_TRAINED
-                    if self.config.count_steps_by == "env_steps"
-                    else NUM_AGENT_STEPS_TRAINED
-                ],
-                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
-                #  from IMPALA (like APPO). In the old stack, we didn't have this
-                #  problem b/c IMPALA didn't need to call any additional update methods
-                #  as the entropy- and lr-schedules were handled by
-                #  `Policy.on_global_var_update()`.
-                **self._get_additional_update_kwargs(train_results),
-            )
-            for key, res in additional_results.items():
-                if key in train_results:
-                    train_results[key].update(res)
-        else:
-            # Move train batches (of size `train_batch_size`) onto learner queue.
-            self.place_processed_samples_on_learner_thread_queue()
-            # Extract most recent train results from learner thread.
-            train_results = self.process_trained_results()
-
-        # Sync worker weights (only those policies that were actually updated).
-        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.config._enable_new_api_stack:
-                if train_results:
-                    pids = list(set(train_results.keys()) - {ALL_MODULES})
-                    self.update_workers_from_learner_group(
-                        workers_that_need_updates=workers_that_need_updates,
-                        policy_ids=pids,
-                    )
-            else:
-                pids = list(train_results.keys())
-                self.update_workers_if_necessary(
-                    workers_that_need_updates=workers_that_need_updates,
-                    policy_ids=pids,
-                )
-
-        # With a training step done, try to bring any aggregators back to life
-        # if necessary.
-        # Aggregation workers are stateless, so we do not need to restore any
-        # state here.
-        if self._aggregator_actor_manager:
-            self._aggregator_actor_manager.probe_unhealthy_actors(
-                timeout_seconds=self.config.worker_health_probe_timeout_s,
-                mark_healthy=True,
-            )
-
-        if self.config._enable_new_api_stack:
-            if train_results:
-                # Store the most recent result and return it if no new result is
-                # available. This keeps backwards compatibility with the old
-                # training stack / results reporting stack. This is necessary
-                # any time we develop an asynchronous algorithm.
-                self._results = train_results
-            return self._results
-        else:
-            return train_results
-
     @classmethod
     @override(Algorithm)
     def default_resource_request(
@@ -890,7 +855,7 @@ class Impala(Algorithm):
             ]
             + [
                 {
-                    # RolloutWorkers.
+                    # EnvRunners.
                     "CPU": cf.num_cpus_per_worker,
                     "GPU": cf.num_gpus_per_worker,
                     **cf.custom_resources_per_worker,
@@ -928,24 +893,288 @@ class Impala(Algorithm):
             strategy=cf.placement_strategy,
         )
 
-    def pre_queue_episode_refs(self, episode_refs: List[ObjectRef]):
+    @OverrideToImplementCustomLogic
+    def _get_additional_update_kwargs(self, train_results: dict) -> dict:
+        """Returns the kwargs to `LearnerGroup.additional_update()`.
+
+        Should be overridden by subclasses to specify wanted/needed kwargs for
+        their own implementation of `Learner.additional_update_for_module()`.
+        """
+        return {}
+
+    def _training_step_pre_queue_episode_refs(self, episode_refs: List[ObjectRef]):
+        # Each element in this list is itself a (ObjRef) list of Episodes (returned
+        # by a single EnvRunner from a single sample() call).
+        episode_refs_for_learner_group: List[ObjectRef] = []
+
         for ref in episode_refs:
             self.batch_being_built.append(ref)
             if (
                 len(self.batch_being_built) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
                 >= self.config.total_train_batch_size
             ):
-                self.data_to_place_on_learner.append(self.batch_being_built)
+                episode_refs_for_learner_group.append(self.batch_being_built)
                 self.batch_being_built = []
 
-    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]) -> None:
+        return episode_refs_for_learner_group
+
+    @OldAPIStack
+    def _training_step_old_and_hybrid_api_stacks(self):
+        # First, check, whether our learner thread is still healthy.
+        if (
+            not self.config._enable_new_api_stack
+            and not self._learner_thread.is_alive()
+        ):
+            raise RuntimeError("The learner thread died while training!")
+
+        use_tree_aggregation = (
+            self._aggregator_actor_manager
+            and self._aggregator_actor_manager.num_healthy_actors() > 0
+        )
+
+        # Get sampled SampleBatches from our workers (by ray references if we use
+        # tree-aggregation).
+        unprocessed_sample_batches = (
+            self._get_samples_from_workers_old_and_hybrid_api_stack(
+                return_object_refs=use_tree_aggregation,
+            )
+        )
+        # Tag workers that actually produced ready sample batches this iteration.
+        # Those workers will have to get updated at the end of the iteration.
+        workers_that_need_updates = {
+            worker_id for worker_id, _ in unprocessed_sample_batches
+        }
+
+        # Send the collected batches (still object refs) to our aggregation workers.
+        if use_tree_aggregation:
+            batches = self._process_experiences_tree_aggregation(
+                unprocessed_sample_batches
+            )
+        # Resolve collected batches here on local process (using the mixin buffer).
+        else:
+            batches = self._process_experiences_directly(unprocessed_sample_batches)
+
+        # Increase sampling counters now that we have the actual SampleBatches on
+        # the local process (and can measure their sizes).
+        for batch in batches:
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        # Concatenate single batches into batches of size `train_batch_size`.
+        self._concatenate_batches_and_pre_queue(batches)
+        # Using the Learner API. Call `update()` on our LearnerGroup object with
+        # all collected batches.
+        if self.config._enable_new_api_stack:
+            train_results, _ = self._learn_on_processed_samples()
+            module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
+            additional_results = self.learner_group.additional_update(
+                module_ids_to_update=module_ids_to_update,
+                timestep=self._counters[
+                    NUM_ENV_STEPS_TRAINED
+                    if self.config.count_steps_by == "env_steps"
+                    else NUM_AGENT_STEPS_TRAINED
+                ],
+                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
+                #  from IMPALA (like APPO). In the old stack, we didn't have this
+                #  problem b/c IMPALA didn't need to call any additional update methods
+                #  as the entropy- and lr-schedules were handled by
+                #  `Policy.on_global_var_update()`.
+                **self._get_additional_update_kwargs(train_results),
+            )
+            for key, res in additional_results.items():
+                if key in train_results:
+                    train_results[key].update(res)
+        else:
+            # Move train batches (of size `train_batch_size`) onto learner queue.
+            self._place_processed_samples_on_learner_thread_queue()
+            # Extract most recent train results from learner thread.
+            train_results = self._process_trained_results()
+
+        # Sync worker weights (only those policies that were actually updated).
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            if self.config._enable_new_api_stack:
+                if train_results:
+                    pids = list(set(train_results.keys()) - {ALL_MODULES})
+                    self._update_workers_hybrid_api_stack(
+                        workers_that_need_updates=workers_that_need_updates,
+                        policy_ids=pids,
+                    )
+            else:
+                pids = list(train_results.keys())
+                self._update_workers_old_api_stack(
+                    workers_that_need_updates=workers_that_need_updates,
+                    policy_ids=pids,
+                )
+
+        # With a training step done, try to bring any aggregators back to life
+        # if necessary.
+        # Aggregation workers are stateless, so we do not need to restore any
+        # state here.
+        if self._aggregator_actor_manager:
+            self._aggregator_actor_manager.probe_unhealthy_actors(
+                timeout_seconds=self.config.worker_health_probe_timeout_s,
+                mark_healthy=True,
+            )
+
+        if self.config._enable_new_api_stack:
+            if train_results:
+                # Store the most recent result and return it if no new result is
+                # available. This keeps backwards compatibility with the old
+                # training stack / results reporting stack. This is necessary
+                # any time we develop an asynchronous algorithm.
+                self._results = train_results
+            return self._results
+        else:
+            return train_results
+
+    @OldAPIStack
+    def _get_samples_from_workers_old_and_hybrid_api_stack(
+        self,
+        return_object_refs: Optional[bool] = False,
+    ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
+        """Get samples from rollout workers for training.
+
+        Args:
+            return_object_refs: If True, return ObjectRefs instead of the samples
+                directly. This is useful when using aggregator workers so that data
+                collected on rollout workers is directly de referenced on the aggregator
+                workers instead of first in the driver and then on the aggregator
+                workers.
+
+        Returns:
+            a list of tuples of (worker_index, sample batch or ObjectRef to a sample
+                batch)
+
+        """
+        with self._timers[SAMPLE_TIMER]:
+            # Sample from healthy remote workers by default. If there is no healthy
+            # worker (either because they have all died, or because there was none to
+            # begin) check if the local_worker exists. If the local worker has an
+            # env_instance (either because there are no remote workers or
+            # self.config.create_env_on_local_worker == True), then sample from the
+            # local worker. Otherwise just return an empty list.
+            if self.workers.num_healthy_remote_workers() > 0:
+                # Perform asynchronous sampling on all (remote) rollout workers.
+                self.workers.foreach_worker_async(
+                    lambda worker: worker.sample(),
+                    healthy_only=True,
+                )
+                sample_batches: List[
+                    Tuple[int, ObjectRef]
+                ] = self.workers.fetch_ready_async_reqs(
+                    timeout_seconds=self.config.timeout_s_sampler_manager,
+                    return_obj_refs=return_object_refs,
+                )
+                # TEST
+                #e = tree.flatten(ray.get([u[1] for u in sample_batches]))
+                #print(None in e)
+                # END TEST
+            elif (
+                self.config.num_rollout_workers == 0
+                or (
+                    self.workers.local_worker()
+                    and self.workers.local_worker().async_env is not None
+                )
+            ):
+                raise NotImplementedError
+                # Sampling from the local worker
+                sample_batch = self.workers.local_worker().sample()
+                if return_object_refs:
+                    sample_batch = ray.put(sample_batch)
+                sample_batches = [(0, sample_batch)]
+            else:
+                raise NotImplementedError
+                # Not much we can do. Return empty list and wait.
+                sample_batches = []
+
+        return sample_batches
+
+    @OldAPIStack
+    def _process_experiences_tree_aggregation(
+        self,
+        worker_to_sample_batches_refs: List[Tuple[int, ObjectRef]],
+    ) -> List[SampleBatchType]:
+        """Process sample batches using tree aggregation workers.
+
+        Args:
+            worker_to_sample_batches_refs: List of (worker_id, sample_batch_ref)
+
+        NOTE: This will provide speedup when sample batches have been compressed,
+        and the decompression can happen on the aggregation workers in parallel to
+        the training.
+
+        Returns:
+            Batches that have been processed by the mixin buffers on the aggregation
+            workers.
+
+        """
+
+        def _process_episodes(actor, batch):
+            return actor.process_episodes(ray.get(batch))
+
+        for _, batch in worker_to_sample_batches_refs:
+            assert isinstance(batch, ObjectRef), (
+                "For efficiency, process_experiences_tree_aggregation should "
+                f"be given ObjectRefs instead of {type(batch)}."
+            )
+            # Randomly pick an aggregation worker to process this batch.
+            aggregator_id = random.choice(
+                self._aggregator_actor_manager.healthy_actor_ids()
+            )
+            calls_placed = self._aggregator_actor_manager.foreach_actor_async(
+                partial(_process_episodes, batch=batch),
+                remote_actor_ids=[aggregator_id],
+            )
+            if calls_placed <= 0:
+                self._counters["num_times_no_aggregation_worker_available"] += 1
+
+        waiting_processed_sample_batches: RemoteCallResults = (
+            self._aggregator_actor_manager.fetch_ready_async_reqs(
+                timeout_seconds=self._timeout_s_aggregator_manager,
+            )
+        )
+        handle_remote_call_result_errors(
+            waiting_processed_sample_batches,
+            self.config.ignore_worker_failures,
+        )
+
+        return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
+
+    @OldAPIStack
+    def _process_experiences_directly(
+        self,
+        worker_to_sample_batches: List[Tuple[int, SampleBatch]],
+    ) -> List[SampleBatchType]:
+        """Process sample batches directly on the driver, for training.
+
+        Args:
+            worker_to_sample_batches: List of (worker_id, sample_batch) tuples.
+
+        Returns:
+            Batches that have been processed by the mixin buffer.
+
+        """
+        batches = [b for _, b in worker_to_sample_batches]
+        processed_batches = []
+
+        for batch in batches:
+            assert not isinstance(
+                batch, ObjectRef
+            ), "process_experiences_directly can not handle ObjectRefs. "
+            batch = batch.decompress_if_needed()
+            self.local_mixin_buffer.add(batch)
+            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            if batch:
+                processed_batches.append(batch)
+
+        return processed_batches
+
+    @OldAPIStack
+    def _concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]) -> None:
         """Concatenate batches that are being returned from rollout workers
 
         Args:
             batches: List of batches of experiences from EnvRunners.
         """
-        raise NotImplementedError
-
         def aggregate_into_larger_batch():
             if (
                 sum(b.count for b in self.batch_being_built)
@@ -985,68 +1214,8 @@ class Impala(Algorithm):
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
-    def get_samples_from_workers(
-        self,
-        return_object_refs: Optional[bool] = False,
-    ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
-        """Get samples from rollout workers for training.
-
-        Args:
-            return_object_refs: If True, return ObjectRefs instead of the samples
-                directly. This is useful when using aggregator workers so that data
-                collected on rollout workers is directly de referenced on the aggregator
-                workers instead of first in the driver and then on the aggregator
-                workers.
-
-        Returns:
-            a list of tuples of (worker_index, sample batch or ObjectRef to a sample
-                batch)
-
-        """
-        with self._timers[SAMPLE_TIMER]:
-            # Sample from healthy remote workers by default. If there is no healthy
-            # worker (either because they have all died, or because there was none to
-            # begin) check if the local_worker exists. If the local worker has an
-            # env_instance (either because there are no remote workers or
-            # self.config.create_env_on_local_worker == True), then sample from the
-            # local worker. Otherwise just return an empty list.
-            if self.workers.num_healthy_remote_workers() > 0:
-                # Perform asynchronous sampling on all (remote) rollout workers.
-                self.workers.foreach_worker_async(
-                    lambda worker: worker.sample(),
-                    healthy_only=True,
-                )
-                sample_batches: List[
-                    Tuple[int, ObjectRef]
-                ] = self.workers.fetch_ready_async_reqs(
-                    timeout_seconds=self.config.timeout_s_sampler_manager,
-                    return_obj_refs=return_object_refs,
-                )
-                # TEST
-                e = tree.flatten(ray.get([u[1] for u in sample_batches]))
-                print(None in e)
-                # END TEST
-            elif (
-                self.config.num_rollout_workers == 0
-                or (
-                    self.workers.local_worker()
-                    and self.workers.local_worker().async_env is not None
-                )
-            ):
-                raise NotImplementedError
-                # Sampling from the local worker
-                sample_batch = self.workers.local_worker().sample()
-                if return_object_refs:
-                    sample_batch = ray.put(sample_batch)
-                sample_batches = [(0, sample_batch)]
-            else:
-                raise NotImplementedError
-                # Not much we can do. Return empty list and wait.
-                sample_batches = []
-
-        return sample_batches
-
-    def learn_on_processed_samples(self) -> Tuple[ResultDict, Dict[str, Any]]:
+    @OldAPIStack
+    def _learn_on_processed_samples(self) -> Tuple[ResultDict, Dict[str, Any]]:
         """Update the learner group with the latest batch of processed samples.
 
         Returns:
@@ -1107,7 +1276,8 @@ class Impala(Algorithm):
         # calls) for reducing.
         return {}, {}
 
-    def place_processed_samples_on_learner_thread_queue(self) -> None:
+    @OldAPIStack
+    def _place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.
 
         NOTE: This method is called if self.config._enable_new_api_stack is False.
@@ -1131,7 +1301,8 @@ class Impala(Algorithm):
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
 
-    def process_trained_results(self) -> ResultDict:
+    @OldAPIStack
+    def _process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
 
         NOTE: This method is called if self.config._enable_new_api_stack is False.
@@ -1171,85 +1342,8 @@ class Impala(Algorithm):
 
         return final_learner_info
 
-    def process_experiences_directly(
-        self,
-        worker_to_sample_batches: List[Tuple[int, SampleBatch]],
-    ) -> List[SampleBatchType]:
-        """Process sample batches directly on the driver, for training.
-
-        Args:
-            worker_to_sample_batches: List of (worker_id, sample_batch) tuples.
-
-        Returns:
-            Batches that have been processed by the mixin buffer.
-
-        """
-        batches = [b for _, b in worker_to_sample_batches]
-        processed_batches = []
-
-        for batch in batches:
-            assert not isinstance(
-                batch, ObjectRef
-            ), "process_experiences_directly can not handle ObjectRefs. "
-            batch = batch.decompress_if_needed()
-            self.local_mixin_buffer.add(batch)
-            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
-            if batch:
-                processed_batches.append(batch)
-
-        return processed_batches
-
-    def process_experiences_tree_aggregation(
-        self,
-        worker_to_sample_batches_refs: List[Tuple[int, ObjectRef]],
-    ) -> List[SampleBatchType]:
-        """Process sample batches using tree aggregation workers.
-
-        Args:
-            worker_to_sample_batches_refs: List of (worker_id, sample_batch_ref)
-
-        NOTE: This will provide speedup when sample batches have been compressed,
-        and the decompression can happen on the aggregation workers in parallel to
-        the training.
-
-        Returns:
-            Batches that have been processed by the mixin buffers on the aggregation
-            workers.
-
-        """
-
-        def _process_episodes(actor, batch):
-            return actor.process_episodes(ray.get(batch))
-
-        for _, batch in worker_to_sample_batches_refs:
-            assert isinstance(batch, ObjectRef), (
-                "For efficiency, process_experiences_tree_aggregation should "
-                f"be given ObjectRefs instead of {type(batch)}."
-            )
-            # Randomly pick an aggregation worker to process this batch.
-            aggregator_id = random.choice(
-                self._aggregator_actor_manager.healthy_actor_ids()
-            )
-            calls_placed = self._aggregator_actor_manager.foreach_actor_async(
-                partial(_process_episodes, batch=batch),
-                remote_actor_ids=[aggregator_id],
-            )
-            if calls_placed <= 0:
-                self._counters["num_times_no_aggregation_worker_available"] += 1
-
-        waiting_processed_sample_batches: RemoteCallResults = (
-            self._aggregator_actor_manager.fetch_ready_async_reqs(
-                timeout_seconds=self._timeout_s_aggregator_manager,
-            )
-        )
-        handle_remote_call_result_errors(
-            waiting_processed_sample_batches,
-            self.config.ignore_worker_failures,
-        )
-
-        return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
-
-    def update_workers_from_learner_group(
+    @OldAPIStack
+    def _update_workers_hybrid_api_stack(
         self,
         workers_that_need_updates: Set[int],
         policy_ids: Optional[List[PolicyID]] = None,
@@ -1299,7 +1393,8 @@ class Impala(Algorithm):
                 # if self.config.create_env_on_local_worker:
                 self.workers.local_worker().set_weights(weights)
 
-    def update_workers_if_necessary(
+    @OldAPIStack
+    def _update_workers_old_api_stack(
         self,
         workers_that_need_updates: Set[int],
         policy_ids: Optional[List[PolicyID]] = None,
@@ -1356,14 +1451,6 @@ class Impala(Algorithm):
                 timeout_seconds=0,  # Don't wait for the workers to finish.
             )
 
-    def _get_additional_update_kwargs(self, train_results: dict) -> dict:
-        """Returns the kwargs to `LearnerGroup.additional_update()`.
-
-        Should be overridden by subclasses to specify wanted/needed kwargs for
-        their own implementation of `Learner.additional_update_for_module()`.
-        """
-        return {}
-
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
@@ -1418,3 +1505,44 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
     result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
     result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
     return result
+
+
+def make_learner_thread(local_worker, config):
+    if not config["simple_optimizer"]:
+        logger.info(
+            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".format(
+                config["num_gpus"], config["num_multi_gpu_tower_stacks"]
+            )
+        )
+        num_stacks = config["num_multi_gpu_tower_stacks"]
+        buffer_size = config["minibatch_buffer_size"]
+        if num_stacks < buffer_size:
+            logger.warning(
+                "In multi-GPU mode you should have at least as many "
+                "multi-GPU tower stacks (to load data into on one device) as "
+                "you have stack-index slots in the buffer! You have "
+                f"configured {num_stacks} stacks and a buffer of size "
+                f"{buffer_size}. Setting "
+                f"`minibatch_buffer_size={num_stacks}`."
+            )
+            config["minibatch_buffer_size"] = num_stacks
+
+        learner_thread = MultiGPULearnerThread(
+            local_worker,
+            num_gpus=config["num_gpus"],
+            lr=config["lr"],
+            train_batch_size=config["train_batch_size"],
+            num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
+            num_sgd_iter=config["num_sgd_iter"],
+            learner_queue_size=config["learner_queue_size"],
+            learner_queue_timeout=config["learner_queue_timeout"],
+        )
+    else:
+        learner_thread = LearnerThread(
+            local_worker,
+            minibatch_buffer_size=config["minibatch_buffer_size"],
+            num_sgd_iter=config["num_sgd_iter"],
+            learner_queue_size=config["learner_queue_size"],
+            learner_queue_timeout=config["learner_queue_timeout"],
+        )
+    return learner_thread

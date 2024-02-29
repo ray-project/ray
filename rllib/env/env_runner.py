@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Container, Dict, Optional, TYPE_CHECKING
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import ExperimentalAPI
@@ -73,16 +73,23 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             The collected experience in any form.
         """
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self, components: Optional[Container[str]] = None,) -> Dict[str, Any]:
         """Returns this EnvRunner's (possibly serialized) current state as a dict.
 
+        Args:
+            components: An optional list of string keys to be included in the
+                returned state. This might be useful, if getting certain components
+                of the state is expensive (e.g. reading/compiling the weights of a large
+                NN) and at the same time, these components are not required by the
+                caller.
+
         Returns:
-            The current state of this EnvRunner.
+            The current state (or only the components specified) of this EnvRunner.
         """
         # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
-        # this an empty worker state and in `Algorithm.from_checkpoint()`
-        # the empty state (not `None`) must be ensured separately. Shall we
-        # return here as a default `None`?
+        #  this an empty worker state and in `Algorithm.from_checkpoint()`
+        #  the empty state (not `None`) must be ensured separately. Shall we
+        #  return here as a default `None`?
         return {}
 
     def set_state(self, state: Dict[str, Any]) -> None:

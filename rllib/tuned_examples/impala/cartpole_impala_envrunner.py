@@ -10,15 +10,16 @@ config = (
     .environment("CartPole-v1")
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=10,
+        num_rollout_workers=2,
         # TODO (sven): Add MeanStd connector, once fully tested (should learn much
         #  better with it).
     )
     .resources(
         num_learner_workers=2,
+        num_cpus_per_learner_worker=1,
         num_gpus_per_learner_worker=0,
         num_gpus=0,
-        num_cpus_for_local_worker=0,
+        num_cpus_for_local_worker=1,
     )
     .training(
         #train_batch_size_per_learner=500,
@@ -40,16 +41,16 @@ stop = {
 
 
 if __name__ == "__main__":
-    #import ray
-    #ray.init()#TODO
+    import ray
+    ray.init(num_cpus=6)
 
-    #algo = config.build_algorithm()
-    #for _ in range(1000):
-    #    results = algo.train()
-    #    print(f"R={results['episode_reward_mean']}")
-    #    #print(f"sampled={algo._counters['num_env_steps_sampled']} trained={algo._counters['num_env_steps_trained']} learner_group_ts_dropped={algo._counters['learner_group_ts_dropped']} actor_manager_num_outstanding_async_reqs={algo._counters['actor_manager_num_outstanding_async_reqs']}")
-    #algo.stop()
-    #quit()
+    algo = config.build_algorithm()
+    for _ in range(1000):
+        results = algo.train()
+        print(results)#f"R={results['episode_reward_mean']}")
+        #print(f"sampled={algo._counters['num_env_steps_sampled']} trained={algo._counters['num_env_steps_trained']} learner_group_ts_dropped={algo._counters['learner_group_ts_dropped']} actor_manager_num_outstanding_async_reqs={algo._counters['actor_manager_num_outstanding_async_reqs']}")
+    algo.stop()
+    quit()
 
     tuner = tune.Tuner(
         config.algo_class,

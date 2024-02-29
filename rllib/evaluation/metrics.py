@@ -19,6 +19,7 @@ RolloutMetrics = DeveloperAPI(
         [
             "episode_length",
             "episode_reward",
+            "episode_duration_s",
             "agent_rewards",
             "custom_metrics",
             "perf_stats",
@@ -29,7 +30,7 @@ RolloutMetrics = DeveloperAPI(
         ],
     )
 )
-RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
+RolloutMetrics.__new__.__defaults__ = (0, 0, 0.0, {}, {}, {}, {}, {}, False, {})
 
 
 def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
@@ -164,6 +165,7 @@ def summarize_episodes(
 
     episode_rewards = []
     episode_lengths = []
+    episode_durations_s = []
     policy_rewards = collections.defaultdict(list)
     custom_metrics = collections.defaultdict(list)
     perf_stats = collections.defaultdict(list)
@@ -184,6 +186,7 @@ def summarize_episodes(
 
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
+        episode_durations_s.append(episode.episode_duration_s)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
         for (_, policy_id), reward in episode.agent_rewards.items():
@@ -212,10 +215,15 @@ def summarize_episodes(
         avg_length = np.mean(episode_lengths)
     else:
         avg_length = float("nan")
+    if episode_durations_s:
+        avg_duration_s = np.mean(episode_durations_s)
+    else:
+        avg_duration_s = float("nan")
 
     # Show as histogram distributions.
     hist_stats["episode_reward"] = episode_rewards
     hist_stats["episode_lengths"] = episode_lengths
+    hist_stats["episode_durations_s"] = episode_durations_s
 
     policy_reward_min = {}
     policy_reward_mean = {}
@@ -254,8 +262,9 @@ def summarize_episodes(
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
+        episode_duration_s_mean=avg_duration_s,
         episode_media=dict(episode_media),
-        episodes_this_iter=len(new_episodes),
+        num_episodes_this_iter=len(new_episodes),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
         policy_reward_mean=policy_reward_mean,
@@ -264,4 +273,5 @@ def summarize_episodes(
         sampler_perf=dict(perf_stats),
         num_faulty_episodes=num_faulty_episodes,
         connector_metrics=mean_connector_metrics,
+        episodes_this_iter=len(new_episodes),  # deprecate in favor of `num_epsodes_...`
     )

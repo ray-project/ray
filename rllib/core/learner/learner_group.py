@@ -144,14 +144,14 @@ class LearnerGroup:
             )
             num_gpus_per_worker = self.config.num_gpus_per_learner_worker
             resources_per_worker = {
-                "CPU": num_cpus_per_worker,
-                "GPU": num_gpus_per_worker,
+                "num_cpus": num_cpus_per_worker,
+                "num_gpus": num_gpus_per_worker,
             }
 
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=self.config.num_learner_workers,
-                resources_per_worker=resources_per_worker,
+                additional_resources_per_worker=resources_per_worker,
                 max_retries=0,
             )
             backend_executor.start(

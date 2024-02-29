@@ -566,7 +566,7 @@ class FaultTolerantActorManager:
         *,
         healthy_only=True,
         remote_actor_ids: List[int] = None,
-        timeout_seconds=None,
+        timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
     ) -> RemoteCallResults:
@@ -579,10 +579,9 @@ class FaultTolerantActorManager:
                 of specified remote actors.
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
-            timeout_seconds: Ray.get() timeout. Default is None.
-                Note(jungong) : setting timeout_seconds to 0 effectively makes all the
-                remote calls fire-and-forget, while setting timeout_seconds to None
-                make them synchronous calls.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of the context of this manager.
@@ -680,8 +679,8 @@ class FaultTolerantActorManager:
                     num_calls_to_make[i] += 1
                     limited_func.append(f)
                     limited_remote_actor_ids.append(i)
-                else:
-                    print("skipping a remote request due to overload of that actor.")
+                #else:
+                #    print("skipping a remote request due to overload of that actor.")
         else:
             limited_func = func
             limited_remote_actor_ids = []
@@ -695,8 +694,8 @@ class FaultTolerantActorManager:
                 ):
                     num_calls_to_make[i] += 1
                     limited_remote_actor_ids.append(i)
-                else:
-                    print("skipping a remote request due to overload of that actor.")
+                #else:
+                #    print("skipping a remote request due to overload of that actor.")
 
         #print("Calling actors from within ActorManager")
         remote_calls = self._call_actors(
