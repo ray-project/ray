@@ -760,11 +760,14 @@ class Trial:
 
         This is a pickled version of the latest error that the trial encountered.
         """
+        local_pickled_error_file = Path(self.pickled_error_file)
+        if local_pickled_error_file is None:
+            return None
+
         fs = self.storage.storage_filesystem
         pickled_error_fs_path = Path(
             self.storage.trial_fs_path, self.run_metadata.pickled_error_filename
         ).as_posix()
-        local_pickled_error_file = Path(self.pickled_error_file)
 
         if _exists_at_fs_path(fs=fs, fs_path=pickled_error_fs_path):
             with fs.open_input_stream(pickled_error_fs_path) as f:
@@ -782,11 +785,14 @@ class Trial:
         This is a text trace of the latest error that the trial encountered,
         which is used in the case that the error is not picklable.
         """
+        local_txt_error_file = self.error_file
+        if local_txt_error_file is None:
+            return None
+
         fs = self.storage.storage_filesystem
         txt_error_fs_path = Path(
             self.storage.trial_fs_path, self.run_metadata.error_filename
         ).as_posix()
-        local_txt_error_file = self.error_file
 
         if _exists_at_fs_path(fs=fs, fs_path=txt_error_fs_path):
             with fs.open_input_stream(txt_error_fs_path) as f:
