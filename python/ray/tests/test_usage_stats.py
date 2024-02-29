@@ -1347,6 +1347,9 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
         assert any(["Usage reporting is disabled" in c for c in contents])
         assert all(["Usage report request failed" not in c for c in contents])
 
+        server.shutdown()
+        server_thread.join()
+
 
 def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_stats):
     """
