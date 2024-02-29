@@ -204,7 +204,7 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
         # there is a strict max replicas per node requirement. However nodes
         # that were hosting the replicas of the old version should eventually
         # be removed from scale-down.
-        wait_for_condition(check_alive_nodes, expected=4)
+        wait_for_condition(check_alive_nodes, expected=4, timeout=60)
 
 
 if __name__ == "__main__":

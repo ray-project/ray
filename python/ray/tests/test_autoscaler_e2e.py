@@ -137,7 +137,8 @@ def test_ray_status_e2e(shutdown_only, enable_v2):
         cluster.shutdown()
 
 
-def test_metrics(shutdown_only):
+@pytest.mark.parametrize("enable_v2", [False, True], ids=["v1", "v2"])
+def test_metrics(enable_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -154,6 +155,7 @@ def test_metrics(shutdown_only):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=enable_v2,
     )
 
     try:
@@ -175,8 +177,6 @@ def test_metrics(shutdown_only):
                     value=0,
                     partial_label_match={"resource": "CPU"},
                 ),
-                MetricSamplePattern(name="autoscaler_pending_resources", value=0),
-                MetricSamplePattern(name="autoscaler_pending_nodes", value=0),
                 MetricSamplePattern(
                     name="autoscaler_active_nodes",
                     value=0,

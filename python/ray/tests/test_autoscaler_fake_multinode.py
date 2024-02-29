@@ -73,7 +73,8 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
     # __example_end__
 
 
-def test_zero_cpu_default_actor():
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_zero_cpu_default_actor(autoscaler_v2):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -86,6 +87,7 @@ def test_zero_cpu_default_actor():
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:

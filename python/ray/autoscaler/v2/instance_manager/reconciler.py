@@ -2,11 +2,9 @@ import logging
 import math
 import time
 import uuid
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.protobuf_compat import message_to_dict
 from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
@@ -48,117 +46,6 @@ from ray.core.generated.instance_manager_pb2 import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class IInstanceUpdater(ABC):
-    """
-    An interface to for making instance update.
-    """
-
-    @abstractmethod
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        """
-        Make an instance update for the instance.
-
-        Args:
-            instance: The instance to make update.
-
-        Returns:
-            The instance update event if there's an update. None otherwise.
-        """
-        raise NotImplementedError
-
-
-class TimeoutInstanceUpdater(IInstanceUpdater):
-    """
-    An instance updater that updates the instance to a new status if it's stuck in the
-    current status for too long.
-    """
-
-    def __init__(
-        self,
-        cur_status: IMInstance.InstanceStatus,
-        timeout_s: int,
-        new_status: Optional["IMInstance.InstanceStatus"] = None,
-    ):
-        """
-        Args:
-            cur_status: The current status of the instance.
-            timeout_s: The timeout in seconds.
-            new_status: The new status to transition to if the instance is stuck in the
-                current status for too long.
-        """
-        self.cur_status = cur_status
-        self.timeout_s = timeout_s
-        self.new_status = new_status
-
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        if InstanceUtil.has_timeout(instance, self.timeout_s):
-            update = IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=self.new_status,
-                details=(
-                    f"Timeout={self.timeout_s}s at status "
-                    f"{IMInstance.InstanceStatus.Name(self.cur_status)}"
-                ),
-            )
-
-            # Add status specific metadata
-            if self.new_status == IMInstance.TERMINATING:
-                update.cloud_instance_id = instance.cloud_instance_id
-
-            return update
-        return None
-
-
-class StuckRequestedInstanceUpdater(IInstanceUpdater):
-    """
-    An instance updater that makes updates for instances stuck in the REQUESTED status
-    for too long.
-    """
-
-    def __init__(
-        self,
-        timeout_s: int,
-        max_num_request_to_allocate: int,
-    ):
-        """
-        Args:
-            timeout_s: The timeout in seconds.
-            max_num_request_to_allocate: The maximum number of times an instance
-                could be requested to allocate.
-        """
-        self.max_num_request_to_allocate = max_num_request_to_allocate
-        self.timeout_s = timeout_s
-
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        if not InstanceUtil.has_timeout(instance, self.timeout_s):
-            # Not timeout yet, be patient.
-            return None
-
-        all_request_times_ns = sorted(
-            InstanceUtil.get_status_transition_times_ns(
-                instance, select_instance_status=IMInstance.REQUESTED
-            )
-        )
-
-        # Fail the allocation if we have tried too many times.
-        if len(all_request_times_ns) >= self.max_num_request_to_allocate:
-            return IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=IMInstance.ALLOCATION_FAILED,
-                details=(
-                    "Failed to allocate cloud instance after "
-                    f"{len(all_request_times_ns)} attempts"
-                ),
-            )
-
-        # Retry the allocation if we could by transitioning to QUEUED again.
-        return IMInstanceUpdateEvent(
-            instance_id=instance.instance_id,
-            new_instance_status=IMInstance.QUEUED,
-            details=f"QUEUED again after timeout={self.timeout_s}s",
-        )
 
 
 class Reconciler:
@@ -460,13 +347,6 @@ class Reconciler:
             if not update_event:
                 continue
 
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(update_event),
-                )
-            )
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
@@ -512,6 +392,10 @@ class Reconciler:
                 cloud_instance_id=unassigned_cloud_instance.cloud_instance_id,
                 node_kind=unassigned_cloud_instance.node_kind,
                 instance_type=unassigned_cloud_instance.node_type,
+                details=(
+                    "allocated unassigned cloud instance "
+                    f"{unassigned_cloud_instance.cloud_instance_id}"
+                ),
             )
 
         # If there's a launch error, transition to ALLOCATION_FAILED.
@@ -520,7 +404,7 @@ class Reconciler:
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
-                details=str(launch_error),
+                details=f"launch failed with {str(launch_error)}",
             )
         # No update.
         return None
@@ -575,15 +459,8 @@ class Reconciler:
             updates[instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance_id,
                 new_instance_status=IMInstance.RAY_RUNNING,
-                details="Failed to stop/drain ray.",
+                details="failed to stop/drain ray",
                 ray_node_id=instance.node_id,
-            )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance_id]),
-                )
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -613,14 +490,7 @@ class Reconciler:
                 updates[instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_INSTALL_FAILED,
-                    details=install_error.details,
-                )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance_id]),
-                    )
+                    details=f"failed to install ray with errors: {install_error.details}",
                 )
 
         # Update the instance manager for the events.
@@ -661,15 +531,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATED,
-                details=f"Cloud instance {cloud_instance_id} is terminated.",
-            )
-
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details=f"cloud instance {cloud_instance_id} no longer found",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -715,14 +577,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATION_FAILED,
-                details=str(failure),
-            )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details=f"termination failed: {str(failure)}",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -818,17 +673,11 @@ class Reconciler:
                 updates[im_instance.instance_id] = IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=reconciled_im_status,
-                    details="Reconciled from ray node status "
-                    f"{NodeStatus.Name(ray_node.status)} "
-                    f"for ray node {binary_to_hex(ray_node.node_id)}",
+                    details=(
+                        f"ray node {binary_to_hex(ray_node.node_id)} is "
+                        f"{NodeStatus.Name(ray_node.status)}"
+                    ),
                     ray_node_id=binary_to_hex(ray_node.node_id),
-                )
-                logger.debug(
-                    "Updating {}({}) with {}.".format(
-                        im_instance.instance_id,
-                        IMInstance.InstanceStatus.Name(im_instance.status),
-                        message_to_dict(updates[im_instance.instance_id]),
-                    )
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -917,13 +766,10 @@ class Reconciler:
                     new_instance_status=IMInstance.REQUESTED,
                     launch_request_id=launch_request_id,
                     instance_type=instance_type,
-                )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance.instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance.instance_id]),
-                    )
+                    details=(
+                        f"requested to launch {instance_type} with request id "
+                        f"{launch_request_id}"
+                    ),
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1275,11 +1121,7 @@ class Reconciler:
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_STOP_REQUESTED,
                     termination_request=terminate_request,
-                )
-                logger.info(
-                    "Stopping ray on {} with {}".format(
-                        instance_id, message_to_dict(updates[instance_id])
-                    )
+                    details=f"draining ray: {terminate_request.details}",
                 )
             else:
                 # If we would just terminate the cloud instance.
@@ -1290,12 +1132,10 @@ class Reconciler:
                     instance_id=instance_id,
                     new_instance_status=IMInstance.TERMINATING,
                     cloud_instance_id=instance.cloud_instance_id,
-                )
-                logger.info(
-                    "Terminating {} with {}".format(
-                        instance_id,
-                        message_to_dict(updates[instance_id]),
-                    )
+                    details=(
+                        "terminating cloud instance without draining ray -"
+                        f"{terminate_request.details}"
+                    ),
                 )
 
         # Add new instances.
@@ -1307,12 +1147,10 @@ class Reconciler:
                     new_instance_status=IMInstance.QUEUED,
                     instance_type=launch_request.instance_type,
                     upsert=True,
-                )
-
-                logger.info(
-                    "Queueing new instance {} of type {}".format(
-                        instance_id, launch_request.instance_type
-                    )
+                    details=(
+                        f"queuing new instance of {launch_request.instance_type} "
+                        "from scheduler"
+                    ),
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1342,14 +1180,12 @@ class Reconciler:
                 continue
 
             # Terminate the instance.
-            logger.info(
-                f"Terminating instance {instance.instance_id} with status "
-                f"{IMInstance.InstanceStatus.Name(instance.status)}"
-            )
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATING,
                 cloud_instance_id=instance.cloud_instance_id,
+                details="terminating instance from "
+                f"{IMInstance.InstanceStatus.Name(instance.status)}",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1396,13 +1232,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.RAY_INSTALLING,
-            )
-            logger.info(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details="installing ray",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1533,7 +1363,7 @@ class Reconciler:
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
                 details=(
-                    "Failed to allocate cloud instance after "
+                    "failed to allocate cloud instance after "
                     f"{len(all_request_times_ns)} attempts > "
                     f"max_num_retry_request_to_allocate={max_num_retry_request_to_allocate}"  # noqa
                 ),
@@ -1543,7 +1373,7 @@ class Reconciler:
         return IMInstanceUpdateEvent(
             instance_id=instance.instance_id,
             new_instance_status=IMInstance.QUEUED,
-            details=f"QUEUED again after timeout={timeout_s}s",
+            details=f"queue again to launch after timeout={timeout_s}s",
         )
 
     @staticmethod
@@ -1635,7 +1465,10 @@ class Reconciler:
                 new_instance_status=IMInstance.ALLOCATED,
                 node_kind=cloud_instance.node_kind,
                 instance_type=cloud_instance.node_type,
-                details="allocated unmanaged cloud instance from cloud provider",
+                details=(
+                    f"allocated unmanaged cloud instance {cloud_instance.cloud_instance_id} "
+                    f"({NodeKind.Name(cloud_instance.node_kind)}) from cloud provider"
+                ),
                 upsert=True,
             )
 
@@ -1653,5 +1486,5 @@ class Reconciler:
         instances, _ = Reconciler._get_im_instances(instance_manager)
         node_type_configs = autoscaling_config.get_node_type_configs()
 
-        metrics_reporter.report_instances(instances)
+        metrics_reporter.report_instances(instances, node_type_configs)
         metrics_reporter.report_resources(instances, node_type_configs)
