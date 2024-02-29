@@ -350,18 +350,16 @@ class TuneController:
             "stats": {"start_time": self._start_time},
         }
 
-        experiment_local_staging_path = self._storage.experiment_local_staging_path
+        driver_staging_path = self._storage.experiment_local_staging_path
+        os.makedirs(driver_staging_path, exist_ok=True)
         with open(
-            Path(experiment_local_staging_path, self.experiment_state_file_name), "w"
+            Path(driver_staging_path, self.experiment_state_file_name),
+            "w",
         ) as f:
             json.dump(runner_state, f, cls=TuneFunctionEncoder)
 
-        self._search_alg.save_to_dir(
-            experiment_local_staging_path, session_str=self._session_str
-        )
-        self._callbacks.save_to_dir(
-            experiment_local_staging_path, session_str=self._session_str
-        )
+        self._search_alg.save_to_dir(driver_staging_path, session_str=self._session_str)
+        self._callbacks.save_to_dir(driver_staging_path, session_str=self._session_str)
 
     def checkpoint(self, force: bool = False, wait: bool = False):
         """Saves execution state to the local experiment path.
