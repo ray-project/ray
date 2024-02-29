@@ -48,9 +48,7 @@ def main(production: bool, check: bool) -> None:
         logger.info("Weekly green metric updated successfully")
 
     if check and blockers.totalCount != 0:
-        raise ValueError(
-            f"Found {blockers.totalCount} release blockers. See logs above."
-        )
+        raise Exception(f"Found {blockers.totalCount} release blockers")
 
 
 if __name__ == "__main__":

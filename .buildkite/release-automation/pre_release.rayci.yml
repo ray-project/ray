@@ -13,9 +13,15 @@ steps:
       - step: check-release-blockers
         allow_failure: true
 
+  - label: "Check commit hash"
+    key: check-commit-hash
+    commands:
+      - if "${BUILDKITE_COMMIT}" != $(git rev-parse HEAD); then echo "Commit hash mismatch"; exit 1; fi
+
   - label: "Trigger Postmerge test"
     trigger: "postmerge"
     if: build.env("COMMIT") != null && build.env("BRANCH") != null
+    depends_on: check-commit-hash
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
@@ -27,6 +33,7 @@ steps:
   - label: "Trigger Release nightly test"
     trigger: "release"
     if: build.env("COMMIT") != null && build.env("BRANCH") != null
+    depends_on: check-commit-hash
     build:
       commit: "${COMMIT}"
       branch: "${BRANCH}"
