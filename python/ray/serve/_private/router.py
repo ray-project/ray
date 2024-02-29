@@ -58,13 +58,13 @@ class RouterMetricsManager:
         # Exported metrics
         self.num_router_requests = router_requests_counter
         self.num_router_requests.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app}
+            {"deployment": deployment_id.name, "application": deployment_id.app_name}
         )
 
         self.num_queued_requests = 0
         self.num_queued_requests_gauge = queued_requests_gauge
         self.num_queued_requests_gauge.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app}
+            {"deployment": deployment_id.name, "application": deployment_id.app_name}
         )
 
         # Track queries sent to replicas for the autoscaling algorithm.

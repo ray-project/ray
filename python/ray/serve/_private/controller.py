@@ -15,7 +15,6 @@ from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
-    EndpointTag,
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
@@ -318,7 +317,7 @@ class ServeController:
             keys_to_snapshot_ids_bytes
         )
 
-    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+    def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
 
@@ -734,7 +733,7 @@ class ServeController:
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
         updating = self.deployment_state_manager.deploy(
-            DeploymentID(name, ""), deployment_info
+            DeploymentID(name=name, app_name=""), deployment_info
         )
 
         if route_prefix is not None:
@@ -742,9 +741,11 @@ class ServeController:
                 route=route_prefix,
                 app_is_cross_language=not is_deployed_from_python,
             )
-            self.endpoint_state.update_endpoint(EndpointTag(name, ""), endpoint_info)
+            self.endpoint_state.update_endpoint(
+                DeploymentID(name=name, app_name=""), endpoint_info
+            )
         else:
-            self.endpoint_state.delete_endpoint(EndpointTag(name, ""))
+            self.endpoint_state.delete_endpoint(DeploymentID(name=name, app_name=""))
 
         return updating
 
@@ -861,7 +862,7 @@ class ServeController:
     def delete_deployment(self, name: str):
         """Should only be used for 1.x deployments."""
 
-        id = DeploymentID(name, "")
+        id = DeploymentID(name=name, app_name="")
         self.endpoint_state.delete_endpoint(id)
         return self.deployment_state_manager.delete_deployment(id)
 
@@ -883,7 +884,7 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        id = DeploymentID(name, app_name)
+        id = DeploymentID(name=name, app_name=app_name)
         deployment_info = self.deployment_state_manager.get_deployment(id)
         if deployment_info is None:
             app_msg = f" in application '{app_name}'" if app_name else ""
@@ -921,7 +922,7 @@ class ServeController:
             route_prefix,
         ) in self.list_deployments_internal().items():
             # Only list 1.x deployments, which should have app=""
-            if deployment_id.app:
+            if deployment_id.app_name:
                 continue
 
             deployment_info_proto = deployment_info.to_proto()
@@ -1055,7 +1056,7 @@ class ServeController:
                 deployments go through this API.
         """
 
-        id = DeploymentID(name, app_name)
+        id = DeploymentID(name=name, app_name=app_name)
         status = self.deployment_state_manager.get_deployment_statuses([id])
         if not status:
             return None
