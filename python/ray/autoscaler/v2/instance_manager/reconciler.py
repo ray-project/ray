@@ -1225,7 +1225,9 @@ class Reconciler:
             cluster_resource_constraints=ray_state.cluster_resource_constraints,
             current_instances=autoscaler_instances,
             idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
-            disable_launch_config_check=autoscaling_config.disable_launch_config_check(),
+            disable_launch_config_check=(
+                autoscaling_config.disable_launch_config_check()
+            ),
         )
 
         # Ask scheduler for updates to the cluster shape.
