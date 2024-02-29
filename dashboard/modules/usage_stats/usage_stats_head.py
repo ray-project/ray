@@ -184,7 +184,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         )
         if not self.usage_stats_enabled:
             logger.info("Usage reporting is disabled.")
-            await self._report_disabled_usage_async()
+            if not ray_usage_lib.is_usage_stats_ray_init_cluster():
+                await self._report_disabled_usage_async()
             return
         else:
             logger.info("Usage reporting is enabled.")

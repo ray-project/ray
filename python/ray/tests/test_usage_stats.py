@@ -128,6 +128,31 @@ def reset_ray_version_commit():
     ray.__commit__ = saved_ray_commit
 
 
+@pytest.fixture
+def start_usage_stats_server():
+    class UsageStatsServer(BaseHTTPRequestHandler):
+        num_reports = 0
+        report_payload = None
+
+        def do_POST(self):
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length)
+            UsageStatsServer.num_reports += 1
+            UsageStatsServer.report_payload = json.loads(post_data)
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+
+    server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
+    server_thread = threading.Thread(target=server.serve_forever)
+    server_thread.start()
+
+    yield UsageStatsServer
+
+    server.shutdown()
+    server_thread.join()
+
+
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_get_extra_usage_tags_to_report(
     monkeypatch, call_ray_start, reset_usage_stats, ray_client, gcs_storage_type
@@ -1002,7 +1027,11 @@ available_node_types:
 
 
 def test_usage_lib_report_data(
-    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats
+    monkeypatch,
+    ray_start_cluster,
+    tmp_path,
+    start_usage_stats_server,
+    reset_usage_stats,
 ):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
@@ -1048,36 +1077,22 @@ provider:
         """
         Make sure report usage data works as expected
         """
-
-        class UsageStatsServer(BaseHTTPRequestHandler):
-            expected_data = None
-
-            def do_POST(self):
-                content_length = int(self.headers["Content-Length"])
-                post_data = self.rfile.read(content_length)
-                if json.loads(post_data) == self.expected_data:
-                    self.send_response(200)
-                else:
-                    self.send_response(400)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-
-        @ray.remote(num_cpus=0)
-        def run_usage_stats_server(expected_data):
-            UsageStatsServer.expected_data = expected_data
-            server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
-            server.serve_forever()
-
-        run_usage_stats_server.remote(asdict(d))
+        usage_stats_server = start_usage_stats_server
 
         # Query our endpoint over HTTP.
         wait_for_condition(
             lambda: client.report_usage_data("http://127.0.0.1:8000", d), timeout=30
         )
+        assert usage_stats_server.report_payload == asdict(d)
 
 
 def test_usage_report_e2e(
-    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
+    monkeypatch,
+    ray_start_cluster,
+    tmp_path,
+    start_usage_stats_server,
+    reset_usage_stats,
+    gcs_storage_type,
 ):
     """
     Test usage report works e2e with env vars.
@@ -1101,6 +1116,9 @@ provider:
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "extra_k1=extra_v1")
+
+        usage_stats_server = start_usage_stats_server
+
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
         if os.environ.get("RAY_MINIMAL") != "1":
@@ -1122,46 +1140,6 @@ provider:
             tuner = tune.Tuner(objective)
             tuner.fit()
 
-        @ray.remote(num_cpus=0)
-        class StatusReporter:
-            def __init__(self):
-                self.reported = 0
-                self.payload = None
-
-            def report_payload(self, payload):
-                self.payload = payload
-
-            def reported(self):
-                self.reported += 1
-
-            def get(self):
-                return self.reported
-
-            def get_payload(self):
-                return self.payload
-
-        reporter = StatusReporter.remote()
-
-        class UsageStatsServer(BaseHTTPRequestHandler):
-            reporter = None
-
-            def do_POST(self):
-                content_length = int(self.headers["Content-Length"])
-                post_data = self.rfile.read(content_length)
-                self.reporter.reported.remote()
-                self.reporter.report_payload.remote(json.loads(post_data))
-                self.send_response(200)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-
-        @ray.remote(num_cpus=0)
-        def run_usage_stats_server(reporter):
-            UsageStatsServer.reporter = reporter
-            server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
-            server.serve_forever()
-
-        run_usage_stats_server.remote(reporter)
-
         """
         Verify the usage stats are reported to the server.
         """
@@ -1169,11 +1147,11 @@ provider:
         # Since the interval is 1 second, there must have been
         # more than 5 requests sent within 30 seconds.
         try:
-            wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=30)
+            wait_for_condition(lambda: usage_stats_server.num_reports > 5, timeout=30)
         except Exception:
             print_dashboard_log()
             raise
-        payload = ray.get(reporter.get_payload.remote())
+        payload = usage_stats_server.report_payload
         ray_version, python_version = ray._private.utils.compute_version_info()
         assert payload["ray_version"] == ray_version
         assert payload["python_version"] == python_version
@@ -1281,7 +1259,47 @@ def test_first_usage_report_delayed(monkeypatch, ray_start_cluster, reset_usage_
         assert (session_path / usage_constants.USAGE_STATS_FILE).exists()
 
 
-def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats):
+def test_usage_report_disabled_ray_init_cluster(
+    monkeypatch, start_usage_stats_server, reset_usage_stats, shutdown_only
+):
+    """
+    Make sure we don't send anything to the server for the ray.init cluster
+    if usage stats is disabled.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+
+        usage_stats_server = start_usage_stats_server
+
+        ray.init()
+
+        time.sleep(5)
+        assert usage_stats_server.num_reports == 0
+
+        """
+        Verify the correct logs are printed.
+        """
+        session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+        session_path = Path(session_dir)
+        log_dir_path = session_path / "logs"
+
+        paths = list(log_dir_path.iterdir())
+
+        contents = None
+        for path in paths:
+            if "dashboard.log" in str(path):
+                with open(str(path), "r") as f:
+                    contents = f.readlines()
+                break
+        assert contents is not None
+        assert any(["Usage reporting is disabled" in c for c in contents])
+
+
+def test_usage_report_disabled(
+    monkeypatch, ray_start_cluster, start_usage_stats_server, reset_usage_stats
+):
     """
     Make sure usage report module is disabled when the env var is not set.
     It also verifies that the failure message is not printed (note that
@@ -1292,24 +1310,7 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
 
-        class UsageStatsServer(BaseHTTPRequestHandler):
-            num_reports = 0
-            report_payload = None
-
-            def do_POST(self):
-                content_length = int(self.headers["Content-Length"])
-                post_data = self.rfile.read(content_length)
-                UsageStatsServer.num_reports += 1
-                UsageStatsServer.report_payload = json.loads(post_data)
-                self.send_response(200)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-
-        server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
-        server_thread = threading.Thread(target=server.serve_forever)
-        # Exit the server thread when the main thread terminates
-        server_thread.daemon = True
-        server_thread.start()
+        usage_stats_server = start_usage_stats_server
 
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
@@ -1318,11 +1319,11 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
         """
         Verify the disabled usage stat is reported to the server.
         """
-        wait_for_condition(lambda: UsageStatsServer.num_reports == 1)
+        wait_for_condition(lambda: usage_stats_server.num_reports == 1)
         # We should have one and only one report to the server.
         time.sleep(5)
-        assert UsageStatsServer.num_reports == 1
-        payload = UsageStatsServer.report_payload
+        assert usage_stats_server.num_reports == 1
+        payload = usage_stats_server.report_payload
         assert payload["schema_version"] == "0.1"
         assert payload["source"] == "OSS"
         assert payload["collect_timestamp_ms"] > 0
@@ -1346,9 +1347,6 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
         assert contents is not None
         assert any(["Usage reporting is disabled" in c for c in contents])
         assert all(["Usage report request failed" not in c for c in contents])
-
-        server.shutdown()
-        server_thread.join()
 
 
 def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_stats):

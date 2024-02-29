@@ -492,6 +492,18 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
+def set_usage_stats_ray_init_cluster() -> None:
+    """Set the env var to tell UsageStatsHead that
+    the current cluster is created by ray.init
+    """
+    os.environ[usage_constant.USAGE_STATS_RAY_INIT_CLUSTER_ENV_VAR] = "1"
+
+
+def is_usage_stats_ray_init_cluster() -> bool:
+    """Return whether the cluster is started by ray.init"""
+    return os.getenv(usage_constant.USAGE_STATS_RAY_INIT_CLUSTER_ENV_VAR, "0") == "1"
+
+
 def put_cluster_metadata(gcs_client) -> None:
     """Generate the cluster metadata and store it to GCS.
 
@@ -789,7 +801,10 @@ def generate_disabled_report_data() -> UsageStatsToReport:
     """Generate the report data indicating usage stats is disabled"""
     data = UsageStatsToReport(
         schema_version=usage_constant.SCHEMA_VERSION,
-        source=os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
+        source=os.getenv(
+            usage_constant.USAGE_STATS_SOURCE_ENV_VAR,
+            usage_constant.USAGE_STATS_SOURCE_OSS,
+        ),
         collect_timestamp_ms=int(time.time() * 1000),
     )
     return data
@@ -825,7 +840,10 @@ def generate_report_data(
 
     data = UsageStatsToReport(
         schema_version=usage_constant.SCHEMA_VERSION,
-        source=os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
+        source=os.getenv(
+            usage_constant.USAGE_STATS_SOURCE_ENV_VAR,
+            usage_constant.USAGE_STATS_SOURCE_OSS,
+        ),
         collect_timestamp_ms=int(time.time() * 1000),
         total_success=total_success,
         total_failed=total_failed,

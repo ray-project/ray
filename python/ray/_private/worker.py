@@ -1605,6 +1605,7 @@ def init(
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
 
+        usage_lib.set_usage_stats_ray_init_cluster()
         if usage_lib.is_nightly_wheel():
             usage_lib.show_usage_stats_prompt(cli=False)
         else:
