@@ -668,7 +668,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         logging_config=s.logging_config,
     )
     deployment_config.user_configured_option_names = (
-        s.get_user_configured_option_names()
+        s._get_user_configured_option_names()
     )
 
     replica_config = ReplicaConfig.create(

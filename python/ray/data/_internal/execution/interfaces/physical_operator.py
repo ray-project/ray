@@ -179,6 +179,7 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._target_max_block_size = target_max_block_size
         self._started = False
+        self._in_task_submission_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_output_blocks = None
         self._execution_completed = False
@@ -409,3 +410,15 @@ class PhysicalOperator(Operator):
             under_resource_limits: Whether this operator is under resource limits.
         """
         pass
+
+    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal in backpressure
+        status for stats collection purposes.
+
+        Args:
+            in_backpressure: Value this operator's in_backpressure should be set to.
+        """
+        # only update on change to in_backpressure
+        if self._in_task_submission_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
+            self._in_task_submission_backpressure = in_backpressure
