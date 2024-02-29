@@ -18,6 +18,8 @@ SERIAL_BATCH_TIMES = []
 DISTRIBUTED_BATCH_TIMES = []
 THUMB_SIZE = (64, 64)
 image_list = glob.glob(DATA_DIR+"/*.jpg")
+NODE_USER_NAME = "ec2-user"
+DATA_IP= "10.0.0.132"
 
 def transform_image(img: object, fetch_image=True, verbose=False):
     """
@@ -66,9 +68,10 @@ def augment_image_distributed(working_dir, complexity_score, fetch_image):
 def augment_image_distributed_manual(image, complexity_score, fetch_image):
     
     if not os.path.exists(image):
-        remote = True
-        time.sleep(complexity_score / 100000)
-        os.system("rsync --mkpath -a ubuntu@172.31.40.126:%s %s" %(image, image))
+        # remote = True
+        # time.sleep(complexity_score / 100000)
+        # os.system("rsync --mkpath -a ubuntu@172.31.40.126:%s %s" %(image, image))
+        os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
     
     img = Image.open(image)
     return transform_image(img, fetch_image=fetch_image)

@@ -1,7 +1,8 @@
 import os
 
-HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", "http://10.0.0.183") 
-SERVER_IP = HEAD_NODE_IP + ":8000"
+HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", "10.0.0.183") 
+SERVER_IP = "http://" + HEAD_NODE_IP + ":8000"
+NODE_USER_NAME = "ec2-user"
 DATA_IP= HEAD_NODE_IP
 
 MAX_COMPLEXITY_SCORE = 100000000000
@@ -74,4 +75,4 @@ PENDING_TASKS = "pending_tasks"
 FINISHED_TASKS = "finished_tasks"
 PENDING_TASKS_COUNT = "pending_tasks_count"
 
-MAX_PENDING_TASK= 2
+MAX_PENDING_TASK= 20

@@ -143,7 +143,8 @@ class Controller():
                     download_s3_folder(str(bucket_name),str(object_name),str(label))
 
                 else:
-                    os.system("rsync --mkpath -a -P {} {}".format(DATA_IP+":"+label,label))
+                    # os.system("rsync --mkpath -a -P {} {}".format(NODE_USER_NAME + "@" + DATA_IP+":"+label,label))
+                    os.system(f"rsync --mkpath -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
                 if os.path.exists(label):
                     ray.get_runtime_context().set_label({label: label})
             return FINISHED
