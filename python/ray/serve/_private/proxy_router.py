@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from ray.serve._private.common import (
     ApplicationName,
     EndpointInfo,
-    EndpointTag,
+    DeploymentID,
     RequestProtocol,
 )
 from ray.serve._private.constants import (
@@ -21,7 +21,7 @@ class ProxyRouter(ABC):
     """Router interface for the proxy to use."""
 
     @abstractmethod
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]):
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         raise NotImplementedError
 
 
@@ -40,13 +40,13 @@ class LongestPrefixRouter(ProxyRouter):
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
-        self.route_info: Dict[str, EndpointTag] = dict()
+        self.route_info: Dict[str, DeploymentID] = dict()
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[EndpointTag, DeploymentHandle] = dict()
+        self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
 
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]) -> None:
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
@@ -131,11 +131,11 @@ class EndpointRouter(ProxyRouter):
         # Protocol to config handle
         self._protocol = protocol
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[EndpointTag, DeploymentHandle] = dict()
+        self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Endpoints info associated with endpoints.
-        self.endpoints: Dict[EndpointTag, EndpointInfo] = dict()
+        self.endpoints: Dict[DeploymentID, EndpointInfo] = dict()
 
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]):
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
