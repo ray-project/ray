@@ -500,9 +500,9 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
         for prefix in expected_actor_name_prefixes:
             assert any(name.startswith(prefix) for name in actor_names)
 
-        assert {DeploymentID(name=deployment, app_name="app1") for deployment in deployments} == set(
-            ray.get(client._controller._all_running_replicas.remote()).keys()
-        )
+        assert {
+            DeploymentID(name=deployment, app_name="app1") for deployment in deployments
+        } == set(ray.get(client._controller._all_running_replicas.remote()).keys())
         return True
 
     wait_for_condition(check_app, deployments=pizza_deployments)
@@ -680,9 +680,7 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     client.delete_apps([SERVE_DEFAULT_APP_NAME], blocking=False)
     # Replica should be dead within 10 second timeout, which means
     # graceful_shutdown_timeout_s was successfully updated lightweightly
-    wait_for_condition(
-        partial(check_deployments_dead, [DeploymentID(name="f")])
-    )
+    wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
 def test_update_config_max_concurrent_queries(client: ServeControllerClient):

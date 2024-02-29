@@ -141,7 +141,9 @@ class _ModelMultiplexWrapper:
             if self._push_multiplexed_replica_info:
                 _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
-                        DeploymentID(name=self._deployment_name, app_name=self._app_name),
+                        DeploymentID(
+                            name=self._deployment_name, app_name=self._app_name
+                        ),
                         self._replica_tag,
                         self._get_loading_and_loaded_model_ids(),
                     )

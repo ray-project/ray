@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import EndpointInfo, DeploymentID, RunningReplicaInfo
+from ray.serve._private.common import DeploymentID, EndpointInfo, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,

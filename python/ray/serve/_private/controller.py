@@ -15,7 +15,6 @@ from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
-    DeploymentID,
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
@@ -742,7 +741,9 @@ class ServeController:
                 route=route_prefix,
                 app_is_cross_language=not is_deployed_from_python,
             )
-            self.endpoint_state.update_endpoint(DeploymentID(name=name, app_name=""), endpoint_info)
+            self.endpoint_state.update_endpoint(
+                DeploymentID(name=name, app_name=""), endpoint_info
+            )
         else:
             self.endpoint_state.delete_endpoint(DeploymentID(name=name, app_name=""))
 

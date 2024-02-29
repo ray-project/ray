@@ -501,7 +501,9 @@ def test_app_unhealthy(mocked_application_state):
     updated to unhealthy.
     """
     app_state, deployment_state_manager = mocked_application_state
-    id_a, id_b = DeploymentID(name="a", app_name="test_app"), DeploymentID(name="b", app_name="test_app")
+    id_a, id_b = DeploymentID(name="a", app_name="test_app"), DeploymentID(
+        name="b", app_name="test_app"
+    )
     app_state.deploy({"a": deployment_info("a"), "b": deployment_info("b")})
     assert app_state.status == ApplicationStatus.DEPLOYING
     app_state.update()
@@ -663,7 +665,9 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     conflict with an old app running on the cluster.
     """
     app_state_manager, deployment_state_manager, _ = mocked_application_state_manager
-    a_id, b_id = DeploymentID(name="a", app_name="app1"), DeploymentID(name="b", app_name="app2")
+    a_id, b_id = DeploymentID(name="a", app_name="app1"), DeploymentID(
+        name="b", app_name="app2"
+    )
 
     # deploy app1
     app_state_manager.apply_deployment_args("app1", [deployment_params("a", "/url1")])

@@ -18,7 +18,6 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     EndpointInfo,
-    DeploymentID,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig

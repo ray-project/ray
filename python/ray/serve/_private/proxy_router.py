@@ -4,8 +4,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from ray.serve._private.common import (
     ApplicationName,
-    EndpointInfo,
     DeploymentID,
+    EndpointInfo,
     RequestProtocol,
 )
 from ray.serve._private.constants import (

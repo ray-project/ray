@@ -42,9 +42,7 @@ from ray.serve.schema import ServeDeploySchema
 def get_running_replica_tags(name: str, controller: ServeController) -> List:
     """Get the replica tags of running replicas for given deployment"""
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(
-            DeploymentID(name=name)
-        )
+        controller._dump_replica_states_for_testing.remote(DeploymentID(name=name))
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return [replica.replica_tag for replica in running_replicas]

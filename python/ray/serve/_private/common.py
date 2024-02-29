@@ -4,8 +4,8 @@ from enum import Enum
 from typing import Awaitable, Callable, List, NamedTuple, Optional
 
 from ray.actor import ActorHandle
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
 )
