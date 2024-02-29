@@ -46,19 +46,25 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
         "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
     ]
 
-    app_name = "app"
     serve.start(
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
+
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures the not found is responding correctly.
     ping_grpc_call_method(channel, app_name, test_not_found=True)
 
-    serve.run(g, name=app_name)
+    serve.run(g)
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+
+    # Ensures the app is deployed.
+    assert len(replicas[replica_name]) == 1
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
@@ -140,7 +146,8 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
         ),
     )
 
-    serve.run(g, name="app1")
+    app1 = "app1"
+    serve.run(g, name=app1, route_prefix=f"/{app1}")
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -152,13 +159,14 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
     assert response.greeting == "Hello foo from bar"
 
     # Ensures the gRPC Proxy responding correctly with metadata.
-    metadata = (("application", "app1"),)
+    metadata = (("application", app1),)
     response, call = stub.__call__.with_call(request=request, metadata=metadata)
     assert call.code() == grpc.StatusCode.OK
     assert response.greeting == "Hello foo from bar"
 
     # Deploy another app.
-    serve.run(g2, name="app2")
+    app2 = "app2"
+    serve.run(g2, name=app2, route_prefix=f"/{app2}")
 
     # Ensure the gRPC request without metadata will now return not found response.
     with pytest.raises(grpc.RpcError) as exception_info:
@@ -192,7 +200,8 @@ def test_grpc_proxy_with_request_id(ray_cluster):
         ),
     )
 
-    serve.run(g)
+    app1 = "app1"
+    serve.run(g, name=app1, route_prefix=f"/{app1}")
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -252,6 +261,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
         "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
     ]
     serve.start(
+        http_options={"location": "EveryNode"},
         grpc_options=gRPCOptions(
             port=head_node_grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
@@ -264,8 +274,25 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
         def __call__(self):
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
+    model = HelloModel.bind()
     app_name = "app1"
-    serve.run(HelloModel.bind(), name=app_name)
+    serve.run(model, name=app_name)
+
+    # Ensure worker node has both replicas.
+    def check_replicas_on_worker_nodes():
+        _actors = ray._private.state.actors().values()
+        replica_nodes = [
+            a["Address"]["NodeID"]
+            for a in _actors
+            if a["ActorClassName"].startswith("ServeReplica")
+        ]
+        return len(set(replica_nodes)) == 1
+
+    wait_for_condition(check_replicas_on_worker_nodes)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
 
     # Set up gRPC channels.
     head_node_channel = grpc.insecure_channel(f"localhost:{head_node_grpc_port}")
@@ -293,6 +320,22 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     # Delete the deployment should bring the active actors down to 3 and drop
     # replicas on all nodes.
     serve.delete(name=app_name)
+
+    def _check():
+        _actors = ray._private.state.actors().values()
+        return (
+            len(
+                list(
+                    filter(
+                        lambda a: a["State"] == "ALIVE",
+                        _actors,
+                    )
+                )
+            )
+            == 3
+        )
+
+    wait_for_condition(_check)
 
     # Ensures ListApplications method on the head node is succeeding.
     wait_for_condition(

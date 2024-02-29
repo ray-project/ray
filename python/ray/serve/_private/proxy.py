@@ -564,7 +564,9 @@ class gRPCProxy(GenericProxy):
         self, *, healthy: bool, message: str
     ) -> ResponseGenerator:
         yield ListApplicationsResponse(
-            application_names=[endpoint.app for endpoint in self.route_info.values()],
+            application_names=[
+                endpoint.app_name for endpoint in self.route_info.values()
+            ],
         ).SerializeToString()
 
         yield ResponseStatus(
@@ -787,8 +789,8 @@ class HTTPProxy(GenericProxy):
             response = dict()
             for route, endpoint in self.route_info.items():
                 # For 2.x deployments, return {route -> app name}
-                if endpoint.app:
-                    response[route] = endpoint.app
+                if endpoint.app_name:
+                    response[route] = endpoint.app_name
                 # Keep compatibility with 1.x deployments.
                 else:
                     response[route] = endpoint.name

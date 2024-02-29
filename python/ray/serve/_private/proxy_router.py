@@ -176,7 +176,7 @@ class EndpointRouter(ProxyRouter):
         for endpoint_tag, handle in self.handles.items():
             # If the target_app_name matches with the endpoint or if
             # there is only one endpoint.
-            if target_app_name == endpoint_tag.app or len(self.handles) == 1:
+            if target_app_name == endpoint_tag.app_name or len(self.handles) == 1:
                 endpoint_info = self.endpoints[endpoint_tag]
                 return (
                     endpoint_info.route,
