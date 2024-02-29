@@ -8,9 +8,9 @@ from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+import ray._private.ray_constants as ray_constants
 
 bundle_reservation_check = None
-BUNDLE_RESOURCE_LABEL = "bundle"
 
 VALID_PLACEMENT_GROUP_STRATEGIES = {
     "PACK",
@@ -87,7 +87,6 @@ class PlacementGroup:
 
         return bundle_reservation_check.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-            resources={BUNDLE_RESOURCE_LABEL: 0.001},
         ).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
@@ -149,6 +148,7 @@ def placement_group(
     name: str = "",
     lifetime: Optional[str] = None,
     _max_cpu_fraction_per_node: float = 1.0,
+    _soft_target_node_id: Optional[str] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -176,6 +176,12 @@ def placement_group(
             placement group scheduling. Note: This feature is experimental and is not
             recommended for use with autoscaling clusters (scale-up will not trigger
             properly).
+        _soft_target_node_id: (Private, Experimental) Soft hint where bundles of
+            this placement group should be placed.
+            The target node is specified by it's hex ID.
+            If the target node has no available resources or died,
+            bundles can be placed elsewhere.
+            This currently only works with STRICT_PACK pg.
 
     Raises:
         ValueError if bundle type is not a list.
@@ -203,6 +209,17 @@ def placement_group(
             "Invalid argument `_max_cpu_fraction_per_node`: "
             f"{_max_cpu_fraction_per_node}. "
             "_max_cpu_fraction_per_node must be a float between 0 and 1. "
+        )
+
+    if _soft_target_node_id and strategy != "STRICT_PACK":
+        raise ValueError(
+            "_soft_target_node_id currently only works "
+            f"with STRICT_PACK but got {strategy}"
+        )
+
+    if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
+        raise ValueError(
+            f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
         )
 
     # Validate bundles
@@ -247,6 +264,7 @@ def placement_group(
         strategy,
         detached,
         _max_cpu_fraction_per_node,
+        _soft_target_node_id,
     )
 
     return PlacementGroup(placement_group_id)
@@ -383,7 +401,7 @@ def _valid_resource_shape(resources, bundle_specs):
         for resource, requested_val in resources.items():
             # Skip "bundle" resource as it is automatically added
             # to all nodes with bundles by the placement group.
-            if resource == BUNDLE_RESOURCE_LABEL:
+            if resource == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
             if bundle.get(resource, 0) < requested_val:
                 fit_in_bundle = False

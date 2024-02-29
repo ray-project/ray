@@ -99,6 +99,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
         int MaxPendingCalls() const
         int MaxTaskRetries() const
+        c_bool EnableTaskEvents() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()

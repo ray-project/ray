@@ -292,7 +292,7 @@ class TestReconciler:
         TestReconciler._add_instances(instance_storage, instances)
 
         cloud_instances = {
-            "c-2": CloudInstance("c-2", "type-2", "", False, NodeKind.WORKER),
+            "c-2": CloudInstance("c-2", "type-2", False, NodeKind.WORKER),
         }
 
         termination_errors = [

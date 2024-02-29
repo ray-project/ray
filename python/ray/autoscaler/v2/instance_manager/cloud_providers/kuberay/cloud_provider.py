@@ -128,7 +128,6 @@ class KubeRayProvider(ICloudInstanceProvider):
             # This request is already processed.
             return
         self._requests.add(request_id)
-        logger.info("[{}]Terminating nodes: {}".format(request_id, ids))
 
         scale_request = self._initialize_scale_request(
             to_launch={}, to_delete_instances=ids
@@ -159,7 +158,6 @@ class KubeRayProvider(ICloudInstanceProvider):
             # This request is already processed.
             return
         self._requests.add(request_id)
-        logger.info("[{}]Launching shape: {}".format(request_id, shape))
 
         scale_request = self._initialize_scale_request(
             to_launch=shape, to_delete_instances=[]
@@ -283,7 +281,6 @@ class KubeRayProvider(ICloudInstanceProvider):
         patch_payload = []
 
         raycluster = self.ray_cluster
-        # logger.info("Groups are: {}".format(_worker_groups(raycluster)))
 
         # Collect patches for replica counts.
         for node_type, target_replicas in scale_request.desired_num_workers.items():
@@ -390,7 +387,6 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
         self._cached_instances = self._fetch_instances()
-        # logger.info("Groups are: {}".format(_worker_groups(self._ray_cluster)))
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
