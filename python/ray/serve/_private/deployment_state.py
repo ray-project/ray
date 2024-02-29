@@ -281,7 +281,7 @@ class ActorReplicaWrapper:
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app
+        return self._deployment_id.app_name
 
     @property
     def is_cross_language(self) -> bool:
@@ -943,7 +943,7 @@ class DeploymentReplica(VersionedReplica):
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app
+        return self._deployment_id.app_name
 
     @property
     def version(self):
@@ -1372,7 +1372,7 @@ class DeploymentState:
 
     @property
     def app_name(self) -> str:
-        return self._id.app
+        return self._id.app_name
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
@@ -2777,7 +2777,7 @@ class DeploymentStateManager:
 
         deployments = []
         for deployment_id in self._deployment_states:
-            if deployment_id.app == app_name:
+            if deployment_id.app_name == app_name:
                 deployments.append(deployment_id.name)
 
         return deployments
@@ -2861,7 +2861,7 @@ class DeploymentStateManager:
                 replica tag and model ids.
         """
         if info.deployment_id not in self._deployment_states:
-            app_msg = f" in application '{info.deployment_id.app}'"
+            app_msg = f" in application '{info.deployment_id.app_name}'"
             logger.error(
                 f"Deployment {info.deployment_id.name}{app_msg} not found in state "
                 "manager."

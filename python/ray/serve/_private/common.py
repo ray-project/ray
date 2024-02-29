@@ -523,7 +523,7 @@ class StatusOverview:
         )
 
 
-@dataclass(frozen=True)
+@dataclass
 class ReplicaName:
     app_name: str
     deployment_name: str

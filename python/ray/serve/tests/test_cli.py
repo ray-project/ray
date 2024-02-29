@@ -26,7 +26,7 @@ def assert_deployments_live(ids: List[DeploymentID]):
     running_actor_names = [actor["name"] for actor in list_actors()]
 
     for deployment_id in ids:
-        prefix = f"{deployment_id.app}#{deployment_id.name}"
+        prefix = f"{deployment_id.app_name}#{deployment_id.name}"
         msg = f"Deployment {deployment_id} is not live"
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
 

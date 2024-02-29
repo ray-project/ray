@@ -288,7 +288,7 @@ class ReplicaActor:
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
-            app_name=self._deployment_id.app,
+            app_name=self._deployment_id.app_name,
             deployment=self._deployment_id.name,
             replica_tag=self._replica_tag,
             servable_object=servable_object,
@@ -346,7 +346,7 @@ class ReplicaActor:
             ray.serve.context._RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
-                self._deployment_id.app,
+                self._deployment_id.app_name,
                 request_metadata.multiplexed_model_id,
                 request_metadata.grpc_context,
             )

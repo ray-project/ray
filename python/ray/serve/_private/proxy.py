@@ -396,7 +396,7 @@ class GenericProxy(ABC):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
             handle, request_id = self.setup_request_context_and_handle(
-                app_name=handle.deployment_id.app,
+                app_name=handle.deployment_id.app_name,
                 handle=handle,
                 route_path=route_path,
                 proxy_request=proxy_request,
@@ -412,7 +412,7 @@ class GenericProxy(ABC):
             return ResponseHandlerInfo(
                 response_generator=response_generator,
                 metadata=HandlerMetadata(
-                    application_name=handle.deployment_id.app,
+                    application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
                     route=route_path,
                 ),

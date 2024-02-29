@@ -922,7 +922,7 @@ class ServeController:
             route_prefix,
         ) in self.list_deployments_internal().items():
             # Only list 1.x deployments, which should have app=""
-            if deployment_id.app:
+            if deployment_id.app_name:
                 continue
 
             deployment_info_proto = deployment_info.to_proto()

@@ -194,7 +194,7 @@ class _DeploymentHandleBase:
 
     @property
     def app_name(self) -> str:
-        return self.deployment_id.app
+        return self.deployment_id.app_name
 
     def _options(
         self,

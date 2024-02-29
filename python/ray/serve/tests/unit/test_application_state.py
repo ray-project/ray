@@ -106,7 +106,7 @@ class MockDeploymentStateManager:
     def get_deployments_in_application(self, app_name: str):
         deployments = []
         for deployment_id in self.deployment_infos:
-            if deployment_id.app == app_name:
+            if deployment_id.app_name == app_name:
                 deployments.append(deployment_id.name)
 
         return deployments
