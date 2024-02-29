@@ -115,8 +115,6 @@ def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
-    # Clear all state for 1.x deployments.
-    _shared_serve_instance.delete_deployments(_private_api.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles()
 
