@@ -843,16 +843,6 @@ class ServeController:
             for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
 
-    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
-        """Gets the current information about all deployments (1.x and 2.x)"""
-        return {
-            deployment_id: deployment_info
-            for deployment_id, (
-                deployment_info,
-                _,
-            ) in self.list_deployments_internal().items()
-        }
-
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()

@@ -118,8 +118,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_alive)
 
     serve.shutdown()
-    with pytest.raises(RayServeException):
-        _private_api.list_deployments()
 
     def check_dead():
         for actor_name in actor_names:
@@ -549,17 +547,16 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.run(A.bind())
 
-    assert len(client.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
     serve.shutdown()
     serve.start()
-    client = _get_global_client()
 
-    assert len(client.list_deployments()) == 0
+    assert len(serve.status().applications) == 0
 
     serve.run(A.bind())
 
-    assert len(client.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):

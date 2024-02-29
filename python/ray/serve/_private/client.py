@@ -379,12 +379,6 @@ class ServeControllerClient:
         )
 
     @_ensure_connected
-    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
-        """Gets the current information about all deployments (1.x and 2.x)."""
-
-        return ray.get(self._controller.list_deployments.remote())
-
-    @_ensure_connected
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
         """Returns the most recently requested Serve config."""
         return ray.get(self._controller.get_app_config.remote(name))
