@@ -352,7 +352,7 @@ serve.run(B.bind())"""
         output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
         assert (
-            "Adding 1 replica to deployment A in application 'default'"
+            "Adding 1 replica to deployment 'A' in application 'default'"
             in output.decode("utf-8")
         )
 
@@ -362,7 +362,7 @@ serve.run(B.bind())"""
         output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
         assert (
-            "Adding 1 replica to deployment B in application 'default'"
+            "Adding 1 replica to deployment 'B' in application 'default'"
             in output.decode("utf-8")
         )
 
