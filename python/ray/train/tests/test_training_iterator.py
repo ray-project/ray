@@ -26,8 +26,9 @@ from ray.train.trainer import TrainingIterator
 MAX_RETRIES = 3
 
 
-@pytest.fixture(autouse=True, scope="module")
+@pytest.fixture(autouse=True)
 def patch_tune_session():
+    ray.init(num_cpus=4)
     if not get_session():
         init_session(
             training_func=None,
@@ -39,13 +40,6 @@ def patch_tune_session():
             storage=mock_storage_context(),
         )
     yield
-
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
@@ -110,7 +104,7 @@ def create_iterator(
     )
 
 
-def test_run_iterator(ray_start_4_cpus):
+def test_run_iterator():
     config = BackendConfig()
 
     def train_func():
@@ -132,7 +126,7 @@ def test_run_iterator(ray_start_4_cpus):
         next(iterator)
 
 
-def test_run_iterator_error(ray_start_4_cpus):
+def test_run_iterator_error():
     config = BackendConfig()
 
     def fail_train():
@@ -151,7 +145,7 @@ def test_run_iterator_error(ray_start_4_cpus):
     assert iterator.is_finished()
 
 
-def test_worker_failure_1(ray_start_4_cpus):
+def test_worker_failure_1():
     def train_func():
         train.report({"test": 1})
 
@@ -171,7 +165,7 @@ def test_worker_failure_1(ray_start_4_cpus):
         assert all(result.metrics["test"] == 1 for result in worker_results)
 
 
-def test_worker_failure_2(ray_start_4_cpus):
+def test_worker_failure_2():
     def train_func():
         for _ in range(2):
             train.report(dict(loss=1))
@@ -194,7 +188,7 @@ def test_worker_failure_2(ray_start_4_cpus):
         assert all(result.metrics["loss"] == 1 for result in worker_results)
 
 
-def test_worker_failure_local_rank(ray_start_4_cpus):
+def test_worker_failure_local_rank():
     def train_func():
         train.report({"rank": train.get_context().get_local_rank()})
 
@@ -214,7 +208,7 @@ def test_worker_failure_local_rank(ray_start_4_cpus):
         assert {result.metrics["rank"] for result in worker_results} == {0, 1}
 
 
-def test_worker_start_failure(ray_start_4_cpus):
+def test_worker_start_failure():
     def init_hook():
         pass
 
@@ -240,7 +234,7 @@ def test_worker_start_failure(ray_start_4_cpus):
     assert len(iterator._backend_executor.get_worker_group()) == 2
 
 
-def test_max_failures(ray_start_4_cpus):
+def test_max_failures():
     def train_func():
         import sys
 
@@ -255,7 +249,7 @@ def test_max_failures(ray_start_4_cpus):
     assert iterator._backend_executor._get_num_failures() == MAX_RETRIES
 
 
-def test_start_max_failures(ray_start_4_cpus):
+def test_start_max_failures():
     def init_hook_fail():
         import sys
 
@@ -286,7 +280,7 @@ class KillCallback:
 
 
 @pytest.mark.parametrize("backend", ["test", "torch", "tf", "horovod"])
-def test_worker_kill(ray_start_4_cpus, backend):
+def test_worker_kill(backend):
     if backend == "test":
         test_config = BackendConfig()
     elif backend == "torch":
@@ -329,7 +323,7 @@ def test_worker_kill(ray_start_4_cpus, backend):
     assert kill_callback.counter == 4
 
 
-def test_tensorflow_mnist_fail(ray_start_4_cpus):
+def test_tensorflow_mnist_fail():
     """Tests if tensorflow example works even with worker failure."""
     epochs = 3
     num_workers = 2
@@ -357,7 +351,7 @@ def test_tensorflow_mnist_fail(ray_start_4_cpus):
     assert last_iter_result["accuracy"] > first_iter_result["accuracy"]
 
 
-def test_torch_linear_failure(ray_start_4_cpus):
+def test_torch_linear_failure():
     num_workers = 2
     epochs = 3
 
