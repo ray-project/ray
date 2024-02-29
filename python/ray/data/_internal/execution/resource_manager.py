@@ -1,9 +1,8 @@
-import copy
 import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -67,7 +66,7 @@ class ResourceManager:
         self._debug = DEBUG_RESOURCE_MANAGER
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
-        self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
+        self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
         ctx = DataContext.get_current()
@@ -159,28 +158,18 @@ class ResourceManager:
             return self._global_limits
 
         self._global_limits_last_update_time = time.time()
-        base = self._options.resource_limits
+        default_limits = self._options.resource_limits
         exclude = self._options.exclude_resources
         cluster = ray.cluster_resources()
-
-        cpu = base.cpu
-        if cpu is None:
-            cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
-        gpu = base.gpu
-        if gpu is None:
-            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
-        object_store_memory = base.object_store_memory
-        if object_store_memory is None:
-            object_store_memory = round(
+        cluster_resources = ExecutionResources(
+            cpu=cluster.get("CPU", 0.0),
+            gpu=cluster.get("GPU", 0.0),
+            object_store_memory=round(
                 self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
                 * cluster.get("object_store_memory", 0.0)
-            ) - (exclude.object_store_memory or 0)
-
-        self._global_limits = ExecutionResources(
-            cpu=cpu,
-            gpu=gpu,
-            object_store_memory=object_store_memory,
+            ),
         )
+        self._global_limits = default_limits.min(cluster_resources).subtract(exclude)
         return self._global_limits
 
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
@@ -397,7 +386,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
-        self._total_shared = copy.deepcopy(global_limits)
+        self._total_shared = global_limits.copy()
 
         if len(eligible_ops) == 0:
             return
@@ -412,13 +401,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # This makes sure that we will have enough budget to pull blocks from the
             # op.
             self._reserved_for_op_outputs[op] = max(
-                default_reserved.object_store_memory // 2, 1
+                default_reserved.object_store_memory / 2, 1.0
             )
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = copy.deepcopy(
-                op.incremental_resource_usage(consider_autoscaling=False)
-            )
+            min_reserved = op.incremental_resource_usage(
+                consider_autoscaling=False
+            ).copy()
             # 2. To ensure that all GPUs are utilized, reserve enough resource budget
             # to launch one task for each worker.
             if (
@@ -507,6 +496,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Add the remaining of `_reserved_for_op_outputs`.
         op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
+        res = int(res)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
             res = 1
@@ -514,7 +504,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def _get_downstream_non_map_ops(
         self, op: PhysicalOperator
-    ) -> List[PhysicalOperator]:
+    ) -> Iterable[PhysicalOperator]:
         """Get the downstream non-Map operators of the given operator.
 
         E.g.,
@@ -526,7 +516,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 yield next_op
                 yield from self._get_downstream_non_map_ops(next_op)
 
-    def _get_downstream_map_ops(self, op: PhysicalOperator) -> List[PhysicalOperator]:
+    def _get_downstream_map_ops(
+        self, op: PhysicalOperator
+    ) -> Iterable[PhysicalOperator]:
         """Get the downstream Map operators of the given operator, ignoring intermediate
         non-Map operators.
 
@@ -560,7 +552,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # exceeded `_reserved_for_op_outputs`.
             op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
-            op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
+            op_usage = self._resource_manager.get_op_usage(op).copy()
             op_usage.object_store_memory = op_mem_usage
             op_reserved = self._op_reserved[op]
             # How much of the reserved resources are remaining.
