@@ -416,8 +416,10 @@ message ReportGeneratorItemReturnsReply {
   // The total number objects consumed from the generator.
   // -1 means it is not known. The executor side should just
   // assume everything is consumed if it is -1.
+  // This is total for the generator task.
   int64 total_num_object_consumed = 1;
 }
+
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
@@ -439,7 +441,10 @@ service CoreWorkerService {
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
-  // The RPC to report the intermediate task return to the caller.
+  // Called by the executor of the generator task. The RPC to report the intermediate task return to the caller.
+  // PushTask begin
+  // [ReportGeneratorItemReturn]
+  // PushTask reply
   rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
       returns (ReportGeneratorItemReturnsReply);
   /// The pubsub command batch request used by the subscriber.

@@ -3142,6 +3142,7 @@ void CoreWorker::HandleReportGeneratorItemReturns(
                        << generator_id << ". Worker ID: " << worker_id
                        << ". Total consumed: " << total_num_object_consumed;
         if (!status.ok()) {
+          RAY_LOG(DEBUG) << "HandleReportGeneratorItemReturns error: " << status.message();
           RAY_CHECK_EQ(total_num_object_consumed, -1);
         }
 
