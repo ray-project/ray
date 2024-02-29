@@ -103,3 +103,11 @@ py_test(
         ":docker_tags_lib",
     ],
 )
+
+py_binary(
+    name = "delete_tag",
+    srcs = ["delete_tag.py"],
+    deps = [
+        ":docker_tags_lib",
+    ]
+)

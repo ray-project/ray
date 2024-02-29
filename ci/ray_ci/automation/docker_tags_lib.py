@@ -1,6 +1,6 @@
 import subprocess
-from datetime import datetime
-from typing import List, Optional, Callable, Tuple
+from datetime import datetime, timezone
+from typing import List, Optional, Callable, Tuple, Set
 import os
 from dateutil import parser
 import runfiles
@@ -72,8 +72,9 @@ def _get_git_log(n_days: int = 30) -> str:
         [
             "git",
             "log",
-            f"--until='{n_days} days ago'",
+            f"--since='{n_days} days ago'",
             "--pretty=format:%H",
+            "master",
         ],
         text=True,
     )
@@ -89,6 +90,7 @@ def _list_recent_commit_short_shas(n_days: int = 30) -> List[str]:
     Returns:
         List of recent commit SHAs (short version).
     """
+    os.chdir(bazel_workspace_dir)
     commit_shas = _get_git_log(n_days=n_days)
     short_commit_shas = [
         commit_sha[:SHA_LENGTH] for commit_sha in commit_shas.split("\n") if commit_sha
@@ -126,11 +128,13 @@ def _get_config_docker_oci(tag: str, namespace: str, repository: str):
 
 
 def _get_image_creation_time(tag: str) -> datetime:
+    print("Getting image creation time of ", tag)
     namespace, repo_tag = tag.split("/")
     repository, tag = repo_tag.split(":")
     config = _get_config_docker_oci(tag=tag, namespace=namespace, repository=repository)
     if "created" not in config:
         raise RetrieveImageConfigException("image creation time.")
+    print(config["created"])
     return parser.isoparse(config["created"])
 
 
@@ -143,6 +147,7 @@ def delete_tag(tag: str, docker_hub_token: str) -> bool:
     repository, tag_name = repo_tag.split(":")
 
     url = f"https://hub.docker.com/v2/repositories/{namespace}/{repository}/tags/{tag_name}"  # noqa E501
+    logger.info(f"Deleting tag {tag}......")
     response = requests.delete(url, headers=headers)
     if response.status_code == 429:
         raise DockerHubRateLimitException()
@@ -158,6 +163,7 @@ def query_tags_from_docker_hub(
     namespace: str,
     repository: str,
     docker_hub_token: str,
+    page_count: int,
     num_tags: Optional[int] = None,
 ) -> List[str]:
     """
@@ -181,7 +187,7 @@ def query_tags_from_docker_hub(
         "Authorization": f"Bearer {docker_hub_token}",
     }
 
-    page_count = 1
+    page_count = 2012
     while page_count:
         logger.info(f"Querying page {page_count}")
         url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count}&page_size=100"  # noqa E501
@@ -202,15 +208,15 @@ def query_tags_from_docker_hub(
         if num_tags:
             if len(filtered_tags) + len(filtered_tags_page) > num_tags:
                 filtered_tags.extend(
-                    filtered_tags_page[: num_tags - len(filtered_tags)]
+                    filtered_tags_page[:(num_tags - len(filtered_tags))]
                 )
                 break
         filtered_tags.extend(filtered_tags_page)
 
         logger.info(f"Tag count: {len(filtered_tags)}")
-        if not response_json["next"]:
+        if not response_json["previous"]:
             break
-        page_count += 1
+        page_count -= 1
     return sorted([f"{namespace}/{repository}:{t}" for t in filtered_tags])
 
 
@@ -230,10 +236,11 @@ def query_tags_from_docker_with_oci(namespace: str, repository: str) -> List[str
         "Authorization": f"Bearer {token}",
     }
     url = f"https://registry-1.docker.io/v2/{namespace}/{repository}/tags/list"
+    logger.info("Querying tags from Docker OCI......")
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
         raise Exception(f"Failed to query tags from Docker: {response.json()}")
-
+    logger.info("Queried tags from Docker OCI successfully")
     return [f"{namespace}/{repository}:{t}" for t in response.json()["tags"]]
 
 
@@ -362,3 +369,118 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
     logger.info(f"Writing to {file_path}......")
     with open(file_path, "w") as f:
         f.write("\n".join(content))
+
+def _safe_to_delete(
+    tag: str,
+    n_days: int,
+    registry_tags: List[str],
+) -> bool:
+    """
+    Check if tag is safe to delete by:
+    1. If tag's image config is not found and tag is not in the Docker Registry.
+    2. If tag's image was created more than N days ago.
+    """
+    try:
+        image_creation_time = _get_image_creation_time(tag=tag)
+    except RetrieveImageConfigException:
+        return tag not in registry_tags
+
+    time_difference = datetime.now(timezone.utc) - image_creation_time
+    if time_difference.days < n_days:
+        return False
+    return True
+
+
+def _is_old_commit_tag(tag: str, recent_commit_short_shas: Set[str]) -> bool:
+    """
+    Check if tag is:
+    1. A commit tag
+    2. Not in the list of recent commit SHAs
+    """
+    commit_hash = tag.split("-")[0]
+    # Check and truncate if prefix is a release version
+    if "." in commit_hash:
+        variables = commit_hash.split(".")
+        if not _is_release_tag(".".join(variables[:-1])):
+            return False
+        commit_hash = variables[-1]
+
+    if len(commit_hash) != 6 or commit_hash in recent_commit_short_shas:
+        return False
+
+    return True
+
+def count_docker_tags(namespace: str, repository: str) -> int:
+    """
+    Count the number of tags in a Docker repository.
+    Args:
+        namespace: Docker namespace
+        repository: Docker repository
+    
+    Returns:
+        The number of tags in the Docker repository.
+    """
+    docker_hub_token=_get_docker_hub_auth_token(
+        os.environ["DOCKER_USERNAME"],
+        os.environ["DOCKER_PASSWORD"],
+    )
+    headers = {
+        "Authorization": f"Bearer {docker_hub_token}",
+    }
+
+    page_count = 1
+    url = f"https://hub.docker.com/v2/namespaces/{namespace}/repositories/{repository}/tags?page={page_count}&page_size=1"  # noqa E501
+
+    response = requests.get(url, headers=headers)
+    response_json = response.json()
+    return response_json["count"]
+
+def delete_old_commit_tags(
+    namespace: str,
+    repository: str,
+    n_days: int,
+    num_tags: Optional[int] = None,
+) -> None:
+    """
+    Delete old commit tags with images that were created at least N days ago.
+    Args:
+        namespace: Docker namespace
+        repository: Docker repository
+        n_days: The threshold for deletion.
+            Tags with images created at least N days ago will be deleted.
+        num_tags: The max number of tags to delete.
+    """
+    count = count_docker_tags(namespace, repository)
+    page_cnt = count // 100 + 1
+    commit_short_shas = _list_recent_commit_short_shas(n_days=n_days)
+    docker_hub_token=_get_docker_hub_auth_token(
+        os.environ["DOCKER_USERNAME"],
+        os.environ["DOCKER_PASSWORD"],
+    )
+    docker_hub_tags = query_tags_from_docker_hub(
+        filter_func=lambda t: _is_old_commit_tag(
+            t,
+            commit_short_shas,
+        ),
+        namespace=namespace,
+        repository=repository,
+        docker_hub_token=docker_hub_token,
+        page_count=page_cnt,
+        num_tags=num_tags,
+    )
+    logger.info(f"Found {len(docker_hub_tags)} old commit tags to delete......")
+    registry_tags = query_tags_from_docker_with_oci(
+        namespace=namespace,
+        repository=repository,
+    )
+    formatted_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    with open(f"deleted_tags-{formatted_time}.txt", "w") as f:
+        for t in docker_hub_tags:
+            if _safe_to_delete(
+                tag=t,
+                n_days=n_days,
+                registry_tags=registry_tags,
+            ):
+                delete_tag(tag=t, docker_hub_token=docker_hub_token)
+                f.write(f"{t}\n")
+                f.flush()
