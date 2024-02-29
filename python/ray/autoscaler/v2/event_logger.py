@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 class AutoscalerEventLogger:
+    """
+    Logs events related to the autoscaler.
+
+    # TODO:
+    - Add more logging for other events.
+    - Rate limit the events if too spammy.
+    """
+
     def __init__(self, logger: EventLoggerAdapter):
         self._logger = logger
 
@@ -92,20 +100,23 @@ class AutoscalerEventLogger:
         # Log any infeasible requests.
         if infeasible_requests:
             requests_by_count = ResourceRequestUtil.group_by_count(infeasible_requests)
-            log_str = "No available node types could fulfill: "
+            log_str = "No available node types can fulfill resource requests "
             for idx, req_count in enumerate(requests_by_count):
                 resource_map = ResourceRequestUtil.to_resource_map(req_count.request)
                 log_str += f"{resource_map}*{req_count.count}"
                 if idx < len(requests_by_count) - 1:
                     log_str += ", "
 
+            log_str += (
+                ". Add suitable node types to this cluster to resolve this issue."
+            )
             self._logger.warning(log_str)
 
         if infeasible_gang_requests:
             # Log for each placement group requests.
             for gang_request in infeasible_gang_requests:
                 log_str = (
-                    "No available node types could fulfill "
+                    "No available node types can fulfill "
                     "placement group requests (detail={details}): ".format(
                         details=gang_request.details
                     )
@@ -121,6 +132,9 @@ class AutoscalerEventLogger:
                     if idx < len(requests_by_count) - 1:
                         log_str += ", "
 
+                log_str += (
+                    ". Add suitable node types to this cluster to resolve this issue."
+                )
                 self._logger.warning(log_str)
 
         if infeasible_cluster_resource_constraints:
@@ -128,7 +142,7 @@ class AutoscalerEventLogger:
             # from `request_resources()` sdk, where the most recent call would override
             # the previous one.
             for infeasible_constraint in infeasible_cluster_resource_constraints:
-                log_str = "No available node types could fulfill cluster constraint: "
+                log_str = "No available node types can fulfill cluster constraint: "
                 for i, requests_by_count in enumerate(
                     infeasible_constraint.min_bundles
                 ):
@@ -139,4 +153,7 @@ class AutoscalerEventLogger:
                     if i < len(infeasible_constraint.min_bundles) - 1:
                         log_str += ", "
 
+                log_str += (
+                    ". Add suitable node types to this cluster to resolve this issue."
+                )
                 self._logger.warning(log_str)
