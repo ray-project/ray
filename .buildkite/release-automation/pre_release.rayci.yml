@@ -17,7 +17,7 @@ steps:
     key: check-commit-hash
     job_env: forge
     commands:
-      - if [[ "${BUILDKITE_COMMIT}" != "$(git rev-parse HEAD)" ]]; then echo "Commit hash mismatch"; exit 1; else echo "Commit hash matches"; fi
+      - bash .buildkite/release-automation/check-commit-hash.sh
 
   - label: "Trigger Postmerge test"
     trigger: "postmerge"
@@ -27,7 +27,6 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        NIGHTLY: 1
         RAYCI_CONTINUOUS_BUILD: 1
   
   - label: "Trigger Release nightly test"
