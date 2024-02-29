@@ -97,9 +97,8 @@ def test_ordinal_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(UserCodeException):
-        with pytest.raises(ValueError):
-            null_encoder.transform(null_ds).materialize()
+    with pytest.raises((UserCodeException, ValueError)):
+        null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.
@@ -300,9 +299,8 @@ def test_one_hot_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(UserCodeException):
-        with pytest.raises(ValueError):
-            null_encoder.transform(null_ds).materialize()
+    with pytest.raises((UserCodeException, ValueError)):
+        null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.
@@ -410,9 +408,8 @@ def test_multi_hot_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(UserCodeException):
-        with pytest.raises(ValueError):
-            null_encoder.transform(null_ds).materialize()
+    with pytest.raises((UserCodeException, ValueError)):
+        null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.
@@ -533,9 +530,8 @@ def test_label_encoder():
     null_encoder.fit(nonnull_ds)
 
     # Verify transform fails for null values.
-    with pytest.raises(UserCodeException):
-        with pytest.raises(ValueError):
-            null_encoder.transform(null_ds).materialize()
+    with pytest.raises((UserCodeException, ValueError)):
+        null_encoder.transform(null_ds).materialize()
     null_encoder.transform(nonnull_ds)
 
     # Verify transform_batch fails for null values.
