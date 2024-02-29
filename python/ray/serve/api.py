@@ -51,7 +51,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
 
@@ -424,22 +424,6 @@ def deployment(
     # This handles both parametrized and non-parametrized usage of the
     # decorator. See the @serve.batch code for more details.
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
-
-
-@Deprecated
-def get_deployment(name: str) -> Deployment:
-    raise ValueError(
-        "serve.get_deployment is fully deprecated. Use serve.get_app_handle() to get a "
-        "handle to a running Serve application."
-    )
-
-
-@Deprecated
-def list_deployments() -> Dict[str, Deployment]:
-    raise ValueError(
-        "serve.list_deployments() is fully deprecated. Use serve.status() to get a "
-        "list of all active applications and deployments."
-    )
 
 
 @PublicAPI(stability="stable")
