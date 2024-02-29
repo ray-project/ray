@@ -491,7 +491,8 @@ class ServeControllerClient:
         all_deployments = ray.get(self._controller.list_deployment_ids.remote())
         if (
             not missing_ok
-            and DeploymentID(deployment_name, app_name) not in all_deployments
+            and DeploymentID(name=deployment_name, app_name=app_name)
+            not in all_deployments
         ):
             raise KeyError(
                 f"Deployment '{deployment_name}' in application '{app_name}' does not "

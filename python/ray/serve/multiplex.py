@@ -5,6 +5,7 @@ import time
 from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
+from ray._private.utils import get_or_create_event_loop
 from ray.serve import metrics
 from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.constants import (
@@ -112,7 +113,7 @@ class _ModelMultiplexWrapper:
         # failed to load.
         self._model_load_tasks: Set[str] = set()
 
-        self.metrics_pusher = MetricsPusher()
+        self.metrics_pusher = MetricsPusher(get_or_create_event_loop())
         self.metrics_pusher.register_or_update_task(
             self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
             self._push_model_ids_info,
@@ -140,7 +141,9 @@ class _ModelMultiplexWrapper:
             if self._push_multiplexed_replica_info:
                 _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
-                        DeploymentID(self._deployment_name, self._app_name),
+                        DeploymentID(
+                            name=self._deployment_name, app_name=self._app_name
+                        ),
                         self._replica_tag,
                         self._get_loading_and_loaded_model_ids(),
                     )
