@@ -18,6 +18,20 @@ def test_report_nodes_resources():
     reporter = AutoscalerMetricsReporter(
         AutoscalerPrometheusMetrics(session_name="test")
     )
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            max_worker_nodes=10,
+            min_worker_nodes=1,
+            resources={"CPU": 1},
+        ),
+        "type_2": NodeTypeConfig(
+            name="type_2",
+            max_worker_nodes=10,
+            min_worker_nodes=1,
+            resources={"GPU": 1},
+        ),
+    }
 
     _i = 0
 
@@ -48,7 +62,8 @@ def test_report_nodes_resources():
         create_instance(id(), status=Instance.TERMINATED, instance_type="type_1"),
         create_instance(id(), status=Instance.TERMINATED, instance_type="type_2"),
     ]
-    reporter.report_instances(instances)
+
+    reporter.report_instances(instances, node_type_configs)
 
     def _get_metrics(metrics, name) -> List[float]:
         sample_values = []
@@ -83,20 +98,6 @@ def test_report_nodes_resources():
     ) == [2]
 
     # Test that resources are reported correctly
-    node_type_configs = {
-        "type_1": NodeTypeConfig(
-            name="type_1",
-            max_worker_nodes=10,
-            min_worker_nodes=1,
-            resources={"CPU": 1},
-        ),
-        "type_2": NodeTypeConfig(
-            name="type_2",
-            max_worker_nodes=10,
-            min_worker_nodes=1,
-            resources={"GPU": 1},
-        ),
-    }
     reporter.report_resources(instances, node_type_configs)
 
     assert _get_metrics(

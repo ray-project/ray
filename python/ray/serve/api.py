@@ -1,6 +1,7 @@
 import collections
 import inspect
 import logging
+import time
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -255,6 +256,7 @@ def deployment(
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+    max_queued_requests: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
@@ -303,6 +305,11 @@ def deployment(
             deployment. The user_config must be fully JSON-serializable.
         max_concurrent_queries: Maximum number of queries that are sent to a
             replica of this deployment without receiving a response. Defaults to 100.
+        max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
+            deployment that will be queued at each *caller* (proxy or DeploymentHandle).
+            Once this limit is reached, subsequent requests will raise a
+            BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
+            requests). Defaults to -1 (no limit).
         health_check_period_s: Duration between health check calls for the replica.
             Defaults to 10s. The health check is by default a no-op Actor call to the
             replica, but you can define your own health check using the "check_health"
@@ -371,6 +378,7 @@ def deployment(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
+        max_queued_requests=max_queued_requests,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
@@ -436,7 +444,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
 
 @PublicAPI(stability="stable")
-def run(
+def _run(
     target: Application,
     _blocking: bool = True,
     name: str = SERVE_DEFAULT_APP_NAME,
@@ -445,28 +453,9 @@ def run(
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
-    The application is returned by `Deployment.bind()`. Example:
-
-    .. code-block:: python
-
-        handle = serve.run(MyDeployment.bind())
-        ray.get(handle.remote())
-
-    Args:
-        target:
-            A Serve application returned by `Deployment.bind()`.
-        name: Application name. If not provided, this will be the only
-            application running on the cluster (it will delete all others).
-        route_prefix: Route prefix for HTTP requests. If not provided, it will use
-            route_prefix of the ingress deployment. If specified neither as an argument
-            nor in the ingress deployment, the route prefix will default to '/'.
-        logging_config: Application logging config. If provided, the config will
-            be applied to all deployments which doesn't have logging config.
-
-    Returns:
-        DeploymentHandle: A handle that can be used to call the application.
+    This is only used internally with the _blocking not totally blocking the following
+    code indefinitely until Ctrl-C'd.
     """
-
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
@@ -528,6 +517,56 @@ def run(
         client._wait_for_deployment_created(ingress.name, name)
         handle = client.get_handle(ingress.name, name, missing_ok=True)
         return handle
+
+
+@PublicAPI(stability="stable")
+def run(
+    target: Application,
+    blocking: bool = False,
+    name: str = SERVE_DEFAULT_APP_NAME,
+    route_prefix: str = DEFAULT.VALUE,
+    logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+) -> DeploymentHandle:
+    """Run an application and return a handle to its ingress deployment.
+
+    The application is returned by `Deployment.bind()`. Example:
+
+    .. code-block:: python
+
+        handle = serve.run(MyDeployment.bind())
+        ray.get(handle.remote())
+
+    Args:
+        target:
+            A Serve application returned by `Deployment.bind()`.
+        blocking: Whether this call should be blocking. If True, it
+            will loop and log status until Ctrl-C'd.
+        name: Application name. If not provided, this will be the only
+            application running on the cluster (it will delete all others).
+        route_prefix: Route prefix for HTTP requests. If not provided, it will use
+            route_prefix of the ingress deployment. If specified neither as an argument
+            nor in the ingress deployment, the route prefix will default to '/'.
+        logging_config: Application logging config. If provided, the config will
+            be applied to all deployments which doesn't have logging config.
+
+    Returns:
+        DeploymentHandle: A handle that can be used to call the application.
+    """
+    handle = _run(
+        target=target,
+        name=name,
+        route_prefix=route_prefix,
+        logging_config=logging_config,
+    )
+
+    if blocking:
+        try:
+            while True:
+                # Block, letting Ray print logs to the terminal.
+                time.sleep(10)
+        except KeyboardInterrupt:
+            logger.info("Got KeyboardInterrupt, release blocking...")
+    return handle
 
 
 @PublicAPI(stability="stable")

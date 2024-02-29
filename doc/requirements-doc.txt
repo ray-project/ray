@@ -22,6 +22,9 @@ autodoc_pydantic==1.9.0
 
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 
+# Needed for rendering ray-core/api/cli.rst
+protobuf==4.23.2
+
 # MyST
 myst-parser==2.0.0 # Needed to parse markdown
 myst-nb==1.0.0rc0 # Most recent version of myst-nb; pin when new release is made

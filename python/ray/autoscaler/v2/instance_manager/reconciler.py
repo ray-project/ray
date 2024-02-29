@@ -1,11 +1,10 @@
 import logging
 import math
 import time
-from abc import ABC, abstractmethod
+import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.protobuf_compat import message_to_dict
 from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
@@ -47,141 +46,6 @@ from ray.core.generated.instance_manager_pb2 import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class IInstanceUpdater(ABC):
-    """
-    An interface to for making instance update.
-    """
-
-    @abstractmethod
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        """
-        Make an instance update for the instance.
-
-        Args:
-            instance: The instance to make update.
-
-        Returns:
-            The instance update event if there's an update. None otherwise.
-        """
-        raise NotImplementedError
-
-
-class TimeoutInstanceUpdater(IInstanceUpdater):
-    """
-    An instance updater that updates the instance to a new status if it's stuck in the
-    current status for too long.
-    """
-
-    def __init__(
-        self,
-        cur_status: IMInstance.InstanceStatus,
-        timeout_s: int,
-        new_status: Optional["IMInstance.InstanceStatus"] = None,
-    ):
-        """
-        Args:
-            cur_status: The current status of the instance.
-            timeout_s: The timeout in seconds.
-            new_status: The new status to transition to if the instance is stuck in the
-                current status for too long.
-        """
-        self.cur_status = cur_status
-        self.timeout_s = timeout_s
-        self.new_status = new_status
-
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        if InstanceUtil.has_timeout(instance, self.timeout_s):
-            update = IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=self.new_status,
-                details=(
-                    f"Timeout={self.timeout_s}s at status "
-                    f"{IMInstance.InstanceStatus.Name(self.cur_status)}"
-                ),
-            )
-
-            # Add status specific metadata
-            if self.new_status == IMInstance.TERMINATING:
-                update.cloud_instance_id = instance.cloud_instance_id
-
-            return update
-        return None
-
-
-class StuckRequestedInstanceUpdater(IInstanceUpdater):
-    """
-    An instance updater that makes updates for instances stuck in the REQUESTED status
-    for too long.
-    """
-
-    def __init__(
-        self,
-        timeout_s: int,
-        max_num_request_to_allocate: int,
-    ):
-        """
-        Args:
-            timeout_s: The timeout in seconds.
-            max_num_request_to_allocate: The maximum number of times an instance
-                could be requested to allocate.
-        """
-        self.max_num_request_to_allocate = max_num_request_to_allocate
-        self.timeout_s = timeout_s
-
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        if not InstanceUtil.has_timeout(instance, self.timeout_s):
-            # Not timeout yet, be patient.
-            return None
-
-        all_request_times_ns = sorted(
-            InstanceUtil.get_status_transition_times_ns(
-                instance, select_instance_status=IMInstance.REQUESTED
-            )
-        )
-
-        # Fail the allocation if we have tried too many times.
-        if len(all_request_times_ns) >= self.max_num_request_to_allocate:
-            return IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=IMInstance.ALLOCATION_FAILED,
-                details=(
-                    "Failed to allocate cloud instance after "
-                    f"{len(all_request_times_ns)} attempts"
-                ),
-            )
-
-        # Retry the allocation if we could by transitioning to QUEUED again.
-        return IMInstanceUpdateEvent(
-            instance_id=instance.instance_id,
-            new_instance_status=IMInstance.QUEUED,
-            details=f"QUEUED again after timeout={self.timeout_s}s",
-        )
-
-
-class StuckRayStopRequestedInstanceUpdater(IInstanceUpdater):
-    """
-    An instance updater that makes updates for instances stuck in the RAY_STOP_REQUESTED
-    status for too long. It transitions the instance back to RAY_RUNNING.
-    """
-
-    def __init__(self, timeout_s: int):
-        self.timeout_s = timeout_s
-
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        if not InstanceUtil.has_timeout(instance, self.timeout_s):
-            # Not timeout yet, be patient.
-            return None
-
-        # Transition back to RAY_RUNNING if we have waited for too long.
-        return IMInstanceUpdateEvent(
-            instance_id=instance.instance_id,
-            new_instance_status=IMInstance.RAY_RUNNING,
-            details=f"Timeout={self.timeout_s}s at status "
-            f"{IMInstance.InstanceStatus.Name(IMInstance.RAY_STOP_REQUESTED)}",
-            ray_node_id=instance.node_id,
-        )
 
 
 class Reconciler:
@@ -228,7 +92,7 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
-            metric_reporter: The metric reporter to report the autoscaler metrics.
+            metrics_reporter: The metric reporter to report the autoscaler metrics.
             _logger: The logger (for testing).
 
         """
@@ -267,57 +131,6 @@ class Reconciler:
         )
 
         return autoscaling_state
-
-    @staticmethod
-    def initialize_head_node(
-        instance_manager: InstanceManager,
-        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
-    ):
-        """
-        Initialize the head node for the instance manager.
-
-        This is needed since the head node is not managed by the instance manager
-        as of now and needs to be initialized separately.
-
-        This should be called when the autoscaler is first started.
-
-        Args:
-            instance_manager: The instance manager to reconcile.
-            non_terminated_cloud_instances: The non-terminated cloud instances from
-                the cloud provider.
-        """
-        head_cloud_instance = None
-        for cloud_instance in non_terminated_cloud_instances.values():
-            if cloud_instance.node_kind == NodeKind.HEAD:
-                head_cloud_instance = cloud_instance
-                break
-
-        assert head_cloud_instance, (
-            "Head node is not found. Make sure the head node "
-            "is started with RAY_CLOUD_INSTANCE_ID set, and it has the needed labels "
-            "specified in ray/autoscaler/tags.py ."
-        )
-
-        # Initialize the head node for the instance manager.
-        updates = {}
-        head_node_instance_id = InstanceUtil.random_instance_id()
-        updates[head_node_instance_id] = IMInstanceUpdateEvent(
-            instance_id=head_node_instance_id,
-            new_instance_status=IMInstance.ALLOCATED,
-            cloud_instance_id=head_cloud_instance.cloud_instance_id,
-            node_kind=head_cloud_instance.node_kind,
-            instance_type=head_cloud_instance.node_type,
-        )
-        logger.info(
-            "Initializing head node with {}.".format(
-                message_to_dict(updates[head_node_instance_id])
-            )
-        )
-        instances, version = Reconciler._get_im_instances(instance_manager)
-        assert len(instances) == 0, "No instance should have been initialized. "
-        Reconciler._update_instance_manager(
-            instance_manager, version=version, updates=updates
-        )
 
     @staticmethod
     def _sync_from(
@@ -386,11 +199,16 @@ class Reconciler:
         Reconciler._handle_cloud_instance_terminated(
             instance_manager, non_terminated_cloud_instances
         )
-        Reconciler._handle_ray_status_transition(instance_manager, ray_nodes)
 
         Reconciler._handle_cloud_instance_termination_errors(
             instance_manager, cloud_provider_errors
         )
+
+        Reconciler._handle_extra_cloud_instances(
+            instance_manager, non_terminated_cloud_instances
+        )
+
+        Reconciler._handle_ray_status_transition(instance_manager, ray_nodes)
 
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
@@ -441,10 +259,6 @@ class Reconciler:
 
         """
 
-        Reconciler._handle_extra_cloud_instances(
-            instance_manager, non_terminated_cloud_instances
-        )
-
         Reconciler._handle_stuck_instances(
             instance_manager=instance_manager,
             reconcile_config=autoscaling_config.get_instance_reconcile_config(),
@@ -464,7 +278,7 @@ class Reconciler:
         )
 
         Reconciler._terminate_instances(instance_manager=instance_manager)
-        if not autoscaling_config.skip_ray_install():
+        if not autoscaling_config.disable_node_updaters():
             Reconciler._install_ray(
                 instance_manager=instance_manager,
                 non_terminated_cloud_instances=non_terminated_cloud_instances,
@@ -488,11 +302,16 @@ class Reconciler:
         updates = {}
 
         # Compute intermediate states.
-        instances_with_launch_requests: List[IMInstance] = [
-            instance
-            for instance in im_instances
-            if InstanceUtil.is_launch_requested(instance)
-        ]
+
+        instances_with_launch_requests: List[IMInstance] = []
+        for instance in im_instances:
+            if instance.status != IMInstance.REQUESTED:
+                continue
+
+            assert (
+                instance.launch_request_id
+            ), "Instance in REQUESTED status should have launch_request_id set."
+            instances_with_launch_requests.append(instance)
 
         assigned_cloud_instance_ids: Set[CloudInstanceId] = {
             instance.cloud_instance_id for instance in im_instances
@@ -528,13 +347,6 @@ class Reconciler:
             if not update_event:
                 continue
 
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(update_event),
-                )
-            )
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
@@ -580,6 +392,10 @@ class Reconciler:
                 cloud_instance_id=unassigned_cloud_instance.cloud_instance_id,
                 node_kind=unassigned_cloud_instance.node_kind,
                 instance_type=unassigned_cloud_instance.node_type,
+                details=(
+                    "allocated unassigned cloud instance "
+                    f"{unassigned_cloud_instance.cloud_instance_id}"
+                ),
             )
 
         # If there's a launch error, transition to ALLOCATION_FAILED.
@@ -588,7 +404,7 @@ class Reconciler:
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
-                details=str(launch_error),
+                details=f"launch failed with {str(launch_error)}",
             )
         # No update.
         return None
@@ -643,15 +459,8 @@ class Reconciler:
             updates[instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance_id,
                 new_instance_status=IMInstance.RAY_RUNNING,
-                details="Failed to stop/drain ray.",
+                details="failed to stop/drain ray",
                 ray_node_id=instance.node_id,
-            )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance_id]),
-                )
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -681,14 +490,7 @@ class Reconciler:
                 updates[instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_INSTALL_FAILED,
-                    details=install_error.details,
-                )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance_id]),
-                    )
+                    details=f"failed to install ray with errors: {install_error.details}",
                 )
 
         # Update the instance manager for the events.
@@ -711,7 +513,7 @@ class Reconciler:
         updates = {}
         instances, version = Reconciler._get_im_instances(instance_manager)
 
-        instances_with_cloud_instance_assigned = {
+        non_terminated_instances_with_cloud_instance_assigned = {
             instance.cloud_instance_id: instance
             for instance in instances
             if instance.cloud_instance_id and instance.status != IMInstance.TERMINATED
@@ -720,7 +522,7 @@ class Reconciler:
         for (
             cloud_instance_id,
             instance,
-        ) in instances_with_cloud_instance_assigned.items():
+        ) in non_terminated_instances_with_cloud_instance_assigned.items():
             if cloud_instance_id in non_terminated_cloud_instances.keys():
                 # The cloud instance is still running.
                 continue
@@ -729,15 +531,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATED,
-                details=f"Cloud instance {cloud_instance_id} is terminated.",
-            )
-
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details=f"cloud instance {cloud_instance_id} no longer found",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -783,14 +577,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATION_FAILED,
-                details=str(failure),
-            )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details=f"termination failed: {str(failure)}",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -870,15 +657,12 @@ class Reconciler:
                 )
 
         for cloud_instance_id, ray_node in ray_nodes_by_cloud_instance_id.items():
-            if cloud_instance_id not in im_instances_by_cloud_instance_id:
-                # This is a ray node that's not managed by the instance manager.
-                # or we haven't discovered the instance yet. There's nothing
-                # much we could do here.
-                logger.info(
-                    f"Ray node {binary_to_hex(ray_node.node_id)} has no matching "
-                    f"instance with cloud instance id={cloud_instance_id}."
-                )
-                continue
+            assert cloud_instance_id in im_instances_by_cloud_instance_id, (
+                f"Ray node {binary_to_hex(ray_node.node_id)} has no matching "
+                f"instance with cloud instance id={cloud_instance_id}. We should "
+                "not see a ray node with cloud instance id not found in IM since "
+                "we have reconciled all cloud instances, and ray nodes by now."
+            )
 
             im_instance = im_instances_by_cloud_instance_id[cloud_instance_id]
             reconciled_im_status = Reconciler._reconciled_im_status_from_ray_status(
@@ -889,17 +673,11 @@ class Reconciler:
                 updates[im_instance.instance_id] = IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=reconciled_im_status,
-                    details="Reconciled from ray node status "
-                    f"{NodeStatus.Name(ray_node.status)} "
-                    f"for ray node {binary_to_hex(ray_node.node_id)}",
+                    details=(
+                        f"ray node {binary_to_hex(ray_node.node_id)} is "
+                        f"{NodeStatus.Name(ray_node.status)}"
+                    ),
                     ray_node_id=binary_to_hex(ray_node.node_id),
-                )
-                logger.debug(
-                    "Updating {}({}) with {}.".format(
-                        im_instance.instance_id,
-                        IMInstance.InstanceStatus.Name(im_instance.status),
-                        message_to_dict(updates[im_instance.instance_id]),
-                    )
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -979,7 +757,7 @@ class Reconciler:
                 # Reuse launch request id for any QUEUED instances that have been
                 # requested before due to retry.
                 launch_request_id = (
-                    str(time.time_ns())
+                    str(uuid.uuid4())
                     if len(instance.launch_request_id) == 0
                     else instance.launch_request_id
                 )
@@ -988,13 +766,10 @@ class Reconciler:
                     new_instance_status=IMInstance.REQUESTED,
                     launch_request_id=launch_request_id,
                     instance_type=instance_type,
-                )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance.instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance.instance_id]),
-                    )
+                    details=(
+                        f"requested to launch {instance_type} with request id "
+                        f"{launch_request_id}"
+                    ),
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1110,72 +885,71 @@ class Reconciler:
             instances_by_status[instance.status].append(instance)
 
         im_updates = {}
-        for status, updater in [
-            # Fail or retry the cloud instance allocation if it's stuck
-            # in the REQUESTED state.
-            (
-                IMInstance.REQUESTED,
-                StuckRequestedInstanceUpdater(
-                    max_num_request_to_allocate=reconcile_config.max_num_retry_request_to_allocate,  # noqa
-                    timeout_s=reconcile_config.request_status_timeout_s,
-                ),
-            ),
-            # Leaked ALLOCATED instances should be terminated.
-            # This usually happens when ray fails to be started on the instance, so
-            # it's unable to be RAY_RUNNING after a long time.
-            (
-                IMInstance.ALLOCATED,
-                TimeoutInstanceUpdater(
-                    new_status=IMInstance.TERMINATING,
-                    cur_status=IMInstance.ALLOCATED,
-                    timeout_s=reconcile_config.allocate_status_timeout_s,
-                ),
-            ),
-            # Fail the installation if it's stuck in RAY_INSTALLING for too long.
-            # If RAY_INSTALLING is stuck for too long, it's likely that the instance
-            # is not able to install ray, so we should also fail the installation.
-            (
-                IMInstance.RAY_INSTALLING,
-                TimeoutInstanceUpdater(
-                    new_status=IMInstance.RAY_INSTALL_FAILED,
-                    cur_status=IMInstance.RAY_INSTALLING,
-                    timeout_s=reconcile_config.ray_install_status_timeout_s,
-                ),
-            ),
-            # If we tried to terminate the instance, but it doesn't terminate (disappear
-            # from the cloud provider) after a long time, we fail the termination.
-            # This will trigger another attempt to terminate the instance.
-            (
-                IMInstance.TERMINATING,
-                TimeoutInstanceUpdater(
-                    new_status=IMInstance.TERMINATION_FAILED,
-                    cur_status=IMInstance.TERMINATING,
-                    timeout_s=reconcile_config.terminating_status_timeout_s,
-                ),
-            ),
-            # If we tried to stop ray on the instance, but it doesn't stop after a long
-            # time, we will transition it back to RAY_RUNNING as the stop/drain somehow
-            # failed. If it had succeed, we should have transition it to RAY_STOPPING
-            # or RAY_STOPPED.
-            (
-                IMInstance.RAY_STOP_REQUESTED,
-                StuckRayStopRequestedInstanceUpdater(
-                    timeout_s=reconcile_config.ray_stop_requested_status_timeout_s
-                ),
-            ),
-        ]:
-            for instance in instances_by_status[status]:
-                update = updater.make_update(instance)
-                if not update:
-                    continue
+
+        # Fail or retry the cloud instance allocation if it's stuck
+        # in the REQUESTED state.
+        for instance in instances_by_status[IMInstance.REQUESTED]:
+            update = Reconciler._handle_stuck_requested_instance(
+                instance,
+                reconcile_config.request_status_timeout_s,
+                reconcile_config.max_num_retry_request_to_allocate,
+            )
+            if update:
                 im_updates[instance.instance_id] = update
-                logger.info(
-                    "Updating {}({}) with {}".format(
-                        instance.instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(im_updates[instance.instance_id]),
-                    )
-                )
+
+        # Leaked ALLOCATED instances should be terminated.
+        # This usually happens when ray fails to be started on the instance, so
+        # it's unable to be RAY_RUNNING after a long time.
+        for instance in instances_by_status[IMInstance.ALLOCATED]:
+            assert (
+                instance.cloud_instance_id
+            ), "cloud instance id should be set on ALLOCATED instance"
+            update = Reconciler._handle_stuck_instance(
+                instance,
+                reconcile_config.allocate_status_timeout_s,
+                new_status=IMInstance.TERMINATING,
+                cloud_instance_id=instance.cloud_instance_id,
+            )
+            if update:
+                im_updates[instance.instance_id] = update
+
+        # Fail the installation if it's stuck in RAY_INSTALLING for too long.
+        # If RAY_INSTALLING is stuck for too long, it's likely that the instance
+        # is not able to install ray, so we should also fail the installation.
+        for instance in instances_by_status[IMInstance.RAY_INSTALLING]:
+            update = Reconciler._handle_stuck_instance(
+                instance,
+                reconcile_config.ray_install_status_timeout_s,
+                new_status=IMInstance.RAY_INSTALL_FAILED,
+            )
+            if update:
+                im_updates[instance.instance_id] = update
+
+        # If we tried to terminate the instance, but it doesn't terminate (disappear
+        # from the cloud provider) after a long time, we fail the termination.
+        # This will trigger another attempt to terminate the instance.
+        for instance in instances_by_status[IMInstance.TERMINATING]:
+            update = Reconciler._handle_stuck_instance(
+                instance,
+                reconcile_config.terminating_status_timeout_s,
+                new_status=IMInstance.TERMINATION_FAILED,
+            )
+            if update:
+                im_updates[instance.instance_id] = update
+
+        # If we tried to stop ray on the instance, but it doesn't stop after a long
+        # time, we will transition it back to RAY_RUNNING as the stop/drain somehow
+        # failed. If it had succeed, we should have transitioned it to RAY_STOPPING
+        # or RAY_STOPPED.
+        for instance in instances_by_status[IMInstance.RAY_STOP_REQUESTED]:
+            update = Reconciler._handle_stuck_instance(
+                instance,
+                reconcile_config.ray_stop_requested_status_timeout_s,
+                new_status=IMInstance.RAY_RUNNING,
+                ray_node_id=instance.node_id,
+            )
+            if update:
+                im_updates[instance.instance_id] = update
 
         # These statues could be unbounded or transient, and we don't have a timeout
         # mechanism to handle them. We only warn if they are stuck for too long.
@@ -1227,6 +1001,29 @@ class Reconciler:
                         (time.time_ns() - status_time_ns) // 1e9,
                     )
                 )
+
+    @staticmethod
+    def _is_head_node_running(instance_manager: InstanceManager) -> bool:
+        """
+        Check if the head node is running and ready.
+
+        If we scale up the cluster before head node is running,
+        it would cause issues when launching the worker nodes.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+
+        Returns:
+            True if the head node is running and ready, False otherwise.
+        """
+
+        im_instances, _ = Reconciler._get_im_instances(instance_manager)
+
+        for instance in im_instances:
+            if instance.node_kind == NodeKind.HEAD:
+                if instance.status == IMInstance.RAY_RUNNING:
+                    return True
+        return False
 
     @staticmethod
     def _scale_cluster(
@@ -1304,6 +1101,11 @@ class Reconciler:
             reply.infeasible_cluster_resource_constraints
         )
 
+        if not Reconciler._is_head_node_running(instance_manager):
+            # We shouldn't be scaling the cluster until the head node is ready.
+            return
+
+        # Scale the clusters if needed.
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
         updates = {}
@@ -1311,14 +1113,15 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            instance = instances_by_id.get(instance_id)
-            assert instance, f"Instance {instance_id} not found in instance manager."
-            if autoscaling_config.need_ray_stop():
+            instance = instances_by_id[instance_id]
+
+            if autoscaling_config.worker_rpc_drain():
                 # If we would need to stop/drain ray.
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_STOP_REQUESTED,
                     termination_request=terminate_request,
+                    details=f"draining ray: {terminate_request.details}",
                 )
             else:
                 # If we would just terminate the cloud instance.
@@ -1329,13 +1132,11 @@ class Reconciler:
                     instance_id=instance_id,
                     new_instance_status=IMInstance.TERMINATING,
                     cloud_instance_id=instance.cloud_instance_id,
+                    details=(
+                        "terminating cloud instance without draining ray -"
+                        f"{terminate_request.details}"
+                    ),
                 )
-            logger.info(
-                "Terminating {} with {}".format(
-                    instance_id,
-                    message_to_dict(updates[instance_id]),
-                )
-            )
 
         # Add new instances.
         for launch_request in to_launch:
@@ -1345,12 +1146,11 @@ class Reconciler:
                     instance_id=instance_id,
                     new_instance_status=IMInstance.QUEUED,
                     instance_type=launch_request.instance_type,
-                )
-
-                logger.info(
-                    "Queueing new instance {} of type {}".format(
-                        instance_id, launch_request.instance_type
-                    )
+                    upsert=True,
+                    details=(
+                        f"queuing new instance of {launch_request.instance_type} "
+                        "from scheduler"
+                    ),
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1380,14 +1180,12 @@ class Reconciler:
                 continue
 
             # Terminate the instance.
-            logger.info(
-                f"Terminating instance {instance.instance_id} with status "
-                f"{IMInstance.InstanceStatus.Name(instance.status)}"
-            )
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATING,
                 cloud_instance_id=instance.cloud_instance_id,
+                details="terminating instance from "
+                f"{IMInstance.InstanceStatus.Name(instance.status)}",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1413,6 +1211,10 @@ class Reconciler:
             if instance.status != IMInstance.ALLOCATED:
                 continue
 
+            if instance.node_kind == NodeKind.HEAD:
+                # Skip head node.
+                continue
+
             cloud_instance = non_terminated_cloud_instances.get(
                 instance.cloud_instance_id
             )
@@ -1430,13 +1232,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.RAY_INSTALLING,
-            )
-            logger.info(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details="installing ray",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1533,20 +1329,108 @@ class Reconciler:
             )
 
     @staticmethod
+    def _handle_stuck_requested_instance(
+        instance: IMInstance, timeout_s: int, max_num_retry_request_to_allocate: int
+    ) -> Optional[IMInstanceUpdateEvent]:
+        """
+        Fail the cloud instance allocation if it's stuck in the REQUESTED state.
+
+        Args:
+            instance: The instance to handle.
+            timeout_s: The timeout in seconds.
+            max_num_retry_request_to_allocate: The maximum number of times an instance
+                could be requested to allocate.
+
+        Returns:
+            Instance update to ALLOCATION_FAILED: if the instance allocation failed
+                with errors.
+            None: if there's no update.
+
+        """
+        if not InstanceUtil.has_timeout(instance, timeout_s):
+            # Not timeout yet, be patient.
+            return None
+
+        all_request_times_ns = sorted(
+            InstanceUtil.get_status_transition_times_ns(
+                instance, select_instance_status=IMInstance.REQUESTED
+            )
+        )
+
+        # Fail the allocation if we have tried too many times.
+        if len(all_request_times_ns) > max_num_retry_request_to_allocate:
+            return IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.ALLOCATION_FAILED,
+                details=(
+                    "failed to allocate cloud instance after "
+                    f"{len(all_request_times_ns)} attempts > "
+                    f"max_num_retry_request_to_allocate={max_num_retry_request_to_allocate}"  # noqa
+                ),
+            )
+
+        # Retry the allocation if we could by transitioning to QUEUED again.
+        return IMInstanceUpdateEvent(
+            instance_id=instance.instance_id,
+            new_instance_status=IMInstance.QUEUED,
+            details=f"queue again to launch after timeout={timeout_s}s",
+        )
+
+    @staticmethod
+    def _handle_stuck_instance(
+        instance: IMInstance,
+        timeout_s: int,
+        new_status: IMInstance.InstanceStatus,
+        **update_kwargs: Dict,
+    ) -> Optional[IMInstanceUpdateEvent]:
+        """
+        Fail the instance if it's stuck in the status for too long.
+
+        Args:
+            instance: The instance to handle.
+            timeout_s: The timeout in seconds.
+            new_status: The new status to transition to.
+            update_kwargs: The update kwargs for InstanceUpdateEvent
+
+        Returns:
+            Instance update to the new status: if the instance is stuck in the status
+                for too long.
+            None: if there's no update.
+
+        """
+        if not InstanceUtil.has_timeout(instance, timeout_s):
+            # Not timeout yet, be patient.
+            return None
+
+        return IMInstanceUpdateEvent(
+            instance_id=instance.instance_id,
+            new_instance_status=new_status,
+            details=f"Timeout={timeout_s}s at status "
+            f"{IMInstance.InstanceStatus.Name(instance.status)}",
+            **update_kwargs,
+        )
+
+    @staticmethod
     def _handle_extra_cloud_instances(
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
         """
-        Shut down extra cloud instances that are not managed by the instance manager.
+        For extra cloud instances (i.e. cloud instances that are non terminated as
+        returned by cloud provider, but not managed by the instance manager), we
+        will create new IM instances with ALLOCATED status.
 
-        Since we have sync the IM states with the cloud provider's states in
-        earlier step (`sync_from`), each non terminated cloud instance should either
-        be:
-            1. assigned to a newly ALLOCATED im instance
-            2. already associated with an im instance that's running/terminating.
-
-        Any cloud instance that's not managed by the IM should be considered leak.
+        Such instances could either be:
+            1. Leaked instances that are incorrectly started by the cloud instance
+            provider, and they would be terminated eventually if they fail to
+            transition to RAY_RUNNING by stuck instances reconciliation, or they
+            would join the  ray cluster and be terminated when the cluster scales down.
+            2. Instances that are started by the cloud instance provider intentionally
+            but not yet discovered by the instance manager. This could happen for
+               a. Head node that's started before the autoscaler.
+               b. Worker nodes that's started by the cloud provider upon users'
+               actions: i.e. KubeRay scaling up the cluster with ray cluster config
+               change.
 
         Args:
             instance_manager: The instance manager to reconcile.
@@ -1561,33 +1445,34 @@ class Reconciler:
             if instance.cloud_instance_id
         }
 
-        leaked_cloud_instance_ids = []
-        for cloud_instance_id, _ in non_terminated_cloud_instances.items():
+        extra_cloud_instances: Dict[str, CloudInstance] = {}
+        for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
                 continue
 
-            leaked_cloud_instance_ids.append(cloud_instance_id)
+            extra_cloud_instances[cloud_instance_id] = cloud_instance
 
-        if not leaked_cloud_instance_ids:
+        if not extra_cloud_instances:
             return
 
         # Update the IM with TERMINATING status for the leaked cloud instances.
         updates = {}
 
-        for cloud_instance_id in leaked_cloud_instance_ids:
+        for cloud_instance_id, cloud_instance in extra_cloud_instances.items():
             updates[cloud_instance_id] = IMInstanceUpdateEvent(
                 instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
                 cloud_instance_id=cloud_instance_id,
-                new_instance_status=IMInstance.TERMINATING,
-                details="Leaked cloud instance",
+                new_instance_status=IMInstance.ALLOCATED,
+                node_kind=cloud_instance.node_kind,
+                instance_type=cloud_instance.node_type,
+                details=(
+                    f"allocated unmanaged cloud instance {cloud_instance.cloud_instance_id} "
+                    f"({NodeKind.Name(cloud_instance.node_kind)}) from cloud provider"
+                ),
+                upsert=True,
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
-
-        logger.warning(
-            f"Terminating leaked cloud instances: {leaked_cloud_instance_ids}: no"
-            " matching instance found in instance manager."
-        )
 
     @staticmethod
     def _report_metrics(
@@ -1601,5 +1486,5 @@ class Reconciler:
         instances, _ = Reconciler._get_im_instances(instance_manager)
         node_type_configs = autoscaling_config.get_node_type_configs()
 
-        metrics_reporter.report_instances(instances)
+        metrics_reporter.report_instances(instances, node_type_configs)
         metrics_reporter.report_resources(instances, node_type_configs)

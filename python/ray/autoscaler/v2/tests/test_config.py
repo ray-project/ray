@@ -128,7 +128,7 @@ def test_node_type_configs():
     node_type_configs = config.get_node_type_configs()
     assert config.get_max_num_worker_nodes() == 10
     assert len(node_type_configs) == 4
-    assert node_type_configs["head_node"].max_worker_nodes == 0
+    assert node_type_configs["head_node"].max_worker_nodes == 1
     assert node_type_configs["head_node"].min_worker_nodes == 0
     assert node_type_configs["head_node"].resources == {}
     assert node_type_configs["head_node"].labels == {}

@@ -20,7 +20,7 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
     return False
 
 
-@pytest.mark.parametrize("autoscaler_v2", [True, False], ids=["v2", "v1"])
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_autoscaler_no_churn(autoscaler_v2):
     num_cpus_per_node = 4
     expected_nodes = 6
@@ -104,7 +104,7 @@ print("end")
 #  node B: 0 pending task, but **CPU used = 1**
 #
 @pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
-@pytest.mark.parametrize("autoscaler_v2", [True, False], ids=["v2", "v1"])
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_scheduled_task_no_pending_demand(mode, autoscaler_v2):
 
     # So that head node will need to dispatch tasks to worker node.
@@ -172,7 +172,7 @@ while True:
         cluster.shutdown()
 
 
-@pytest.mark.parametrize("autoscaler_v2", [True, False], ids=["v2", "v1"])
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_placement_group_consistent(autoscaler_v2):
     # Test that continuously creating and removing placement groups
     # does not leak pending resource requests.
@@ -242,7 +242,7 @@ while True:
         cluster.shutdown()
 
 
-@pytest.mark.parametrize("autoscaler_v2", [True, False], ids=["v2", "v1"])
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_placement_group_removal_idle_node(autoscaler_v2):
     # Test that nodes become idle after placement group removal.
     cluster = AutoscalingCluster(
@@ -323,7 +323,7 @@ def test_object_store_memory_idle_node(shutdown_only):
     wait_for_condition(verify)
 
 
-@pytest.mark.parametrize("autoscaler_v2", [True, False], ids=["v2", "v1"])
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_serve_num_replica_idle_node(autoscaler_v2):
     # Test that nodes become idle after serve scaling down.
     cluster = AutoscalingCluster(
@@ -402,7 +402,7 @@ def test_serve_num_replica_idle_node(autoscaler_v2):
         cluster.shutdown()
 
 
-@pytest.mark.parametrize("autoscaler_v2", [True], ids=["v2"])
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_non_corrupted_resources(autoscaler_v2):
     """
     Test that when node's local gc happens due to object store pressure,

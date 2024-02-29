@@ -297,9 +297,6 @@ The `CI`_ test folder contains all integration test scripts and they
 invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
 
-* Raylet integration tests commands:
-    * ``bazel test //:core_worker_test``
-
 * Bazel test command:
     * ``bazel test --build_tests_only //:all``
 

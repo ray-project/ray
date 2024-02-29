@@ -16,7 +16,6 @@ from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -151,27 +150,6 @@ def local_path(tmp_path, data_dir):
 @pytest.fixture(scope="function")
 def local_fs():
     yield pa.fs.LocalFileSystem()
-
-
-@pytest.fixture(scope="function")
-def mock_block_write_path_provider():
-    class MockBlockWritePathProvider(BlockWritePathProvider):
-        def _get_write_path_for_block(
-            self,
-            base_path,
-            *,
-            filesystem=None,
-            dataset_uuid=None,
-            task_index=None,
-            block_index=None,
-            file_format=None,
-        ):
-            suffix = (
-                f"{task_index:06}_{block_index:06}_{dataset_uuid}.test.{file_format}"
-            )
-            return posixpath.join(base_path, suffix)
-
-    yield MockBlockWritePathProvider()
 
 
 @pytest.fixture(scope="function")

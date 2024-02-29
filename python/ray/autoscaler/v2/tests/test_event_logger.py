@@ -76,7 +76,7 @@ def test_log_scheduling_updates():
         infeasible_gang_requests=[
             GangResourceRequest(requests=reqs) for reqs in gang_resource_requests
         ],
-        infeasible_constraints=[
+        infeasible_cluster_resource_constraints=[
             ClusterResourceConstraint(
                 min_bundles=ResourceRequestUtil.group_by_count(
                     cluster_resource_constraints
@@ -101,15 +101,17 @@ def test_log_scheduling_updates():
     )
 
     assert mock_logger.get_logs("info") == [
-        "Adding 2 m4.large, 2 m4.xlarge.",
-        "Terminating 1 nodes because they are idle, 1 nodes because they are outdated.",  # noqa
+        "Adding 2 node(s) of type m4.large.",
+        "Adding 2 node(s) of type m4.xlarge.",
+        "Removing 1 nodes of type m4.large (idle).",
+        "Removing 1 nodes of type m4.xlarge (outdated).",
         "Resized to 5 CPUs, 5 GPUs, 2 TPUs.",
     ]
 
     assert mock_logger.get_logs("warning") == [
-        "No available node types could fulfill: {'CPU': 4.0, 'GPU': 1.0}*100, {'CPU': 4.0}*1",  # noqa
-        "No available node types could fulfill placement group requests (detail=): {'CPU': 4.0, 'GPU': 1.0}*2",  # noqa
-        "No available node types could fulfill cluster constraint: {'CPU': 1.0, 'GPU': 1.0}*100",  # noqa
+        "No available node types can fulfill resource requests {'CPU': 4.0, 'GPU': 1.0}*100, {'CPU': 4.0}*1. Add suitable node types to this cluster to resolve this issue.",  # noqa
+        "No available node types can fulfill placement group requests (detail=): {'CPU': 4.0, 'GPU': 1.0}*2. Add suitable node types to this cluster to resolve this issue.",  # noqa
+        "No available node types can fulfill cluster constraint: {'CPU': 1.0, 'GPU': 1.0}*100. Add suitable node types to this cluster to resolve this issue.",  # noqa
     ]
 
     assert mock_logger.get_logs("error") == []
