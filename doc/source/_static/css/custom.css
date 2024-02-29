@@ -65,12 +65,12 @@ h6 {
   background-color: transparent;
 }
 .bd-content:after {
-  background: linear-gradient(
+/*   background: linear-gradient(
     60deg,
     rgba(0, 85, 204, 0.18) 14%,
     rgba(110, 93, 198, 0.18) 49.2%,
     rgba(174, 71, 135, 0.18) 81.54%
-  );
+  ); */
   background-size: 746px 746px;
   background-repeat: no-repeat;
   background-position: center;
