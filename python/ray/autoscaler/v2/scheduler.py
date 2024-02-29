@@ -887,8 +887,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                     cluster_shape=ctx.get_cluster_shape(),
                     node_type_configs=ctx.get_node_type_configs(),
                 )
-            except Exception as e:
-                logger.exception("Failed to emit event logs: {}".format(str(e)))
+            except Exception:
+                logger.exception("Failed to emit event logs.")
 
         return reply
 
