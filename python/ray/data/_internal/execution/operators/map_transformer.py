@@ -249,7 +249,7 @@ class BlockMapTransformFn(MapTransformFn):
         )
 
     def __call__(self, input: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        yield from self._udf_timed_iter(self._block_fn(input, ctx))
+        yield from self._block_fn(input, ctx)
 
     def __repr__(self) -> str:
         return f"BlockMapTransformFn({self._block_fn})"
