@@ -148,7 +148,7 @@ class ActorProxyWrapper(ProxyWrapper):
             proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
         except ValueError:
             logger.info(
-                f"Starting proxy with name '{name}' on node '{node_id}' "
+                f"Starting proxy on node '{node_id}' "
                 f"listening on '{config.host}:{port}'",
                 extra={"log_to_stderr": False},
             )

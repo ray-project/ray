@@ -400,11 +400,13 @@ class ServeController:
                 )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
-                    logger.info(
-                        "Finished recovering deployments after "
-                        f"{(time.time() - start_time):.2f}s.",
-                        extra={"log_to_stderr": False},
-                    )
+                    if num_loops > 0:
+                        # Only log if we actually needed to recover anything.
+                        logger.info(
+                            "Finished recovering deployments after "
+                            f"{(time.time() - start_time):.2f}s.",
+                            extra={"log_to_stderr": False},
+                        )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
