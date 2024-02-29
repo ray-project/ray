@@ -49,7 +49,7 @@ def sched_request(
     gang_resource_requests: Optional[List[List[ResourceRequest]]] = None,
     cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
-    idle_timeout_s: Optional[int] = None,
+    idle_timeout_s: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
 ) -> SchedulingRequest:
 
@@ -234,7 +234,7 @@ class TestSchedulingNode:
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
         assert node.ray_node_id == "r1"
         assert node.im_instance_id == "1"
-        assert node.available_resources == {
+        assert node.available_resources_for_sched == {
             ResourceRequestSource.PENDING_DEMAND: {"CPU": 0},
             ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
         }
@@ -275,7 +275,7 @@ class TestSchedulingNode:
         assert node is not None
         assert node.node_type == "type_1"
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
-        assert node.available_resources == {
+        assert node.available_resources_for_sched == {
             ResourceRequestSource.PENDING_DEMAND: {"CPU": 1},
             ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
         }

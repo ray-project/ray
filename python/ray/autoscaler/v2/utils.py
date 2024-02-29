@@ -229,7 +229,7 @@ class ResourceRequestUtil(ProtobufUtil):
 
     @staticmethod
     def combine_requests_with_affinity(
-        rs: List[ResourceRequest],
+        resource_requests: List[ResourceRequest],
     ) -> List[ResourceRequest]:
         """
         Combine the resource requests with affinity constraints
@@ -240,52 +240,63 @@ class ResourceRequestUtil(ProtobufUtil):
         into one request, and dedup the placement constraints.
 
         This assumes following:
-            1. There's only 1 affinity constraint per request.
-            2. Requests with affinity constraints should not
-            have anti-affinity constraints against each other.
+            1. There's only at most 1 placement constraint, either an affinity
+            constraint OR an anti-affinity constraint.
 
         Args:
-            rs: The list of resource requests to be combined.
+            resource_requests: The list of resource requests to be combined.
         Returns:
             A list of combined resource requests.
         """
 
         # Map of set of serialized affinity constraint to the list of resource requests
-        requests_by_affinity: Dict[str, List[ResourceRequest]] = defaultdict(list)
+        requests_by_affinity: Dict[
+            Tuple[str, str], List[ResourceRequest]
+        ] = defaultdict(list)
         combined_requests: List[ResourceRequest] = []
 
-        for r in rs:
-            has_affinity = False
-            # Check if there's affinity constraints, and group the requests
-            # by the affinity label name and value.
-            for constraint in r.placement_constraints:
-                if constraint.HasField("affinity"):
-                    affinity = constraint.affinity
-                    requests_by_affinity[str(affinity.SerializeToString())].append(r)
-                    has_affinity = True
+        for request in resource_requests:
+            assert len(request.placement_constraints) <= 1, (
+                "There should be at most 1 placement constraint, "
+                "either an affinity constraint OR an anti-affinity constraint."
+            )
 
-            if not has_affinity:
+            if len(request.placement_constraints) == 0:
                 # No affinity constraints, just add to the combined requests.
-                combined_requests.append(r)
+                combined_requests.append(request)
+                continue
 
-        for _, rs in requests_by_affinity.items():
+            constraint = request.placement_constraints[0]
+
+            if constraint.HasField("affinity"):
+                affinity = constraint.affinity
+                requests_by_affinity[
+                    (affinity.label_name, affinity.label_value)
+                ].append(request)
+            elif constraint.HasField("anti_affinity"):
+                # We don't need to combine requests with anti-affinity constraints.
+                combined_requests.append(request)
+
+        for (
+            affinity_label_name,
+            affinity_label_value,
+        ), requests in requests_by_affinity.items():
             combined_request = ResourceRequest()
-            seen_placement_constraint = set()
-            for r in rs:
-                # Merge the resource bundles with the same affinity constraint.
-                for k, v in r.resources_bundle.items():
+
+            # Merge the resource bundles with the same affinity constraint.
+            for request in requests:
+                for k, v in request.resources_bundle.items():
                     combined_request.resources_bundle[k] = (
                         combined_request.resources_bundle.get(k, 0) + v
                     )
 
-                # Add and dedup the placement constraints.
-                for constraint in r.placement_constraints:
-                    serialized_placement_constraint = str(
-                        constraint.SerializeToString()
-                    )
-                    if serialized_placement_constraint not in seen_placement_constraint:
-                        combined_request.placement_constraints.append(constraint)
-                        seen_placement_constraint.add(serialized_placement_constraint)
+            # Add the placement constraint to the combined request.
+            affinity_constraint = AffinityConstraint(
+                label_name=affinity_label_name, label_value=affinity_label_value
+            )
+            combined_request.placement_constraints.append(
+                PlacementConstraint(affinity=affinity_constraint)
+            )
 
             combined_requests.append(combined_request)
 
