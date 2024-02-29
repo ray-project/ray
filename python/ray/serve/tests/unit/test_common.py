@@ -23,7 +23,7 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 
-def test_replica_tag_formatting():
+def test_replica_id_formatting():
     deployment = "DeploymentA"
     unique_id = get_random_string()
 

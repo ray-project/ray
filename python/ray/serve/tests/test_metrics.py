@@ -855,12 +855,12 @@ class TestRequestContextMetrics:
                     # NOTE(zcin): this is to match the current implementation in
                     # Serve's _add_serve_metric_default_tags().
                     ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
-                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_tag,
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_id.unique_id,
                 ]
 
         serve.run(Model.bind(), name="app", route_prefix="/app")
         resp = requests.get("http://127.0.0.1:8000/app")
-        deployment_name, replica_tag = resp.json()
+        deployment_name, replica_id = resp.json()
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
             timeout=40,
@@ -871,7 +871,7 @@ class TestRequestContextMetrics:
         expected_metrics = {
             "my_static_tag": "static_value",
             "my_runtime_tag": "100",
-            "replica": replica_tag,
+            "replica": replica_id,
             "deployment": deployment_name,
             "application": "app",
             "route": "/app",
@@ -881,7 +881,7 @@ class TestRequestContextMetrics:
         expected_metrics = {
             "my_static_tag": "static_value",
             "my_runtime_tag": "300",
-            "replica": replica_tag,
+            "replica": replica_id,
             "deployment": deployment_name,
             "application": "app",
             "route": "/app",
@@ -893,7 +893,7 @@ class TestRequestContextMetrics:
         expected_metrics = {
             "my_static_tag": "static_value",
             "my_runtime_tag": "200",
-            "replica": replica_tag,
+            "replica": replica_id,
             "deployment": deployment_name,
             "application": "app",
             "route": "/app",
