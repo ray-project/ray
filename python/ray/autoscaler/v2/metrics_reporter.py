@@ -15,6 +15,7 @@ class AutoscalerMetricsReporter:
     def report_instances(
         self,
         instances: List[IMInstance],
+        node_type_configs: Dict[NodeType, NodeTypeConfig],
     ):
         """
         Record autoscaler metrics for:
@@ -23,40 +24,41 @@ class AutoscalerMetricsReporter:
             - recently_failed_nodes: Nodes that are being terminated.
             - stopped_nodes: Nodes that are terminated.
         """
-        # pending instances.
-        pending_by_type = defaultdict(int)
-        ray_running_by_type = defaultdict(int)
-        terminating_by_type = defaultdict(int)
-        terminated_by_type = defaultdict(int)
+        # map of instance type to a dict of status to count.
+        status_count_by_type: Dict[NodeType : Dict[str, int]] = {}
+        # initialize the status count by type.
+        for instance_type in node_type_configs.keys():
+            status_count_by_type[instance_type] = {
+                "pending": 0,
+                "running": 0,
+                "terminating": 0,
+                "terminated": 0,
+            }
 
         for instance in instances:
             if InstanceUtil.is_ray_pending(instance.status):
-                pending_by_type[instance.instance_type] += 1
+                status_count_by_type[instance.instance_type]["pending"] += 1
             elif InstanceUtil.is_ray_running(instance.status):
-                ray_running_by_type[instance.instance_type] += 1
+                status_count_by_type[instance.instance_type]["running"] += 1
             elif instance.status == IMInstance.TERMINATING:
-                terminating_by_type[instance.instance_type] += 1
+                status_count_by_type[instance.instance_type]["terminating"] += 1
             elif instance.status == IMInstance.TERMINATED:
-                terminated_by_type[instance.instance_type] += 1
+                status_count_by_type[instance.instance_type]["terminated"] += 1
 
-        for instance_type, count in pending_by_type.items():
+        for instance_type, status_count in status_count_by_type.items():
             self._prom_metrics.pending_nodes.labels(
                 SessionName=self._prom_metrics.session_name, NodeType=instance_type
-            ).set(count)
+            ).set(status_count["pending"])
 
-        for instance_type, count in ray_running_by_type.items():
             self._prom_metrics.active_nodes.labels(
                 SessionName=self._prom_metrics.session_name, NodeType=instance_type
-            ).set(count)
+            ).set(status_count["running"])
 
-        for instance_type, count in terminating_by_type.items():
             self._prom_metrics.recently_failed_nodes.labels(
                 SessionName=self._prom_metrics.session_name, NodeType=instance_type
-            ).set(count)
+            ).set(status_count["terminating"])
 
-        for instance_type, count in terminated_by_type.items():
-            # TODO: this could be a gauge in v2.
-            self._prom_metrics.stopped_nodes.inc(count)
+            self._prom_metrics.stopped_nodes.inc(status_count["terminated"])
 
     def report_resources(
         self,
