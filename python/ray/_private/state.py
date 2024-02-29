@@ -508,7 +508,7 @@ class GlobalState:
             logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
                 "by setting RAY_PROFILING=1, and make sure "
-                "RAY_enable_task_events=True."
+                "RAY_task_events_report_interval_ms=0."
             )
 
         if filename is not None:
@@ -918,7 +918,7 @@ def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
-    variable prior to starting Ray, and RAY_enable_task_events set to True.
+    variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to

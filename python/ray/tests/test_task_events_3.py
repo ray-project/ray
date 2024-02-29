@@ -47,7 +47,9 @@ def test_enable_task_events_actor(
     }
 
     if system_enable_task_events is not None:
-        system_configs["enable_task_events"] = system_enable_task_events
+        # system_configs["enable_task_events"] = system_enable_task_events
+        if system_enable_task_events is False:
+            system_configs["task_events_report_interval_ms"] = 0
 
     ray.init(
         num_cpus=1,
@@ -213,7 +215,9 @@ def test_enable_task_events_tasks(
         "enable_timeline": False,
     }
     if system_enable_task_events is not None:
-        system_config["enable_task_events"] = system_enable_task_events
+        # system_config["enable_task_events"] = system_enable_task_events
+        if system_enable_task_events is False:
+            system_config["task_events_report_interval_ms"] = 0
 
     ray.init(
         num_cpus=1,

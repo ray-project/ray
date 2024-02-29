@@ -417,8 +417,6 @@ class RemoteFunction:
 
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = task_options.get("enable_task_events")
-        if enable_task_events is None:
-            enable_task_events = ray._config.enable_task_events()
 
         def invocation(args, kwargs):
             if self._is_cross_language:

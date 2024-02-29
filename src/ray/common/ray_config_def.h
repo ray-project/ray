@@ -489,10 +489,6 @@ RAY_CONFIG(bool, task_events_skip_driver_for_test, false)
 /// Setting the value to 0 disables the task event recording and reporting.
 RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
-/// If task events should be enabled/disabled for the Ray cluster. If disabled, no task
-/// events are reported to GCS.
-RAY_CONFIG(bool, enable_task_events, true)
-
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
@@ -612,7 +608,7 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
-/// This requires RAY_enable_task_events, so that events will
+/// This requires RAY_task_events_report_interval_ms=0, so that events will
 /// be sent to GCS.
 RAY_CONFIG(bool, enable_timeline, true)
 

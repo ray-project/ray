@@ -978,8 +978,6 @@ class ActorClass:
 
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = actor_options.get("enable_task_events")
-        if enable_task_events is None:
-            enable_task_events = ray._config.enable_task_events()
 
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
