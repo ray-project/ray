@@ -320,10 +320,9 @@ def deployment(
             no more work to be done before shutting down. Defaults to 2s.
         graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
             shut down before being forcefully killed. Defaults to 20s.
-        max_replicas_per_node: [EXPERIMENTAL] The max number of deployment replicas can
-            run on a single node. Valid values are None (no limitation)
+        max_replicas_per_node: The max number of replicas of this deployment that can
+            run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
-            Defaults to no limitation.
 
     Returns:
         `Deployment`

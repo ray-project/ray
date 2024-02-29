@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -114,6 +115,10 @@ class OpRuntimeMetrics:
 
     # Total time spent in UDFs
     total_udfs_time: float = field(default=0, metadata={"export": False})
+    # Time operator spent in task submission backpressure
+    task_submission_backpressure_time: float = field(
+        default=0, metadata={"export": False}
+    )
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -122,6 +127,8 @@ class OpRuntimeMetrics:
         self._is_map = isinstance(op, MapOperator)
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
         self._extra_metrics: Dict[str, Any] = {}
+        # Start time of current pause due to task submission backpressure
+        self._task_submission_backpressure_start_time = -1
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -268,6 +275,17 @@ class OpRuntimeMetrics:
     def on_output_dequeued(self, output: RefBundle):
         """Callback when an output is dequeued by the operator."""
         self.obj_store_mem_internal_outqueue -= output.size_bytes()
+
+    def on_toggle_task_submission_backpressure(self, in_backpressure):
+        if in_backpressure and self._task_submission_backpressure_start_time == -1:
+            # backpressure starting, start timer
+            self._task_submission_backpressure_start_time = time.perf_counter()
+        elif self._task_submission_backpressure_start_time != -1:
+            # backpressure stopping, stop timer
+            self.task_submission_backpressure_time += (
+                time.perf_counter() - self._task_submission_backpressure_start_time
+            )
+            self._task_submission_backpressure_start_time = -1
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""
