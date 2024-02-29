@@ -556,7 +556,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
             op_mem_usage += self._resource_manager._mem_op_internal[op]
-            # Add the op outputs usage that has exceeded `_reserved_for_op_outputs`.
+            # Add the portion of op outputs usage that has
+            # exceeded `_reserved_for_op_outputs`.
             op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
             op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
