@@ -22,7 +22,6 @@ from ray._private.test_utils import (
 )
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -35,7 +34,6 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
@@ -538,7 +536,6 @@ def test_http_head_only(ray_cluster):
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
     serve.start()
-    client = _get_global_client()
 
     @serve.deployment
     class A:
