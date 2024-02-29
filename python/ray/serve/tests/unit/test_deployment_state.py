@@ -9,9 +9,8 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ReplicaName,
+    ReplicaID,
     ReplicaState,
-    ReplicaTag,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
@@ -83,14 +82,10 @@ class MockActorHandle:
 class MockReplicaActorWrapper:
     def __init__(
         self,
-        actor_name: str,
-        replica_tag: ReplicaTag,
-        deployment_id: DeploymentID,
+        replica_id: ReplicaID,
         version: DeploymentVersion,
     ):
-        self._actor_name = actor_name
-        self._replica_tag = replica_tag
-        self._deployment_id = deployment_id
+        self._replica_id = replica_id
 
         # Will be set when `start()` is called.
         self.started = False
@@ -120,12 +115,12 @@ class MockReplicaActorWrapper:
         return self._is_cross_language
 
     @property
-    def replica_tag(self) -> str:
-        return str(self._replica_tag)
+    def replica_id(self) -> ReplicaID:
+        return self._replica_id
 
     @property
     def deployment_name(self) -> str:
-        return self._deployment_id.name
+        return self._replica_id.deployment_id.name
 
     @property
     def actor_handle(self) -> MockActorHandle:
@@ -217,8 +212,7 @@ class MockReplicaActorWrapper:
             pass
 
         return ReplicaSchedulingRequest(
-            deployment_id=self._deployment_id,
-            replica_name=self._replica_tag,
+            replica_id=self._replica_id,
             actor_def=Mock(),
             actor_resources=None,
             actor_options={},
@@ -233,7 +227,7 @@ class MockReplicaActorWrapper:
         return updating
 
     def recover(self):
-        if self.replica_tag in dead_replicas_context:
+        if self.replica_id in dead_replicas_context:
             return False
 
         self.recovering = True
@@ -2063,7 +2057,7 @@ def test_basic_autoscaling(mock_deployment_state_manager, target_capacity_direct
 
     for replica in ds._replicas.get():
         dsm.record_autoscaling_metrics(
-            replica._actor.replica_tag,
+            replica._actor.replica_id,
             2 if target_capacity_direction == "up" else 0,
             None,
         )
@@ -2183,7 +2177,7 @@ def test_downscaling_reclaiming_starting_replicas_first(
     running_replicas = deployment_state._replicas.get(states=[ReplicaState.RUNNING])
 
     for replica in deployment_state._replicas.get():
-        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 2, timer.time())
+        dsm.record_autoscaling_metrics(replica._actor.replica_id, 2, timer.time())
 
     # status=UPSCALING, status_trigger=AUTOSCALE
     dsm.update()
@@ -2243,7 +2237,7 @@ def test_downscaling_reclaiming_starting_replicas_first(
 
     # Now, trigger downscaling attempting to reclaim half (3) of the replicas
     for replica in deployment_state._replicas.get(states=[ReplicaState.RUNNING]):
-        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 1, timer.time())
+        dsm.record_autoscaling_metrics(replica._actor.replica_id, 1, timer.time())
 
     # status=DOWNSCALING, status_trigger=AUTOSCALE
     dsm.update()
@@ -2321,7 +2315,7 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
 
     # Num ongoing requests = 1, status should remain HEALTHY
     for replica in ds._replicas.get():
-        dsm.record_autoscaling_metrics(replica._actor.replica_tag, 1, None)
+        dsm.record_autoscaling_metrics(replica._actor.replica_id, 1, None)
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert (
@@ -2984,7 +2978,7 @@ def test_recover_state_from_replica_names(mock_deployment_state_manager):
     # (simulate controller crashed!) Create a new deployment state
     # manager, and it should call _recover_from_checkpoint
     new_dsm: DeploymentStateManager = create_dsm(
-        [ReplicaName.prefix + mocked_replica.replica_tag]
+        [mocked_replica.replica_id.to_full_id_str()]
     )
 
     # New deployment state should be created and one replica should
@@ -3000,8 +2994,8 @@ def test_recover_state_from_replica_names(mock_deployment_state_manager):
     any_recovering = new_dsm.update()
     check_counts(new_ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
     assert not any_recovering
-    # Make sure replica name is the same, meaning the actor is the same
-    assert mocked_replica.replica_tag == new_mocked_replica.replica_tag
+    # Make sure replica ID is the same, meaning the actor is the same
+    assert mocked_replica.replica_id == new_mocked_replica.replica_id
 
 
 def test_recover_during_rolling_update(mock_deployment_state_manager):
@@ -3038,7 +3032,7 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     # Before the replica could be stopped and restarted, simulate
     # controller crashed! A new deployment state manager should be
     # created, and it should call _recover_from_checkpoint
-    new_dsm = create_dsm([ReplicaName.prefix + mocked_replica.replica_tag])
+    new_dsm = create_dsm([mocked_replica.replica_id.to_full_id_str()])
     cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # New deployment state should be created and one replica should
@@ -3079,7 +3073,7 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     new_dsm.update()
     check_counts(new_ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
     # Make sure replica name is different, meaning a different "actor" was started
-    assert mocked_replica.replica_tag != new_mocked_replica_version2.replica_tag
+    assert mocked_replica.replica_id != new_mocked_replica_version2.replica_id
 
 
 def test_actor_died_before_recover(mock_deployment_state_manager):
@@ -3107,7 +3101,7 @@ def test_actor_died_before_recover(mock_deployment_state_manager):
     dsm.update()
     check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
     mocked_replica = ds._replicas.get()[0]
-    replica_tag = mocked_replica.replica_tag
+    replica_id = mocked_replica.replica_id
 
     # The same replica should transition to RUNNING
     mocked_replica._actor.set_ready()
@@ -3117,11 +3111,11 @@ def test_actor_died_before_recover(mock_deployment_state_manager):
     # Set dead replicas context. When the controller recovers and tries
     # to recover replicas from actor names, the replica actor wrapper
     # will fail to recover.
-    dead_replicas_context.add(replica_tag)
+    dead_replicas_context.add(replica_id)
 
     # Simulate controller crashed! A new deployment state manager should
     # be created, and it should call _recover_from_checkpoint
-    new_dsm = create_dsm([ReplicaName.prefix + replica_tag])
+    new_dsm = create_dsm([replica_id.to_full_id_str()])
 
     # Replica should fail to recover (simulate failed to get handle to
     # actor), meaning replica has died.
@@ -3133,7 +3127,7 @@ def test_actor_died_before_recover(mock_deployment_state_manager):
     # target state.
     new_dsm.update()
     check_counts(new_ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
-    dead_replicas_context.remove(replica_tag)
+    dead_replicas_context.remove(replica_id)
 
 
 def test_shutdown(mock_deployment_state_manager):
@@ -3197,7 +3191,8 @@ def test_resource_requirements_none():
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
-    replica = DeploymentReplica("random_tag", None, None)
+    replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
+    replica = DeploymentReplica(replica_id, None)
     replica._actor = FakeActor()
 
     # resource_requirements() should not error
@@ -3208,9 +3203,10 @@ class TestActorReplicaWrapper:
     def test_default_value(self):
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
-            actor_name="test",
-            replica_tag="test_tag",
-            deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+            replica_id=ReplicaID(
+                "abc123",
+                deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+            ),
         )
         assert (
             actor_replica.graceful_shutdown_timeout_s

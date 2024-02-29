@@ -7,7 +7,7 @@ from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -25,8 +25,7 @@ class ReplicaSchedulingRequest:
     based on the deployment scheduling policy.
     """
 
-    deployment_id: DeploymentID
-    replica_name: str
+    replica_id: ReplicaID
     actor_def: ray.actor.ActorClass
     actor_resources: Dict
     actor_options: Dict
@@ -73,22 +72,19 @@ class DeploymentScheduler(ABC):
 
     @abstractmethod
     def on_replica_stopping(
-        self, deployment_id: DeploymentID, replica_name: str
+        self,
+        replica_id: ReplicaID,
     ) -> None:
         """Called whenever a deployment replica is being stopped."""
         raise NotImplementedError
 
     @abstractmethod
-    def on_replica_running(
-        self, deployment_id: DeploymentID, replica_name: str, node_id: str
-    ) -> None:
+    def on_replica_running(self, replica_id: ReplicaID, node_id: str) -> None:
         """Called whenever a deployment replica is running with a known node id."""
         raise NotImplementedError
 
     @abstractmethod
-    def on_replica_recovering(
-        self, deployment_id: DeploymentID, replica_name: str
-    ) -> None:
+    def on_replica_recovering(self, replica_id: ReplicaID) -> None:
         """Called whenever a deployment replica is recovering."""
         raise NotImplementedError
 
@@ -105,7 +101,7 @@ class DeploymentScheduler(ABC):
             downscales: a dict of deployment name to a downscale request.
 
         Returns:
-            The name of replicas to stop for each deployment.
+            The IDs of replicas to stop for each deployment.
         """
         raise NotImplementedError
 
@@ -119,19 +115,19 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         # {deployment_id: scheduling_policy}
         self._deployments = {}
         # Replicas that are waiting to be scheduled.
-        # {deployment_id: {replica_name: deployment_upscale_request}}
+        # {deployment_id: {replica_id: deployment_upscale_request}}
         self._pending_replicas = defaultdict(dict)
         # Replicas that are being scheduled.
         # The underlying actors have been submitted.
-        # {deployment_id: {replica_name: target_node_id}}
+        # {deployment_id: {replica_id: target_node_id}}
         self._launching_replicas = defaultdict(dict)
         # Replicas that are recovering.
         # We don't know where those replicas are running.
-        # {deployment_id: {replica_name}}
+        # {deployment_id: {replica_id}}
         self._recovering_replicas = defaultdict(set)
         # Replicas that are running.
         # We know where those replicas are running.
-        # {deployment_id: {replica_name: running_node_id}}
+        # {deployment_id: {replica_id: running_node_id}}
         self._running_replicas = defaultdict(dict)
 
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -166,36 +162,33 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         del self._deployments[deployment_id]
 
-    def on_replica_stopping(
-        self, deployment_id: DeploymentID, replica_name: str
-    ) -> None:
+    def on_replica_stopping(self, replica_id: ReplicaID) -> None:
         """Called whenever a deployment replica is being stopped."""
-        self._pending_replicas[deployment_id].pop(replica_name, None)
-        self._launching_replicas[deployment_id].pop(replica_name, None)
-        self._recovering_replicas[deployment_id].discard(replica_name)
-        self._running_replicas[deployment_id].pop(replica_name, None)
+        deployment_id = replica_id.deployment_id
+        self._pending_replicas[deployment_id].pop(replica_id, None)
+        self._launching_replicas[deployment_id].pop(replica_id, None)
+        self._recovering_replicas[deployment_id].discard(replica_id)
+        self._running_replicas[deployment_id].pop(replica_id, None)
 
-    def on_replica_running(
-        self, deployment_id: DeploymentID, replica_name: str, node_id: str
-    ) -> None:
+    def on_replica_running(self, replica_id: ReplicaID, node_id: str) -> None:
         """Called whenever a deployment replica is running with a known node id."""
-        assert replica_name not in self._pending_replicas[deployment_id]
+        deployment_id = replica_id.deployment_id
+        assert replica_id not in self._pending_replicas[deployment_id]
 
-        self._launching_replicas[deployment_id].pop(replica_name, None)
-        self._recovering_replicas[deployment_id].discard(replica_name)
+        self._launching_replicas[deployment_id].pop(replica_id, None)
+        self._recovering_replicas[deployment_id].discard(replica_id)
 
-        self._running_replicas[deployment_id][replica_name] = node_id
+        self._running_replicas[deployment_id][replica_id] = node_id
 
-    def on_replica_recovering(
-        self, deployment_id: DeploymentID, replica_name: str
-    ) -> None:
+    def on_replica_recovering(self, replica_id: ReplicaID) -> None:
         """Called whenever a deployment replica is recovering."""
-        assert replica_name not in self._pending_replicas[deployment_id]
-        assert replica_name not in self._launching_replicas[deployment_id]
-        assert replica_name not in self._running_replicas[deployment_id]
-        assert replica_name not in self._recovering_replicas[deployment_id]
+        deployment_id = replica_id.deployment_id
+        assert replica_id not in self._pending_replicas[deployment_id]
+        assert replica_id not in self._launching_replicas[deployment_id]
+        assert replica_id not in self._running_replicas[deployment_id]
+        assert replica_id not in self._recovering_replicas[deployment_id]
 
-        self._recovering_replicas[deployment_id].add(replica_name)
+        self._recovering_replicas[deployment_id].add(replica_id)
 
     def schedule(
         self,
@@ -209,12 +202,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             downscales: a dict of deployment name to a downscale request.
 
         Returns:
-            The name of replicas to stop for each deployment.
+            The IDs of replicas to stop for each deployment.
         """
         for upscale in upscales.values():
             for replica_scheduling_request in upscale:
-                self._pending_replicas[replica_scheduling_request.deployment_id][
-                    replica_scheduling_request.replica_name
+                deployment_id = replica_scheduling_request.replica_id.deployment_id
+                self._pending_replicas[deployment_id][
+                    replica_scheduling_request.replica_id
                 ] = replica_scheduling_request
 
         for deployment_id, pending_replicas in self._pending_replicas.items():
@@ -234,9 +228,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         return deployment_to_replicas_to_stop
 
     def _schedule_spread_deployment(self, deployment_id: DeploymentID) -> None:
-        for pending_replica_name in list(self._pending_replicas[deployment_id].keys()):
+        for pending_replica_id in list(self._pending_replicas[deployment_id].keys()):
             replica_scheduling_request = self._pending_replicas[deployment_id][
-                pending_replica_name
+                pending_replica_id
             ]
 
             placement_group = None
@@ -275,8 +269,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 **actor_options,
             ).remote(*replica_scheduling_request.actor_init_args)
 
-            del self._pending_replicas[deployment_id][pending_replica_name]
-            self._launching_replicas[deployment_id][pending_replica_name] = None
+            del self._pending_replicas[deployment_id][pending_replica_id]
+            self._launching_replicas[deployment_id][pending_replica_id] = None
             replica_scheduling_request.on_scheduled(
                 actor_handle, placement_group=placement_group
             )

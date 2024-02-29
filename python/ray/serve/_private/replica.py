@@ -21,9 +21,8 @@ from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
-    ReplicaName,
+    ReplicaID,
     ReplicaQueueLengthInfo,
-    ReplicaTag,
     RequestMetadata,
     ServeComponentType,
     StreamingHTTPRequest,
@@ -102,13 +101,11 @@ class ReplicaMetricsManager:
 
     def __init__(
         self,
-        replica_tag: ReplicaTag,
-        deployment_id: DeploymentID,
+        replica_id: ReplicaID,
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
     ):
-        self._replica_tag = replica_tag
-        self._deployment_id = deployment_id
+        self._replica_id = replica_id
         self._event_loop = event_loop
         self._metrics_pusher = MetricsPusher(event_loop)
         self._metrics_store = InMemoryMetricsStore()
@@ -217,16 +214,16 @@ class ReplicaMetricsManager:
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
         self._controller_handle.record_autoscaling_metrics.remote(
-            replica_id=self._replica_tag,
+            replica_id=self._replica_id,
             window_avg=self._metrics_store.window_average(
-                self._replica_tag, time.time() - look_back_period
+                self._replica_id, time.time() - look_back_period
             ),
             send_timestamp=time.time(),
         )
 
     def _add_autoscaling_metrics_point(self) -> None:
         self._metrics_store.add_metrics_point(
-            {self._replica_tag: self._num_ongoing_requests},
+            {self._replica_id: self._num_ongoing_requests},
             time.time(),
         )
 
@@ -243,8 +240,7 @@ class ReplicaActor:
 
     async def __init__(
         self,
-        deployment_id: DeploymentID,
-        replica_tag: str,
+        replica_id: ReplicaID,
         serialized_deployment_def: bytes,
         serialized_init_args: bytes,
         serialized_init_kwargs: bytes,
@@ -252,8 +248,8 @@ class ReplicaActor:
         version: DeploymentVersion,
     ):
         self._version = version
-        self._replica_tag = replica_tag
-        self._deployment_id = deployment_id
+        self._replica_id = replica_id
+        self._deployment_id = replica_id.deployment_id
         self._deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
@@ -268,7 +264,7 @@ class ReplicaActor:
             deployment_def,
             cloudpickle.loads(serialized_init_args),
             cloudpickle.loads(serialized_init_kwargs),
-            deployment_id=deployment_id,
+            deployment_id=self._deployment_id,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -280,17 +276,14 @@ class ReplicaActor:
         self._set_internal_replica_context(servable_object=None)
 
         self._metrics_manager = ReplicaMetricsManager(
-            replica_tag,
-            deployment_id,
+            replica_id,
             self._event_loop,
             self._deployment_config.autoscaling_config,
         )
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
-            app_name=self._deployment_id.app_name,
-            deployment=self._deployment_id.name,
-            replica_tag=self._replica_tag,
+            replica_id=self._replica_id,
             servable_object=servable_object,
         )
 
@@ -302,13 +295,11 @@ class ReplicaActor:
         if isinstance(logging_config, dict):
             logging_config = LoggingConfig(**logging_config)
 
-        replica_name = ReplicaName.from_replica_tag(self._replica_tag)
-        if replica_name.app_name:
-            component_name = f"{replica_name.app_name}_{replica_name.deployment_name}"
-        else:
-            component_name = f"{replica_name.deployment_name}"
-        component_id = replica_name.replica_suffix
+        component_name = f"{self._deployment_id.name}"
+        if self._deployment_id.app_name:
+            component_name = f"{self._deployment_id.app_name}_" + component_name
 
+        component_id = self._replica_id.unique_id
         configure_component_logger(
             component_type=ServeComponentType.REPLICA,
             component_name=component_name,

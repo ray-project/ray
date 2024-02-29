@@ -11,7 +11,7 @@ from typing import Callable, Optional
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ReplicaTag
+from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
@@ -35,10 +35,20 @@ class ReplicaContext:
         - servable_object: instance of the user class/function this replica is running.
     """
 
-    app_name: str
-    deployment: str
-    replica_tag: ReplicaTag
+    replica_id: ReplicaID
     servable_object: Callable
+
+    @property
+    def app_name(self) -> str:
+        return self.replica_id.deployment_id.app_name
+
+    @property
+    def deployment(self) -> str:
+        return self.replica_id.deployment_id.deployment
+
+    @property
+    def replica_tag(self) -> str:
+        return self.replica_id.unique_id
 
 
 def _get_global_client(
@@ -86,16 +96,12 @@ def _get_internal_replica_context():
 
 def _set_internal_replica_context(
     *,
-    app_name: str,
-    deployment: str,
-    replica_tag: ReplicaTag,
+    replica_id: ReplicaID,
     servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        app_name=app_name,
-        deployment=deployment,
-        replica_tag=replica_tag,
+        replica_id=replica_id,
         servable_object=servable_object,
     )
 
