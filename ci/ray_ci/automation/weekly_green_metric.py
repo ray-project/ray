@@ -47,10 +47,10 @@ def main(production: bool, check: bool) -> None:
         )
         logger.info("Weekly green metric updated successfully")
 
-    if check:
-        assert (
-            blockers.totalCount == 0
-        ), "There are still release blockers. Please resolve them before proceeding."
+    if check and blockers.totalCount != 0:
+        raise ValueError(
+            f"Found {blockers.totalCount} release blockers. See logs above."
+        )
 
 
 if __name__ == "__main__":
