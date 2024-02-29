@@ -1542,6 +1542,28 @@ class SingleAgentEpisode:
             return 0.0
         return self._last_step_time - self._start_time
 
+    def env_steps(self) -> int:
+        """Returns the number of environment steps.
+
+        Note, this episode instance could be a chunk of an actual episode.
+
+        Returns:
+            An integer that counts the number of environment steps this episode instance
+            has seen.
+        """
+        return len(self)
+
+    def agent_steps(self) -> int:
+        """Returns the number of agent steps.
+
+        Note, these are identical to the environment steps for a single-agent episode.
+
+        Returns:
+            An integer counting the number of agent steps executed during the time this
+            episode instance records.
+        """
+        return self.env_steps()
+
     @property
     def observation_space(self):
         return self._observation_space

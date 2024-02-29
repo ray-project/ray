@@ -471,7 +471,7 @@ export const GrafanaNotRunningAlert = ({
       >
         these instructions
       </a>{" "}
-      to set them up and refresh this page. .
+      to set them up and refresh this page.
     </Alert>
   ) : null;
 };
