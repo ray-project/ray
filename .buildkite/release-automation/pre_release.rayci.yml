@@ -20,11 +20,10 @@ steps:
 
   - label: "Trigger Postmerge test"
     trigger: "postmerge"
-    if: build.env("COMMIT") != null && build.env("BRANCH") != null
     depends_on: check-commit-hash
     build:
-      commit: "${COMMIT}"
-      branch: "${BRANCH}"
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
         NIGHTLY: 1
@@ -32,11 +31,10 @@ steps:
   
   - label: "Trigger Release nightly test"
     trigger: "release"
-    if: build.env("COMMIT") != null && build.env("BRANCH") != null
     depends_on: check-commit-hash
     build:
-      commit: "${COMMIT}"
-      branch: "${BRANCH}"
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
       message: "Nightly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
         AUTOMATIC: 1
