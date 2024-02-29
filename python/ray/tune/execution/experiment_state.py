@@ -1,10 +1,12 @@
 from collections import Counter
+import fnmatch
 from pathlib import Path
 from typing import Callable, Dict, Optional, Union
-
 import logging
 import os
 import time
+
+import pyarrow.fs
 
 from ray.train._internal.storage import (
     StorageContext,
@@ -32,23 +34,29 @@ def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
     return bool(_find_newest_experiment_checkpoint(experiment_dir=experiment_dir))
 
 
-def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
+def _find_newest_experiment_checkpoint(
+    experiment_path: str, fs: Optional[pyarrow.fs.FileSystem] = None
+) -> Optional[str]:
     """Returns file name of most recently created experiment checkpoint.
 
     Args:
-        experiment_dir: Local or remote path to the experiment directory
+        experiment_path: Local or remote path to the experiment directory
             containing at least one experiment checkpoint file.
 
     Returns:
         str: The local or remote path to the latest experiment checkpoint file
             based on timestamp. None if no experiment checkpoints were found.
     """
-    from ray.tune.analysis import ExperimentAnalysis
+    from ray.tune.execution.tune_controller import TuneController
 
-    fs, path = get_fs_and_path(experiment_dir)
-    return ExperimentAnalysis._find_newest_experiment_checkpoint(
-        fs=fs, experiment_fs_path=path
-    )
+    fs, experiment_fs_path = get_fs_and_path(experiment_path, storage_filesystem=fs)
+    filenames = _list_at_fs_path(fs=fs, fs_path=experiment_fs_path)
+    pattern = TuneController.CKPT_FILE_TMPL.format("*")
+    matching = fnmatch.filter(filenames, pattern)
+    if not matching:
+        return None
+    filename = max(matching)
+    return Path(experiment_fs_path, filename).as_posix()
 
 
 class _ExperimentCheckpointManager:
