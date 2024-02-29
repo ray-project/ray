@@ -548,6 +548,10 @@ class SAC(DQN):
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
                 for pid, res in additional_results.items():
+                    if LAST_TARGET_UPDATE_TS in res:
+                        self._counters[LAST_TARGET_UPDATE_TS] = res[
+                            LAST_TARGET_UPDATE_TS
+                        ]
                     train_results[pid].update(res)
 
             # Update weights and global_vars - after learning on the local worker -

@@ -24,10 +24,10 @@ config = (
             "beta": 0.4,
         },
         double_q=False,
-        num_atoms=1,
+        num_atoms=10,
         dueling=False,
         noisy=True,
-        sigma0=0.2,
+        sigma0=0.5,
     )
 )
 

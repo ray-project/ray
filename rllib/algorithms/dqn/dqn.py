@@ -475,11 +475,16 @@ class DQN(SimpleQ):
                 episodes: EpisodeType = synchronous_parallel_sample(
                     worker_set=self.workers,
                     concat=True,
+                    uses_new_env_runners=True,
                 )
 
             # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                e.agent_steps() for e in episodes
+            )
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                e.env_steps() for e in episodes
+            )
 
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
@@ -558,10 +563,12 @@ class DQN(SimpleQ):
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
                 for pid, res in additional_results.items():
+                    if LAST_TARGET_UPDATE_TS in res:
+                        self._counters[LAST_TARGET_UPDATE_TS] = res[
+                            LAST_TARGET_UPDATE_TS
+                        ]
                     train_results[pid].update(res)
 
-            # TODO (simon): Check, if this is better - as we are not sampling at the
-            # same time, updating weights after all training iteration should be faster.
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:

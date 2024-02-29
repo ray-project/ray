@@ -118,7 +118,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             output[ATOMS] = qf_target_next_outs[ATOMS]
             # Original logits from the Q-head.
             output[QF_LOGITS] = qf_outs[QF_LOGITS]
-            # Probabilities of the Q-value distribution of the next state.
+            # Probabilities of the Q-value distribution of the current state.
+            output[QF_PROBS] = qf_outs[QF_PROBS]
+            # Probabilities of the target Q-value distribution of the next state.
             output[QF_TARGET_NEXT_PROBS] = qf_target_next_outs[QF_PROBS]
 
         return output

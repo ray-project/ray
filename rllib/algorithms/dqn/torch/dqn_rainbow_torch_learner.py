@@ -14,6 +14,7 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
     QF_PREDS,
     QF_PROBS,
     TD_ERROR_KEY,
+    TD_ERROR_MEAN_KEY,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -96,6 +97,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # Extract the Q-logits evaluated at the selected actions.
             # (Note, `torch.gather` should be faster than multiplication
             # with a one-hot tensor.)
+            # (32, 19)
             q_logits_selected = torch.gather(
                 fwd_out[QF_LOGITS],
                 dim=1,
@@ -127,13 +129,16 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
             # TODO (simon): Check, if we need to unsqueeze here.
             r_tau = torch.clamp(
-                batch[SampleBatch.REWARDS]
-                + self.config.gamma ** batch["n_steps"]
-                * (1.0 - batch[SampleBatch.TERMINATEDS].float())
+                (
+                    batch[SampleBatch.REWARDS]
+                    + self.config.gamma ** batch["n_steps"]
+                    * (1.0 - batch[SampleBatch.TERMINATEDS].float())
+                ).unsqueeze(dim=-1)
                 * z,
                 self.config.v_min,
                 self.config.v_max,
-            )
+            ).squeeze(dim=1)
+            # (32, 10)
             b = (r_tau - self.config.v_min) / (
                 (self.config.v_max - self.config.v_min)
                 / float(self.config.num_atoms - 1.0)
@@ -150,11 +155,14 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             upper_projection = nn.functional.one_hot(
                 upper_bound.long(), self.config.num_atoms
             )
+            # (32, 10)
             ml_delta = probs_q_next_best * (upper_bound - b + floor_equal_ceil)
             mu_delta = probs_q_next_best * (b - lower_bound)
+            # (32, 10)
             ml_delta = torch.sum(lower_projection * ml_delta.unsqueeze(dim=-1), dim=1)
             mu_delta = torch.sum(upper_projection * mu_delta.unsqueeze(dim=-1), dim=1)
             # We do not want to propagate through the distributional targets.
+            # (32, 10)
             m = (ml_delta + mu_delta).detach()
 
             # The Rainbow paper claims to use the KL-divergence loss. This is identical
@@ -190,6 +198,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             {
                 QF_LOSS_KEY: total_loss,
                 TD_ERROR_KEY: td_error,
+                TD_ERROR_MEAN_KEY: torch.mean(td_error),
                 QF_MEAN_KEY: torch.mean(q_selected),
                 QF_MAX_KEY: torch.max(q_selected),
                 QF_MIN_KEY: torch.min(q_selected),

@@ -124,6 +124,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
                 [
                     ATOMS,
                     QF_LOGITS,
+                    QF_PROBS,
                     QF_TARGET_NEXT_PROBS,
                 ]
                 # We add these keys only when learning a distribution.

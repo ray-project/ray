@@ -97,14 +97,18 @@ class NoisyLinear(nn.Linear):
         self.reset_noise()
 
     def reset_parameters(self) -> None:
+        # Use initialization for factorized noisy linear layers.
         mu_range = 1 / math.sqrt(self.in_features)
+        # Initialize weight distribution parameters.
         self.weight_mu.data.uniform_(-mu_range, mu_range)
         self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
+        # If bias is used initial these parameters, too.
         if self.bias_mu is not None:
             self.bias_mu.data.uniform_(-mu_range, mu_range)
             self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
 
     def reset_noise(self) -> None:
+        # Use factorized noise for better performance.
         epsilon_in = self._scale_noise(self.in_features)
         epsilon_out = self._scale_noise(self.out_features)
         self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
@@ -116,6 +120,11 @@ class NoisyLinear(nn.Linear):
             size = (size,)
         x = torch.randn(*size, device=self.weight_mu.device)
         return x.sign().mul_(x.abs().sqrt_())
+
+    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+        if self.training:
+            self.reset_noise()
+        return super().forward(tensor)
 
     @property
     def weight(self) -> torch.Tensor:

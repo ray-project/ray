@@ -21,6 +21,7 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 QF_PREDS = "qf_preds"
 QF_PROBS = "qf_probs"
 TD_ERROR_KEY = "td_error"
+TD_ERROR_MEAN_KEY = "td_error_mean"
 
 
 class DQNRainbowLearner(Learner):
