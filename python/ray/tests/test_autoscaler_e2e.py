@@ -177,6 +177,8 @@ def test_metrics(enable_v2, shutdown_only):
                     value=0,
                     partial_label_match={"resource": "CPU"},
                 ),
+                MetricSamplePattern(name="autoscaler_pending_resources", value=0),
+                MetricSamplePattern(name="autoscaler_pending_nodes", value=0),
                 MetricSamplePattern(
                     name="autoscaler_active_nodes",
                     value=0,
