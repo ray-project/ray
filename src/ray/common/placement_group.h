@@ -85,6 +85,7 @@ class PlacementGroupSpecBuilder {
       const rpc::PlacementStrategy strategy,
       const bool is_detached,
       double max_cpu_fraction_per_node,
+      NodeID soft_target_node_id,
       const JobID &creator_job_id,
       const ActorID &creator_actor_id,
       bool is_creator_detached_actor) {
@@ -103,6 +104,7 @@ class PlacementGroupSpecBuilder {
     message_->set_creator_actor_dead(creator_actor_id.IsNil());
     message_->set_is_detached(is_detached);
     message_->set_max_cpu_fraction_per_node(max_cpu_fraction_per_node);
+    message_->set_soft_target_node_id(soft_target_node_id.Binary());
 
     for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];

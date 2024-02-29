@@ -18,7 +18,6 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     EndpointInfo,
-    EndpointTag,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
@@ -271,7 +270,7 @@ class ApplicationState:
         self._set_target_state(None, None, target_config, None, None, False)
 
     def _delete_deployment(self, name):
-        id = EndpointTag(name, self._name)
+        id = DeploymentID(name=name, app_name=self._name)
         self._endpoint_state.delete_endpoint(id)
         self._deployment_state_manager.delete_deployment(id)
 
@@ -304,7 +303,7 @@ class ApplicationState:
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
             )
 
-        deployment_id = DeploymentID(deployment_name, self._name)
+        deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
         self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
@@ -685,7 +684,7 @@ class ApplicationState:
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
         deployments = [
-            DeploymentID(deployment, self._name)
+            DeploymentID(name=deployment, app_name=self._name)
             for deployment in self.target_deployments
         ]
         return self._deployment_state_manager.get_deployment_statuses(deployments)
@@ -711,7 +710,7 @@ class ApplicationState:
         """
         details = {
             deployment_name: self._deployment_state_manager.get_deployment_details(
-                DeploymentID(deployment_name, self._name)
+                DeploymentID(name=deployment_name, app_name=self._name)
             )
             for deployment_name in self.target_deployments
         }

@@ -13,7 +13,6 @@ import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 import numpy as np
-import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -37,7 +36,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -414,19 +412,14 @@ class PPO(Algorithm):
     def _training_step_new_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            # TODO (sven): Make this also use `synchronous_parallel_sample`.
-            #  Which needs to be enhanced to be able to handle episodes as well.
-            #  Also, this would make this sampling with the EnvRunners fault
-            #  tolerant, which it is NOT right now.
-            if self.workers.num_remote_workers() == 0:
-                episodes: List[SingleAgentEpisode] = [
-                    self.workers.local_worker().sample()
-                ]
-            else:
-                episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
-                    lambda w: w.sample(), local_worker=False
-                )
-            episodes = tree.flatten(episodes)
+
+            # Sample in parallel from the workers.
+            # TODO (simon): Implement multi-agent.
+            episodes = synchronous_parallel_sample(
+                worker_set=self.workers,
+                uses_new_env_runners=self.config.uses_new_env_runners,
+            )
+
             # TODO (sven): single- vs multi-agent.
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)

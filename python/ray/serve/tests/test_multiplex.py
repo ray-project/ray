@@ -30,13 +30,6 @@ def start_serve_with_context():
     ray.shutdown()
 
 
-def stop_model_ids_pusher_thread(multiplexer):
-    multiplexer.metrics_pusher.stop_event.set()
-    wait_for_condition(
-        lambda: multiplexer.metrics_pusher.pusher_thread.is_alive() is False
-    )
-
-
 class TestMultiplexWrapper:
     def test_failed_to_get_replica_context(self):
         async def model_load_func(model_id: str):
@@ -47,14 +40,15 @@ class TestMultiplexWrapper:
         ):
             _ModelMultiplexWrapper(model_load_func, None, max_num_models_per_replica=2)
 
-    def test_push_model_ids_info(self, start_serve_with_context):
+    @pytest.mark.asyncio
+    async def test_push_model_ids_info(self, start_serve_with_context):
         async def model_load_func(model_id: str):
             return model_id
 
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=1
         )
-        stop_model_ids_pusher_thread(multiplexer)
+        await multiplexer.metrics_pusher.graceful_shutdown()
         assert multiplexer._push_multiplexed_replica_info is False
         multiplexer._push_multiplexed_replica_info = True
         multiplexer._push_model_ids_info()
@@ -81,7 +75,7 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=2
         )
-        stop_model_ids_pusher_thread(multiplexer)
+        await multiplexer.metrics_pusher.graceful_shutdown()
 
         # Load model1
         await multiplexer.load_model("1")
@@ -145,7 +139,7 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=1
         )
-        stop_model_ids_pusher_thread(multiplexer)
+        await multiplexer.metrics_pusher.graceful_shutdown()
         await multiplexer.load_model("1")
         assert multiplexer.models == {"1": MyModel("1")}
         with pytest.raises(Exception, match="1 is dead"):
@@ -168,7 +162,7 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=1
         )
-        stop_model_ids_pusher_thread(multiplexer)
+        await multiplexer.metrics_pusher.graceful_shutdown()
         await multiplexer.load_model("1")
         assert multiplexer._push_multiplexed_replica_info
         multiplexer._push_multiplexed_replica_info = False
@@ -200,7 +194,7 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=1
         )
-        stop_model_ids_pusher_thread(multiplexer)
+        await multiplexer.metrics_pusher.graceful_shutdown()
 
         loop = get_or_create_event_loop()
         tasks = [

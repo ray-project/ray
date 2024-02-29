@@ -540,6 +540,118 @@ def test_placement_group_leaks(set_runtime_env_plugins, shutdown_only):
     wait_for_condition(verify_actor_killed)
 
 
+def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=8, resources={"head": 1})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=2, resources={"worker1": 1})
+    worker2_node = cluster.add_node(num_cpus=4, resources={"worker2": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
+    worker1_node_id = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+    worker2_node_id = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
+
+    # soft_target_node_id only works with STRICT_PACK
+    with pytest.raises(ValueError):
+        pg = ray.util.placement_group(
+            bundles=[{"CPU": 2}, {"CPU": 2}],
+            strategy="PACK",
+            _soft_target_node_id=ray.NodeID.from_random().hex(),
+        )
+
+    # Invalid target node id
+    with pytest.raises(ValueError):
+        pg = ray.util.placement_group(
+            bundles=[{"CPU": 2}, {"CPU": 2}], strategy="PACK", _soft_target_node_id="a"
+        )
+
+    # No target node.
+    pg = ray.util.placement_group(
+        bundles=[{"CPU": 2}, {"CPU": 2}], strategy="STRICT_PACK"
+    )
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 10)
+    assert (
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            ).remote()
+        )
+        == head_node_id
+    )
+    ray.util.remove_placement_group(pg)
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 14)
+
+    # Target node doesn't have enough available resources.
+    pg = ray.util.placement_group(
+        bundles=[{"CPU": 2}, {"CPU": 2}],
+        strategy="STRICT_PACK",
+        _soft_target_node_id=worker1_node_id,
+    )
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 10)
+    assert (
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            ).remote()
+        )
+        == head_node_id
+    )
+    ray.util.remove_placement_group(pg)
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 14)
+
+    # Target node doesn't exist.
+    pg = ray.util.placement_group(
+        bundles=[{"CPU": 2}, {"CPU": 2}],
+        strategy="STRICT_PACK",
+        _soft_target_node_id=ray.NodeID.from_random().hex(),
+    )
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 10)
+    assert (
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            ).remote()
+        )
+        == head_node_id
+    )
+    ray.util.remove_placement_group(pg)
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 14)
+
+    # Target node has enough available resources.
+    pg = ray.util.placement_group(
+        bundles=[{"CPU": 2}, {"CPU": 2}],
+        strategy="STRICT_PACK",
+        _soft_target_node_id=worker2_node_id,
+    )
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 10)
+    assert (
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            ).remote()
+        )
+        == worker2_node_id
+    )
+
+    # After target node dies, the pg can be recovered elsewhere.
+    cluster.remove_node(worker2_node)
+    cluster.wait_for_nodes()
+    assert (
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            ).remote()
+        )
+        == head_node_id
+    )
+
+
 if __name__ == "__main__":
     import os
 

@@ -12,6 +12,7 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
@@ -692,8 +693,12 @@ def format_resource_demand_summary(
         # bundle is a special keyword for placement group scheduling
         # but it doesn't need to be exposed to users. Remove it from
         # the demand report.
-        if using_placement_group and "bundle" in pg_filtered_bundle.keys():
-            del pg_filtered_bundle["bundle"]
+        if (
+            using_placement_group
+            and ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+            in pg_filtered_bundle.keys()
+        ):
+            del pg_filtered_bundle[ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME]
 
         # No need to report empty request to demand (e.g.,
         # placement group ready task).

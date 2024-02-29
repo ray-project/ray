@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import EndpointInfo, EndpointTag, RunningReplicaInfo
+from ray.serve._private.common import DeploymentID, EndpointInfo, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,
@@ -203,7 +203,7 @@ def test_listen_for_change_java(serve_instance):
     assert set(poll_result_1.updated_objects.keys()) == {"key_1"}
     assert poll_result_1.updated_objects["key_1"].object_snapshot.decode() == "999"
     request_2 = {"keys_to_snapshot_ids": {"ROUTE_TABLE": -1}}
-    endpoints: Dict[EndpointTag, EndpointInfo] = dict()
+    endpoints: Dict[DeploymentID, EndpointInfo] = dict()
     endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll")
     endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1")
     ray.get(host.notify_changed.remote(LongPollNamespace.ROUTE_TABLE, endpoints))

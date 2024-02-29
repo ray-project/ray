@@ -416,10 +416,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "[EXPERIMENTAL] The max number of deployment replicas can "
-            "run on a single node. Valid values are None (no limitation) "
-            "or an integer in the range of [1, 100]. "
-            "Defaults to no limitation."
+            "The max number of replicas of this deployment that can run on a single "
+            "Valid values are None (default, no limit) or an integer in the range of "
+            "[1, 100]. "
         ),
     )
     logging_config: LoggingConfig = Field(
@@ -466,7 +465,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         _route_prefix_format
     )
 
-    def get_user_configured_option_names(self) -> Set[str]:
+    def _get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
 
         Any field not set to DEFAULT.VALUE is considered a user-configured option.

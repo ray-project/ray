@@ -153,7 +153,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             tag_keys=("app", "deployment", "actor_id"),
         ).set_default_tags(
             {
-                "app": self._deployment_id.app,
+                "app": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
             }
@@ -170,7 +170,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             tag_keys=("app", "deployment", "actor_id"),
         ).set_default_tags(
             {
-                "app": self._deployment_id.app,
+                "app": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
             }
@@ -219,7 +219,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app
+        return self._deployment_id.app_name
 
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:

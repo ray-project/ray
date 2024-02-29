@@ -458,7 +458,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(g.bind())
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("g", SERVE_DEFAULT_APP_NAME) in deployment_info
+    assert DeploymentID(name="g") in deployment_info
 
     @serve.deployment
     def f():
@@ -466,7 +466,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(f.bind(), route_prefix="/f", name="app1")
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("f", "app1") in deployment_info
+    assert DeploymentID(name="f", app_name="app1") in deployment_info
 
 
 def test_deploy_application_with_same_name(serve_instance):
@@ -483,7 +483,7 @@ def test_deploy_application_with_same_name(serve_instance):
     assert handle.remote().result() == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("Model", "app") in deployment_info
+    assert DeploymentID(name="Model", app_name="app") in deployment_info
 
     # After deploying a new app with the same name, no Model replicas should be running
     @serve.deployment
@@ -495,10 +495,10 @@ def test_deploy_application_with_same_name(serve_instance):
     assert handle.remote().result() == "got model1"
     assert requests.get("http://127.0.0.1:8000/").text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("Model1", "app") in deployment_info
+    assert DeploymentID(name="Model1", app_name="app") in deployment_info
     assert (
-        DeploymentID("Model", "app") not in deployment_info
-        or deployment_info[DeploymentID("Model", "app")] == []
+        DeploymentID(name="Model", app_name="app") not in deployment_info
+        or deployment_info[DeploymentID(name="Model", app_name="app")] == []
     )
 
     # Redeploy with same app to update route prefix

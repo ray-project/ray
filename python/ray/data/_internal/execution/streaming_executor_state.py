@@ -521,14 +521,18 @@ def select_operator_to_run(
             )
         else:
             under_resource_limits = _execution_allowed(op, resource_manager)
+        in_backpressure = not under_resource_limits or any(
+            not p.can_add_input(op) for p in backpressure_policies
+        )
         if (
-            under_resource_limits
+            not in_backpressure
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and all(p.can_add_input(op) for p in backpressure_policies)
         ):
             ops.append(op)
+        # Signal whether op in backpressure for stats collections
+        op.notify_in_task_submission_backpressure(in_backpressure)
         # Update the op in all cases to enable internal autoscaling, etc.
         op.notify_resource_usage(state.num_queued(), under_resource_limits)
 

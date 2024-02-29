@@ -15,6 +15,9 @@
 				"working_dir": {
 					"type": "string"
 				},
+				"repeated_run": {
+					"type": "integer"
+				},
 				"env": {
 					"type": "string"
 				},
@@ -37,9 +40,6 @@
 						"nightly-3x",
 						"weekly"
 					]
-				},
-				"repeated_run": {
-					"type": "integer"
 				},
 				"team": {
 					"type": "string"

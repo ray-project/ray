@@ -1,5 +1,6 @@
 import logging
 from typing import List, Optional, Union
+import tree
 
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import (
@@ -9,7 +10,7 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import EpisodeType, SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ def synchronous_parallel_sample(
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
-) -> Union[List[SampleBatchType], SampleBatchType]:
+    uses_new_env_runners: bool = False,
+) -> Union[List[SampleBatchType], SampleBatchType, List[EpisodeType], EpisodeType]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
     Waits for all workers to return from the remote calls.
@@ -37,14 +39,17 @@ def synchronous_parallel_sample(
         remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
             of `worker.sample.remote()` to generate the requests.
         max_agent_steps: Optional number of agent steps to be included in the
-            final batch.
+            final batch or list of episodes.
         max_env_steps: Optional number of environment steps to be included in the
-            final batch.
-        concat: Whether to concat all resulting batches at the end and return the
-            concat'd batch.
+            final batch or list of episodes.
+        concat: Whether to aggregate all resulting batches or episodes. in case of
+            batches the list of batches is concatinated at the end. in case of
+            episodes all episode lists from workers are flattened into a single list.
+        uses_new_env_runners: Whether the new `EnvRunner API` is used. In this case
+            episodes instead of `SampleBatch` objects are returned.
 
     Returns:
-        The list of collected sample batch types (one for each parallel
+        The list of collected sample batch types or episode types (one for each parallel
         rollout worker in the given `worker_set`).
 
     .. testcode::
@@ -67,7 +72,7 @@ def synchronous_parallel_sample(
 
     agent_or_env_steps = 0
     max_agent_or_env_steps = max_agent_steps or max_env_steps or None
-    all_sample_batches = []
+    sample_batches_or_episodes = []
 
     # Stop collecting batches as soon as one criterium is met.
     while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
@@ -77,10 +82,10 @@ def synchronous_parallel_sample(
         # No remote workers in the set -> Use local worker for collecting
         # samples.
         if worker_set.num_remote_workers() <= 0:
-            sample_batches = [worker_set.local_worker().sample()]
+            sampled_data = [worker_set.local_worker().sample()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
-            sample_batches = worker_set.foreach_worker(
+            sampled_data = worker_set.foreach_worker(
                 lambda w: w.sample(), local_worker=False, healthy_only=True
             )
             if worker_set.num_healthy_remote_workers() <= 0:
@@ -88,24 +93,38 @@ def synchronous_parallel_sample(
                 # get any new samples if we don't have any healthy remote workers left.
                 break
         # Update our counters for the stopping criterion of the while loop.
-        for b in sample_batches:
+        for batch_or_episode in sampled_data:
             if max_agent_steps:
-                agent_or_env_steps += b.agent_steps()
+                # TODO (sven): Can't we update here the main counters, too?
+                agent_or_env_steps += (
+                    sum(e.agent_steps() for e in batch_or_episode)
+                    if uses_new_env_runners
+                    else batch_or_episode.agent_steps()
+                )
             else:
-                agent_or_env_steps += b.env_steps()
-        all_sample_batches.extend(sample_batches)
+                agent_or_env_steps += (
+                    sum(e.env_steps() for e in batch_or_episode)
+                    if uses_new_env_runners
+                    else batch_or_episode.env_steps()
+                )
+        sample_batches_or_episodes.extend(sampled_data)
 
     if concat is True:
-        full_batch = concat_samples(all_sample_batches)
-        # Discard collected incomplete episodes in episode mode.
-        # if max_episodes is not None and episodes >= max_episodes:
-        #    last_complete_ep_idx = len(full_batch) - full_batch[
-        #        SampleBatch.DONES
-        #    ].reverse().index(1)
-        #    full_batch = full_batch.slice(0, last_complete_ep_idx)
-        return full_batch
+        # If we have episodes flatten the episode list.
+        if uses_new_env_runners:
+            return tree.flatten(sample_batches_or_episodes)
+        # Otherwise we concatenate the `SampleBatch` objects
+        else:
+            full_batch = concat_samples(sample_batches_or_episodes)
+            # Discard collected incomplete episodes in episode mode.
+            # if max_episodes is not None and episodes >= max_episodes:
+            #    last_complete_ep_idx = len(full_batch) - full_batch[
+            #        SampleBatch.DONES
+            #    ].reverse().index(1)
+            #    full_batch = full_batch.slice(0, last_complete_ep_idx)
+            return full_batch
     else:
-        return all_sample_batches
+        return sample_batches_or_episodes
 
 
 def standardize_fields(samples: SampleBatchType, fields: List[str]) -> SampleBatchType:

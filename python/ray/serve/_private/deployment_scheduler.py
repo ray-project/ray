@@ -268,7 +268,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 # to limit the number of replicas on a single node.
                 actor_options["resources"][
                     f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
-                    f"{deployment_id.app}:{deployment_id.name}"
+                    f"{deployment_id.app_name}:{deployment_id.name}"
                 ] = (1.0 / replica_scheduling_request.max_replicas_per_node)
             actor_handle = replica_scheduling_request.actor_def.options(
                 scheduling_strategy=scheduling_strategy,

@@ -50,7 +50,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    id = DeploymentID("recover_start_from_replica_actor_names", "app")
+    id = DeploymentID(name="recover_start_from_replica_actor_names", app_name="app")
     assert len(deployment_dict[id]) == 2
 
     replica_version_hash = None
@@ -163,7 +163,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         wait_for_condition(
             check_replica_counts,
             controller=serve_instance._controller,
-            deployment_id=DeploymentID("test", "app"),
+            deployment_id=DeploymentID(name="test", app_name="app"),
             total=3,
             by_state=[
                 (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
@@ -202,7 +202,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     serve_instance._wait_for_application_running("app")
     check_replica_counts(
         controller=serve_instance._controller,
-        deployment_id=DeploymentID("test", "app"),
+        deployment_id=DeploymentID(name="test", app_name="app"),
         total=2,
         by_state=(
             [(ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids)]
@@ -273,7 +273,7 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     serve.delete("app", _blocking=False)
 
     def check_replica(replica_state=None):
-        id = DeploymentID("V1", "app")
+        id = DeploymentID(name="V1", app_name="app")
         try:
             replicas = ray.get(controller._dump_replica_states_for_testing.remote(id))
         except RayTaskError as ex:
@@ -315,7 +315,7 @@ def test_recover_deleting_application(serve_instance):
         async def __del__(self):
             await signal.wait.remote()
 
-    id = DeploymentID("A", SERVE_DEFAULT_APP_NAME)
+    id = DeploymentID(name="A")
     serve.run(A.bind())
 
     @ray.remote

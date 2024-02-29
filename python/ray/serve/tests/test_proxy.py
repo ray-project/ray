@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import DeploymentID, EndpointInfo, EndpointTag
+from ray.serve._private.common import DeploymentID, EndpointInfo
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
@@ -70,7 +70,9 @@ class FakeActorHandle:
 
 class FakeGrpcHandle:
     def __init__(self, streaming: bool, grpc_context: RayServegRPCContext):
-        self.deployment_id = DeploymentID("fak_deployment_name", "fake_app_name")
+        self.deployment_id = DeploymentID(
+            name="fake_deployment_name", app_name="fake_app_name"
+        )
         self.streaming = streaming
         self.grpc_context = grpc_context
 
@@ -97,7 +99,7 @@ class FakeProxyRouter(ProxyRouter):
         self.handle = None
         self.app_is_cross_language = None
 
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]):
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         pass
 
     def get_handle_for_endpoint(self, *args, **kwargs):
@@ -171,7 +173,9 @@ class FakeProxyRequest(ProxyRequest):
 
 class FakeHTTPHandle:
     def __init__(self, messages):
-        self.deployment_id = DeploymentID("fak_deployment_name", "fake_app_name")
+        self.deployment_id = DeploymentID(
+            name="fake_deployment_name", app_name="fake_app_name"
+        )
         self.messages = messages
 
     async def remote(self, *args, **kwargs):
@@ -270,7 +274,11 @@ class TestgRPCProxy:
             grpc_proxy.update_draining(True)
         if routes_updated:
             grpc_proxy.update_routes(
-                {DeploymentID(app="app", name="deployment"): EndpointInfo("/route")},
+                {
+                    DeploymentID(name="deployment", app_name="app"): EndpointInfo(
+                        "/route"
+                    )
+                },
             )
 
         status, [response_bytes] = await _consume_proxy_generator(
@@ -455,7 +463,11 @@ class TestHTTPProxy:
             http_proxy.update_draining(True)
         if routes_updated:
             http_proxy.update_routes(
-                {DeploymentID(app="app", name="deployment"): EndpointInfo("/route")},
+                {
+                    DeploymentID(name="deployment", app_name="app"): EndpointInfo(
+                        "/route"
+                    )
+                },
             )
 
         status, messages = await _consume_proxy_generator(

@@ -52,7 +52,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Status message", width: "30%" },
   { label: "Num replicas" },
   { label: "Actions" },
-  { label: "Application" },
   { label: "Route prefix" },
   { label: "Last deployed at" },
   { label: "Duration (since last deploy)" },
@@ -250,6 +249,7 @@ export const ServeApplicationDetailPage = () => {
                     key={deployment.name}
                     deployment={deployment}
                     application={application}
+                    showExpandColumn={false}
                   />
                 ))}
             </TableBody>

@@ -166,7 +166,7 @@ def test_replica_startup_status_transitions(ray_cluster):
         controller = client._controller
         replicas = ray.get(
             controller._dump_replica_states_for_testing.remote(
-                DeploymentID(E.name, "default")
+                DeploymentID(name=E.name)
             )
         )
         return replicas.get([replica_state])

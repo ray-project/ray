@@ -52,12 +52,18 @@ class CloudInstance:
     cloud_instance_id: CloudInstanceId
     # The node type of the cloud instance.
     node_type: NodeType
-    # Update request id from which the cloud instance is launched.
-    request_id: str
-    # If the cloud instance is running.
-    is_running: bool
-    # The ray node kind, i.e. head or worker
+    # The node kind, i.e head or worker.
     node_kind: NodeKind
+    # If the cloud instance is already running.
+    is_running: bool
+    # Update request id from which the cloud instance is launched.
+    # This could be None if the cloud instance couldn't be associated with requests
+    # by the cloud provider: e.g. cloud provider doesn't support per-instance
+    # extra metadata.
+    # This is fine for now since the reconciler should be able to know how
+    # to handle cloud instances w/o request ids.
+    # TODO: make this a required field.
+    request_id: Optional[str] = None
 
 
 class CloudInstanceProviderError(Exception):
@@ -88,15 +94,19 @@ class LaunchNodeError(CloudInstanceProviderError):
         count: int,
         request_id: str,
         timestamp_ns: int,
+        details: str = "",
+        cause: Optional[Exception] = None,
     ) -> None:
         msg = (
             f"Failed to launch {count} nodes of type {node_type} with "
-            f"request id {request_id}."
+            f"request id {request_id}: {details}"
         )
         super().__init__(msg, timestamp_ns=timestamp_ns)
         self.node_type = node_type
         self.count = count
         self.request_id = request_id
+        if cause:
+            self.__cause__ = cause
 
     def __repr__(self) -> str:
         return (
@@ -116,13 +126,18 @@ class TerminateNodeError(CloudInstanceProviderError):
         cloud_instance_id: CloudInstanceId,
         request_id: str,
         timestamp_ns: int,
+        details: str = "",
+        cause: Optional[Exception] = None,
     ) -> None:
         msg = (
-            f"Failed to terminate node {cloud_instance_id} with request id {request_id}"
+            f"Failed to terminate node {cloud_instance_id} with "
+            f"request id {request_id}: {details}"
         )
         super().__init__(msg, timestamp_ns=timestamp_ns)
         self.cloud_instance_id = cloud_instance_id
         self.request_id = request_id
+        if cause:
+            self.__cause__ = cause
 
     def __repr__(self) -> str:
         return (
@@ -175,7 +190,6 @@ class ICloudInstanceProvider(ABC):
                     "ray_head": 1,
                 },
                 request_id="1",
-                config=AutoscalingConfig(...),
             )
 
             # Get the non-terminated nodes of the cloud instance provider.

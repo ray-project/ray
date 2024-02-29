@@ -58,7 +58,9 @@ class LimitOperator(OneToOneOperator):
                     metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
                     return block, metadata
 
-                block, metadata_ref = cached_remote_fn(slice_fn, num_returns=2).remote(
+                block, metadata_ref = cached_remote_fn(
+                    slice_fn, num_cpus=0, num_returns=2
+                ).remote(
                     block,
                     metadata,
                     self._limit - self._consumed_rows,

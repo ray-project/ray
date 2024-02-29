@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict
+from collections import defaultdict, Counter
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from pathlib import Path
 from typing import (
@@ -102,8 +102,13 @@ class ScalingConfig:
     """Configuration for scaling training.
 
     Args:
-        trainer_resources: Resources to allocate for the trainer. If None is provided,
-            will default to 1 CPU for most trainers.
+        trainer_resources: Resources to allocate for the training coordinator.
+            The training coordinator launches the worker group and executes
+            the training function per worker, and this process does NOT require
+            GPUs. The coordinator is always scheduled on the same node as the
+            rank 0 worker, so one example use case is to set a minimum amount
+            of resources (e.g. CPU memory) required by the rank 0 node.
+            By default, this assigns 1 CPU to the training coordinator.
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
@@ -139,7 +144,7 @@ class ScalingConfig:
     """
 
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
-    num_workers: Optional[Union[int, SampleRange]] = None
+    num_workers: Union[int, SampleRange] = 1
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
@@ -185,7 +190,8 @@ class ScalingConfig:
         resources_per_worker = {
             k: v for k, v in self.resources_per_worker.items() if v != 0
         }
-        resources_per_worker.setdefault("GPU", int(self.use_gpu))
+        if self.use_gpu:
+            resources_per_worker.setdefault("GPU", 1)
         return resources_per_worker
 
     @property
@@ -216,9 +222,8 @@ class ScalingConfig:
     def total_resources(self):
         """Map of total resources required for the trainer."""
         total_resource_map = defaultdict(float, self._trainer_resources_not_none)
-        num_workers = self.num_workers or 0
         for k, value in self._resources_per_worker_not_none.items():
-            total_resource_map[k] += value * num_workers
+            total_resource_map[k] += value * self.num_workers
         return dict(total_resource_map)
 
     @property
@@ -244,49 +249,44 @@ class ScalingConfig:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-        trainer_resources = self._trainer_resources_not_none
-        trainer_bundle = [trainer_resources]
-        worker_resources = {
-            "CPU": self.num_cpus_per_worker,
-            "GPU": self.num_gpus_per_worker,
-        }
-        worker_resources_extra = (
-            {} if self.resources_per_worker is None else self.resources_per_worker
-        )
-        worker_bundles = [
-            {**worker_resources, **worker_resources_extra}
-            for _ in range(self.num_workers if self.num_workers else 0)
-        ]
-        bundles = trainer_bundle + worker_bundles
+        trainer_bundle = self._trainer_resources_not_none
+        worker_bundle = self._resources_per_worker_not_none
+
+        # Colocate Trainer and rank0 worker by merging their bundles
+        # Note: This empty bundle is required so that the Tune actor manager schedules
+        # the Trainable onto the combined bundle while taking none of its resources,
+        # rather than a non-empty head bundle.
+        combined_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
+        bundles = [{}, combined_bundle] + [worker_bundle] * (self.num_workers - 1)
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
     def from_placement_group_factory(
         cls, pgf: "PlacementGroupFactory"
     ) -> "ScalingConfig":
-        """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
-        if pgf.head_bundle_is_empty:
-            trainer_resources = {}
-            worker_bundles = pgf.bundles
-        else:
-            trainer_resources = pgf.bundles[0]
-            worker_bundles = pgf.bundles[1:]
+        """Create a ScalingConfig from a Tune's PlacementGroupFactory
 
-        use_gpu = False
+        Note that this is only needed for ResourceChangingScheduler, which
+        modifies a trial's PlacementGroupFactory but doesn't propagate
+        the changes to ScalingConfig. TrainTrainable needs to reconstruct
+        a ScalingConfig from on the trial's PlacementGroupFactory.
+        """
+
+        # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]
+        num_workers = len(pgf.bundles)
+        combined_resources = pgf.bundles[0]
+        resources_per_worker = pgf.bundles[-1]
+        use_gpu = bool(resources_per_worker.get("GPU", False))
         placement_strategy = pgf.strategy
-        resources_per_worker = None
-        num_workers = None
 
-        if worker_bundles:
-            first_bundle = worker_bundles[0]
-            if not all(bundle == first_bundle for bundle in worker_bundles[1:]):
-                raise ValueError(
-                    "All worker bundles (any other than the first one) "
-                    "must be equal to each other."
-                )
-            use_gpu = bool(first_bundle.get("GPU"))
-            num_workers = len(worker_bundles)
-            resources_per_worker = first_bundle
+        # In `as_placement_group_factory`, we merged the trainer resource into the
+        # first worker resources bundle. We need to calculate the resources diff to
+        # get the trainer resources.
+        # Note: If there's only one worker, we won't be able to calculate the diff.
+        # We'll have empty trainer bundle and assign all resources to the worker.
+        trainer_resources = dict(
+            Counter(combined_resources) - Counter(resources_per_worker)
+        )
 
         return ScalingConfig(
             trainer_resources=trainer_resources,

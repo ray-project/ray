@@ -1,9 +1,10 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, NamedTuple, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from ray.actor import ActorHandle
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
@@ -22,26 +23,26 @@ from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.grpc_util import RayServegRPCContext
 
 
-class DeploymentID(NamedTuple):
+@dataclass(frozen=True)
+class DeploymentID:
     name: str
-    app: str
+    app_name: str = SERVE_DEFAULT_APP_NAME
 
     def __str__(self):
         # TODO(zcin): remove this once we no longer use the concatenated
         # string for metrics
-        if self.app:
-            return f"{self.app}_{self.name}"
+        if self.app_name:
+            return f"{self.app_name}_{self.name}"
         else:
             return self.name
 
     def to_replica_actor_class_name(self):
-        if self.app:
-            return f"ServeReplica:{self.app}:{self.name}"
+        if self.app_name:
+            return f"ServeReplica:{self.app_name}:{self.name}"
         else:
             return f"ServeReplica:{self.name}"
 
 
-EndpointTag = DeploymentID
 ReplicaTag = str
 NodeId = str
 Duration = float
@@ -544,7 +545,7 @@ class ReplicaName:
 
     @property
     def deployment_id(self):
-        return DeploymentID(self.deployment_name, self.app_name)
+        return DeploymentID(name=self.deployment_name, app_name=self.app_name)
 
     @staticmethod
     def is_replica_name(actor_name: str) -> bool:

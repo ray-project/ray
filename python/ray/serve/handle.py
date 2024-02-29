@@ -106,7 +106,7 @@ class _DeploymentHandleBase:
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
-        self.deployment_id = DeploymentID(deployment_name, app_name)
+        self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.handle_options = handle_options or _HandleOptions()
         self._recorded_telemetry = _recorded_telemetry
 
@@ -194,7 +194,7 @@ class _DeploymentHandleBase:
 
     @property
     def app_name(self) -> str:
-        return self.deployment_id.app
+        return self.deployment_id.app_name
 
     def _options(
         self,

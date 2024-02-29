@@ -14,24 +14,6 @@ const SERVE_PROXY_STATUS_SORT_ORDER: Record<ServeSystemActorStatus, number> = {
 
 export const useServeDeployments = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
-  const [filter, setFilter] = useState<
-    {
-      key: "name" | "status" | "applicationName";
-      val: string;
-    }[]
-  >([]);
-  const changeFilter = (
-    key: "name" | "status" | "applicationName",
-    val: string,
-  ) => {
-    const f = filter.find((e) => e.key === key);
-    if (f) {
-      f.val = val;
-    } else {
-      filter.push({ key, val });
-    }
-    setFilter([...filter]);
-  };
 
   const [proxiesPage, setProxiesPage] = useState({
     pageSize: 10,
@@ -58,7 +40,7 @@ export const useServeDeployments = () => {
             application: app,
           })),
         );
-        return { ...rsp.data, serveDeploymentsList };
+        return { ...rsp.data, serveApplicationsList, serveDeploymentsList };
       }
     },
     { refreshInterval: API_REFRESH_INTERVAL_MS },
@@ -83,23 +65,19 @@ export const useServeDeployments = () => {
       : [];
 
   const serveDeploymentsList = data?.serveDeploymentsList ?? [];
+  const serveApplicationsList = data?.serveApplicationsList ?? [];
 
   return {
     serveDetails,
-    filteredServeDeployments: serveDeploymentsList.filter((app) =>
-      filter.every((f) =>
-        f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
-      ),
-    ),
+    serveDeployments: serveDeploymentsList,
     proxies,
     error,
-    changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
     proxiesPage,
     setProxiesPage: (key: string, val: number) =>
       setProxiesPage({ ...proxiesPage, [key]: val }),
-    allServeDeployments: serveDeploymentsList,
+    serveApplications: serveApplicationsList,
   };
 };
 

@@ -110,7 +110,7 @@ def test_http_proxy_failure(serve_instance):
 
 
 def _get_worker_handles(deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME):
-    id = DeploymentID(deployment_name, app_name)
+    id = DeploymentID(name=deployment_name, app_name=app_name)
     controller = serve.context._global_client._controller
     deployment_dict = ray.get(controller._all_running_replicas.remote())
 

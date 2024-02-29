@@ -3466,7 +3466,7 @@ class Dataset:
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
                 the dataset to read. For more information, see details in
-                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
             dataset: The name of the dataset in the format of ``dataset_id.table_id``.
                 The dataset is created if it doesn't already exist.
             max_retry_cnt: The maximum number of retries that an individual block write

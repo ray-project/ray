@@ -13,6 +13,7 @@ runner_queues:
   macos: macos
   macos-arm64: macos-pr-arm64
   windows: windows_queue_pr
+  small_branch: runner_queue_small_branch
 builder_priority: 5
 runner_priority: 5
 buildkite_dirs:

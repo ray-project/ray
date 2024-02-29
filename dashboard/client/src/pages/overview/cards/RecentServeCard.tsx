@@ -20,7 +20,7 @@ type RecentServeCardProps = {
 export const RecentServeCard = ({ className }: RecentServeCardProps) => {
   const classes = useStyles();
 
-  const { allServeDeployments: deployments } = useServeDeployments();
+  const { serveDeployments: deployments } = useServeDeployments();
 
   const sortedDeployments = _.orderBy(
     deployments,

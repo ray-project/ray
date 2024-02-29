@@ -42,9 +42,7 @@ from ray.serve.schema import ServeDeploySchema
 def get_running_replica_tags(name: str, controller: ServeController) -> List:
     """Get the replica tags of running replicas for given deployment"""
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(
-            DeploymentID(name, SERVE_DEFAULT_APP_NAME)
-        )
+        controller._dump_replica_states_for_testing.remote(DeploymentID(name=name))
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return [replica.replica_tag for replica in running_replicas]
@@ -53,7 +51,7 @@ def get_running_replica_tags(name: str, controller: ServeController) -> List:
 def get_deployment_start_time(controller: ServeController, name: str):
     """Return start time for given deployment"""
     deployments = ray.get(controller.list_deployments_internal.remote())
-    deployment_info, _ = deployments[DeploymentID(name, SERVE_DEFAULT_APP_NAME)]
+    deployment_info, _ = deployments[DeploymentID(name=name)]
     return deployment_info.start_time_ms
 
 
@@ -117,7 +115,7 @@ def test_autoscaling_metrics(serve_instance):
             ray.get(signal.wait.remote())
 
     handle = serve.run(A.bind())
-    dep_id = DeploymentID("A", "default")
+    dep_id = DeploymentID(name="A")
     [handle.remote() for _ in range(50)]
 
     # Wait for metrics to propagate
@@ -713,7 +711,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
         return os.getpid()
 
     handle = serve.run(scaler.bind())
-    dep_id = DeploymentID("scaler", SERVE_DEFAULT_APP_NAME)
+    dep_id = DeploymentID(name="scaler")
     responses = [handle.remote() for _ in range(10)]
 
     wait_for_condition(

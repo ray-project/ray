@@ -354,7 +354,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
-            double max_cpu_fraction_per_node
+            double max_cpu_fraction_per_node,
+            CNodeID soft_target_node_id,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":

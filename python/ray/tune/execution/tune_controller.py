@@ -2172,14 +2172,14 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     if not isinstance(search_alg, BasicVariantGenerator):
         return 1
 
-    # Use a minimum of 16 to trigger fast autoscaling
-    # Scale up to at most the number of available cluster CPUs
-    cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
-    max_pending_trials = min(
-        max(search_alg.total_samples, 16), max(16, int(cluster_cpus * 1.1))
-    )
+    # Allow up to at least 200 pending trials to trigger fast autoscaling
+    min_autoscaling_rate = 200
 
-    if max_pending_trials > 128:
+    # Allow more pending trials for larger clusters (based on number of CPUs)
+    cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
+    max_pending_trials = max(min_autoscaling_rate, int(cluster_cpus * 1.1))
+
+    if max_pending_trials > min_autoscaling_rate:
         logger.warning(
             f"The maximum number of pending trials has been "
             f"automatically set to the number of available "
@@ -2189,7 +2189,7 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
             f"of trials, this could lead to scheduling overhead. "
             f"In this case, consider setting the "
             f"`TUNE_MAX_PENDING_TRIALS_PG` environment variable "
-            f"to the desired maximum number of concurrent trials."
+            f"to the desired maximum number of concurrent pending trials."
         )
 
     return max_pending_trials

@@ -119,7 +119,7 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     async def construct_scheduler(loop: asyncio.AbstractEventLoop):
         return PowerOfTwoChoicesReplicaScheduler(
             loop,
-            DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
+            DeploymentID(name="TEST_DEPLOYMENT"),
             prefer_local_node_routing=request.param.get("prefer_local_node", False),
             prefer_local_az_routing=request.param.get("prefer_local_az", False),
             self_node_id=SCHEDULER_NODE_ID,

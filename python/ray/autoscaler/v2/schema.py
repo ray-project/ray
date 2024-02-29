@@ -3,9 +3,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from ray.autoscaler._private.autoscaler import NodeStatus
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
-from ray.core.generated.autoscaler_pb2 import NodeState
+from ray.core.generated.autoscaler_pb2 import NodeState, NodeStatus
 from ray.core.generated.instance_manager_pb2 import Instance
 
 # TODO(rickyx): once we have graceful shutdown, we could populate

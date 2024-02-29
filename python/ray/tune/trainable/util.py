@@ -8,7 +8,6 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
 from ray.util.annotations import PublicAPI
 
@@ -150,7 +149,6 @@ def with_resources(
     resources: Union[
         Dict[str, float],
         PlacementGroupFactory,
-        ScalingConfig,
         Callable[[dict], PlacementGroupFactory],
     ],
 ):
@@ -168,9 +166,8 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, ``ScalingConfig``
-            or callable that takes in a config dict and returns a placement
-            group factory.
+        resources: Resource dict, placement group factory, or callable that takes
+            in a config dict and returns a placement group factory.
 
     Example:
 
@@ -202,8 +199,6 @@ def with_resources(
 
     if isinstance(resources, PlacementGroupFactory):
         pgf = resources
-    elif isinstance(resources, ScalingConfig):
-        pgf = resources.as_placement_group_factory()
     elif isinstance(resources, dict):
         pgf = resource_dict_to_pg_factory(resources)
     elif callable(resources):
