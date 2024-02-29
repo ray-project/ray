@@ -1653,5 +1653,5 @@ class Reconciler:
         instances, _ = Reconciler._get_im_instances(instance_manager)
         node_type_configs = autoscaling_config.get_node_type_configs()
 
-        metrics_reporter.report_instances(instances)
+        metrics_reporter.report_instances(instances, node_type_configs)
         metrics_reporter.report_resources(instances, node_type_configs)
