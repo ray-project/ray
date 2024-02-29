@@ -526,6 +526,16 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
   return lineage_bytes_evicted;
 }
 
+int64_t ReferenceCounter::GetLineageSize() const {
+  int64_t total_size = 0;
+  for (const auto &entry : object_id_refs_) {
+    if (entry.second.lineage_ref_count > 0) {
+      total_size += entry.second.object_size;
+    }
+  }
+  return total_size;
+}
+
 void ReferenceCounter::RemoveSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids,
     bool release_lineage,

@@ -835,8 +835,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
-      it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
-      total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes;
+      auto total_lineage_footprint_bytes_ = reference_counter_->GetLineageSize();
       if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
         RAY_LOG(INFO) << "Total lineage size is " << total_lineage_footprint_bytes_ / 1e6
                       << "MB, which exceeds the limit of " << max_lineage_bytes_ / 1e6
