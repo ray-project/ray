@@ -55,7 +55,6 @@ def gen_expected_metrics(
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
             "'block_generation_time': N",
-            "'total_data_tasks_time': N",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -67,7 +66,6 @@ def gen_expected_metrics(
             "'bytes_outputs_taken': N",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
-            "'total_data_tasks_time': Z",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -180,10 +178,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     list(it.iter_batches())
     stats = it.stats()
     extra_metrics = gen_expected_metrics(
-        is_map=False,
-        extra_metrics=[
-            "'num_output_N': N",
-        ],
+        is_map=False, extra_metrics=["'num_output_N': N"]
     )
     assert (
         canonicalize(stats)
@@ -470,7 +465,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      block_generation_time: N,\n"
-        "      total_data_tasks_time: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
