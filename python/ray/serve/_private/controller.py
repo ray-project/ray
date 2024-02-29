@@ -14,7 +14,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     DeploymentID,
-    EndpointTag,
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
@@ -311,7 +310,7 @@ class ServeController:
             keys_to_snapshot_ids_bytes
         )
 
-    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+    def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
 
@@ -817,7 +816,7 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        id = DeploymentID(name, app_name)
+        id = DeploymentID(name=name, app_name=app_name)
         deployment_info = self.deployment_state_manager.get_deployment(id)
         if deployment_info is None:
             app_msg = f" in application '{app_name}'" if app_name else ""
@@ -955,7 +954,7 @@ class ServeController:
                 deployments go through this API.
         """
 
-        id = DeploymentID(name, app_name)
+        id = DeploymentID(name=name, app_name=app_name)
         status = self.deployment_state_manager.get_deployment_statuses([id])
         if not status:
             return None
