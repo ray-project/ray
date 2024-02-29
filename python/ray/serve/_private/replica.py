@@ -511,7 +511,8 @@ class ReplicaActor:
         if num_ongoing_requests >= limit:
             logger.warning(
                 f"Replica at capacity of max_concurrent_queries={limit}, "
-                f"rejecting request {request_metadata.request_id}."
+                f"rejecting request {request_metadata.request_id}.",
+                extra={"log_to_stderr": False},
             )
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
