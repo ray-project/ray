@@ -101,10 +101,8 @@ class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
 
     @pytest.fixture(autouse=True)
-    def local_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-        self.local_dir = str(tmp_path / "ray_results")
-        yield self.local_dir
+    def tmp_path(self, tmp_path):
+        self.tmp_path = tmp_path
 
     def setUp(self):
         ray.init()
@@ -192,7 +190,9 @@ class TunerTest(unittest.TestCase):
         tuner = Tuner(
             trainable=trainer,
             run_config=RunConfig(
-                name="test_tuner_driver_fail", callbacks=[FailureInjectionCallback()]
+                name="test_tuner_driver_fail",
+                storage_path=str(self.tmp_path),
+                callbacks=[FailureInjectionCallback()],
             ),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
@@ -204,7 +204,7 @@ class TunerTest(unittest.TestCase):
             tuner.fit()
 
         # Test resume
-        restore_path = os.path.join(self.local_dir, "test_tuner_driver_fail")
+        restore_path = os.path.join(self.tmp_path, "test_tuner_driver_fail")
         tuner = Tuner.restore(restore_path, trainable=trainer, param_space=param_space)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
