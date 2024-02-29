@@ -214,7 +214,7 @@ class ExecutionOptions:
         preserve_order: Set this to preserve the ordering between blocks processed by
             operators. Off by default.
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
-            actors (on by default). This parameter applies to both stateful map and
+            actors (off by default). This parameter applies to both stateful map and
             streaming_split operations.
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
@@ -227,6 +227,8 @@ class ExecutionOptions:
         exclude_resources: Optional[ExecutionResources] = None,
         locality_with_output: Union[bool, List[NodeIdStr]] = False,
         preserve_order: bool = False,
+        # TODO(hchen): Re-enable `actor_locality_enabled` by default after fixing
+        # https://github.com/ray-project/ray/issues/43466
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
     ):

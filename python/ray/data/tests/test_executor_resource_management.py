@@ -483,7 +483,7 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
 def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
     input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(4)]))
     op = OutputSplitter(input_op, 2, equal=False, locality_hints=["0", "1"])
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=True))
 
     assert op.current_processor_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0
