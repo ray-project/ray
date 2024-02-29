@@ -9,6 +9,7 @@ from ci.ray_ci.builder_container import (
     ARCHITECTURE,
     BuilderContainer,
 )
+from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 from ci.ray_ci.docker_container import PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
@@ -51,6 +52,12 @@ from ci.ray_ci.utils import logger, docker_login
     help=("Platform to build the docker with"),
 )
 @click.option(
+    "--operating-system",
+    default="linux",
+    type=click.Choice(["linux", "windows"]),
+    help=("Operating system to run tests on"),
+)
+@click.option(
     "--canonical-tag",
     default=None,
     type=str,
@@ -70,6 +77,7 @@ def main(
     python_version: str,
     platform: List[str],
     architecture: str,
+    operating_system: str,
     canonical_tag: str,
     upload: bool,
 ) -> None:
@@ -79,7 +87,7 @@ def main(
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
-        build_wheel(python_version, build_type, architecture, upload)
+        build_wheel(python_version, build_type, architecture, operating_system, upload)
         return
 
     if artifact_type == "docker":
@@ -114,12 +122,18 @@ def main(
 
 
 def build_wheel(
-    python_version: str, build_type: str, architecture: str, upload: bool
+    python_version: str,
+    build_type: str,
+    architecture: str,
+    operating_system: str,
+    upload: bool,
 ) -> None:
     """
     Build a wheel artifact.
     """
-    BuilderContainer(python_version, build_type, architecture, upload).run()
+    if operating_system == "windows":
+        return WindowsBuilderContainer(python_version, upload).run()
+    return BuilderContainer(python_version, build_type, architecture, upload).run()
 
 
 def build_docker(
