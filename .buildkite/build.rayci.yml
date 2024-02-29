@@ -55,8 +55,8 @@ steps:
     mount_windows_artifacts: true
     instance_type: windows
     commands:
-      - export BUILD_ONE_PYTHON_ONLY={{matrix}}
-      - bash /c/workdir/.buildkite/windows_ci.sh wheels
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:build_in_docker_windows -- wheel --python-version {{matrix}} --operating-system windows --upload
     matrix:
       - "3.8"
       - "3.9"
