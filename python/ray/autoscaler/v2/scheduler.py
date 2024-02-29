@@ -883,7 +883,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     terminate_requests=reply.to_terminate,
                     infeasible_requests=infeasible_requests,
                     infeasible_gang_requests=infeasible_gang_requests,
-                    infeasible_constraints=infeasible_constraints,
+                    infeasible_cluster_resource_constraints=infeasible_constraints,
                     cluster_shape=ctx.get_cluster_shape(),
                     node_type_configs=ctx.get_node_type_configs(),
                 )
