@@ -658,6 +658,7 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
         logger.handlers.clear()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize(
     "ray_instance",
     [
