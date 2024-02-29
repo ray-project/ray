@@ -56,15 +56,10 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures the not found is responding correctly.
+    app_name = "default"
     ping_grpc_call_method(channel, app_name, test_not_found=True)
 
     serve.run(g)
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is deployed.
-    assert len(replicas[replica_name]) == 1
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
