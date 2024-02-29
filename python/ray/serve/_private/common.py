@@ -25,16 +25,22 @@ from ray.serve.grpc_util import RayServegRPCContext
 
 @dataclass(frozen=True)
 class DeploymentID:
-    deployment_name: str
+    name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
 
     def __str__(self):
         # TODO(zcin): remove this once we no longer use the concatenated
         # string for metrics
-        return f"{self.app_name}_{self.deployment_name}"
+        if self.app_name:
+            return f"{self.app_name}_{self.name}"
+        else:
+            return self.name
 
     def to_replica_actor_class_name(self):
-        return f"ServeReplica:{self.app_name}:{self.deployment_name}"
+        if self.app_name:
+            return f"ServeReplica:{self.app_name}:{self.name}"
+        else:
+            return f"ServeReplica:{self.name}"
 
 
 ReplicaTag = str
