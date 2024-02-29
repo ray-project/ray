@@ -141,51 +141,6 @@ public class ServeControllerClient {
     return rootUrl;
   }
 
-  /**
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   * @param name
-   * @return
-   */
-  @Deprecated
-  public DeploymentRoute getDeploymentInfo(String name) {
-    return DeploymentRoute.fromProtoBytes(
-        (byte[])
-            ((PyActorHandle) controller)
-                .task(PyActorMethod.of("get_deployment_info"), name)
-                .remote()
-                .get());
-  }
-
-  /**
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   * @return
-   */
-  @Deprecated
-  public Map<String, DeploymentRoute> listDeployments() {
-    DeploymentRouteList deploymentRouteList =
-        ServeProtoUtil.bytesToProto(
-            (byte[])
-                ((PyActorHandle) controller)
-                    .task(PyActorMethod.of("list_deployments_v1"))
-                    .remote()
-                    .get(),
-            DeploymentRouteList::parseFrom);
-
-    if (deploymentRouteList == null || deploymentRouteList.getDeploymentRoutesList() == null) {
-      return Collections.emptyMap();
-    }
-
-    Map<String, DeploymentRoute> deploymentRoutes =
-        new HashMap<>(deploymentRouteList.getDeploymentRoutesList().size());
-    for (io.ray.serve.generated.DeploymentRoute deploymentRoute :
-        deploymentRouteList.getDeploymentRoutesList()) {
-      deploymentRoutes.put(
-          deploymentRoute.getDeploymentInfo().getName(),
-          DeploymentRoute.fromProto(deploymentRoute));
-    }
-    return deploymentRoutes;
-  }
-
   public BaseActorHandle getController() {
     return controller;
   }

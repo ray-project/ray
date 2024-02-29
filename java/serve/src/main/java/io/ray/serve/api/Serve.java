@@ -275,64 +275,6 @@ public class Serve {
   }
 
   /**
-   * Dynamically fetch a handle to a Deployment object.
-   *
-   * <p>This can be used to update and redeploy a deployment without access to the original
-   * definition.
-   *
-   * @param name name of the deployment. This must have already been deployed.
-   * @return Deployment
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   */
-  @Deprecated
-  public static Deployment getDeployment(String name) {
-    LOGGER.warn(Constants.MIGRATION_MESSAGE);
-    DeploymentRoute deploymentRoute = getGlobalClient().getDeploymentInfo(name);
-    if (deploymentRoute == null) {
-      throw new RayServeException(
-          MessageFormatter.format(
-              "Deployment {} was not found. Did you call Deployment.deploy?", name));
-    }
-
-    // TODO use DeploymentCreator
-    return new Deployment(
-        name,
-        deploymentRoute.getDeploymentInfo().getDeploymentConfig(),
-        deploymentRoute.getDeploymentInfo().getReplicaConfig(),
-        deploymentRoute.getDeploymentInfo().getVersion(),
-        deploymentRoute.getRoute());
-  }
-
-  /**
-   * Returns a dictionary of all active deployments.
-   *
-   * <p>Dictionary maps deployment name to Deployment objects.
-   *
-   * @return
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   */
-  @Deprecated
-  public static Map<String, Deployment> listDeployments() {
-    LOGGER.warn(Constants.MIGRATION_MESSAGE);
-    Map<String, DeploymentRoute> infos = getGlobalClient().listDeployments();
-    if (infos == null || infos.size() == 0) {
-      return Collections.emptyMap();
-    }
-    Map<String, Deployment> deployments = new HashMap<>(infos.size());
-    for (Map.Entry<String, DeploymentRoute> entry : infos.entrySet()) {
-      deployments.put(
-          entry.getKey(),
-          new Deployment(
-              entry.getKey(),
-              entry.getValue().getDeploymentInfo().getDeploymentConfig(),
-              entry.getValue().getDeploymentInfo().getReplicaConfig(),
-              entry.getValue().getDeploymentInfo().getVersion(),
-              entry.getValue().getRoute()));
-    }
-    return deployments;
-  }
-
-  /**
    * Run an application and return a handle to its ingress deployment.
    *
    * @param target A Serve application returned by `Deployment.bind()`.
