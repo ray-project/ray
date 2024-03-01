@@ -21,7 +21,15 @@ AWS_WEEKLY_GREEN_METRIC = "ray_weekly_green_metric"
     default=False,
     help=("Persist the weekly green metric to S3."),
 )
-def main(production: bool) -> None:
+@click.option(
+    "--check",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    required=False,
+    help=("Check whether there is 0 blockers."),
+)
+def main(production: bool, check: bool) -> None:
     init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
     blockers = TestStateMachine.get_release_blockers()
     logger.info(f"Found {blockers.totalCount} release blockers")
@@ -38,6 +46,9 @@ def main(production: bool) -> None:
             Body=json.dumps(num_blocker_by_team),
         )
         logger.info("Weekly green metric updated successfully")
+
+    if check and blockers.totalCount != 0:
+        raise Exception(f"Found {blockers.totalCount} release blockers")
 
 
 if __name__ == "__main__":
