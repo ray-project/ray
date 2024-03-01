@@ -61,7 +61,8 @@ def test_check_downloaded_wheels():
             with open(os.path.join(tmp_dir, wheel + ".whl"), "w") as f:
                 f.write("")
 
-        _check_downloaded_wheels(tmp_dir, wheels)
+        result, msg = _check_downloaded_wheels(tmp_dir, wheels)
+        assert result
 
 
 def test_check_downloaded_wheels_fail():
@@ -77,8 +78,9 @@ def test_check_downloaded_wheels_fail():
         for wheel in wheels[:3]:
             with open(os.path.join(tmp_dir, wheel + ".whl"), "w") as f:
                 f.write("")
-        with pytest.raises(Exception, match=" was not downloaded"):
-            _check_downloaded_wheels(tmp_dir, wheels)
+
+        result, msg = _check_downloaded_wheels(tmp_dir, wheels)
+        assert not result
 
 
 @mock.patch("boto3.client")
@@ -92,7 +94,8 @@ def test_download_wheel_from_s3(mock_boto3_client):
             "releases/1.0.0/1234567/ray-1.0.0-cp38-cp38-win_amd64.whl",
         ]
         for key in keys:
-            download_wheel_from_s3(key=key, directory_path=tmp_dir)
+            result, msg = download_wheel_from_s3(key=key, directory_path=tmp_dir)
+            assert result
             mock_boto3_client.return_value.download_file.assert_called_with(
                 "ray-wheels", key, f"{tmp_dir}/{key.split('/')[-1]}"
             )
@@ -116,8 +119,9 @@ def test_download_wheel_from_s3_fail(mock_boto3_client):
             "releases/1.0.0/1234567/ray-1.0.0-cp38-cp38-manylinux2014_aarch64.whl",
         ]
         for key in keys:
-            with pytest.raises(ClientError):
-                download_wheel_from_s3(key=key, directory_path=tmp_dir)
+            result, msg = download_wheel_from_s3(key=key, directory_path=tmp_dir)
+            assert not result
+            assert msg == "Not Found"
 
 
 @mock.patch("ci.ray_ci.automation.ray_wheels_lib.download_wheel_from_s3")
@@ -130,10 +134,14 @@ def test_download_ray_wheels_from_s3(
     ray_version = "1.0.0"
 
     mock_get_wheel_names.return_value = SAMPLE_WHEELS
+    mock_download_wheel.return_value = (True, "Downloaded wheel successfully")
+    mock_check_wheels.return_value = (True, "Wheels are downloaded properly")
+
     with tempfile.TemporaryDirectory() as tmp_dir:
-        download_ray_wheels_from_s3(
+        result, msg = download_ray_wheels_from_s3(
             commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
         )
+        assert result
 
         mock_get_wheel_names.assert_called_with(ray_version)
         assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
@@ -148,30 +156,32 @@ def test_download_ray_wheels_from_s3(
 
 
 @pytest.mark.parametrize(
-    ("check_error"),
+    ("error_message"),
     [
-        (Exception(f"{SAMPLE_WHEELS[0]} was not downloaded")),
-        (AssertionError("does not exist")),
-        (Exception("Expected N *.whl files in tmp_dir, but found 0 instead")),
+        (f"{SAMPLE_WHEELS[0]} was not downloaded"),
+        ("Does not exist"),
+        ("Expected N *.whl files in tmp_dir, but found 0 instead"),
     ],
 )
 @mock.patch("ci.ray_ci.automation.ray_wheels_lib.download_wheel_from_s3")
 @mock.patch("ci.ray_ci.automation.ray_wheels_lib._check_downloaded_wheels")
 @mock.patch("ci.ray_ci.automation.ray_wheels_lib._get_wheel_names")
 def test_download_ray_wheels_from_s3_fail_check_wheels(
-    mock_get_wheel_names, mock_check_wheels, mock_download_wheel, check_error
+    mock_get_wheel_names, mock_check_wheels, mock_download_wheel, error_message
 ):
     commit_hash = "1234567"
     ray_version = "1.0.0"
 
     mock_get_wheel_names.return_value = SAMPLE_WHEELS
-    mock_check_wheels.side_effect = check_error
+    mock_download_wheel.return_value = (True, "Downloaded wheel successfully")
+    mock_check_wheels.return_value = (False, error_message)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        with pytest.raises(type(check_error)):
-            download_ray_wheels_from_s3(
-                commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
-            )
+        result, msg = download_ray_wheels_from_s3(
+            commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
+        )
+        assert not result
+        assert msg == error_message
     assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
 
 
@@ -185,21 +195,14 @@ def test_download_ray_wheels_from_s3_fail_download(
     ray_version = "1.0.0"
 
     mock_get_wheel_names.return_value = SAMPLE_WHEELS
-    mock_download_wheel.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": "404",
-                "Message": "Not Found",
-            }
-        },
-        "download_file",
-    )
+    mock_download_wheel.return_value = (False, "Not Found")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        with pytest.raises(ClientError):
-            download_ray_wheels_from_s3(
-                commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
-            )
+        result, msg = download_ray_wheels_from_s3(
+            commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
+        )
+        assert not result
+        assert msg == "Not Found"
     assert mock_check_wheels.call_count == 0
 
 
