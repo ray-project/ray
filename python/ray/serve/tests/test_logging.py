@@ -36,7 +36,7 @@ class FakeLogger:
     def __init__(self):
         self._logs: List[Tuple[int, str]] = []
 
-    def log(self, level: int, message: str):
+    def log(self, level: int, message: str, stacklevel: int = 1):
         self._logs.append((level, message))
 
     def get_logs(self):
