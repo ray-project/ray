@@ -8,7 +8,6 @@ from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
@@ -26,6 +25,7 @@ from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
+    ReplicaScheduler,
 )
 from ray.serve._private.utils import inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
@@ -262,9 +262,10 @@ class Router:
         self_availability_zone: Optional[str],
         event_loop: asyncio.BaseEventLoop = None,
         _prefer_local_node_routing: bool = False,
-        _router_cls: Optional[str] = None,
         enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
         enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
+        *,
+        replica_scheduler: Optional[ReplicaScheduler] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -286,12 +287,8 @@ class Router:
                 enable_strict_max_ongoing_requests
             )
 
-        if _router_cls:
-            self._replica_scheduler = load_class(_router_cls)(
-                event_loop=self._event_loop, deployment_id=deployment_id
-            )
-        else:
-            self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+        if replica_scheduler is None:
+            replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
                 deployment_id,
                 _prefer_local_node_routing,
@@ -302,10 +299,7 @@ class Router:
                 use_replica_queue_len_cache=enable_queue_len_cache,
             )
 
-        logger.info(
-            f"Using router {self._replica_scheduler.__class__}.",
-            extra={"log_to_stderr": False},
-        )
+        self._replica_scheduler = replica_scheduler
 
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
