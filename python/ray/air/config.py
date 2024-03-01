@@ -582,10 +582,11 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path to store results at. Can be a local directory or
-            a destination on cloud storage. If Ray storage is set up,
-            defaults to the storage location. Otherwise, this defaults to
-            the local ``~/ray_results`` directory.
+        storage_path: [Beta] Path where all results and checkpoints are persisted.
+            Can be a local directory or a destination on cloud storage.
+            For multi-node training/tuning runs, this must be set to a
+            shared storage location (e.g., S3, NFS).
+            This defaults to the local ``~/ray_results`` directory.
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
         sync_config: Configuration object for syncing. See train.SyncConfig.
