@@ -79,7 +79,7 @@
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha
+/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980
 /doc/source/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980 @ray-project/ray-docs
 
 # Cluster (docs)
@@ -92,7 +92,7 @@
 /doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @justinvyu @woshiyyya @ray-project/ray-docs
 
 # Serve (docs)
-/doc/source/serve/ @edoakes @shrekris-anyscale @sihanwang41 @zcin @architkulkarni @ray-project/ray-docs
+/doc/source/serve/ @edoakes @shrekris-anyscale @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @amogkam @richardliaw @matthewdeng

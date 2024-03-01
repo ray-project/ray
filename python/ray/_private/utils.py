@@ -366,7 +366,7 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
             "The resources dictionary must not "
             "contain the key 'memory' or 'object_store_memory'"
         )
-    elif "bundle" in resources:
+    elif ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
         raise ValueError(
             "The resource should not include `bundle` which "
             f"is reserved for Ray. resources: {resources}"
@@ -2019,7 +2019,7 @@ def pasre_pg_formatted_resources_to_original(
             # it is an implementation detail.
             # This resource is automatically added to the resource
             # request for all tasks that require placement groups.
-            if result.group(1) == "bundle":
+            if result.group(1) == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
 
             original_resources[result.group(1)] = value

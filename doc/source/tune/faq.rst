@@ -280,14 +280,6 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
-You can also use the :class:`~ray.tune.ScalingConfig` to achieve the same results:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __resources_scalingconfig_start__
-    :end-before: __resources_scalingconfig_end__
-
 You can also allocate specific resources to a trial based on a custom rule via lambda functions.
 For instance, if you want to allocate GPU resources to trials based on a setting in your param space:
 
