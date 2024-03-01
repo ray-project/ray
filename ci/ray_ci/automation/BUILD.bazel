@@ -99,3 +99,28 @@ py_test(
         ":docker_tags_lib",
     ],
 )
+
+py_library(
+    name = "ray_wheels_lib",
+    srcs = ["ray_wheels_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        ci_require("boto3"),
+        "//release:ray_release",
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_test(
+    name = "test_ray_wheels_lib",
+    srcs = ["test_ray_wheels_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":ray_wheels_lib",
+    ],
+)
