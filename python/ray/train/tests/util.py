@@ -34,12 +34,17 @@ def mock_storage_context(
     storage_path = storage_path or tempfile.mkdtemp()
     exp_name = exp_name
     trial_name = "trial_name"
+
     storage = storage_context_cls(
         storage_path=storage_path,
         experiment_dir_name=exp_name,
         trial_dir_name=trial_name,
     )
-    storage.storage_local_path = storage_path
+    # Patch the default /tmp/ray/session_* so we don't require ray
+    # to be initialized in unit tests.
+    session_path = tempfile.mkdtemp()
+    storage._get_session_path = lambda: session_path
+
     if delete_syncer:
         storage.syncer = None
     os.makedirs(os.path.join(storage_path, exp_name, trial_name), exist_ok=True)

@@ -28,7 +28,6 @@ MAX_RETRIES = 3
 
 @pytest.fixture(autouse=True)
 def patch_tune_session():
-    ray.init(num_cpus=4)
     if not get_session():
         init_session(
             training_func=None,
@@ -40,7 +39,6 @@ def patch_tune_session():
             storage=mock_storage_context(),
         )
     yield
-    ray.shutdown()
 
 
 def gen_execute_single_async_special(special_f):

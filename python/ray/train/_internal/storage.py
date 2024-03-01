@@ -591,6 +591,11 @@ class StorageContext:
         """
         return Path(self.storage_fs_path, self.experiment_dir_name).as_posix()
 
+    def _get_session_path(self) -> str:
+        return Path(
+            _get_ray_train_session_dir(), self._timestamp, self.experiment_dir_name
+        ).as_posix()
+
     @property
     def experiment_local_staging_path(self) -> str:
         """The local filesystem path of the experiment directory on the driver node.
@@ -610,12 +615,7 @@ class StorageContext:
         `{storage_path}/{experiment_dir_name}` periodically.
         See `_ExperimentCheckpointManager.checkpoint` for where that happens.
         """
-        return Path(
-            _get_ray_train_session_dir(),
-            self._timestamp,
-            self.experiment_dir_name,
-            "driver_artifacts",
-        ).as_posix()
+        return Path(self._get_session_path(), "driver_artifacts").as_posix()
 
     @property
     def trial_fs_path(self) -> str:
@@ -672,11 +672,7 @@ class StorageContext:
                 "setting `trial_dir_name`"
             )
         return Path(
-            _get_ray_train_session_dir(),
-            self._timestamp,
-            self.experiment_dir_name,
-            "working_dirs",
-            self.trial_dir_name,
+            self._get_session_path(), "working_dirs", self.trial_dir_name
         ).as_posix()
 
     @property
