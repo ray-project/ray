@@ -110,7 +110,7 @@ def test_daemon_processes_not_killed_until_actor_dead(enable_subreaper, shutdown
     # The pid refers to a daemon process that should not be killed, although
     # it's already reparented to the core worker.
     time.sleep(11)  # even after a cycle of killing...
-    assert psutil.Process(daemon_pid).ppid == actor_pid
+    assert psutil.Process(daemon_pid).ppid() == actor_pid
 
     psutil.Process(actor_pid).kill()  # sigkill
     time.sleep(11)  # unowned processes are killed every 10s.

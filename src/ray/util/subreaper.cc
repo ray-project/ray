@@ -35,6 +35,45 @@ namespace ray {
 #ifdef __linux__
 // Linux implementation.
 
+namespace {
+
+using SignalHandlerFn = void (*)(const boost::system::error_code &, int);
+// Register a signal handler for the given signal.
+// The handler will be called with the signal_set and the error code.
+// After the handler is called, the signal will be re-registered.
+// The callback keeps a reference of the shared ptr to make sure it's not destroyed.
+void RegisterSignalHandlerLoop(std::shared_ptr<boost::asio::signal_set> signals,
+                               SignalHandlerFn handler) {
+  signals->async_wait(
+      [signals, handler](const boost::system::error_code &error, int signal_number) {
+        handler(error, signal_number);
+        RegisterSignalHandlerLoop(signals, handler);
+      });
+}
+
+void SigchldHandlerReapZombieAndRemoveKnownChildren(
+    const boost::system::error_code &error, int signal_number) {
+  if (error) {
+    RAY_LOG(WARNING) << "Error in SIGCHLD handler: " << error.message();
+  }
+  int status;
+  pid_t pid;
+  // Reaps any children that have exited. WNOHANG makes waitpid non-blocking and returns
+  // 0 if there's no zombie children.
+  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    if (WIFEXITED(status)) {
+      RAY_LOG(INFO) << "Child process " << pid << " exited with status "
+                    << WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+      RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
+                    << WTERMSIG(status);
+    }
+    KnownChildrenTracker::instance().removeKnownChild(pid);
+  }
+}
+
+}  // namespace
+
 // Set this process as a subreaper.
 // Only works on Linux >= 3.4.
 bool SetThisProcessAsSubreaper() {
@@ -43,6 +82,16 @@ bool SetThisProcessAsSubreaper() {
     return false;
   }
   return true;
+}
+
+void SetSigchldIgnore() { signal(SIGCHLD, SIG_IGN); }
+
+void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service) {
+  auto sigchld_signals = std::make_shared<boost::asio::signal_set>(io_service, SIGCHLD);
+  RegisterSignalHandlerLoop(sigchld_signals,
+                            SigchldHandlerReapZombieAndRemoveKnownChildren);
+  RAY_LOG(INFO)
+      << "Raylet is set to reap zombie children and remove known children pids.";
 }
 
 // Kill all child processes that are not owned by this process.
@@ -99,6 +148,8 @@ std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
 // Windows implementation.
 // Windows does not have signals or subreaper, so we do no-op for all functions.
 
+void SetSigchldIgnore() {}
+
 void KnownChildrenTracker::addKnownChild(pid_t pid) {}
 void KnownChildrenTracker::removeKnownChild(pid_t pid) {}
 std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
@@ -110,6 +161,9 @@ std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
 
 // MacOS implementation.
 // MacOS has signals, but does not support subreaper, so we ignore SIGCHLD.
+
+void SetSigchldIgnore() { signal(SIGCHLD, SIG_IGN); }
+
 void KnownChildrenTracker::addKnownChild(pid_t pid) {}
 void KnownChildrenTracker::removeKnownChild(pid_t pid) {}
 std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
