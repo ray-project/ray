@@ -1421,10 +1421,10 @@ class ProxyActor:
 
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.
+
         Make sure the async event loop is not blocked.
         """
-
-        logger.info("Received health check.", extra={"log_to_stderr": False})
+        logger.debug("Received health check.", extra={"log_to_stderr": False})
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         """Get ASGI messages for the provided `request_id`.
