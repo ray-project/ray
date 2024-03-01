@@ -17,7 +17,7 @@ from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-    RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,
+    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -269,7 +269,7 @@ class Router:
         _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
         enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-        enable_strict_max_concurrent_queries: bool = RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,  # noqa: E501
+        enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -284,11 +284,11 @@ class Router:
             # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
             # to override the behavior.
             self._enable_queue_len_cache = False
-            self._enable_strict_max_concurrent_queries = False
+            self._enable_strict_max_ongoing_requests = False
         else:
             self._enable_queue_len_cache = enable_queue_len_cache
-            self._enable_strict_max_concurrent_queries = (
-                enable_strict_max_concurrent_queries
+            self._enable_strict_max_ongoing_requests = (
+                enable_strict_max_ongoing_requests
             )
 
         if _router_cls:
@@ -416,7 +416,7 @@ class Router:
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
-        if not self._enable_strict_max_concurrent_queries or replica.is_cross_language:
+        if not self._enable_strict_max_ongoing_requests or replica.is_cross_language:
             return replica.send_request(pr), replica.replica_id
 
         while True:

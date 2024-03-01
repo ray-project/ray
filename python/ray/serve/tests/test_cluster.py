@@ -47,7 +47,7 @@ def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
     return pids
 
 
-@serve.deployment(health_check_period_s=1, max_concurrent_queries=1)
+@serve.deployment(health_check_period_s=1, max_ongoing_requests=1)
 def pid():
     time.sleep(0.1)
     return os.getpid()
@@ -116,7 +116,7 @@ def test_node_failure(ray_cluster):
     worker_node = cluster.add_node(num_cpus=2)
 
     @serve.deployment(
-        version="1", num_replicas=5, health_check_period_s=1, max_concurrent_queries=1
+        version="1", num_replicas=5, health_check_period_s=1, max_ongoing_requests=1
     )
     def D(*args):
         time.sleep(0.1)
@@ -295,7 +295,7 @@ def test_replica_spread(ray_cluster):
 def test_handle_prefers_replicas_on_same_node(ray_cluster):
     """Verify that handle calls prefer replicas on the same node when possible.
 
-    If all replicas on the same node are occupied (at `max_concurrent_queries` limit),
+    If all replicas on the same node are occupied (at `max_ongoing_requests` limit),
     requests should spill to other nodes.
     """
 
@@ -305,7 +305,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     signal = SignalActor.remote()
 
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=2, max_ongoing_requests=1)
     def inner(block_on_signal):
         if block_on_signal:
             ray.get(signal.wait.remote())
@@ -338,7 +338,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
     with pytest.raises(TimeoutError):
         blocked_response.result(timeout_s=1)
 
-    # Because there's a blocking request and `max_concurrent_queries` is set to 1, all
+    # Because there's a blocking request and `max_ongoing_requests` is set to 1, all
     # requests should now spill to the other node.
     for _ in range(10):
         assert h.call_inner.remote().result() != outer_node_id
@@ -365,7 +365,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     serve.start(http_options={"location": "HeadOnly"})
     head_node_id = get_head_node_id()
 
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=2, max_ongoing_requests=1)
     def f():
         return ray.get_runtime_context().get_node_id()
 
