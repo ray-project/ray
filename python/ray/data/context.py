@@ -101,6 +101,11 @@ DEFAULT_AUTO_LOG_STATS = False
 # as `extra_metrics` in the stats output, which are excluded by default.
 DEFAULT_VERBOSE_STATS_LOG = False
 
+# Whether to include internal Ray Data/Ray Core code stack frames
+# when logging to stdout. The full stack trace is always written to the
+# Ray Data log file.
+DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = False
+
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
@@ -182,10 +187,11 @@ class DataContext:
         use_polars: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
-        min_parallelism: bool,
+        min_parallelism: int,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
         verbose_stats_log: bool,
+        log_internal_stack_trace_to_stdout: bool,
         trace_allocations: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
@@ -216,6 +222,7 @@ class DataContext:
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
         self.verbose_stats_logs = verbose_stats_log
+        self.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
         self.trace_allocations = trace_allocations
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
@@ -291,6 +298,9 @@ class DataContext:
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     verbose_stats_log=DEFAULT_VERBOSE_STATS_LOG,
+                    log_internal_stack_trace_to_stdout=(
+                        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
+                    ),
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
