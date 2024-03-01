@@ -109,8 +109,7 @@ class ReplicaMetricsManager:
     ):
         self._replica_tag = replica_tag
         self._deployment_id = deployment_id
-        self._event_loop = event_loop
-        self._metrics_pusher = MetricsPusher(event_loop)
+        self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self._autoscaling_config = autoscaling_config
         self._controller_handle = ray.get_actor(
