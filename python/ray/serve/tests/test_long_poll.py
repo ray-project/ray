@@ -227,7 +227,7 @@ def test_listen_for_change_java(serve_instance):
             node_id="node_id",
             availability_zone="some-az",
             actor_handle=host,
-            max_concurrent_queries=1,
+            max_ongoing_requests=1,
         )
         for i in range(2)
     ]
