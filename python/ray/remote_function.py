@@ -473,7 +473,10 @@ class RemoteFunction:
             spec['s3']=kwargs['s3'] if 's3' in kwargs else False
             spec[BUCKET_NAME]=kwargs[BUCKET_NAME] if BUCKET_NAME in kwargs else ""
             spec[OBJECT_KEY]=kwargs[OBJECT_KEY] if OBJECT_KEY in kwargs else ""
-            requests.post(SERVER_IP + "/apply", json=spec)
+            server_ip = SERVER_IP
+            if "http://" not in server_ip:
+                server_ip = "http://" + server_ip
+            requests.post(server_ip + "/apply", json=spec)
         return task_id
 
 

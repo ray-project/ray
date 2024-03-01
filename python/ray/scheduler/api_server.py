@@ -11,6 +11,7 @@ from datetime import datetime
 import pandas as pd
 import ray
 import os
+import time
 
 
 app = FastAPI()
@@ -26,6 +27,8 @@ class Apiserver:
         
         nodes = ray.nodes()
         for node in nodes:
+            if node["NodeManagerAddress"] == HEAD_NODE_IP:
+                continue
             if node[NODE_ID] not in self.node_info:
                 self.node_info[node[NODE_ID]] = {}
                 self.node_info[node[NODE_ID]][NODE_CPU] = node[RESOURCE][NODE_CPU] if NODE_CPU in node[RESOURCE] else 0

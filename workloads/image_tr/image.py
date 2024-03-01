@@ -108,16 +108,16 @@ start = time.perf_counter()
 obj_refs = []
 for img in image_list:
     cur_complexity = os.stat(img).st_size
-    obj_refs.append(augment_image_distributed.remote(
-        working_dir=img, # TODO: Has to explicitly do so
-        complexity_score=cur_complexity, 
-        fetch_image=False
-    ))
-    # obj_refs.append(augment_image_distributed_manual.remote(
-    #     img,
-    #     cur_complexity, 
-    #     False
+    # obj_refs.append(augment_image_distributed.remote(
+    #     working_dir=img, # TODO: Has to explicitly do so
+    #     complexity_score=cur_complexity, 
+    #     fetch_image=False
     # ))
+    obj_refs.append(augment_image_distributed_manual.remote(
+        img,
+        cur_complexity, 
+        False
+    ))
 
 distributed_results = ray.get(obj_refs)
 

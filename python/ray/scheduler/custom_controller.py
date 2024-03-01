@@ -20,7 +20,7 @@ import os
 
 class Controller():
     def __init__(self):
-       pass
+       self.indicator = 0
 
     def start_loop(self):
         while True:
@@ -95,7 +95,7 @@ class Controller():
 
     def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_name):
     
-        @ray.remote
+        @ray.remote(num_cpus=0.1)
         def bind_label():
             def download_s3_folder(bucket_name, s3_folder='', local_dir=None):
                 """
@@ -144,8 +144,14 @@ class Controller():
 
                 else:
                     # os.system("rsync --mkpath -a -P {} {}".format(NODE_USER_NAME + "@" + DATA_IP+":"+label,label))
+                    # try to simulate a huge file transfer by repeating
+                    repeat_times = 9
+                    while repeat_times > 0:
+                        os.system(f"rsync --mkpath -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
+                        # remove the file
+                        os.system(f"rm {label}")
+                        repeat_times -= 1
                     os.system(f"rsync --mkpath -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
-                if os.path.exists(label):
                     ray.get_runtime_context().set_label({label: label})
             return FINISHED
 
@@ -174,6 +180,12 @@ class Controller():
     # We estimate the finish time of the running/pending tasks on each node
     # and return the node with the earliest available time
     def get_best_node(self, node_info, user_task):
+        # node_id_list = []
+        # for node_id, node in node_info.items():
+        #     node_id_list.append(node_id)
+        # self.indicator = (self.indicator +1)%len(node_id_list)   
+        # return node_id_list[self.indicator]
+
         earliest_time = float("inf")
         best_node = None
         current_time = int(time.time() * 1000)

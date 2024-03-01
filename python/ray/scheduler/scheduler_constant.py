@@ -2,6 +2,7 @@ import os
 
 HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", "10.0.0.183") 
 SERVER_IP = "http://" + HEAD_NODE_IP + ":8000"
+print(SERVER_IP)
 NODE_USER_NAME = "ec2-user"
 DATA_IP= HEAD_NODE_IP
 
