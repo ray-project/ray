@@ -1,12 +1,14 @@
 import os
 import threading
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray._private.ray_constants import env_integer
-from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import ExecutionOptions
 
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
@@ -84,11 +86,11 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
-DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
+DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
-]
+)
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
@@ -223,7 +225,7 @@ class DataContext:
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
-    execution_options: ExecutionOptions = field(default_factory=ExecutionOptions)
+    execution_options: Optional["ExecutionOptions"] = None
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
     enable_get_object_locations_for_metrics: bool = (
@@ -240,6 +242,11 @@ class DataContext:
 
     def __post_init__(self):
         """Private constructor (use get_current() instead)."""
+        from ray.data._internal.execution.interfaces import ExecutionOptions
+
+        if self.execution_options is None:
+            self.execution_options = ExecutionOptions()
+
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
