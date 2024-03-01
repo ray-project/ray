@@ -2718,20 +2718,20 @@
   alert: default
 
 
-- name: air_benchmark_xgboost_cpu_10
+- name: xgboost_train_batch_inference_benchmark
   group: Train tests
-  working_dir: train_tests/xgboost
+  working_dir: train_tests/xgboost_lightgbm
 
   frequency: nightly
   team: ml
   cluster:
     byod:
       type: gpu
-    cluster_compute: compute_xgboost_aws.yaml
+    cluster_compute: compute_aws.yaml
 
   run:
     timeout: 36000
-    script: python workloads/xgboost_benchmark.py
+    script: python train_batch_inference_benchmark.py
 
     wait_for_nodes:
       num_nodes: 11
@@ -2742,7 +2742,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: compute_xgboost_gce.yaml
+        cluster_compute: compute_gce.yaml
 
   smoke_test:
     frequency: manual
