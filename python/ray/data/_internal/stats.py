@@ -631,7 +631,7 @@ class DatasetStats:
         self.global_bytes_restored: int = 0
         self.dataset_bytes_spilled: int = 0
 
-        # Streaming split iterator stats
+        # Streaming split coordinator stats (dataset level)
         self.streaming_split_coordinator_s: Timer = Timer()
 
     @property
@@ -1260,7 +1260,7 @@ class IterStatsSummary:
                     self.iter_unknown_location
                 )
             if self.streaming_split_coord_time.get() != 0:
-                out += "* Streaming split coordinator overhead time: "
+                out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
 
         return out

@@ -48,7 +48,7 @@ class OutputSplitter(PhysicalOperator):
         self._output_queue: deque[RefBundle] = deque()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
-        # The time of the overhead for the output splitter
+        # The time of the overhead for the output splitter (operator level)
         self._output_splitter_overhead_time = 0
 
         if locality_hints is not None:
