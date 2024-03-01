@@ -282,7 +282,7 @@ def test_run_config_in_trainer_and_tuner(
         run_config=trainer_run_config,
     )
     with caplog.at_level(logging.INFO, logger="ray.tune.impl.tuner_internal"):
-        Tuner(trainer, run_config=tuner_run_config)
+        tuner = Tuner(trainer, run_config=tuner_run_config)
 
     both_msg = (
         "`RunConfig` was passed to both the `Tuner` and the `DataParallelTrainer`"
