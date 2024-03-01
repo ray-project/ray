@@ -110,7 +110,7 @@ TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
   ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 1);
   std::unordered_map<std::string, std::string> labels;
   auto metric = mockClient->CollectedReportOCMetricsRequests()[0].metrics()[0];
-  for (size_t i = 0; i < metric.metric_descriptor().label_keys_size(); i++) {
+  for (int i = 0; i < metric.metric_descriptor().label_keys_size(); i++) {
     labels.emplace(metric.metric_descriptor().label_keys(i).key(),
                    metric.timeseries(0).label_values(i).value());
   }
