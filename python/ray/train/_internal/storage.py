@@ -33,7 +33,6 @@ from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
 from ray.train.constants import _get_ray_train_session_dir
 from ray.util.annotations import DeveloperAPI
 
-
 if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
 
