@@ -30,6 +30,7 @@ symbolize on Mac OS have failed.
   sudo apt-get install google-perftools libgoogle-perftools-dev
 
 You may need to install ``graphviz`` for ``pprof`` to generate flame graphs.
+
 .. code-block:: bash
   
   sudo apt-get install graphviz
