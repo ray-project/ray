@@ -20,7 +20,7 @@ from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-    DEFAULT_MAX_CONCURRENT_QUERIES,
+    DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -54,7 +54,7 @@ from ray.serve._private.utils import (
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
-TEST_DEPLOYMENT_ID = DeploymentID("test_deployment", "test_app")
+TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 
 
 class FakeRemoteFunction:
@@ -132,8 +132,8 @@ class MockReplicaActorWrapper:
         return self._actor_handle
 
     @property
-    def max_concurrent_queries(self) -> int:
-        return self.version.deployment_config.max_concurrent_queries
+    def max_ongoing_requests(self) -> int:
+        return self.version.deployment_config.max_ongoing_requests
 
     @property
     def graceful_shutdown_timeout_s(self) -> float:
@@ -344,7 +344,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
         deployment_state = DeploymentState(
-            DeploymentID("name", "my_app"),
+            DeploymentID(name="name", app_name="my_app"),
             mock_long_poll,
             DefaultDeploymentScheduler(
                 cluster_node_info_cache, head_node_id="fake-head-node-id"
@@ -1103,7 +1103,7 @@ def test_redeploy_different_num_replicas(mock_deployment_state_manager):
     "option,value",
     [
         ("user_config", {"hello": "world"}),
-        ("max_concurrent_queries", 10),
+        ("max_ongoing_requests", 10),
         ("graceful_shutdown_timeout_s", DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S + 1),
         ("graceful_shutdown_wait_loop_s", DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S + 1),
         ("health_check_period_s", DEFAULT_HEALTH_CHECK_PERIOD_S + 1),
@@ -3210,13 +3210,13 @@ class TestActorReplicaWrapper:
             version=deployment_version("1"),
             actor_name="test",
             replica_tag="test_tag",
-            deployment_id=DeploymentID("test_deployment", "test_app"),
+            deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
         )
         assert (
             actor_replica.graceful_shutdown_timeout_s
             == DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
         )
-        assert actor_replica.max_concurrent_queries == DEFAULT_MAX_CONCURRENT_QUERIES
+        assert actor_replica.max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
 

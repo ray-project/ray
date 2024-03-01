@@ -396,7 +396,7 @@ class GenericProxy(ABC):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
             handle, request_id = self.setup_request_context_and_handle(
-                app_name=handle.deployment_id.app,
+                app_name=handle.deployment_id.app_name,
                 handle=handle,
                 route_path=route_path,
                 proxy_request=proxy_request,
@@ -412,7 +412,7 @@ class GenericProxy(ABC):
             return ResponseHandlerInfo(
                 response_generator=response_generator,
                 metadata=HandlerMetadata(
-                    application_name=handle.deployment_id.app,
+                    application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
                     route=route_path,
                 ),
@@ -564,7 +564,9 @@ class gRPCProxy(GenericProxy):
         self, *, healthy: bool, message: str
     ) -> ResponseGenerator:
         yield ListApplicationsResponse(
-            application_names=[endpoint.app for endpoint in self.route_info.values()],
+            application_names=[
+                endpoint.app_name for endpoint in self.route_info.values()
+            ],
         ).SerializeToString()
 
         yield ResponseStatus(
@@ -787,8 +789,8 @@ class HTTPProxy(GenericProxy):
             response = dict()
             for route, endpoint in self.route_info.items():
                 # For 2.x deployments, return {route -> app name}
-                if endpoint.app:
-                    response[route] = endpoint.app
+                if endpoint.app_name:
+                    response[route] = endpoint.app_name
                 # Keep compatibility with 1.x deployments.
                 else:
                     response[route] = endpoint.name

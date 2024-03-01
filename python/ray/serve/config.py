@@ -38,18 +38,13 @@ class AutoscalingConfig(BaseModel):
     min_replicas: NonNegativeInt = 1
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
+
     target_num_ongoing_requests_per_replica: PositiveFloat = 1.0
-
-    # Private options below.
-
-    # Metrics scraping options
 
     # How often to scrape for metrics
     metrics_interval_s: PositiveFloat = 10.0
     # Time window to average over for metrics.
     look_back_period_s: PositiveFloat = 30.0
-
-    # Internal autoscaling configuration options
 
     # Multiplicative "gain" factor to limit scaling decisions
     smoothing_factor: PositiveFloat = 1.0

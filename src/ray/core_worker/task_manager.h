@@ -568,32 +568,27 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Record OCL metrics.
   void RecordMetrics();
 
-  /// Update task status change for the task attempt in TaskEventBuffer.
+  /// Update task status change for the task attempt in TaskEventBuffer if needed.
+  ///
+  /// It skips the reporting when:
+  ///   1. when the enable_task_events for the task is false in TaskSpec.
+  ///   2. when the task event reporting is disabled on the worker (through ray config,
+  ///   i.e., RAY_task_events_report_interval_ms=0).
   ///
   /// \param attempt_number Attempt number for the task attempt.
   /// \param spec corresponding TaskSpecification of the task
   /// \param status the changed status.
   /// \param state_update optional task state updates.
-  void RecordTaskStatusEvent(
+  /// \return true if the event is recorded, false otherwise.
+  bool RecordTaskStatusEventIfNeeded(
+      const TaskID &task_id,
+      const JobID &job_id,
       int32_t attempt_number,
       const TaskSpecification &spec,
       rpc::TaskStatus status,
       bool include_task_info = false,
       absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
           absl::nullopt);
-
-  /// Update task status change for the task attempt in TaskEventBuffer.
-  ///
-  /// \param task_id ID of the task to query.
-  /// \param job_id ID of the job to query.
-  /// \param attempt_number Attempt number for the task attempt.
-  /// \param status the changed status.
-  /// \param state_update task state updates.
-  void RecordTaskStatusEvent(const TaskID &task_id,
-                             const JobID &job_id,
-                             int32_t attempt_number,
-                             rpc::TaskStatus status,
-                             worker::TaskStatusEvent::TaskStateUpdate &&state_update);
 
  private:
   struct TaskEntry {
