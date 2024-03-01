@@ -18,7 +18,7 @@ const mockGetActor = jest.mocked(getActor);
 
 describe("ServeDeploymentsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(6);
+    expect.assertions(4);
 
     // Mock ServeController actor fetch
     mockGetActor.mockResolvedValue({
@@ -88,15 +88,13 @@ describe("ServeDeploymentsListPage", () => {
     } as any);
 
     render(<ServeDeploymentsListPage />, { wrapper: TEST_APP_WRAPPER });
-    await screen.findByText("Deployments status");
+    await screen.findByText("Application status");
 
     // First row
     expect(screen.getByText("FirstDeployment")).toBeVisible();
-    expect(screen.getAllByText("/")[0]).toBeVisible();
 
     // Second row
     expect(screen.getByText("SecondDeployment")).toBeVisible();
-    expect(screen.getAllByText("/")[1]).toBeVisible();
 
     // Third row
     expect(screen.getByText("ThirdDeployment")).toBeVisible();

@@ -81,6 +81,7 @@ def _build_dataset(
     consumer_num_cpus,
     num_blocks,
     block_size,
+    insert_limit_op=False,
 ):
     # Create a dataset with 2 operators:
     # - The producer op has only 1 task, which produces `num_blocks` blocks, each
@@ -107,7 +108,13 @@ def _build_dataset(
 
     ds = ray.data.range(1, parallelism=1).materialize()
     ds = ds.map_batches(producer, batch_size=None, num_cpus=producer_num_cpus)
+    # Add a limit op in the middle, to test that ReservationOpResourceAllocator
+    # will account limit op's resource usage to the previous producer map op.
+    if insert_limit_op:
+        ds = ds.limit(num_blocks)
     ds = ds.map_batches(consumer, batch_size=None, num_cpus=consumer_num_cpus)
+    if insert_limit_op:
+        ds = ds.limit(num_blocks)
     return ds
 
 
@@ -119,9 +126,11 @@ def _build_dataset(
         (3, 100),  # Both not enough
     ],
 )
+@pytest.mark.parametrize("insert_limit_op", [False, True])
 def test_no_deadlock_on_small_cluster_resources(
     cluster_cpus,
     cluster_obj_store_mem_mb,
+    insert_limit_op,
     shutdown_only,  # noqa: F811
     restore_data_context,  # noqa: F811
 ):
@@ -138,12 +147,14 @@ def test_no_deadlock_on_small_cluster_resources(
         consumer_num_cpus=1,
         num_blocks=num_blocks,
         block_size=block_size,
+        insert_limit_op=insert_limit_op,
     )
     assert len(ds.take_all()) == num_blocks
 
 
+@pytest.mark.parametrize("insert_limit_op", [False, True])
 def test_no_deadlock_on_resource_contention(
-    shutdown_only, restore_data_context  # noqa: F811
+    insert_limit_op, shutdown_only, restore_data_context  # noqa: F811
 ):
     """Test when resources are preempted by non-Data code, the execution can
     still proceed without deadlock."""
@@ -170,7 +181,37 @@ def test_no_deadlock_on_resource_contention(
         consumer_num_cpus=0.9,
         num_blocks=num_blocks,
         block_size=block_size,
+        insert_limit_op=insert_limit_op,
     )
+    assert len(ds.take_all()) == num_blocks
+
+
+def test_no_deadlock_with_preserve_order(
+    restore_data_context, shutdown_only  # noqa: F811
+):
+    """Test backpressure won't cause deadlocks when `preserve_order=True`."""
+    num_blocks = 20
+    block_size = 10 * 1024 * 1024
+    ray.init(num_cpus=num_blocks)
+    data_context = ray.data.DataContext.get_current()
+    data_context.target_max_block_size = block_size
+    data_context._max_num_blocks_in_streaming_gen_buffer = 1
+    data_context.execution_options.preserve_order = True
+    data_context.execution_options.resource_limits.object_store_memory = 5 * block_size
+
+    # Some tasks are slower than others.
+    # The faster tasks will finish first and occupy Map op's internal output buffer.
+    # Test that we won't backpressure the operator in this case.
+    def map_fn(batch):
+        idx = batch["id"][0]
+        print("map_fn", idx, time.time())
+        if idx % 2 == 0:
+            time.sleep(3)
+        batch["data"] = [np.zeros(block_size, dtype=np.uint8)]
+        return batch
+
+    ds = ray.data.range(num_blocks, parallelism=num_blocks)
+    ds = ds.map_batches(map_fn, batch_size=None, num_cpus=1)
     assert len(ds.take_all()) == num_blocks
 
 

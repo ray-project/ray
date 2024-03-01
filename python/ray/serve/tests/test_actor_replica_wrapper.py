@@ -95,7 +95,7 @@ def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
                 node_id=None,
                 availability_zone=None,
                 actor_handle=actor_handle,
-                max_concurrent_queries=10,
+                max_ongoing_requests=10,
                 is_cross_language=False,
             )
         ),
