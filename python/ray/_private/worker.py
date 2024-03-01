@@ -473,8 +473,6 @@ class Worker:
         # Cache the job id from initialize_job_config() to optimize lookups.
         # This is on the critical path of ray.get()/put() calls.
         self._cached_job_id = None
-        # Cache the driver node id from get_driver_node_id() to optimize lookups.
-        self._cached_driver_node_id: Optional[ray.NodeID] = None
 
     @property
     def connected(self):
@@ -516,36 +514,8 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
-    def current_node_id(self):
+    def current_node_id(self) -> ray.NodeID:
         return self.core_worker.get_current_node_id()
-
-    def get_driver_node_id(self, timeout=None) -> ray.NodeID:
-        """
-        Get the driver node id via Job Info. Populates the cached driver node id if
-        found.
-
-        TODO: Fetching can be slow if there are so many workers started at the same time
-        because GCS main thread is overloaded. We've seen it is delayed up to 10~30
-        seconds. Ideally, we should not query GCS when a new worker starts, but we are
-        doing this already (each worker pings GCS like 5~6 times when a new worker
-        starts). We can fix this holistically when we address large scale cluster
-        problems.
-
-        Args:
-            timeout: Timeout in seconds for GCS Client.
-
-        Raises: Exception if the gcs client times out.
-
-        Returns: driver node id if found, None otherwise (e.g. the job has not yet
-        started).
-        """
-        if self._cached_driver_node_id is not None:
-            return self._cached_driver_node_id
-        all_infos = self.gcs_client.get_all_job_info(timeout=timeout)
-        my_job_info: gcs_pb2.JobTableData = all_infos[self.current_job_id.binary()]
-        driver_node_id = ray.NodeID(my_job_info.driver_address.raylet_id)
-        self._cached_driver_node_id = driver_node_id
-        return driver_node_id
 
     @property
     def task_depth(self):
@@ -1878,7 +1848,6 @@ def shutdown(_exiting_interpreter: bool = False):
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker.set_cached_job_id(None)
-    global_worker._cached_driver_node_id = None
 
 
 atexit.register(shutdown, True)

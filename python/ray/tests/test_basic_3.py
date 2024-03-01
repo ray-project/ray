@@ -265,6 +265,11 @@ import lib
 
 ray.init()
 
+job_config = ray.worker.global_worker.core_worker.get_job_config()
+driver_node_id = ray.NodeID(job_config.driver_node_id)
+my_node_id = ray.worker.global_worker.current_node_id
+assert driver_node_id == my_node_id
+
 @ray.remote
 def my_file():
     return lib.get_file_path()
