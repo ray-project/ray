@@ -2,7 +2,7 @@ from ray.rllib.algorithms.appo import APPOConfig
 
 
 stop = {
-    "sampler_results/episode_reward_mean": 150,
+    "sampler_results/episode_reward_mean": 400,
     "timesteps_total": 200000,
 }
 

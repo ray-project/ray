@@ -638,7 +638,7 @@ class Impala(Algorithm):
         # (e.g. ConnectorV2) states and sampling metrics/stats.
         # Note that each returned item in `episode_refs` is itself a reference to a
         # list of Episodes.
-        workers_to_update, episode_refs, env_runner_states, env_runner_metrics = (
+        env_runners_to_update, episode_refs, env_runner_states, env_runner_metrics = (
             self._training_step_sample_and_get_states()
         )
 
@@ -647,38 +647,63 @@ class Impala(Algorithm):
             self._training_step_pre_queue_episode_refs(episode_refs)
         )
         # Call the LearnerGroup's `update_from_episodes` method.
-        train_results = {}
+        update_results = {}
         learner_state = None
         for to_learner_group in episode_refs_for_learner_group:
-            train_results, learner_state = self.learner_group.update_from_episodes(
+            _upd_res = self.learner_group.update_from_episodes(
                 episodes=episode_refs_for_learner_group,
                 async_update=True,
                 return_state=True,
                 reduce_fn=_reduce_impala_results,
             )
-        # Note: `train_results` is now a List of ResultDict, each item in the list
-        # representing the results of a different async update request to all Learners.
+            # TODO (sven): Add capability to reduce results over different iterations.
+            if _upd_res:
+                update_results = _upd_res[-1]
 
-        additional_train_results = self.learner_group.additional_update(
-            async_update=True,
-            reduce_fn=_reduce_impala_results,
-            timestep=self._counters[NUM_ENV_STEPS_SAMPLED],
-        )
-        train_results.update(additional_train_results)
+        # Note: `update_results` is a List of reduced-over-learners ResultDict, each
+        # item in the list representing the (reduced-over-learners) results of a
+        # different async update request to all Learners.
+        if update_results:
+            learner_state = update_results["_state_after_update"]
+            module_ids_to_update = set(update_results.keys()) - {ALL_MODULES}
+            additional_update_results = self.learner_group.additional_update(
+                async_update=True,
+                module_ids_to_update=module_ids_to_update,
+                timestep=self._counters[
+                    NUM_ENV_STEPS_SAMPLED
+                    if self.config.count_steps_by == "env_steps"
+                    else NUM_AGENT_STEPS_SAMPLED
+                ],
+                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
+                #  from IMPALA (like APPO). In the old stack, we didn't have this
+                #  problem b/c IMPALA didn't need to call any additional update methods
+                #  as the entropy- and lr-schedules were handled by
+                #  `Policy.on_global_var_update()`.
+                **self._get_additional_update_kwargs(update_results),
+            )
+            # TODO (sven): Add capability to reduce results over different iterations.
+            if additional_update_results:
+                update_results.update(additional_update_results[-1])
 
         # Merge EnvRunner states into local worker's EnvRunner state.
-        self.workers.local_worker().merge_states(env_runner_states)
-        self.workers.local_worker().set_state(learner_state)
-        # Broadcast updated weights and (merged) EnvRunner states back to all EnvRunner
-        # workers.
-        self.workers.sync_weights(timeout_seconds=0.0)
+        #TODO: Merge Connector states into local worker, then broadcast from there
+        # back to all workers using a simpler API (e.g. `self.workers.broadcast_state(state={"connector": ..., "timesteps": ..., etc..})`).
+        #self.workers.local_worker().merge_states(env_runner_states)
+        if learner_state is not None:
+            self.workers.local_worker().set_state(learner_state)
+            # Broadcast updated weights and (merged) EnvRunner states back to all
+            # EnvRunner workers.
+            self.workers.sync_weights(
+                timeout_seconds=0.0,
+                to_worker_indices=env_runners_to_update,
+            )
 
         # Add already collected metrics to results for later processing.
-        train_results.update({
+        update_results.update({
             "_episodes_this_training_step": env_runner_metrics
         })
 
-        return train_results
+        return update_results
 
     def _training_step_sample_and_get_states(self):
         workers_to_update = set()

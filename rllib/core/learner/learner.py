@@ -284,7 +284,7 @@ class Learner:
 
         # Registered metrics (one sub-dict per module ID) to be returned from
         # `Learner.update()`. These metrics will be "compiled" automatically into
-        # the final results dict in the `self.compile_update_results()` method.
+        # the final results dict in the `self.compile_results()` method.
         self._metrics = defaultdict(dict)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1081,12 +1081,11 @@ class Learner:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        module_ids = (
+        for module_id in (
             module_ids_to_update
             if module_ids_to_update is not None
             else self.module.keys()
-        )
-        for module_id in module_ids:
+        ):
             module_results = self.additional_update_for_module(
                 module_id=module_id,
                 config=self.config.get_config_for_module(module_id),
@@ -1375,7 +1374,7 @@ class Learner:
         # If a (multi-agent) batch is provided, check, whether our RLModule
         # contains all ModuleIDs found in this batch. If not, throw an error.
         if batch is not None:
-            if isinstance(batch, ObjectRef):
+            if isinstance(batch, ray.ObjectRef):
                 batch = ray.get(batch)
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
                 self.module.keys()
@@ -1387,8 +1386,8 @@ class Learner:
                 )
 
         if (
-            isinstance(episodes, ObjectRef)
-            or (isinstance(episodes, list) and isinstance(episodes[0], ObjectRef))
+            isinstance(episodes, ray.ObjectRef)
+            or (isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef))
         ):
             episodes = ray.get(episodes)
             episodes = tree.flatten(episodes)

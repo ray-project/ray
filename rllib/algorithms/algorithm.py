@@ -3194,7 +3194,14 @@ class Algorithm(Trainable, AlgorithmBase):
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
                 with self._timers[TRAINING_ITERATION_TIMER]:
+                    # TODO (sven): Add capability to reduce results over different
+                    #  iterations.
                     results = self.training_step()
+
+                    # Collect returned episode metrics from each `trainin_step` call,
+                    # so nothing gets lost (in this mode, we do NOT call get_metrics()
+                    # here automatically, it has already been done by the
+                    # `training_step` method).
                     if "_episodes_this_training_step" in results:
                         episodes_this_iter.extend(
                             results.pop("_episodes_this_training_step")
@@ -3203,6 +3210,9 @@ class Algorithm(Trainable, AlgorithmBase):
         # With training step done. Try to bring failed workers back.
         self.restore_workers(self.workers)
 
+        # Publish all episodes collected in this entire iteration (consisting of n
+        # `training_step` calls) to let the algo know, we do NOT have to call
+        # `get_metrics` anymore on all EnvRunners (already done inside `training_step`).
         if episodes_this_iter:
             results["_episodes_this_iter"] = episodes_this_iter
 
