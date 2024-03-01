@@ -365,7 +365,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 def test_reconfigure_with_queries(serve_instance):
     signal = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=10, num_replicas=3)
+    @serve.deployment(max_ongoing_requests=10, num_replicas=3)
     class A:
         def __init__(self):
             self.state = None
@@ -612,30 +612,30 @@ def test_input_validation():
 
     with pytest.raises(ValidationError):
 
-        @serve.deployment(max_concurrent_queries="hi")
+        @serve.deployment(max_ongoing_requests="hi")
         class BadMaxQueries:
             pass
 
     with pytest.raises(ValidationError):
-        Base.options(max_concurrent_queries=[1])
+        Base.options(max_ongoing_requests=[1])
 
     with pytest.raises(ValueError):
 
-        @serve.deployment(max_concurrent_queries=0)
+        @serve.deployment(max_ongoing_requests=0)
         class ZeroMaxQueries:
             pass
 
     with pytest.raises(ValueError):
-        Base.options(max_concurrent_queries=0)
+        Base.options(max_ongoing_requests=0)
 
     with pytest.raises(ValueError):
 
-        @serve.deployment(max_concurrent_queries=-1)
+        @serve.deployment(max_ongoing_requests=-1)
         class NegativeMaxQueries:
             pass
 
     with pytest.raises(ValueError):
-        Base.options(max_concurrent_queries=-1)
+        Base.options(max_ongoing_requests=-1)
 
 
 def test_deployment_properties():
@@ -647,7 +647,7 @@ def test_deployment_properties():
         version="version",
         num_replicas=2,
         user_config="hi",
-        max_concurrent_queries=100,
+        max_ongoing_requests=100,
         route_prefix="/hello",
         ray_actor_options={"num_cpus": 2},
     )(DClass)
@@ -656,7 +656,7 @@ def test_deployment_properties():
     assert D.version == "version"
     assert D.num_replicas == 2
     assert D.user_config == "hi"
-    assert D.max_concurrent_queries == 100
+    assert D.max_ongoing_requests == 100
     assert D.route_prefix == "/hello"
     assert D.ray_actor_options == {"num_cpus": 2}
 

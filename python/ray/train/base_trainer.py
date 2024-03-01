@@ -732,7 +732,9 @@ class BaseTrainer(abc.ABC):
                 run_config = base_config.pop("run_config", None)
                 self._merged_config = merge_dicts(base_config, self.config)
                 self._merged_config["run_config"] = run_config
-                merged_scaling_config = self._merged_config.get("scaling_config")
+                merged_scaling_config = self._merged_config.get(
+                    "scaling_config", ScalingConfig()
+                )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
                 self._merged_config[
@@ -763,21 +765,14 @@ class BaseTrainer(abc.ABC):
                 if not isinstance(trial_resources, PlacementGroupFactory):
                     return scaling_config
 
-                if scaling_config:
-                    scaling_config = trainer_cls._validate_scaling_config(
-                        scaling_config
-                    )
-                scaling_config_from_trial_resources = (
-                    ScalingConfig.from_placement_group_factory(trial_resources)
-                )
+                # Ignore ResourceChangingScheduler workaround when resource bundles
+                # are unchanged
+                if self.trial_resources == scaling_config.as_placement_group_factory():
+                    return scaling_config
 
-                # This check should always pass if ResourceChangingScheduler is not
-                # used.
-                if scaling_config_from_trial_resources != scaling_config:
-                    scaling_config = trainer_cls._validate_scaling_config(
-                        scaling_config_from_trial_resources
-                    )
-                return scaling_config
+                trainer_cls._validate_scaling_config(scaling_config)
+
+                return ScalingConfig.from_placement_group_factory(trial_resources)
 
             def _trainable_func(self, config):
                 # We ignore the config passed by Tune and instead use the merged

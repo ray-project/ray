@@ -85,17 +85,17 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError, match="value_error"):
             DeploymentConfig(num_replicas=-1)
 
-        # Test dynamic default for max_concurrent_queries.
-        assert DeploymentConfig().max_concurrent_queries == 100
+        # Test dynamic default for max_ongoing_requests.
+        assert DeploymentConfig().max_ongoing_requests == 100
 
     def test_deployment_config_update(self):
-        b = DeploymentConfig(num_replicas=1, max_concurrent_queries=1)
+        b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
 
         # Test updating a key works.
         b.num_replicas = 2
         assert b.num_replicas == 2
         # Check that not specifying a key doesn't update it.
-        assert b.max_concurrent_queries == 1
+        assert b.max_ongoing_requests == 1
 
         # Check that input is validated.
         with pytest.raises(ValidationError):
@@ -442,7 +442,7 @@ def test_http_options():
 
 def test_with_proto():
     # Test roundtrip
-    config = DeploymentConfig(num_replicas=100, max_concurrent_queries=16)
+    config = DeploymentConfig(num_replicas=100, max_ongoing_requests=16)
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
     # Test user_config object
@@ -614,7 +614,7 @@ class TestProtoToDict:
 
         # Defaults are filled.
         assert result["num_replicas"] == 0
-        assert result["max_concurrent_queries"] == 0
+        assert result["max_ongoing_requests"] == 0
         assert result["user_config"] == b""
         assert result["user_configured_option_names"] == []
 
@@ -624,16 +624,16 @@ class TestProtoToDict:
     def test_non_empty_fields(self):
         """Test _proto_to_dict() to deserialize protobuf with non-empty fields"""
         num_replicas = 111
-        max_concurrent_queries = 222
+        max_ongoing_requests = 222
         proto = DeploymentConfigProto(
             num_replicas=num_replicas,
-            max_concurrent_queries=max_concurrent_queries,
+            max_ongoing_requests=max_ongoing_requests,
         )
         result = _proto_to_dict(proto)
 
         # Fields with non-empty values are filled correctly.
         assert result["num_replicas"] == num_replicas
-        assert result["max_concurrent_queries"] == max_concurrent_queries
+        assert result["max_ongoing_requests"] == max_ongoing_requests
 
         # Empty fields are continue to be filled with default values.
         assert result["user_config"] == b""
@@ -641,11 +641,11 @@ class TestProtoToDict:
     def test_nested_protobufs(self):
         """Test _proto_to_dict() to deserialize protobuf with nested protobufs"""
         num_replicas = 111
-        max_concurrent_queries = 222
+        max_ongoing_requests = 222
         min_replicas = 333
         proto = DeploymentConfigProto(
             num_replicas=num_replicas,
-            max_concurrent_queries=max_concurrent_queries,
+            max_ongoing_requests=max_ongoing_requests,
             autoscaling_config=AutoscalingConfigProto(
                 min_replicas=min_replicas,
             ),
@@ -654,7 +654,7 @@ class TestProtoToDict:
 
         # Non-empty field is filled correctly.
         assert result["num_replicas"] == num_replicas
-        assert result["max_concurrent_queries"] == max_concurrent_queries
+        assert result["max_ongoing_requests"] == max_ongoing_requests
 
         # Nested protobuf is filled correctly.
         assert result["autoscaling_config"]["min_replicas"] == min_replicas
