@@ -68,7 +68,7 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
 #endif
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs).second);
+  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return actual_port;
 }
@@ -126,7 +126,7 @@ std::string TestSetupUtil::StartGcsServer(int port) {
            absl::Base64Escape(R"({"object_timeout_milliseconds": 2000})")});
   cmdargs.push_back("--gcs_server_port=6379");
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, gcs_server_socket_name + ".pid").second);
+  RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   RAY_LOG(INFO) << "GCS server started.";
   return gcs_server_socket_name;
@@ -166,7 +166,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
                                     "--object_store_memory=10000000"});
 
   RAY_LOG(INFO) << "Raylet Start command: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, raylet_socket_name + ".pid").second);
+  RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   *store_socket_name = plasma_store_socket_name;
   return raylet_socket_name;

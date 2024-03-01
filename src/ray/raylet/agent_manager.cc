@@ -63,6 +63,7 @@ void AgentManager::StartAgent() {
       Process(argv.data(),
               nullptr,
               ec,
+              false,
               env,
               /*pipe_to_stdin*/
               RayConfig::instance().enable_pipe_based_agent_to_parent_health_check());

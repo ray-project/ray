@@ -102,6 +102,7 @@ class ProcessFD {
   // Fork + exec combo. Returns -1 for the PID on failure.
   static ProcessFD spawnvpe(const char *argv[],
                             std::error_code &ec,
+                            bool decouple,
                             const ProcessEnvironment &env,
                             bool pipe_to_stdin) {
     ec = std::error_code();
@@ -123,6 +124,7 @@ class ProcessFD {
     }
 #ifdef _WIN32
 
+    (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
     for (size_t i = 0; argv[i]; ++i) {
       args.push_back(argv[i]);
@@ -222,6 +224,10 @@ class ProcessFD {
     if (pid == 0) {
       // Child process case. Reset the SIGCHLD handler.
       signal(SIGCHLD, SIG_DFL);
+      // If process needs to be decoupled, double-fork to avoid zombies.
+      if (pid_t pid2 = decouple ? fork() : 0) {
+        _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
+      }
 
       // Redirect the read pipe to stdin so that child can track the
       // parent lifetime.
@@ -229,10 +235,23 @@ class ProcessFD {
         dup2(parent_lifetime_pipe[0], STDIN_FILENO);
       }
 
-      execvpe(argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
+      // This is the spawned process. Any intermediate parent is now dead.
+      pid_t my_pid = getpid();
+      if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
+        execvpe(
+            argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
+      }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
-    // Parent process case
+    if (pid > 0) {
+      // Parent process case
+      if (decouple) {
+        int s;
+        (void)waitpid(pid, &s, 0);  // can't do much if this fails, so ignore return value
+        int r = read(pipefds[0], &pid, sizeof(pid));
+        (void)r;  // can't do much if this fails, so ignore return value
+      }
+    }
     // Use pipe to track process lifetime. (The pipe closes when process terminates.)
     fd = pipefds[0];
     if (pid == -1) {
@@ -316,6 +335,7 @@ void ProcessFD::CloseFD() {
 #endif
     RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
   }
+
   fd_ = -1;
 }
 
@@ -341,13 +361,12 @@ Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 Process::Process(const char *argv[],
                  void *io_service,
                  std::error_code &ec,
+                 bool decouple,
                  const ProcessEnvironment &env,
-                 bool pipe_to_stdin,
-                 bool mask_sigchld) {
+                 bool pipe_to_stdin) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
-
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, env, pipe_to_stdin);
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
@@ -361,7 +380,7 @@ std::error_code Process::Call(const std::vector<std::string> &args,
   }
   argv.push_back(NULL);
   std::error_code ec;
-  Process proc(&*argv.begin(), NULL, ec, env);
+  Process proc(&*argv.begin(), NULL, ec, true, env);
   if (!ec) {
     int return_code = proc.Wait();
     if (return_code != 0) {
@@ -409,6 +428,7 @@ bool Process::IsNull() const { return !p_; }
 bool Process::IsValid() const { return GetId() != -1; }
 
 std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
+                                                   bool decouple,
                                                    const std::string &pid_file,
                                                    const ProcessEnvironment &env) {
   std::vector<const char *> argv;
@@ -417,8 +437,7 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(
-      &*argv.begin(), NULL, error, env, /*pipe_to_stdin=*/false, /*mask_sigchld=*/false);
+  Process proc(&*argv.begin(), NULL, error, decouple, env);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
     file << proc.GetId() << std::endl;

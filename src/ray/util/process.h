@@ -71,29 +71,21 @@ class Process {
   /// \param[in] argv The command-line of the process to spawn (terminated with NULL).
   /// \param[in] io_service Boost.Asio I/O service (optional).
   /// \param[in] ec Returns any error that occurred when spawning the process.
+  /// \param[in] decouple True iff the parent will not wait for the child to exit.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
   /// \param[in] pipe_to_stdin If true, it creates a pipe and redirect to child process'
   /// stdin. It is used for health checking from a child process.
   /// Child process can read stdin to detect when the current process dies.
-  /// \param[in] mask_sigchld If true, the SIGCHLD signal will be masked in the creation
-  /// of the subprocess. This is to avoid race condition in subreaper.cc. Note: if your
-  /// environment does not have a subreaper (e.g. anywhere other than Raylet) you should
-  /// set this to false.
-  //
+  ///
   // The subprocess is child of this process, so it's caller process's duty to handle
   // SIGCHLD signal and reap the zombie children.
-  //
-  // NOTE: if `RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper` is true,
-  // raylet will kill any orphan subprocesses as grandchildren of the raylet process. This
-  // is to prevent leaked processes from dead core workers. If you intend to keep the
-  // subprocesses running after the parent process dies, you should set that to false.
   explicit Process(const char *argv[],
                    void *io_service,
                    std::error_code &ec,
+                   bool decouple = false,
                    const ProcessEnvironment &env = {},
-                   bool pipe_to_stdin = false,
-                   bool mask_sigchld = true);
+                   bool pipe_to_stdin = false);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
@@ -116,10 +108,9 @@ class Process {
   bool IsAlive() const;
   /// Convenience function to start a process in the background.
   /// \param pid_file A file to write the PID of the spawned process in.
-  ///
-  /// Note: `mask_sigchld` is set to False.
   static std::pair<Process, std::error_code> Spawn(
       const std::vector<std::string> &args,
+      bool decouple,
       const std::string &pid_file = std::string(),
       const ProcessEnvironment &env = {});
   /// Waits for process to terminate. Not supported for unowned processes.
