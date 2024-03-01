@@ -38,7 +38,7 @@ You may need to install ``graphviz`` for ``pprof`` to generate flame graphs.
 Launching the CPU Profiling and set to-profile binary file
 -------------------------------
 
-If you want to launch Ray in profiling mode, define the following variables:
+If you want to launch Ray in profiling mode and profile raylet, define the following variables:
 
 .. code-block:: bash
 
@@ -49,8 +49,11 @@ If you want to launch Ray in profiling mode, define the following variables:
 
 The file ``/tmp/pprof.out`` will be empty until you let the binary run the
 target workload for a while and then ``kill`` it via ``ray stop`` or by
-letting the driver exit.
+letting the driver exit. 
 
+Note: Enabling `RAY_RAYLET_PERFTOOLS_PROFILER` allows profiling of the Raylet component. 
+If you wish to profile other modules, you should utilize `RAY_{MODULE}_PERFTOOLS_PROFILER`,
+where `MODULE` represents the uppercase form of the process type, such as `GCS_SERVER`.
 
 
 Visualizing the CPU profile
