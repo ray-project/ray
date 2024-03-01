@@ -355,8 +355,13 @@ class StorageContext:
     1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
         which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and
         can be joined with `Path(...).as_posix()`.
-    2. *_local_staging_path: The temporary path on the local filesystem where results
-        are saved to before persisting them to storage.
+    2. *_driver_staging_path: The temporary staging directory on the local filesystem
+        where driver artifacts are saved to before persisting them to storage.
+    3. trial_working_directory: The local filesystem path that the remote
+        actors' working directories are moved to by default.
+        This is separated from the driver staging path so that driver syncing
+        does not implicitly upload the trial working directory, for trials on the
+        driver node.
 
     Example with storage_path="mock:///bucket/path?param=1":
 
@@ -372,12 +377,12 @@ class StorageContext:
         <pyarrow._fs._MockFileSystem object...
         >>> storage.experiment_fs_path
         'bucket/path/exp_name'
-        >>> storage.experiment_local_staging_path  # doctest: +ELLIPSIS
+        >>> storage.experiment_driver_staging_path  # doctest: +ELLIPSIS
         '/tmp/ray/session_.../artifacts/.../exp_name/driver_artifacts'
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
         'bucket/path/exp_name/trial_dir'
-        >>> storage.trial_local_staging_path  # doctest: +ELLIPSIS
+        >>> storage.trial_driver_staging_path  # doctest: +ELLIPSIS
         '/tmp/ray/session_.../artifacts/.../exp_name/driver_artifacts/trial_dir'
         >>> storage.trial_working_directory   # doctest: +ELLIPSIS
         '/tmp/ray/session_.../artifacts/.../exp_name/working_dirs/trial_dir'
@@ -410,7 +415,7 @@ class StorageContext:
         )
 
     .. warning::
-        This is an experimental developer API and the interface is subject to change
+        This is an experimental developer API and is subject to change
         without notice between versions.
     """
 
@@ -600,7 +605,7 @@ class StorageContext:
         ).as_posix()
 
     @property
-    def experiment_local_staging_path(self) -> str:
+    def experiment_driver_staging_path(self) -> str:
         """The local filesystem path of the experiment directory on the driver node.
 
         The driver is the node where `Trainer.fit`/`Tuner.fit` is being called.
@@ -612,7 +617,7 @@ class StorageContext:
         This should be used as the temporary staging location for files *on the driver*
         before syncing them to `experiment_fs_path`.
         For example, the search algorithm should dump its state to this directory.
-        See `trial_local_staging_path` for writing trial-specific artifacts.
+        See `trial_driver_staging_path` for writing trial-specific artifacts.
 
         The directory is synced to
         `{storage_path}/{experiment_dir_name}` periodically.
@@ -633,7 +638,7 @@ class StorageContext:
         return Path(self.experiment_fs_path, self.trial_dir_name).as_posix()
 
     @property
-    def trial_local_staging_path(self) -> str:
+    def trial_driver_staging_path(self) -> str:
         """The local filesystem path of the trial directory on the driver.
 
         The driver is the node where `Trainer.fit`/`Tuner.fit` is being called.
@@ -650,10 +655,10 @@ class StorageContext:
         """
         if self.trial_dir_name is None:
             raise RuntimeError(
-                "Should not access `trial_local_staging_path` "
+                "Should not access `trial_driver_staging_path` "
                 "without setting `trial_dir_name`"
             )
-        return Path(self.experiment_local_staging_path, self.trial_dir_name).as_posix()
+        return Path(self.experiment_driver_staging_path, self.trial_dir_name).as_posix()
 
     @property
     def trial_working_directory(self) -> str:

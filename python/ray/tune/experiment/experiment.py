@@ -367,7 +367,7 @@ class Experiment:
 
     @property
     def local_path(self) -> Optional[str]:
-        return self.storage.experiment_local_staging_path
+        return self.storage.experiment_driver_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")

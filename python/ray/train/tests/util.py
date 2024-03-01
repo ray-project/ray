@@ -45,6 +45,6 @@ def mock_storage_context(
     storage._get_session_path = lambda: session_path
 
     os.makedirs(storage.trial_fs_path, exist_ok=True)
-    os.makedirs(storage.trial_local_staging_path, exist_ok=True)
+    os.makedirs(storage.trial_driver_staging_path, exist_ok=True)
 
     return storage

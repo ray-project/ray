@@ -163,7 +163,7 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        driver_staging_path = self._storage.experiment_local_staging_path
+        driver_staging_path = self._storage.experiment_driver_staging_path
         # TODO(justinvyu): [local_dir] Probably want to disable this num_to_keep force
         force = force or self._should_force_cloud_sync
 
@@ -207,7 +207,7 @@ class _ExperimentCheckpointManager:
         # But for now, this is needed to upload driver artifacts that live in the
         # trial directory.
         exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
-        experiment_local_path = self._storage.experiment_local_staging_path
+        experiment_local_path = self._storage.experiment_driver_staging_path
         experiment_fs_path = self._storage.experiment_fs_path
 
         if force:
@@ -298,12 +298,12 @@ class _ExperimentCheckpointManager:
         for relpath in matches:
             fs_path = Path(self._storage.experiment_fs_path, relpath).as_posix()
             local_path = Path(
-                self._storage.experiment_local_staging_path, relpath
+                self._storage.experiment_driver_staging_path, relpath
             ).as_posix()
             _download_from_fs_path(fs=fs, fs_path=fs_path, local_path=local_path)
         logger.debug(
             f"Copied {matches} from:\n(fs, path) = "
             f"({self._storage.storage_filesystem.type_name}, "
             f"{self._storage.experiment_fs_path})\n"
-            f"-> {self._storage.experiment_local_staging_path}"
+            f"-> {self._storage.experiment_driver_staging_path}"
         )

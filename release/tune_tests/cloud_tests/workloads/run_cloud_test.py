@@ -451,10 +451,10 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         if trial.was_on_driver_node:
             # Trial was run on driver
             shutil.rmtree(tmpdir)
-            shutil.copytree(trial.storage.experiment_local_staging_path, tmpdir)
+            shutil.copytree(trial.storage.experiment_driver_staging_path, tmpdir)
             print(
                 "Copied local node experiment dir",
-                trial.storage.experiment_local_staging_path,
+                trial.storage.experiment_driver_staging_path,
                 "to",
                 tmpdir,
                 "for trial",
@@ -465,7 +465,7 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
             # Trial was run on remote node
             fetch_remote_directory_content(
                 trial.node_ip,
-                remote_dir=trial.storage.experiment_local_staging_path,
+                remote_dir=trial.storage.experiment_driver_staging_path,
                 local_dir=tmpdir,
             )
 

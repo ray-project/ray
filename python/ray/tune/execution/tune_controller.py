@@ -106,9 +106,9 @@ class TuneController:
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
         # Resources <-> Trial
-        self._resources_to_pending_trials: Dict[
-            ResourceRequest, Set[Trial]
-        ] = defaultdict(set)
+        self._resources_to_pending_trials: Dict[ResourceRequest, Set[Trial]] = (
+            defaultdict(set)
+        )
 
         # Keep track of actor states
         self._pending_trials: Set[Trial] = set()
@@ -310,7 +310,8 @@ class TuneController:
     def experiment_state_path(self) -> str:
         """Returns the local experiment checkpoint path."""
         return Path(
-            self._storage.experiment_local_staging_path, self.experiment_state_file_name
+            self._storage.experiment_driver_staging_path,
+            self.experiment_state_file_name,
         ).as_posix()
 
     @property
@@ -350,7 +351,7 @@ class TuneController:
             "stats": {"start_time": self._start_time},
         }
 
-        driver_staging_path = self._storage.experiment_local_staging_path
+        driver_staging_path = self._storage.experiment_driver_staging_path
         os.makedirs(driver_staging_path, exist_ok=True)
         with open(
             Path(driver_staging_path, self.experiment_state_file_name),
@@ -496,7 +497,7 @@ class TuneController:
         # Download the search algorithm and callback state to the driver staging dir.
         self._checkpoint_manager.sync_down_experiment_state()
 
-        driver_staging_dir = self._storage.experiment_local_staging_path
+        driver_staging_dir = self._storage.experiment_driver_staging_path
         if self._search_alg.has_checkpoint(driver_staging_dir):
             self._search_alg.restore_from_dir(driver_staging_dir)
 
