@@ -66,6 +66,7 @@ When the feature is enabled, the core worker process becomes a subreaper (see th
 You can add this code to the Ray Actors or Tasks to reap zombies, if you choose to enable the feature:
 
 .. code-block::
+
   import signal
   signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
