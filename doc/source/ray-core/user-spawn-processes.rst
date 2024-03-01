@@ -3,9 +3,9 @@ Lifetimes of a User-Spawn Process
 
 To avoid leaking user-spawned processes, Ray provides a flag to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch). 
 
-On Linux if the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` is set to ``true``, Ray kills a user-spawned process when the parent Ray worker process exits, for example when actor is killed. This is recursive, that the grandchildren processes from a user-spawn process are killed as well.
+On Linux if the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` is set to ``true`` (default ``false``), Ray kills a user-spawned process when the parent Ray worker process exits, for example when actor is killed. This is recursive, that the grandchildren processes from a user-spawn process are killed as well.
 
-On other platforms, the lifetime of a user-spawned process is not controlled by Ray. The user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run.
+On non-Linux platforms, user-spawned process is not controlled by Ray. The user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run.
 
 .. contents::
   :local:
@@ -57,6 +57,17 @@ Platform support
 -------------------------
 
 The feature is supported on Linux 3.4 or newer. On other platforms, including Linux<3.4 and MacOS and Windows, the flag is ignored, and the user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run, as if the flag is always disabled.
+
+⚠️ Caution: Core worker needs to reap zombies
+----------------------------------------------
+
+When the feature is enabled, the core worker process becomes a subreaper (see the next section), meaning there can be some grandchildren processes that are reparented to the core worker process. If these processes exit, core worker needs to reap them to avoid zombies, even though they are not spawn by core worker. If core worker does not reap them, the zombies will accumulate and eventually cause the system to run out of resources like memory.
+
+You can add this code to the Ray Actors or Tasks to reap zombies, if you choose to enable the feature:
+
+.. code-block::
+  import signal
+  signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
 
 Under the hood
