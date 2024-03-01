@@ -127,8 +127,8 @@ use ``__anext__`` or ``async for`` loops.
 
 Garbage collection of object references
 ---------------------------------------
-The returned ref from ``next(generator)`` is just a regular Ray object reference and is distributed ref counted in the same way.
-If references are not consumed from a generator by the ``next`` API, references are garbage collected (GC’ed) when the generator is GC’ed.
+The returned ``ObjectRef`` from ``next(generator)`` is just a regular Ray object reference and is ref-counted in the same way.
+If references are not consumed from a generator by the ``next`` API, references are garbage-collected when the ``generator`` object goes out of scope.
 
 .. literalinclude:: doc_code/streaming_generator.py
     :language: python
@@ -136,7 +136,7 @@ If references are not consumed from a generator by the ``next`` API, references 
     :end-before: __streaming_generator_gc_end__
 
 In the following example, Ray counts ``ref1`` as a normal Ray object reference after Ray returns it. Other references
-that aren't consumed with ``next(gen)`` are removed when the generator is GC'ed. In this example, garbage collection happens when you call ``del gen``.
+that aren't consumed with ``next(gen)`` are removed when the generator is garbage-collected. In this example, garbage collection happens when you call ``del gen``.
 
 Fault tolerance
 ---------------
@@ -202,11 +202,11 @@ Thread safety
 -------------
 ``ObjectRefGenerator`` object is not thread-safe.
 
-Limitation
-----------
+Limitations
+-----------
 Ray generators don't support these features:
 
 - ``throw``, ``send``, and ``close`` APIs.
 - ``return`` statements from generators.
-- Passing ``ObjectRefGenerator`` to another task or actor.
+- Passing an ``ObjectRefGenerator`` to another task or actor.
 - :ref:`Ray Client <ray-client-ref>`

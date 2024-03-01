@@ -280,6 +280,14 @@ class ObjectRefGenerator:
     Do not initialize the class and create an instance directly.
     The instance should be created by `.remote`.
 
+    If an ObjectRef is returned to the caller, the object is GC'ed once it goes
+    out of scope, via the usual reference counting protocol. If the ObjectRef
+    is never returned to the caller, the object is GC'ed once the
+    ObjectRefGenerator's underlying generator_ref goes out of scope. The task
+    metadata (lineage) for the streaming generator task is GC'ed once the
+    generator_ref goes out of scope AND all ObjectRefs that were returned to
+    the caller may not be reconstructed anymore.
+
     >>> gen = generator_task.remote()
     >>> next(gen)
     >>> await gen.__anext__()
@@ -532,14 +540,6 @@ class ObjectRefGenerator:
                 raise StopAsyncIteration
 
         return ref
-
-    def __del__(self):
-        if hasattr(self.worker, "core_worker"):
-            # The stream is created when a task is first submitted.
-            # NOTE: This can be called multiple times
-            # because python doesn't guarantee __del__ is called
-            # only once.
-            self.worker.core_worker.delete_object_ref_stream(self._generator_ref)
 
     def __getstate__(self):
         raise TypeError(
@@ -4873,13 +4873,6 @@ cdef class CoreWorker:
                 task_id,
                 make_optional[ObjectIDIndexType](
                     <int>1 + <int>return_size + <int>generator_index))
-
-    def delete_object_ref_stream(self, ObjectRef generator_id):
-        cdef:
-            CObjectID c_generator_id = generator_id.native()
-
-        with nogil:
-            CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
     def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:

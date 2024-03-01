@@ -201,28 +201,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Own an object that the current owner (current process) dynamically created.
-  ///
-  /// The API is idempotent.
-  ///
-  /// TODO(sang): This API should be merged with AddDynamicReturn when
-  /// we turn on streaming generator by default.
-  ///
-  /// For normal task return, the owner creates and owns the references before
-  /// the object values are created. However, when you dynamically create objects,
-  /// the owner doesn't know (i.e., own) the references until it is reported from
-  /// the executor side.
-  ///
-  /// This API is used to own this type of dynamically generated references.
-  /// The executor should ensure the objects are not GC'ed until the owner
-  /// registers the dynamically created references by this API.
-  ///
-  /// \param[in] object_id The ID of the object that we now own.
-  /// \param[in] generator_id The Object ID of the streaming generator task.
-  void OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
-                                        const ObjectID &generator_id)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.

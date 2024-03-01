@@ -422,7 +422,9 @@ def test_python_object_leak(shutdown_only):
 
 @pytest.mark.parametrize("delay", [True, False])
 @pytest.mark.parametrize("actor_task", [True, False])
-def test_reconstruction_generator_out_of_scope(monkeypatch, ray_start_cluster, delay, actor_task):
+def test_reconstruction_generator_out_of_scope(
+    monkeypatch, ray_start_cluster, delay, actor_task
+):
     with monkeypatch.context() as m:
         if delay:
             m.setenv(
@@ -483,25 +485,13 @@ def test_reconstruction_generator_out_of_scope(monkeypatch, ray_start_cluster, d
     del gen
 
     for i, ref in enumerate(refs):
-        print("first trial.")
-        print("fetching ", i)
         assert ray.get(fetch.remote(ref)) == i
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, num_gpus=1, object_store_memory=10**8)
 
     for i, ref in enumerate(refs):
-        print("second trial.")
-        print("fetching ", i)
         assert ray.get(fetch.remote(ref)) == i
-
-    #cluster.remove_node(node_to_kill, allow_graceful=False)
-    #node_to_kill = cluster.add_node(num_cpus=1, num_gpus=1, object_store_memory=10**8)
-
-    #for i, ref in enumerate(refs):
-    #    print("first trial.")
-    #    print("fetching ", i)
-    #    assert ray.get(fetch.remote(ref)) == i
 
 
 if __name__ == "__main__":

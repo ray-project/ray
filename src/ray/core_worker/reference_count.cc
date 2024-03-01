@@ -239,40 +239,6 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
-void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
-                                                        const ObjectID &generator_id) {
-  absl::MutexLock lock(&mutex_);
-  // NOTE: The upper layer (the layer that manges the object ref stream)
-  // should make sure the generator ref is not GC'ed until the
-  // stream is deleted.
-  auto outer_it = object_id_refs_.find(generator_id);
-  if (outer_it == object_id_refs_.end()) {
-    // Generator object already went out of scope.
-    // It means the generator is already GC'ed. No need to
-    // update the reference.
-    RAY_LOG(DEBUG)
-        << "Ignore OwnDynamicStreamingTaskReturnRef. The dynamic return reference "
-        << object_id << " is registered after the generator id " << generator_id
-        << " went out of scope.";
-    return;
-  }
-  RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
-                 << " contained in generator object " << generator_id;
-  RAY_CHECK(outer_it->second.owned_by_us);
-  RAY_CHECK(outer_it->second.owner_address.has_value());
-  rpc::Address owner_address(outer_it->second.owner_address.value());
-  // We add a local reference here. The ref removal will be handled
-  // by the ObjectRefStream.
-  RAY_UNUSED(AddOwnedObjectInternal(object_id,
-                                    {},
-                                    owner_address,
-                                    outer_it->second.call_site,
-                                    /*object_size=*/-1,
-                                    outer_it->second.is_reconstructable,
-                                    /*add_local_ref=*/true,
-                                    absl::optional<NodeID>()));
-}
-
 bool ReferenceCounter::AddOwnedObjectInternal(
     const ObjectID &object_id,
     const std::vector<ObjectID> &inner_ids,

@@ -400,17 +400,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
-  /// Delete the ObjectRefStream that was
-  /// created upon the initial task
-  /// submission.
-  ///
-  /// It is a pass-through method. See TaskManager::DelObjectRefStream
-  /// for details.
-  ///
-  /// \param[in] generator_id The object ref id of the streaming
-  /// generator task.
-  void DelObjectRefStream(const ObjectID &generator_id);
-
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
