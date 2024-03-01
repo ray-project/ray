@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from python.ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
 
 from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
@@ -35,6 +36,7 @@ class Provider(Enum):
     GCP = 4
     KUBERAY = 5
     LOCAL = 6
+    READ_ONLY = 7
 
 
 class IConfigReader(ABC):
@@ -386,6 +388,8 @@ class AutoscalingConfig:
             return Provider.ALIYUN
         elif provider_str == "kuberay":
             return Provider.KUBERAY
+        elif provider_str == "read_only":
+            return Provider.READ_ONLY
         else:
             return Provider.UNKNOWN
 
@@ -423,3 +427,15 @@ class FileConfigReader(IConfigReader):
         with open(self._config_file_path) as f:
             config = yaml.safe_load(f.read())
             return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
+
+
+class ReadOnlyProviderConfigReader(IConfigReader):
+    """A class that reads cluster config from a read-only provider."""
+
+    def __init__(self, gcs_client: GcsClient):
+        self._configs = BASE_READONLY_CONFIG
+        self._gcs_client = gcs_client
+
+    def get_autoscaling_config(self) -> AutoscalingConfig:
+        # Update the config with node types from GCS.
+        return AutoscalingConfig({})

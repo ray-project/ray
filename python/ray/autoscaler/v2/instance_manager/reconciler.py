@@ -10,6 +10,7 @@ from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
     InstanceReconcileConfig,
+    Provider,
 )
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
@@ -1103,6 +1104,10 @@ class Reconciler:
 
         if not Reconciler._is_head_node_running(instance_manager):
             # We shouldn't be scaling the cluster until the head node is ready.
+            return
+
+        if autoscaling_config.provider == Provider.READ_ONLY:
+            # We shouldn't be scaling the cluster if the provider is read-only.
             return
 
         # Scale the clusters if needed.

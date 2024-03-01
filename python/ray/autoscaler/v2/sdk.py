@@ -74,3 +74,10 @@ def get_cluster_status(
         reply,
         stats=Stats(gcs_request_time_s=reply_time - req_time, request_ts_s=req_time),
     )
+
+
+def get_cluster_resource_state(gcs_client: gcs_client) -> ClusterResourceState:
+    str_reply = gcs_client.get_cluster_resource_state()
+    reply = GetClusterResourceStateReply()
+    reply.ParseFromString(str_reply)
+    return reply.cluster_resource_state

@@ -258,11 +258,6 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count,
     )
 
-    if not args.autoscaling_config:
-        logger.info("No autoscaling config provided: Not running autoscaler monitor.")
-        exit(0)
-
-    autoscaling_config = os.path.expanduser(args.autoscaling_config)
     logger.info(
         f"Starting autoscaler v2 monitor using ray installation: {ray.__file__}"
     )
@@ -274,9 +269,14 @@ if __name__ == "__main__":
     if bootstrap_address is None:
         raise ValueError("--gcs-address must be set!")
 
-    config_reader = FileConfigReader(
-        config_file=autoscaling_config, skip_content_hash=True
-    )
+    if not args.autoscaling_config:
+        logger.info("No autoscaling config provided: use read only node provider.")
+        config_reader = ReadOnlyProviderConfigReader()
+    else:
+        autoscaling_config = os.path.expanduser(args.autoscaling_config)
+        config_reader = FileConfigReader(
+            config_file=autoscaling_config, skip_content_hash=True
+        )
 
     monitor = AutoscalerMonitor(
         bootstrap_address,
