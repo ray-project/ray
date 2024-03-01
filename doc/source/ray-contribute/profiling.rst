@@ -31,6 +31,7 @@ symbolize on Mac OS have failed.
 
 You may need to install ``graphviz`` for ``pprof`` to generate flame graphs.
 .. code-block:: bash
+  
   sudo apt-get install graphviz
 
 Launching the CPU Profiling and set to-profile binary file
