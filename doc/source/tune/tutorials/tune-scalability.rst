@@ -63,14 +63,6 @@ description.
      - 16
      - 86,400
      - 88687.41
-   * - `Durable trainable <https://github.com/ray-project/ray/blob/master/release/tune_tests/scalability_tests/workloads/test_durable_trainable.py>`_
-     - 16
-     - | 10/60
-       | with 10MB CP
-     - 16
-     - 2
-     - 300
-     - 392.42
 
 
 Below we discuss some insights on results where we observed much overhead.
