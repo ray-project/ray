@@ -560,7 +560,7 @@ def test_checkpoint_auto_period(
         assert runner._checkpoint_manager._checkpoint_period > 38.0
 
 
-@pytest.skip(
+@pytest.mark.skip(
     "TODO(justinvyu): We should remove forceful checkpointing based on num_to_keep."
 )
 @pytest.mark.parametrize(
