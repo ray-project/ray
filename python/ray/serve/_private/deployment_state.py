@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -333,8 +334,8 @@ class ActorReplicaWrapper:
         return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> int:
-        return self.deployment_config.max_concurrent_queries
+    def max_ongoing_requests(self) -> int:
+        return self.deployment_config.max_ongoing_requests
 
     @property
     def max_queued_requests(self) -> int:
@@ -468,6 +469,7 @@ class ActorReplicaWrapper:
             "name": self._actor_name,
             "namespace": SERVE_NAMESPACE,
             "lifetime": "detached",
+            "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
@@ -916,7 +918,7 @@ class DeploymentReplica(VersionedReplica):
             node_id=self.actor_node_id,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
-            max_concurrent_queries=self._actor.max_concurrent_queries,
+            max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
         )
@@ -1313,6 +1315,9 @@ class DeploymentState:
             f"application {self.app_name} from checkpoint."
         )
         self._target_state = target_state_checkpoint
+        self._deployment_scheduler.on_deployment_deployed(
+            self._id, self._target_state.info.replica_config
+        )
 
     def recover_current_state_from_replica_actor_names(
         self, replica_actor_names: List[str]
@@ -1589,6 +1594,9 @@ class DeploymentState:
 
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
+        self._deployment_scheduler.on_deployment_deployed(
+            self._id, deployment_info.replica_config
+        )
 
         # Determine if the updated target state simply scales the current state.
         if self._target_state.is_scaled_copy_of(old_target_state):

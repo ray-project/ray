@@ -124,6 +124,11 @@ message Instance {
   string launch_request_id = 11;
   // The instance STOPPED details.
   string exit_details = 12;
+  // The node config hash when launched. This is used to detect outdated
+  // node, which needs to terminated.
+  string launch_config_hash = 13;
+  // The ray node kind, e.g. head, worker, etc.
+  NodeKind node_kind = 14;
 }
 
 // Update event for an instance.
@@ -186,7 +191,7 @@ message TerminationRequest {
   string instance_type = 5;
 
   // Idle time if the cause is IDLE.
-  optional uint64 idle_time_ms = 6;
+  optional uint64 idle_duration_ms = 6;
   // The per type max instance limit if the cause is MAX_NUM_NODE_PER_TYPE.
   optional uint32 max_num_nodes_per_type = 7;
   // The global max num nodes if the cause is MAX_NUM_NODES.

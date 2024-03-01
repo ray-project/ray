@@ -20,13 +20,14 @@ from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-    DEFAULT_MAX_CONCURRENT_QUERIES,
+    DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     ReplicaSchedulingRequest,
+    SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
@@ -132,8 +133,8 @@ class MockReplicaActorWrapper:
         return self._actor_handle
 
     @property
-    def max_concurrent_queries(self) -> int:
-        return self.version.deployment_config.max_concurrent_queries
+    def max_ongoing_requests(self) -> int:
+        return self.version.deployment_config.max_ongoing_requests
 
     @property
     def graceful_shutdown_timeout_s(self) -> float:
@@ -1103,7 +1104,7 @@ def test_redeploy_different_num_replicas(mock_deployment_state_manager):
     "option,value",
     [
         ("user_config", {"hello": "world"}),
-        ("max_concurrent_queries", 10),
+        ("max_ongoing_requests", 10),
         ("graceful_shutdown_timeout_s", DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S + 1),
         ("graceful_shutdown_wait_loop_s", DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S + 1),
         ("health_check_period_s", DEFAULT_HEALTH_CHECK_PERIOD_S + 1),
@@ -3216,7 +3217,7 @@ class TestActorReplicaWrapper:
             actor_replica.graceful_shutdown_timeout_s
             == DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
         )
-        assert actor_replica.max_concurrent_queries == DEFAULT_MAX_CONCURRENT_QUERIES
+        assert actor_replica.max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
@@ -3375,6 +3376,9 @@ class TestTargetCapacity:
         deployment_state, _, _ = mock_deployment_state
 
         b_info_1, _ = deployment_info(num_replicas=2)
+        deployment_state._deployment_scheduler.on_deployment_created(
+            deployment_state._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         self.update_target_capacity(
             deployment_state,
@@ -3419,6 +3423,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=2, version=code_version)
+        deployment_state._deployment_scheduler.on_deployment_created(
+            deployment_state._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Initially deploy with no target_capacity set.
         self.update_target_capacity(
@@ -3489,6 +3496,9 @@ class TestTargetCapacity:
         ds, _, _ = mock_deployment_state
 
         b_info_1, _ = deployment_info(num_replicas=100)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         self.update_target_capacity(
             ds,
@@ -3514,6 +3524,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity 100.
         self.update_target_capacity(
@@ -3645,6 +3658,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity set to 0, should have no replicas start up.
         self.update_target_capacity(
@@ -3760,6 +3776,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity set to 50, should have 5 replicas start up.
         self.update_target_capacity(
@@ -3829,6 +3848,9 @@ class TestTargetCapacity:
         # Set num_replicas to 0.
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=0, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity of 50.
         self.update_target_capacity(
@@ -3946,6 +3968,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=2, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity set to 0, should have 0 replica start up
         # regardless of the autoscaling decision.

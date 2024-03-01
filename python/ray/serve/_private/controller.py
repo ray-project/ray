@@ -24,6 +24,7 @@ from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -1147,6 +1148,7 @@ class ServeControllerAvatar:
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
                 namespace=SERVE_NAMESPACE,
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
                 http_config=http_config,
                 global_logging_config=logging_config,

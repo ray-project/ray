@@ -286,7 +286,7 @@ def test_controller_recover_target_capacity(
         "smoothing_factor": 4,
         "metrics_interval_s": 1,
     },
-    max_concurrent_queries=2,
+    max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,
 )
 class ScaleToZeroDeployment:
@@ -851,7 +851,7 @@ class TestTargetCapacityUpdateAndServeStatus:
 
 @serve.deployment(
     ray_actor_options={"num_cpus": 0},
-    max_concurrent_queries=2,
+    max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,
 )
 class HangDeployment:
