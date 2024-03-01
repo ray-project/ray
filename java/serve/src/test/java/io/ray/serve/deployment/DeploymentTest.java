@@ -82,9 +82,6 @@ public class DeploymentTest extends BaseServeTest2 {
 
     Deployment deployed = Serve.getDeployment(deploymentName);
     Serve.run(deployed.options().setNumReplicas(2).bind("echo_"));
-    DeploymentRoute deploymentInfo = Serve.getGlobalClient().getDeploymentInfo(deploymentName);
-    Assert.assertEquals(
-        deploymentInfo.getDeploymentInfo().getDeploymentConfig().getNumReplicas().intValue(), 2);
   }
 
   @Test

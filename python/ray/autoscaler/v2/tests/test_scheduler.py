@@ -10,10 +10,12 @@ import ray
 from ray.autoscaler.v2.scheduler import (
     NodeTypeConfig,
     ResourceDemandScheduler,
+    ResourceRequestSource,
     SchedulingNode,
     SchedulingNodeStatus,
     SchedulingReply,
     SchedulingRequest,
+    logger,
 )
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.tests.util import make_autoscaler_instance
@@ -22,11 +24,18 @@ from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
     NodeState,
+    NodeStatus,
     ResourceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import Instance, TerminationRequest
+from ray.core.generated.instance_manager_pb2 import (
+    Instance,
+    NodeKind,
+    TerminationRequest,
+)
 
 ResourceMap = Dict[str, float]
+
+logger.setLevel("DEBUG")
 
 
 def sched_request(
@@ -34,8 +43,10 @@ def sched_request(
     max_num_nodes: Optional[int] = None,
     resource_requests: Optional[List[ResourceRequest]] = None,
     gang_resource_requests: Optional[List[GangResourceRequest]] = None,
-    cluster_resource_constraints: Optional[List[ClusterResourceConstraint]] = None,
+    cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
+    idle_timeout_s: Optional[float] = None,
+    disable_launch_config_check: Optional[bool] = False,
 ) -> SchedulingRequest:
 
     if resource_requests is None:
@@ -50,10 +61,18 @@ def sched_request(
     return SchedulingRequest(
         resource_requests=ResourceRequestUtil.group_by_count(resource_requests),
         gang_resource_requests=gang_resource_requests,
-        cluster_resource_constraints=cluster_resource_constraints,
+        cluster_resource_constraints=[
+            ClusterResourceConstraint(
+                min_bundles=ResourceRequestUtil.group_by_count(
+                    cluster_resource_constraints
+                )
+            )
+        ],
         current_instances=instances,
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
+        idle_timeout_s=idle_timeout_s,
+        disable_launch_config_check=disable_launch_config_check,
     )
 
 
@@ -106,7 +125,10 @@ class TestSchedulingNode:
                 assert False, f"Unknown status {status}"
 
     @staticmethod
-    def test_new_node():
+    @pytest.mark.parametrize(
+        "disable_launch_config_check", [True, False], ids=["disabled", "enabled"]
+    )
+    def test_new_node(disable_launch_config_check):
         # Assert none IM instance.
         node_type_configs = {
             "type_1": NodeTypeConfig(
@@ -118,7 +140,10 @@ class TestSchedulingNode:
             ),
         }
         instance = make_autoscaler_instance(im_instance=None)
-        assert SchedulingNode.new(instance, node_type_configs) is None
+        assert (
+            SchedulingNode.new(instance, node_type_configs, disable_launch_config_check)
+            is None
+        )
 
         # A running ray node
         instance = make_autoscaler_instance(
@@ -136,13 +161,18 @@ class TestSchedulingNode:
                 node_id="r1",
             ),
         )
-        node = SchedulingNode.new(instance, node_type_configs)
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check
+        )
         assert node is not None
         assert node.node_type == "type_1"
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
         assert node.ray_node_id == "r1"
         assert node.im_instance_id == "1"
-        assert node.available_resources == {"CPU": 0}
+        assert node.available_resources_for_sched == {
+            ResourceRequestSource.PENDING_DEMAND: {"CPU": 0},
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
+        }
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "bar"}
 
@@ -154,12 +184,17 @@ class TestSchedulingNode:
                 instance_id="1",
             ),
         )
-        node = SchedulingNode.new(instance, node_type_configs)
-        assert node is not None
-        assert node.node_type == "type_no_longer_exists"
-        assert node.status == SchedulingNodeStatus.TO_TERMINATE
-        assert node.termination_request is not None
-        assert node.termination_request.cause == TerminationRequest.Cause.OUTDATED
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check
+        )
+        if not disable_launch_config_check:
+            assert node is not None
+            assert node.node_type == "type_no_longer_exists"
+            assert node.status == SchedulingNodeStatus.TO_TERMINATE
+            assert node.termination_request is not None
+            assert node.termination_request.cause == TerminationRequest.Cause.OUTDATED
+        else:
+            assert node is None
 
         # A pending ray node
         instance = make_autoscaler_instance(
@@ -169,11 +204,16 @@ class TestSchedulingNode:
                 instance_id="1",
             )
         )
-        node = SchedulingNode.new(instance, node_type_configs)
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check
+        )
         assert node is not None
         assert node.node_type == "type_1"
         assert node.status == SchedulingNodeStatus.SCHEDULABLE
-        assert node.available_resources == {"CPU": 1}
+        assert node.available_resources_for_sched == {
+            ResourceRequestSource.PENDING_DEMAND: {"CPU": 1},
+            ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT: {"CPU": 1},
+        }
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "foo"}
 
@@ -889,6 +929,261 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
         reply = scheduler.schedule(request)
         to_launch, _ = _launch_and_terminate(reply)
         assert sorted(to_launch) == sorted({"type_gpu": 1})
+
+
+def test_resource_constrains():
+    scheduler = ResourceDemandScheduler()
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=1,
+            max_worker_nodes=5,
+        ),
+        "type_gpu": NodeTypeConfig(
+            name="type_gpu",
+            resources={"CPU": 1, "GPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    # Resource constraints should not launch extra with min_nodes
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        cluster_resource_constraints=[
+            ResourceRequestUtil.make({"CPU": 1}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_cpu": 1})
+
+    # Constraints should launch extra nodes.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        cluster_resource_constraints=[
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"GPU": 1}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_cpu": 1, "type_gpu": 1})
+
+    # Resource constraints should not launch extra with max_nodes
+    # fails to atomically ensure constraints.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        cluster_resource_constraints=[
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"CPU": 1}),
+            ResourceRequestUtil.make({"GPU": 2}),
+            ResourceRequestUtil.make({"GPU": 2}),
+        ],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert sorted(to_launch) == sorted({"type_cpu": 1})
+    assert len(reply.infeasible_cluster_resource_constraints) == 1
+
+
+@pytest.mark.parametrize(
+    "disable_launch_config_check", [True, False], ids=["disabled", "enabled"]
+)
+def test_outdated_nodes(disable_launch_config_check):
+    """
+    Test that nodes with outdated node configs are terminated.
+    """
+    scheduler = ResourceDemandScheduler()
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=2,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        disable_launch_config_check=disable_launch_config_check,
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash2",
+                    instance_id="i-1",
+                    node_id="r-1",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    node_id=b"r-1",
+                ),
+                cloud_instance_id="c-1",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",  # matched
+                    instance_id="i-2",
+                    node_id="r-2",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    node_id=b"r-2",
+                ),
+                cloud_instance_id="c-2",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="head_node",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",  # mismatched -> but don't terminate
+                    instance_id="i-3",
+                    node_kind=NodeKind.HEAD,
+                    node_id="r-3",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="head_node",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 0},
+                    node_id=b"r-3",
+                ),
+                cloud_instance_id="c-3",
+            ),
+        ],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, to_terminate = _launch_and_terminate(reply)
+    if not disable_launch_config_check:
+        assert to_terminate == [("i-1", "r-1", TerminationRequest.Cause.OUTDATED)]
+        assert to_launch == {"type_cpu": 1}  # Launch 1 to replace the outdated node.
+    else:
+        assert to_terminate == []
+        assert to_launch == {}
+
+
+@pytest.mark.parametrize("idle_timeout_s", [1, 2, 10])
+@pytest.mark.parametrize("has_resource_constraints", [True, False])
+def test_idle_termination(idle_timeout_s, has_resource_constraints):
+    """
+    Test that idle nodes are terminated.
+    """
+    scheduler = ResourceDemandScheduler()
+
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    idle_time_s = 5
+    constraints = (
+        []
+        if not has_resource_constraints
+        else [ResourceRequestUtil.make({"CPU": 1})] * 2
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                    instance_id="i-1",
+                    node_id="r-1",
+                ),
+                ray_node=NodeState(
+                    node_id=b"r-1",
+                    ray_node_type_name="type_cpu",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=0,  # Non idle
+                    status=NodeStatus.RUNNING,
+                ),
+                cloud_instance_id="c-1",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-2",
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                    node_id="r-2",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    node_id=b"r-2",
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=idle_time_s * 1000,
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-2",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="i-3",
+                    instance_type="head_node",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash2",
+                    node_kind=NodeKind.HEAD,
+                    node_id="r-3",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="head_node",
+                    node_id=b"r-3",
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 0},
+                    idle_duration_ms=999 * 1000,  # idle
+                    status=NodeStatus.IDLE,
+                ),
+                cloud_instance_id="c-3",
+            ),
+        ],
+        idle_timeout_s=idle_timeout_s,
+        cluster_resource_constraints=constraints,
+    )
+
+    reply = scheduler.schedule(request)
+    _, to_terminate = _launch_and_terminate(reply)
+    if idle_timeout_s <= idle_time_s and not has_resource_constraints:
+        assert len(to_terminate) == 1
+        assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
+    else:
+        assert len(to_terminate) == 0
 
 
 if __name__ == "__main__":

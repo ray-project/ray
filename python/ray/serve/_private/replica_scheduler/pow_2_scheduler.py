@@ -568,7 +568,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 # Include replicas whose queues are full as not in the cache so we will
                 # actively probe them. Otherwise we may end up in "deadlock" until their
                 # cache entries expire.
-                if queue_len is None or queue_len >= r.max_concurrent_requests:
+                if queue_len is None or queue_len >= r.max_ongoing_requests:
                     not_in_cache.append(r)
                 elif queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
@@ -587,10 +587,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     # None is returned if we failed to get the queue len.
                     continue
 
-                if (
-                    queue_len < r.max_concurrent_requests
-                    and queue_len < lowest_queue_len
-                ):
+                if queue_len < r.max_ongoing_requests and queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
                     chosen_replica_id = r.replica_id
         elif len(not_in_cache) > 0:
