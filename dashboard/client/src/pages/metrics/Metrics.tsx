@@ -213,6 +213,26 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=8",
       },
       {
+        title: "Operator Internal Inqueue Size (Blocks)",
+        pathParams: "orgId=1&theme=light&panelId=13",
+      },
+      {
+        title: "Operator Internal Inqueue Size (Bytes)",
+        pathParams: "orgId=1&theme=light&panelId=14",
+      },
+      {
+        title: "Operator Internal Outqueue Size (Blocks)",
+        pathParams: "orgId=1&theme=light&panelId=15",
+      },
+      {
+        title: "Operator Internal Outqueue Size (Bytes)",
+        pathParams: "orgId=1&theme=light&panelId=16",
+      },
+      {
+        title: "Iteration Initialization Time",
+        pathParams: "orgId=1&theme=light&panelId=12",
+      },
+      {
         title: "Iteration Blocked Time",
         pathParams: "orgId=1&theme=light&panelId=9",
       },

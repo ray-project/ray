@@ -84,8 +84,17 @@ class OpRuntimeMetrics:
 
     # === Object store memory metrics ===
 
+    # Number of blocks in the operator's internal input queue.
+    obj_store_mem_internal_inqueue_blocks: int = field(
+        default=0, metadata={"export_metric": True}
+    )
     # Size in bytes of input blocks in the operator's internal input queue.
     obj_store_mem_internal_inqueue: int = field(
+        default=0, metadata={"export_metric": True}
+    )
+    # TODO: outqueue metrics not showing on dashboard
+    # Number of blocks in the operator's internal output queue.
+    obj_store_mem_internal_outqueue_blocks: int = field(
         default=0, metadata={"export_metric": True}
     )
     # Size in bytes of output blocks in the operator's internal output queue.
@@ -260,18 +269,22 @@ class OpRuntimeMetrics:
 
     def on_input_queued(self, input: RefBundle):
         """Callback when the operator queues an input."""
+        self.obj_store_mem_internal_inqueue_blocks += len(input.blocks)
         self.obj_store_mem_internal_inqueue += input.size_bytes()
 
     def on_input_dequeued(self, input: RefBundle):
         """Callback when the operator dequeues an input."""
+        self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         self.obj_store_mem_internal_inqueue -= input.size_bytes()
 
     def on_output_queued(self, output: RefBundle):
         """Callback when an output is queued by the operator."""
+        self.obj_store_mem_internal_outqueue_blocks += len(output.blocks)
         self.obj_store_mem_internal_outqueue += output.size_bytes()
 
     def on_output_dequeued(self, output: RefBundle):
         """Callback when an output is dequeued by the operator."""
+        self.obj_store_mem_internal_outqueue_blocks -= len(output.blocks)
         self.obj_store_mem_internal_outqueue -= output.size_bytes()
 
     def on_toggle_task_submission_backpressure(self, in_backpressure):

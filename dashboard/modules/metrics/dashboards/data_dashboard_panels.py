@@ -133,6 +133,78 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    # Input queue metrics
+    Panel(
+        id=13,
+        title="Operator Internal Inqueue Size (Blocks)",
+        description="Number of blocks in operator's internal input queue",
+        unit="blocks",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}}}) by (dataset, operator)",
+                legend="Number of Blocks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=14,
+        title="Operator Internal Inqueue Size (Bytes)",
+        description="Total byte size of blocks in operator's internal input queue",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_inqueue{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=15,
+        title="Operator Internal Outqueue Size (Blocks)",
+        description="Number of blocks in operator's internal output queue",
+        unit="blocks",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters}}}) by (dataset, operator)",
+                legend="Number of Blocks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=16,
+        title="Operator Internal Outqueue Size (Bytes)",
+        description="Total byte size of blocks in operator's internal output queue",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_outqueue{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
+    # Iteration metrics
+    Panel(
+        id=12,
+        title="Iteration Initialization Time",
+        description="Seconds spent in iterator initialization code",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
     Panel(
         id=9,
         title="Iteration Blocked Time",

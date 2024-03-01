@@ -206,6 +206,26 @@ class _StatsActor:
             description="Time spent generating blocks.",
             tag_keys=op_tags_keys,
         )
+        self.obj_store_mem_internal_inqueue_blocks = Gauge(
+            "data_obj_store_mem_internal_inqueue_blocks",
+            description="Number of blocks in operator's internal input queue",
+            tag_keys=op_tags_keys,
+        )
+        self.obj_store_mem_internal_inqueue = Gauge(
+            "data_obj_store_mem_internal_inqueue",
+            description="Total byte size of blocks in operator's internal input queue",
+            tag_keys=op_tags_keys,
+        )
+        self.obj_store_mem_internal_outqueue_blocks = Gauge(
+            "data_obj_store_mem_internal_outqueue_blocks",
+            description="Number of blocks in operator's internal output queue",
+            tag_keys=op_tags_keys,
+        )
+        self.obj_store_mem_internal_outqueue = Gauge(
+            "data_obj_store_mem_internal_outqueue",
+            description="Total byte size of blocks in operator's internal output queue",
+            tag_keys=op_tags_keys,
+        )
 
         iter_tag_keys = ("dataset",)
         self.iter_total_blocked_s = Gauge(
@@ -286,6 +306,18 @@ class _StatsActor:
             self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
             self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
+            self.obj_store_mem_internal_inqueue_blocks.set(
+                stats.get("obj_store_mem_internal_inqueue_blocks", 0), tags
+            )
+            self.obj_store_mem_internal_inqueue.set(
+                stats.get("obj_store_mem_internal_inqueue", 0), tags
+            )
+            self.obj_store_mem_internal_outqueue_blocks.set(
+                stats.get("obj_store_mem_internal_outqueue_blocks", 0), tags
+            )
+            self.obj_store_mem_internal_outqueue.set(
+                stats.get("obj_store_mem_internal_outqueue", 0), tags
+            )
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -313,6 +345,10 @@ class _StatsActor:
             self.cpu_usage.set(0, tags)
             self.gpu_usage.set(0, tags)
             self.block_generation_time.set(0, tags)
+            self.obj_store_mem_internal_inqueue_blocks.set(0, tags)
+            self.obj_store_mem_internal_inqueue.set(0, tags)
+            self.obj_store_mem_internal_outqueue_blocks.set(0, tags)
+            self.obj_store_mem_internal_outqueue.set(0, tags)
 
     def clear_iteration_metrics(self, dataset_tag: str):
         tags = self._create_tags(dataset_tag)
