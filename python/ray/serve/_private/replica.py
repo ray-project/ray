@@ -493,11 +493,11 @@ class ReplicaActor:
         *request_args,
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
-        """Entrypoint for all requests with strict max_concurrent_queries enforcement.
+        """Entrypoint for all requests with strict max_ongoing_requests enforcement.
 
         The first response from this generator is always a system message indicating
         if the request was accepted (the replica has capacity for the request) or
-        rejected (the replica is already at max_concurrent_queries).
+        rejected (the replica is already at max_ongoing_requests).
 
         For non-streaming requests, there will only be one more message, the unary
         result of the user request handler.
@@ -506,11 +506,11 @@ class ReplicaActor:
         user request handler (which must be a generator).
         """
         request_metadata = pickle.loads(pickled_request_metadata)
-        limit = self._deployment_config.max_concurrent_queries
+        limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
             logger.warning(
-                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},
             )

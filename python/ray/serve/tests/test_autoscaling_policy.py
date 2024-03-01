@@ -107,7 +107,7 @@ def test_autoscaling_metrics(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=25,
+        max_ongoing_requests=25,
         version="v1",
     )
     class A:
@@ -175,7 +175,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
     )
     class A:
         def __call__(self):
@@ -232,7 +232,7 @@ def test_e2e_scale_up_down_with_0_replica(
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
         version="v1",
     )
     class A:
@@ -349,7 +349,7 @@ def test_e2e_bursty(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
         version="v1",
     )
     class A:
@@ -415,7 +415,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
     )
     class A:
         def __call__(self):
@@ -468,7 +468,7 @@ def test_downscaling_with_fractional_smoothing_factor(
                     "downscale_delay_s": 5,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -524,7 +524,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
                     "upscale_delay_s": 0.2,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -613,7 +613,7 @@ def test_e2e_raise_min_replicas(serve_instance):
                     "upscale_delay_s": 0.2,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -693,7 +693,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=5,
+        max_ongoing_requests=5,
         # The config makes the deployment scale up really quickly and then
         # wait nearly forever to downscale.
         autoscaling_config=AutoscalingConfig(
@@ -881,12 +881,17 @@ app = g.bind()
     not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     reason="Only works when collecting request metrics at handle.",
 )
-def test_max_concurrent_queries_set_to_one(serve_instance):
+@pytest.mark.parametrize(
+    "use_max_concurrent_queries,use_max_ongoing_requests",
+    [(True, True), (True, False), (False, True)],
+)
+def test_max_ongoing_requests_set_to_one(
+    serve_instance, use_max_concurrent_queries, use_max_ongoing_requests
+):
     assert RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=1,
         autoscaling_config=AutoscalingConfig(
             min_replicas=1,
             max_replicas=5,
@@ -902,7 +907,12 @@ def test_max_concurrent_queries_set_to_one(serve_instance):
         await signal.wait.remote()
         return os.getpid()
 
+    if use_max_concurrent_queries:
+        f = f.options(max_concurrent_queries=1)
+    if use_max_ongoing_requests:
+        f = f.options(max_ongoing_requests=1)
     h = serve.run(f.bind())
+
     check_num_replicas_eq("f", 1)
 
     # Repeatedly (5 times):
