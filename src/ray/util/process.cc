@@ -258,7 +258,6 @@ class ProcessFD {
       ec = std::error_code(errno, std::system_category());
     }
 #endif
-    KnownChildrenTracker::instance().addKnownChild(pid);
     return ProcessFD(pid, fd);
   }
 };
@@ -366,10 +365,19 @@ Process::Process(const char *argv[],
                  bool pipe_to_stdin) {
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
+#ifdef __linux__
+  KnownChildrenTracker::instance().addKnownChild([&ec, &p_]() -> pid_t {
+    ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+    if (!ec) {
+      p_ = std::make_shared<ProcessFD>(std::move(procfd));
+    }
+  });
+#else
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
+#endif
 }
 
 std::error_code Process::Call(const std::vector<std::string> &args,

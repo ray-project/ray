@@ -101,15 +101,16 @@ void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service)
 // TODO: Checking PIDs is not 100% reliable because of PID recycling. If we find issues
 // later due to this, we can use pidfd.
 void KillUnknownChildren() {
-  auto child_procs = GetAllProcsWithPpid(GetPID());
-
-  // Enumerating child procs is not supported on this platform.
-  if (!child_procs) {
-    RAY_LOG(FATAL) << "Killing leaked procs not supported on this platform. Only "
-                      "supports Linux >= 3.4";
-    return;
-  }
-  auto to_kill = KnownChildrenTracker::instance().listUnknownChildren(*child_procs);
+  auto to_kill =
+      KnownChildrenTracker::instance().listUnknownChildren([]() -> std::vector<pid_t> {
+        auto child_procs = GetAllProcsWithPpid(GetPID());
+        if (!child_procs) {
+          RAY_LOG(FATAL) << "Killing leaked procs not supported on this platform. Only "
+                            "supports Linux >= 3.4";
+          return {};
+        }
+        return *child_procs;
+      });
   for (auto pid : to_kill) {
     RAY_LOG(INFO) << "Killing leaked child process " << pid;
     auto error = KillProc(pid);
@@ -120,8 +121,9 @@ void KillUnknownChildren() {
   }
 }
 
-void KnownChildrenTracker::addKnownChild(pid_t pid) {
+void KnownChildrenTracker::addKnownChild(std::function<pid_t()> create_child_fn) {
   absl::MutexLock lock(&m_);
+  pid_t pid = create_child_fn();
   children_.insert(pid);
 }
 
@@ -131,8 +133,9 @@ void KnownChildrenTracker::removeKnownChild(pid_t pid) {
 }
 
 std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
-    const std::vector<pid_t> &pids) {
+    std::function<std::vector<pid_t>()> list_pids_fn) {
   absl::MutexLock lock(&m_);
+  std::vector<pid_t> pids = list_pids_fn();
   std::vector<pid_t> result;
   result.reserve(std::min(pids.size(), children_.size()));
   for (pid_t pid : pids) {
@@ -146,16 +149,9 @@ std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
 #elif defined(_WIN32)
 
 // Windows implementation.
-// Windows does not have signals or subreaper, so we do no-op for all functions.
+// Windows does not have signals or subreaper, so we do no-op.
 
 void SetSigchldIgnore() {}
-
-void KnownChildrenTracker::addKnownChild(pid_t pid) {}
-void KnownChildrenTracker::removeKnownChild(pid_t pid) {}
-std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
-    const std::vector<pid_t> &pids) {
-  return {};
-}
 
 #elif defined(__APPLE__)
 
@@ -163,13 +159,6 @@ std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
 // MacOS has signals, but does not support subreaper, so we ignore SIGCHLD.
 
 void SetSigchldIgnore() { signal(SIGCHLD, SIG_IGN); }
-
-void KnownChildrenTracker::addKnownChild(pid_t pid) {}
-void KnownChildrenTracker::removeKnownChild(pid_t pid) {}
-std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
-    const std::vector<pid_t> &pids) {
-  return {};
-}
 
 #else
 #error "Only support Linux, Windows and MacOS"

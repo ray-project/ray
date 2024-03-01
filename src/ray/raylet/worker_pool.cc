@@ -113,7 +113,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   stats::NumCachedWorkersSkippedJobMismatch.Record(0);
   stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(0);
   stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(0);
-  // We used to signore SIGCHLD here. The code is moved to raylet main.cc to support the
+  // We used to ignore SIGCHLD here. The code is moved to raylet main.cc to support the
   // subreaper feature.
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.

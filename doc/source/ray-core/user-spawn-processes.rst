@@ -1,7 +1,7 @@
 Lifetimes of a User-Spawn Process
 =================================
 
-To avoid leaking user-spawned processes, Ray provides a flag to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch). 
+To avoid leaking user-spawned processes, Ray provides a flag to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch).
 
 On Linux if the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` is set to ``true`` (default ``false``), Ray kills a user-spawned process when the parent Ray worker process exits, for example when actor is killed. This is recursive, that the grandchildren processes from a user-spawn process are killed as well.
 
@@ -25,7 +25,7 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
   class MyActor:
     def __init__(self):
       pass
-      
+
     def start(self):
       # Start a user process
       process = subprocess.Popen(["python", "-c", "import time; while True: print('Hello, world!'); time.sleep(1)"])
@@ -83,7 +83,7 @@ For a deep chain of process creations, Raylet would do the killing step by step.
 .. code-block::
 
   raylet -> core worker -> user process A -> user process B -> user process C
- 
+
 When the ``core worker`` dies, ``Raylet`` kills the ``user process A``, because it's not on the "known" children list. When ``user process A`` dies, ``Raylet`` kills ``user process B``, and so on.
 
 An edge case is, if the ``core worker`` is still alive but the ``user process A`` is dead, then ``user process B`` gets reparented and risks being killed. To mitigate, ``Ray`` also sets the ``core worker`` as a subreaper, so it can adopt the reparented processes. ``Core worker`` does not kill unknown children processes, so a user "daemon" process e.g. ``user process B`` that outlives ``user process A`` can live along. However if the ``core worker`` dies, the user daemon process gets reparented to ``raylet`` and gets killed.

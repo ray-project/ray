@@ -14,12 +14,9 @@
 
 #pragma once
 
-#ifdef _WIN32
-typedef int pid_t;
-#else
+#ifdef __linux__
 #include <signal.h>
 #include <sys/types.h>
-#endif
 
 #include <boost/asio.hpp>
 #include <vector>
@@ -27,6 +24,7 @@ typedef int pid_t;
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/util/macros.h"
+#endif
 
 namespace ray {
 
@@ -75,16 +73,9 @@ void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service)
 // Note: this function is one-time. Raylet should call it periodically.
 void KillUnknownChildren();
 
-#endif
-
-// Ignores SIGCHLD to let the OS auto reap them.
-// Available to all platforms.
-// Only works for Linux and MacOS. No-op on Windows.
-void SetSigchldIgnore();
-
-// Thread-safe tracker for owned children.
-// Only works in Linux.
-// In non-Linux platforms: do nothing.
+// Thread-safe tracker for owned children. Provides transactional interfaces for creating
+// children and listing children. Only works in Linux. In non-Linux platforms: call the
+// callback and do nothing.
 class KnownChildrenTracker {
  public:
   static KnownChildrenTracker &instance() {
@@ -92,22 +83,31 @@ class KnownChildrenTracker {
     return instance;
   }
 
-  // If the child is already owned, this is a no-op.
-  void addKnownChild(pid_t pid);
+  // Caller may create a child process within `create_child_fn`.
+  void addKnownChild(std::function<pid_t()> create_child_fn);
+
   // If the child is not owned, this is a no-op.
   void removeKnownChild(pid_t pid);
-  // Returns the subset of `pids` that are NOT in the known `children_`.
+
+  // Caller may list all processes within `list_all_fn`.
+  // Returns the subset of fn-returned pids that are NOT in the known `children_`.
   // Thread safe.
-  std::vector<pid_t> listUnknownChildren(const std::vector<pid_t> &pids);
+  std::vector<pid_t> listUnknownChildren(
+      std::function<std::vector<pid_t>()> list_pids_fn);
 
  private:
   KnownChildrenTracker() = default;
   ~KnownChildrenTracker() = default;
   RAY_DISALLOW_COPY_AND_ASSIGN(KnownChildrenTracker);
-#ifdef __linux__
   absl::Mutex m_;
   absl::flat_hash_set<pid_t> children_ ABSL_GUARDED_BY(m_);
-#endif
 };
+
+#endif
+
+// Ignores SIGCHLD to let the OS auto reap them.
+// Available to all platforms.
+// Only works for Linux and MacOS. No-op on Windows.
+void SetSigchldIgnore();
 
 }  // namespace ray
