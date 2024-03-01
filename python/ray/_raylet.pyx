@@ -135,6 +135,7 @@ from ray.includes.common cimport (
     kWorkerSetupHookKeyName,
     PythonCheckGcsHealth,
     PythonGetNodeLabels,
+    PythonGetResourcesTotal,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -1024,6 +1025,10 @@ cdef c_bool determine_if_retryable(
     # Python API should have converted the list of exceptions to a tuple.
     assert isinstance(exception_allowlist, tuple)
 
+    # For exceptions raised when running UDFs in Ray Data, we need to unwrap the special
+    # exception type thrown by Ray Data in order to get the underlying exception.
+    if isinstance(e, ray.data.exceptions.UserCodeException):
+        e = e.__cause__
     # Check that e is in allowlist.
     return isinstance(e, exception_allowlist)
 
@@ -2491,11 +2496,15 @@ def maybe_initialize_job_config():
                 sys.path.insert(0, p)
         ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
-        # Add driver's system path to sys.path
-        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
-        if py_driver_sys_path:
-            for p in py_driver_sys_path:
-                sys.path.insert(0, p)
+        # If this worker is on the same node with the driver, add driver's system path
+        # to sys.path.
+        this_node_id = ray._private.worker.global_worker.current_node_id
+        driver_node_id = ray.NodeID(core_worker.get_job_config().driver_node_id)
+        if this_node_id == driver_node_id:
+            py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+            if py_driver_sys_path:
+                for p in py_driver_sys_path:
+                    sys.path.insert(0, p)
 
         # Cache and set the current job id.
         job_id = core_worker.get_current_job_id()
@@ -2793,15 +2802,17 @@ cdef class GcsClient:
 
         result = {}
         for node_info in node_infos:
+            c_resources = PythonGetResourcesTotal(node_info)
             result[node_info.node_id()] = {
                 "node_name": node_info.node_name(),
                 "state": node_info.state(),
-                "labels": PythonGetNodeLabels(node_info)
+                "labels": PythonGetNodeLabels(node_info),
+                "resources": {key.decode(): value for key, value in c_resources}
             }
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None):
+    def get_all_job_info(self, timeout=None) -> Dict[str, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
@@ -3822,7 +3833,8 @@ cdef class CoreWorker:
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
-                    int64_t generator_backpressure_num_objects
+                    int64_t generator_backpressure_num_objects,
+                    c_bool enable_task_events
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -3855,7 +3867,8 @@ cdef class CoreWorker:
                 name, num_returns, c_resources,
                 b"",
                 generator_backpressure_num_objects,
-                serialized_runtime_env_info)
+                serialized_runtime_env_info,
+                enable_task_events)
 
             current_c_task_id = current_task.native()
 
@@ -3900,6 +3913,7 @@ cdef class CoreWorker:
                      concurrency_groups_dict,
                      int32_t max_pending_calls,
                      scheduling_strategy,
+                     c_bool enable_task_events,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3946,7 +3960,8 @@ cdef class CoreWorker:
                         # execute out of order for
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
-                        max_pending_calls),
+                        max_pending_calls,
+                        enable_task_events),
                     extension_data,
                     &c_actor_id)
 
@@ -4043,7 +4058,8 @@ cdef class CoreWorker:
                           retry_exception_allowlist,
                           double num_method_cpus,
                           c_string concurrency_group_name,
-                          int64_t generator_backpressure_num_objects):
+                          int64_t generator_backpressure_num_objects,
+                          c_bool enable_task_events):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -4055,6 +4071,7 @@ cdef class CoreWorker:
             CTaskID current_c_task_id = CTaskID.Nil()
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
+            c_string serialized_runtime_env = b"{}"
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -4081,7 +4098,9 @@ cdef class CoreWorker:
                         num_returns,
                         c_resources,
                         concurrency_group_name,
-                        generator_backpressure_num_objects),
+                        generator_backpressure_num_objects,
+                        serialized_runtime_env,
+                        enable_task_events),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4188,6 +4207,7 @@ cdef class CoreWorker:
         actor_creation_function_descriptor = CFunctionDescriptorToPython(
             dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
         max_task_retries = dereference(c_actor_handle).MaxTaskRetries()
+        enable_task_events = dereference(c_actor_handle).EnableTaskEvents()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -4202,6 +4222,7 @@ cdef class CoreWorker:
             method_meta = ray.actor._ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id, max_task_retries,
+                                         enable_task_events,
                                          method_meta.method_is_generator,
                                          method_meta.decorators,
                                          method_meta.signatures,
@@ -4209,12 +4230,14 @@ cdef class CoreWorker:
                                          method_meta.max_task_retries,
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
+                                         method_meta.enable_task_events,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
+                                         True,  # enable_task_events
                                          {},  # method is_generator
                                          {},  # method decorators
                                          {},  # method signatures
@@ -4222,6 +4245,7 @@ cdef class CoreWorker:
                                          {},  # method max_task_retries
                                          {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
+                                         {},  # enable_task_events
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)

@@ -24,6 +24,9 @@ steps:
   - name: datamongobuild
     wanda: ci/docker/datamongo.build.wanda.yaml
 
+  - name: datatfxbslbuild
+    wanda: ci/docker/datatfxbsl.build.wanda.yaml
+
   # tests
   - label: ":database: data: arrow 6 tests"
     tags: 
@@ -84,6 +87,18 @@ steps:
         --build-name datanbuild
         --except-tags data_integration,doctest
     depends_on: datanbuild
+  
+  - label: ":database: data: TFRecords (tfx-bsl) tests"
+    tags: 
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
+        --parallelism-per-worker 3
+        --build-name datatfxbslbuild
+        --only-tags tfxbsl
+    depends_on: datatfxbslbuild
 
   - label: ":database: data: doc tests"
     tags: 
