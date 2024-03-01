@@ -14,12 +14,10 @@ from ray.rllib.utils.typing import EpisodeType
 class AgentToModuleMapping(ConnectorV2):
     """TODO"""
 
-    @property
     @override(ConnectorV2)
     def recompute_observation_space_from_input_spaces(self):
         return self._map_space_if_necessary(self.input_observation_space)
 
-    @property
     @override(ConnectorV2)
     def recompute_action_space_from_input_spaces(self):
         return self._map_space_if_necessary(self.input_action_space)
