@@ -793,6 +793,14 @@ class DatasetStatsSummary:
                 out += "\nDataset memory:\n"
                 out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
 
+            total_num_out_rows = self.operators_stats[-1].output_num_rows["sum"]
+            total_wall_time = sum(
+                [op_stats.wall_time["sum"] for op_stats in self.operators_stats]
+            )
+            out += "Dataset throughput:\n"
+            out += f"    * Ray Data throughput: {total_num_out_rows / self.time_total_s} rows/s\n"
+            out += f"    * Optimal single node throughput: {total_num_out_rows / total_wall_time} rows/s\n"
+
         return out
 
     def __repr__(self, level=0) -> str:
@@ -1098,6 +1106,18 @@ class OperatorStatsSummary:
                 node_count_stats["max"],
                 node_count_stats["mean"],
                 node_count_stats["count"],
+            )
+        if output_num_rows_stats and self.time_total_s and wall_time_stats:
+            total_num_out_rows = output_num_rows_stats["sum"]
+            out += indent
+            out += "* Operator throughput:\n"
+            out += (
+                indent
+                + f"    * Ray Data throughput: {total_num_out_rows / self.time_total_s} rows/s\n"
+            )
+            out += (
+                indent
+                + f"    * Optimal single node throughput: {total_num_out_rows / wall_time_stats['sum']} rows/s\n"
             )
         return out
 
