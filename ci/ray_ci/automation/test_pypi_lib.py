@@ -75,15 +75,17 @@ def test_upload_wheels_to_pypi(mock_subprocess, mock_get_pypi_url, mock_get_pypi
         assert mock_subprocess.call_count == len(wheels)
         for i, call_args in enumerate(mock_subprocess.call_args_list):
             command = call_args[0][0]
-            assert command[0] == "twine"
-            assert command[1] == "upload"
-            assert command[2] == "--repository-url"
-            assert command[3] == "test_pypi_url"
-            assert command[4] == "--username"
-            assert command[5] == "__token__"
-            assert command[6] == "--password"
-            assert command[7] == "test_token"
-            assert command[8] == os.path.join(tmp_dir, wheels[i])
+            assert command[0] == sys.executable
+            assert command[1] == "-m"
+            assert command[2] == "twine"
+            assert command[3] == "upload"
+            assert command[4] == "--repository-url"
+            assert command[5] == "test_pypi_url"
+            assert command[6] == "--username"
+            assert command[7] == "__token__"
+            assert command[8] == "--password"
+            assert command[9] == "test_token"
+            assert command[10] == os.path.join(tmp_dir, wheels[i])
 
 
 @mock.patch("ci.ray_ci.automation.pypi_lib._get_pypi_token")
