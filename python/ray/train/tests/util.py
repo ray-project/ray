@@ -27,7 +27,6 @@ def load_dict_checkpoint(checkpoint: Checkpoint) -> Dict[str, Any]:
 
 def mock_storage_context(
     exp_name: str = "exp_name",
-    delete_syncer: bool = True,
     storage_path: Optional[str] = None,
     storage_context_cls: Type = StorageContext,
 ) -> StorageContext:
@@ -45,7 +44,7 @@ def mock_storage_context(
     session_path = tempfile.mkdtemp()
     storage._get_session_path = lambda: session_path
 
-    if delete_syncer:
-        storage.syncer = None
-    os.makedirs(os.path.join(storage_path, exp_name, trial_name), exist_ok=True)
+    os.makedirs(storage.trial_fs_path, exist_ok=True)
+    os.makedirs(storage.trial_local_staging_path, exist_ok=True)
+
     return storage

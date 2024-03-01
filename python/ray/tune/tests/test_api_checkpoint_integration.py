@@ -109,12 +109,11 @@ def test_checkpoint_freq_dir_name(
                 )
 
         storage = mock_storage_context(
-            delete_syncer=False,
             storage_context_cls=CustomStorageContext,
             storage_path=tmp_path,
         )
     else:
-        storage = mock_storage_context(delete_syncer=False, storage_path=tmp_path)
+        storage = mock_storage_context(storage_path=tmp_path)
 
     trial = Trial(
         "test_checkpoint_freq",

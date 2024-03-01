@@ -537,7 +537,7 @@ def test_checkpoint_auto_period(
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointAutoPeriod
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
 
     with tempfile.TemporaryDirectory() as local_dir:
         storage.storage_local_path = local_dir
@@ -575,7 +575,7 @@ def test_checkpoint_force_with_num_to_keep(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testCloudCheckpointForceWithNumToKeep
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
     # Needed to avoid infinite recursion error on CI runners
     storage.syncer.__getstate__ = lambda *a, **kw: {}
 
@@ -641,7 +641,7 @@ def test_checkpoint_forced_cloud_sync_timeout(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testForcedCloudCheckpointSyncTimeout
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
 
     storage.syncer.sync_period = 60
     storage.syncer.sync_timeout = 0.001
@@ -686,7 +686,7 @@ def test_checkpoint_periodic_cloud_sync_timeout(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testPeriodicCloudCheckpointSyncTimeout
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
 
     storage.syncer.sync_period = 60
     storage.syncer.sync_timeout = 0.5
