@@ -63,27 +63,6 @@ def get_deployment(name: str, app_name: str = ""):
     )
 
 
-def list_deployments() -> Dict[str, Deployment]:
-    """Returns a dictionary of all active 1.x deployments.
-
-    Dictionary maps deployment name to Deployment objects.
-    """
-    infos = _get_global_client().list_deployments_v1()
-
-    deployments = {}
-    for name, (deployment_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
-            name,
-            deployment_info.deployment_config,
-            deployment_info.replica_config,
-            version=deployment_info.version,
-            route_prefix=route_prefix,
-            _internal=True,
-        )
-
-    return deployments
-
-
 def _check_http_options(
     client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
 ) -> None:

@@ -57,7 +57,7 @@ For example, the following code batches multiple files into the same read task t
 .. testoutput::
     :options: +MOCK
 
-    2023-11-20 14:28:47,597 INFO plan.py:760 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
+    2023-11-20 14:28:47,597 INFO plan.py:760 -- Using autodetected parallelism=4 for operator ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
     MaterializedDataset(
        num_blocks=4,
        num_rows=2400,
@@ -65,7 +65,7 @@ For example, the following code batches multiple files into the same read task t
     )
 
 But suppose that you knew that you wanted to read all 16 files in parallel.
-This could be, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream stage to transform each file's contents in parallel.
+This could be, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream operator to transform each file's contents in parallel.
 You can get this behavior by setting the ``parallelism`` parameter.
 Notice how the number of output blocks is equal to ``parallelism`` in the following code:
 
@@ -150,7 +150,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
 .. testoutput::
     :options: +MOCK
 
-    2023-11-20 15:47:02,404 INFO split_read_output_blocks.py:101 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
+    2023-11-20 15:47:02,404 INFO split_read_output_blocks.py:101 -- Using autodetected parallelism=4 for operator ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
     2023-11-20 15:47:02,405 INFO split_read_output_blocks.py:106 -- To satisfy the requested parallelism of 4, each read task output is split into 4 smaller blocks.
     ...
     Operator 1 ReadCSV->SplitBlocks(4): 1 tasks executed, 4 blocks produced in 0.01s
@@ -159,7 +159,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     Operator 2 Map(<lambda>): 4 tasks executed, 4 blocks produced in 0.3s
     ...
 
-To turn off this behavior and allow the read and map stages to be fused, set ``parallelism`` manually.
+To turn off this behavior and allow the read and map operators to be fused, set ``parallelism`` manually.
 For example, this code sets ``parallelism`` to equal the number of files:
 
 .. testcode::
@@ -338,8 +338,8 @@ The recommended strategy is to manually increase the :ref:`read parallelism <rea
 Handling too-small blocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When different stages of your Dataset produce different-sized outputs, you may end up with very small blocks, which can hurt performance and even cause crashes from excessive metadata.
-Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each stage's output blocks are each at least 1 MB and ideally 100 MB.
+When different operators of your Dataset produce different-sized outputs, you may end up with very small blocks, which can hurt performance and even cause crashes from excessive metadata.
+Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are each at least 1 MB and ideally 100 MB.
 
 If your blocks are smaller than this, consider repartitioning into larger blocks.
 There are two ways to do this:
@@ -520,9 +520,9 @@ Here is an example that shows how to limit a random shuffle operation to two out
 .. testoutput::
     :options: +MOCK
 
-    Stage 1 ReadRange->RandomShuffle: executed in 0.08s
+    Operator 1 ReadRange->RandomShuffle: executed in 0.08s
 
-        Substage 0 ReadRange->RandomShuffleMap: 2/2 blocks executed
+        Suboperator 0 ReadRange->RandomShuffleMap: 2/2 blocks executed
         ...
 
 
