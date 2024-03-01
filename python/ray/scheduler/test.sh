@@ -1,4 +1,4 @@
-SERVER_IP=http://172.31.81.213:8000
+SERVER_IP=http://10.0.0.132:8000
 ray stop --force && ray start --head
 python /home/ubuntu/ray/python/ray/scheduler/init.py
 python /home/ubuntu/ray/python/ray/scheduler/test.py

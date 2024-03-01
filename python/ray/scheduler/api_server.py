@@ -87,7 +87,7 @@ class Apiserver:
     def apply(self, spec: dict = Body(...)):
         user_task = Task(spec=spec)
         self.unfinished_user_tasks.put(user_task)
-        print("apiserver: apply a new user_task", user_task.spec[USER_TASK_ID])
+        # print("apiserver: apply a new user_task", user_task.spec[USER_TASK_ID])
 
     @app.get("/get")
     def get(self):
@@ -122,7 +122,8 @@ class Apiserver:
             self._remove_node_running_task(user_task)
 
         else:
-            print("apiserver: invalid user_task status", user_task.spec[USER_TASK_ID], user_task.status[USER_TASK_STATUS])
+            pass
+            # print("apiserver: invalid user_task status", user_task.spec[USER_TASK_ID], user_task.status[USER_TASK_STATUS])
 
     @app.get("/get/node-info")
     def get(self):
@@ -140,7 +141,7 @@ class Apiserver:
         #         self.node_info[node[NODE_ID]][TOTAL_DURATION] = 0
         #         self.node_info[node[NODE_ID]][TOTAL_COMPLEXITY_SCORE] = 0
         #         self.node_info[node[NODE_ID]][SPEED] = 0
-        print("apiserver: node info", self.node_info)
+        # print("apiserver: node info", self.node_info)
         return self.node_info
 
     def _idempotent_increment_pending_task_count(self, user_task):
@@ -164,8 +165,8 @@ class Apiserver:
         self.node_info[assign_node][SPEED] = self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] / self.node_info[assign_node][TOTAL_DURATION]
 
         # print all node speed
-        for node_id, node in self.node_info.items():
-            print("apiserver: node speed", node_id, self.node_info[node_id][SPEED])
+        # for node_id, node in self.node_info.items():
+        #     print("apiserver: node speed", node_id, self.node_info[node_id][SPEED])
 
     def _remove_node_running_task(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]

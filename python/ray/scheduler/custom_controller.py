@@ -32,20 +32,20 @@ class Controller():
             
             self.reconcile(user_task)
             self.update_status(user_task)
-            print("reconcile: ", user_task)
+            # print("reconcile: ", user_task)
             
             # Use rate limiter later
-            # time.sleep(1)
+            # time.sleep(0.001)
 
     def reconcile(self, user_task):
-        print("reconcile: ", user_task.spec[USER_TASK_ID])
+        # print("reconcile: ", user_task.spec[USER_TASK_ID])
 
         # schedule to this task to a node
         if user_task.status[ASSIGN_NODE] is None:
             node_id = self.schedule(user_task)
             user_task.status[ASSIGN_NODE] = node_id
             user_task.status[USER_TASK_STATUS] = PENDING
-            print("reconcile: assign to node", user_task.spec[USER_TASK_ID], node_id)
+            # print("reconcile: assign to node", user_task.spec[USER_TASK_ID], node_id)
             return
 
         # send data and bind label to node
@@ -53,7 +53,7 @@ class Controller():
             id = self.bind_label_and_send_data(user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR],user_task.spec['s3'],user_task.spec[BUCKET_NAME],user_task.spec[OBJECT_KEY])
             user_task.status[BIND_TASK_ID] = id
             user_task.status[BIND_TASK_STATUS] = RUNNING
-            print("reconcile: send data and bind label to node", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
+            # print("reconcile: send data and bind label to node", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
             return
         
         # Check if data is sent and label is binded
@@ -61,15 +61,15 @@ class Controller():
             task_status = get_task(user_task.status[BIND_TASK_ID])
             if task_status == None:
                 return
-            print(task_status)
+            # print(task_status)
             # The task_status is retrieved from the Ray API, and the end/start time may sometimes not be updated yet even though the state is FINISHED.
             if task_status[STATE] == FINISHED and task_status[END_TIME] != None and task_status[START_TIME] != None:
                 user_task.status[BIND_TASK_START_TIME] = task_status[START_TIME]
                 user_task.status[BIND_TASK_END_TIME] = task_status[END_TIME]
                 user_task.status[BIND_TASK_STATUS] = FINISHED
                 user_task.status[BIND_TASK_DURATION] = task_status[END_TIME] - task_status[START_TIME]
-                print("reconcile: send data and bind label finished", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
-                print("reconcile: binding task duration", user_task.status[BIND_TASK_DURATION])
+                # print("reconcile: send data and bind label finished", user_task.spec[USER_TASK_ID], user_task.spec[HPC_DIR])
+                # print("reconcile: binding task duration", user_task.status[BIND_TASK_DURATION])
             return
         
         # Check if user_task is finished
@@ -77,25 +77,25 @@ class Controller():
             task_status = get_task(user_task.spec[USER_TASK_ID])
             if task_status == None:
                 return
-            print(task_status)
+            # print(task_status)
             # The task_status is retrieved from the Ray API, and the end/start time may sometimes not be updated yet even though the state is FINISHED.
             if task_status[STATE] == RUNNING and task_status[START_TIME] != None:
                 user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
                 user_task.status[USER_TASK_STATUS] = RUNNING
-                print("reconcile: user_task running", user_task.spec[USER_TASK_ID])
+                # print("reconcile: user_task running", user_task.spec[USER_TASK_ID])
             
             elif task_status[STATE] == FINISHED and task_status[END_TIME] != None and task_status[START_TIME] != None:
                 user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
                 user_task.status[USER_TASK_END_TIME] = task_status[END_TIME]
                 user_task.status[USER_TASK_STATUS] = FINISHED
                 user_task.status[USER_TASK_DURATION] = task_status[END_TIME] - task_status[START_TIME]
-                print("reconcile: user_task finished", user_task.spec[USER_TASK_ID])
+                # print("reconcile: user_task finished", user_task.spec[USER_TASK_ID])
             return
                 
 
     def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_name):
-    
-        @ray.remote(num_cpus=0.1)
+
+        @ray.remote(num_cpus=0.5)
         def bind_label():
             def download_s3_folder(bucket_name, s3_folder='', local_dir=None):
                 """
@@ -194,8 +194,8 @@ class Controller():
         required_gpu = user_task.spec[GPU] if GPU in user_task.spec else 0
         required_memory = user_task.spec[MEMORY] if MEMORY in user_task.spec else 0
 
-        for node_id, node in node_info.items():
 
+        for node_id, node in node_info.items():
             available_cpu = node[AVAILABLE_CPU]
             available_gpu = node[AVAILABLE_GPU]
             available_memory = node[AVAILABLE_MEMORY]
@@ -208,26 +208,36 @@ class Controller():
                 if user_task_estimated_finish_time < earliest_time:
                     earliest_time = user_task_estimated_finish_time
                     best_node = node_id
-                    continue
+                        
+        if best_node is None:
+            # estimate earliest available time and choose best node again
+            for node_id, node in node_info.items():
+
+                available_cpu = node[AVAILABLE_CPU]
+                available_gpu = node[AVAILABLE_GPU]
+                available_memory = node[AVAILABLE_MEMORY]
+
+                user_task_duration = user_task.spec[COMPLEXITY_SCORE] / node[SPEED]
+                current_time = int(time.time() * 1000)
 
 
-            for _, task in node[RUNNING_OR_PENDING_TASKS].items():
-                task = Task(**task)
-                if task.status[USER_TASK_STATUS] == RUNNING:
-                    start_time = task.status[USER_TASK_START_TIME]
-                else:
-                    start_time = task.status[USER_TASK_ESTIMATED_START_TIME]
+                for _, task in node[RUNNING_OR_PENDING_TASKS].items():
+                    task = Task(**task)
+                    if task.status[USER_TASK_STATUS] == RUNNING:
+                        start_time = task.status[USER_TASK_START_TIME]
+                    else:
+                        start_time = task.status[USER_TASK_ESTIMATED_START_TIME]
 
-                estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED] + user_task_duration
+                    estimated_finish_time = start_time + task.spec[COMPLEXITY_SCORE] / node[SPEED] + user_task_duration
 
-                available_cpu += task.spec[CPU] if CPU in task.spec else 0
-                available_gpu += task.spec[GPU] if GPU in task.spec else 0
-                available_memory += task.spec[MEMORY] if MEMORY in task.spec else 0
-                
-                if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
-                    if estimated_finish_time < earliest_time and estimated_finish_time > current_time:
-                        earliest_time = estimated_finish_time
-                        best_node = node_id
+                    available_cpu += task.spec[CPU] if CPU in task.spec else 0
+                    available_gpu += task.spec[GPU] if GPU in task.spec else 0
+                    available_memory += task.spec[MEMORY] if MEMORY in task.spec else 0
+                    
+                    if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
+                        if estimated_finish_time < earliest_time and estimated_finish_time > current_time:
+                            earliest_time = estimated_finish_time
+                            best_node = node_id
         
         if best_node == None or (node_info[best_node][PENDING_TASKS_COUNT] + 1) > MAX_PENDING_TASK:
             return None
