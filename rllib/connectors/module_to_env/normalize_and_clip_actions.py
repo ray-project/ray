@@ -15,7 +15,6 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class NormalizeAndClipActions(ConnectorV2):
-
     @override(ConnectorV2)
     def recompute_action_space_from_input_spaces(self) -> gym.Space:
         self._action_space_struct = get_base_struct_from_space(self.input_action_space)
