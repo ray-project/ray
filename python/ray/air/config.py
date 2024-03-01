@@ -587,6 +587,9 @@ class RunConfig:
             For multi-node training/tuning runs, this must be set to a
             shared storage location (e.g., S3, NFS).
             This defaults to the local ``~/ray_results`` directory.
+        storage_filesystem: [Beta] A custom filesystem to use for storage.
+            If this is provided, `storage_path` should be a path with its
+            prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
         sync_config: Configuration object for syncing. See train.SyncConfig.
