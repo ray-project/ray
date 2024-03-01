@@ -10,10 +10,7 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class UnBatchToIndividualItems(ConnectorV2):
-    """Unbatches the given `data` back into the individual-batch-items format.
-
-
-    """
+    """Unbatches the given `data` back into the individual-batch-items format."""
 
     @override(ConnectorV2)
     def __call__(

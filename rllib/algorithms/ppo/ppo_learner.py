@@ -62,7 +62,8 @@ class PPOLearner(Learner):
         num_iters=1,
     ):
         # Call the train data preprocessor.
-        batch, episodes = self._preprocess_train_data(episodes=episodes)
+        if self.config.uses_new_env_runners:
+            batch, episodes = self._preprocess_train_data(episodes=episodes)
 
         return super()._update_from_batch_or_episodes(
             batch=batch,
@@ -72,15 +73,15 @@ class PPOLearner(Learner):
             num_iters=num_iters,
         )
 
-    def _preprocess_train_data(
+    def _compute_gae_from_episodes(
         self,
         *,
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
         if not episodes:
             raise ValueError(
-                "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
-                "to work with! Otherwise, GAE/advantage computation can't be performed."
+                "`PPOLearner._compute_gae_from_episodes()` must have the `episodes` "
+                "arg provided! Otherwise, GAE/advantage computation can't be performed."
             )
 
         batch = {}

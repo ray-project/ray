@@ -1232,39 +1232,6 @@ class Learner:
             num_iters=num_iters,
         )
 
-    # @OverrideToImplementCustomLogic
-    # def _preprocess_train_data(
-    #    self,
-    #    *,
-    #    batch: Optional[MultiAgentBatch] = None,
-    #    episodes: Optional[List[EpisodeType]] = None,
-    # ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
-    # """Allows custom preprocessing of batch/episode data before the actual update.
-    #
-    # The higher level order, in which this method is called from within
-    # `Learner.update(batch, episodes)` is:
-    # * batch, episodes = self._preprocess_train_data(batch, episodes)
-    # * batch = self._learner_connector(batch, episodes)
-    # * results = self._update(batch)
-    #
-    # The default implementation does not do any processing and is a mere pass
-    # through. However, specific algorithms should override this method to implement
-    # their specific training data preprocessing needs. It is possible to perform
-    # preliminary RLModule forward passes (besides the main "forward_train()" call
-    # during `self._update`) in this method and custom algorithms might also want to
-    # use this Learner's `self._learner_connector` to prepare the data
-    # (batch/episodes) for such extra forward calls.
-    #
-    # Args:
-    #    batch: An optional batch of training data to preprocess.
-    #    episodes: An optional list of episodes objects to preprocess.
-    #
-    # Returns:
-    #    A tuple consisting of the processed `batch` and the processed list of
-    #    `episodes`.
-    # """
-    # return batch, episodes
-
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _update(
