@@ -23,9 +23,9 @@ from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-    DEFAULT_MAX_CONCURRENT_QUERIES,
+    DEFAULT_MAX_ONGOING_REQUESTS,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
-    NEW_DEFAULT_MAX_CONCURRENT_QUERIES,
+    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
@@ -85,7 +85,7 @@ class DeploymentConfig(BaseModel):
     Args:
         num_replicas: The number of processes to start up that
             handles requests to this deployment. Defaults to 1.
-        max_concurrent_queries: The maximum number of queries
+        max_ongoing_requests: The maximum number of queries
             that is sent to a replica of this deployment without receiving
             a response. Defaults to 100.
         max_queued_requests: Maximum number of requests to this deployment that will be
@@ -115,8 +115,8 @@ class DeploymentConfig(BaseModel):
     num_replicas: Optional[NonNegativeInt] = Field(
         default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
-    max_concurrent_queries: PositiveInt = Field(
-        default=DEFAULT_MAX_CONCURRENT_QUERIES,
+    max_ongoing_requests: PositiveInt = Field(
+        default=DEFAULT_MAX_ONGOING_REQUESTS,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
     max_queued_requests: int = Field(
@@ -320,15 +320,15 @@ class DeploymentConfig(BaseModel):
 
 
 def handle_num_replicas_auto(
-    max_concurrent_queries: Union[int, DEFAULT],
+    max_ongoing_requests: Union[int, DEFAULT],
     autoscaling_config: Optional[Union[Dict, AutoscalingConfig, DEFAULT]],
 ):
-    """Return modified `max_concurrent_queries` and `autoscaling_config`
+    """Return modified `max_ongoing_requests` and `autoscaling_config`
     for when num_replicas="auto".
 
-    If `max_concurrent_queries` is unspecified (DEFAULT.VALUE), returns
-    the modified value NEW_DEFAULT_MAX_CONCURRENT_QUERIES. Otherwise,
-    doesn't change `max_concurrent_queries`.
+    If `max_ongoing_requests` is unspecified (DEFAULT.VALUE), returns
+    the modified value NEW_DEFAULT_MAX_ONGOING_REQUESTS. Otherwise,
+    doesn't change `max_ongoing_requests`.
 
     If `autoscaling_config` is unspecified, returns the modified value
     AutoscalingConfig.default().
@@ -336,8 +336,8 @@ def handle_num_replicas_auto(
     override that of AutoscalingConfig.default().
     """
 
-    if max_concurrent_queries is DEFAULT.VALUE:
-        max_concurrent_queries = NEW_DEFAULT_MAX_CONCURRENT_QUERIES
+    if max_ongoing_requests is DEFAULT.VALUE:
+        max_ongoing_requests = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
     if autoscaling_config in [DEFAULT.VALUE, None]:
         # If autoscaling config wasn't specified, use default
@@ -355,7 +355,7 @@ def handle_num_replicas_auto(
         default_config.update(autoscaling_config)
         autoscaling_config = AutoscalingConfig(**default_config)
 
-    return max_concurrent_queries, autoscaling_config
+    return max_ongoing_requests, autoscaling_config
 
 
 class ReplicaConfig:
