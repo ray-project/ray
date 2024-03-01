@@ -115,7 +115,7 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
                 ),
             ):
                 state_dict = self.model.state_dict()
-                
+
                 ckpt_state_dict = {}
                 prefix_len = len("_forward_module.")
                 for k, v in state_dict.items():
