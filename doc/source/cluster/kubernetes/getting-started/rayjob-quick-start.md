@@ -190,3 +190,9 @@ helm uninstall kuberay-operator
 # Step 10.3: Delete the Kubernetes cluster
 kind delete cluster
 ```
+
+## Next steps
+
+* [RayJob Batch Inference Example](kuberay-batch-inference-example)
+* [Priority Scheduling with RayJob and Kueue](kuberay-kueue-priority-scheduling-example)
+* [Gang Scheduling with RayJob and Kueue](kuberay-kueue-gang-scheduling-example)
