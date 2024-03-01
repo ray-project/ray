@@ -115,8 +115,16 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
                 ),
             ):
                 state_dict = self.model.state_dict()
+                
+                ckpt_state_dict = {}
                 prefix_len = len("_forward_module.")
-                return {k[prefix_len:]: v for k, v in state_dict.items()}
+                for k, v in state_dict.items():
+                    if k.startswith("_forward_module."):
+                        non_prefixed_key = k[prefix_len:]
+                        ckpt_state_dict[non_prefixed_key] = v
+                    else:
+                        ckpt_state_dict[k] = v
+                return ckpt_state_dict
         else:
             # Otherwise Lightning uses Fairscale FSDP, no need to unshard by ourself.
             return super().lightning_module_state_dict()
