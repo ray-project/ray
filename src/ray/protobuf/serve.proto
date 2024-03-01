@@ -92,7 +92,7 @@ message DeploymentConfig {
 
   // The maximum number of queries that will be sent to a replica of this deployment
   // without receiving a response.
-  int32 max_concurrent_queries = 2;
+  int32 max_ongoing_requests = 2;
 
   // The maximum number of requests that will be queued in deployment handles.
   int32 max_queued_requests = 3;

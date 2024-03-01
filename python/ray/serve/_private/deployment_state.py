@@ -281,7 +281,7 @@ class ActorReplicaWrapper:
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app
+        return self._deployment_id.app_name
 
     @property
     def is_cross_language(self) -> bool:
@@ -333,8 +333,8 @@ class ActorReplicaWrapper:
         return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> int:
-        return self.deployment_config.max_concurrent_queries
+    def max_ongoing_requests(self) -> int:
+        return self.deployment_config.max_ongoing_requests
 
     @property
     def max_queued_requests(self) -> int:
@@ -916,7 +916,7 @@ class DeploymentReplica(VersionedReplica):
             node_id=self.actor_node_id,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
-            max_concurrent_queries=self._actor.max_concurrent_queries,
+            max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
         )
@@ -943,7 +943,7 @@ class DeploymentReplica(VersionedReplica):
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app
+        return self._deployment_id.app_name
 
     @property
     def version(self):
@@ -1372,7 +1372,7 @@ class DeploymentState:
 
     @property
     def app_name(self) -> str:
-        return self._id.app
+        return self._id.app_name
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
@@ -1923,7 +1923,7 @@ class DeploymentState:
                 self._last_retry = time.time()
                 logger.info(
                     f"Adding {to_add} replica{'s' if to_add > 1 else ''} to deployment "
-                    f"{self.deployment_name} in application '{self.app_name}'."
+                    f"'{self.deployment_name}' in application '{self.app_name}'."
                 )
                 for _ in range(to_add):
                     replica_name = ReplicaName(
@@ -2068,7 +2068,7 @@ class DeploymentState:
                 )
                 logger.info(
                     f"Replica {replica.replica_tag} started successfully "
-                    f"on node {replica.actor_node_id}.",
+                    f"on node '{replica.actor_node_id}'.",
                     extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
@@ -2777,7 +2777,7 @@ class DeploymentStateManager:
 
         deployments = []
         for deployment_id in self._deployment_states:
-            if deployment_id.app == app_name:
+            if deployment_id.app_name == app_name:
                 deployments.append(deployment_id.name)
 
         return deployments
@@ -2861,7 +2861,7 @@ class DeploymentStateManager:
                 replica tag and model ids.
         """
         if info.deployment_id not in self._deployment_states:
-            app_msg = f" in application '{info.deployment_id.app}'"
+            app_msg = f" in application '{info.deployment_id.app_name}'"
             logger.error(
                 f"Deployment {info.deployment_id.name}{app_msg} not found in state "
                 "manager."
