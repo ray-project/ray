@@ -2,8 +2,8 @@ from gymnasium.spaces import Dict, Tuple, Box, Discrete, MultiDiscrete
 import os
 
 from ray.tune.registry import register_env
-from ray.rllib.connectors.common import AddObservationsFromEpisodeToBatch
 from ray.rllib.connectors.env_to_module import (
+    AddObservationsFromEpisodesToBatch,
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
@@ -35,7 +35,7 @@ if __name__ == "__main__":
             else env.observation_space
         )
         act = env.single_action_space if args.num_agents == 0 else env.action_space
-        c1 = AddObservationsFromEpisodeToBatch(obs, act)
+        c1 = AddObservationsFromEpisodesToBatch(obs, act)
         c2 = FlattenObservations(
             c1.observation_space, c1.action_space, multi_agent=args.num_agents > 0
         )

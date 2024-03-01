@@ -1,8 +1,8 @@
 import functools
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.connectors.common import AddObservationsFromEpisodeToBatch
 from ray.rllib.connectors.env_to_module import (
+    AddObservationsFromEpisodesToBatch,
     FlattenObservations,
     PrevActionsPrevRewardsConnector,
     WriteObservationsToEpisodes,
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     def _env_to_module(env):
         # Create the env-to-module connector pipeline.
         return [
-            AddObservationsFromEpisodeToBatch(),
+            AddObservationsFromEpisodesToBatch(),
             PrevActionsPrevRewardsConnector(
                 multi_agent=args.num_agents > 0,
                 n_prev_rewards=args.n_prev_rewards,

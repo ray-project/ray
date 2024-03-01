@@ -23,7 +23,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         import gymnasium as gym
         import numpy as np
 
-        from ray.rllib.connectors.common import AddObservationsFromEpisodeToBatch
+        from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
@@ -45,7 +45,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         print(f"2nd Episode's last obs is {eps_2_last_obs}")
 
         # Create an instance of this class, providing the obs- and action spaces.
-        connector = AddObservationsFromEpisodeToBatch(obs_space, act_space)
+        connector = AddObservationsFromEpisodesToBatch(obs_space, act_space)
 
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
@@ -69,7 +69,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a AddObservationsFromEpisodeToBatch instance.
+        """Initializes a AddObservationsFromEpisodesToBatch instance.
 
         Args:
             as_learner_connector: Whether this connector is part of a Learner connector

@@ -991,8 +991,8 @@ class AlgorithmConfig(_Config):
 
     def build_learner_connector(self, input_observation_space, input_action_space):
         from ray.rllib.connectors.learner import (
-            AddColumnsToTrainBatch,
-            AddObservationsFromEpisodeToBatch,
+            AddColumnsFromEpisodesToTrainBatch,
+            AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
             AgentToModuleMapping,
             BatchIndividualItems,
@@ -1029,10 +1029,10 @@ class AlgorithmConfig(_Config):
         if self.add_default_connectors_to_learner_pipeline:
             # Append OBS handling.
             pipeline.append(
-                AddObservationsFromEpisodeToBatch(as_learner_connector=True)
+                AddObservationsFromEpisodesToBatch(as_learner_connector=True)
             )
             # Append all other columns handling.
-            pipeline.append(AddColumnsToTrainBatch())
+            pipeline.append(AddColumnsFromEpisodesToTrainBatch())
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(
                 AddStatesFromEpisodesToBatch(
