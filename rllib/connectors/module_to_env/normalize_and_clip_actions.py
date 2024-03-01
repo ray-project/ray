@@ -15,6 +15,12 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class NormalizeAndClipActions(ConnectorV2):
+
+    @override(ConnectorV2)
+    def recompute_action_space_from_input_spaces(self) -> gym.Space:
+        self._action_space_struct = get_base_struct_from_space(self.input_action_space)
+        return self.input_action_space
+
     def __init__(
         self,
         input_observation_space: Optional[gym.Space] = None,
@@ -68,10 +74,6 @@ class NormalizeAndClipActions(ConnectorV2):
         This is such that the final actions (to be sent to the env) match the
         environment's action space and thus don't lead to an error.
         """
-        # TODO: Get rid of this once we merge the PR for `recompute_observation_space`
-        #  ...
-        if self._action_space_struct is None:
-            self._action_space_struct = get_base_struct_from_space(self.action_space)
 
         def _unsquash_or_clip(action, env_vector_idx, agent_id, module_id):
             if agent_id is not None:

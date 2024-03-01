@@ -133,5 +133,4 @@ ppo-stateless-cartpole:
             use_lstm: true
         # Double batch size (2 GPUs).
         train_batch_size: 8000
-        _enable_learner_api: false
-        _enable_rl_module_api: false
+        _enable_new_api_stack: false

@@ -61,8 +61,6 @@ if __name__ == "__main__":
     def _make_learner_connector(input_observation_space, input_action_space):
         # Create the learner connector.
         return FrameStackingLearner(
-            # input_observation_space=input_observation_space,
-            # input_action_space=input_action_space,
             num_frames=args.num_frames,
             multi_agent=args.num_agents > 0,
         )

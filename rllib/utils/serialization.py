@@ -78,7 +78,9 @@ def _deserialize_ndarray(b64_string: str) -> np.ndarray:
     Returns:
         numpy ndarray.
     """
-    return np.load(io.BytesIO(zlib.decompress(base64.b64decode(b64_string))))
+    return np.load(
+        io.BytesIO(zlib.decompress(base64.b64decode(b64_string))), allow_pickle=True
+    )
 
 
 @DeveloperAPI

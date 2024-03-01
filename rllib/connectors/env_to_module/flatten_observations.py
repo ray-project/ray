@@ -100,14 +100,8 @@ class FlattenObservations(ConnectorV2):
 
     """
 
-    @property
-    def observation_space(self):
-        if self.input_observation_space is None:
-            return None
-        # TODO (sven): We should handle this differently. We probably need another
-        #  API method for ConnectorV2 in case the `input_observation_space` is changed
-        #  after construction (for example, when the connector piece is inserted into
-        #  some pipeline).
+    @override(ConnectorV2)
+    def recompute_observation_space_from_input_spaces(self):
         self._input_obs_base_struct = get_base_struct_from_space(
             self.input_observation_space
         )
@@ -139,8 +133,8 @@ class FlattenObservations(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         multi_agent: bool = False,
         **kwargs,
@@ -152,10 +146,10 @@ class FlattenObservations(ConnectorV2):
                 in which case, the top-level of the Dict space (where agent IDs are
                 mapped to individual agents' observation spaces) is left as-is.
         """
-        super().__init__(input_observation_space, input_action_space, **kwargs)
-
+        self._input_obs_base_struct = None
         self._multi_agent = multi_agent
-        self.observation_space
+
+        super().__init__(input_observation_space, input_action_space, **kwargs)
 
     @override(ConnectorV2)
     def __call__(

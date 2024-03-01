@@ -37,6 +37,7 @@ py_test_module_list(
     "test_expected_versions.py",
     "test_actor_replica_wrapper.py",
     "test_max_queued_requests.py",
+    "test_enable_task_events.py",
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
@@ -208,6 +209,19 @@ py_test_module_list(
     "test_max_replicas_per_node.py",
   ],
   size = "medium",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
+)
+
+# Test feature flag for task events.
+py_test_module_list(
+  name_suffix="_with_task_events_enabled",
+  env={"RAY_SERVE_ENABLE_TASK_EVENTS": "1"},
+  files = [
+    "test_enable_task_events.py",
+  ],
+  size = "small",
   tags = ["exclusive", "no_windows", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
   data = glob(["test_config_files/**/*"]),

@@ -24,17 +24,26 @@ class MetricsPusher:
 
     def __init__(
         self,
-        event_loop: asyncio.AbstractEventLoop,
+        *,
         async_sleep: Optional[Callable[[int], None]] = None,
     ):
-        self._event_loop = event_loop
         self._async_sleep = async_sleep or asyncio.sleep
         self._tasks: Dict[str, _MetricsTask] = dict()
         self._async_tasks: Dict[str, asyncio.Task] = dict()
-        self._stop_event = asyncio.Event(loop=event_loop)
+
+        # The event needs to be lazily initialized because this class may be constructed
+        # on the main thread but its methods called on a separate asyncio loop.
+        self._stop_event: Optional[asyncio.Event] = None
+
+    @property
+    def stop_event(self) -> asyncio.Event:
+        if self._stop_event is None:
+            self._stop_event = asyncio.Event()
+
+        return self._stop_event
 
     def start(self):
-        self._stop_event.clear()
+        self.stop_event.clear()
 
     async def metrics_task(self, name: str):
         """Periodically runs `task_func` every `interval_s` until `stop_event` is set.
@@ -42,7 +51,7 @@ class MetricsPusher:
         If `task_func` raises an error, an exception will be logged.
         """
 
-        wait_for_stop_event = asyncio.create_task(self._stop_event.wait())
+        wait_for_stop_event = asyncio.create_task(self.stop_event.wait())
         while True:
             if wait_for_stop_event.done():
                 return
@@ -74,12 +83,10 @@ class MetricsPusher:
 
         self._tasks[name] = _MetricsTask(task_func, interval_s)
         if name not in self._async_tasks or self._async_tasks[name].done():
-            self._async_tasks[name] = self._event_loop.create_task(
-                self.metrics_task(name)
-            )
+            self._async_tasks[name] = asyncio.create_task(self.metrics_task(name))
 
     def stop_tasks(self):
-        self._stop_event.set()
+        self.stop_event.set()
         self._tasks.clear()
         self._async_tasks.clear()
 
@@ -89,7 +96,7 @@ class MetricsPusher:
         This method will ensure idempotency of shutdown call.
         """
 
-        self._stop_event.set()
+        self.stop_event.set()
         if self._async_tasks:
             await asyncio.wait(
                 list(self._async_tasks.values()),

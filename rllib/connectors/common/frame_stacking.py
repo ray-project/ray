@@ -16,11 +16,8 @@ from ray.util.annotations import PublicAPI
 class _FrameStacking(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
-    @property
     @override(ConnectorV2)
-    def observation_space(self):
-        if self.input_observation_space is None:
-            return None
+    def recompute_observation_space_from_input_spaces(self):
         # Change our observation space according to the given stacking settings.
         if self._multi_agent:
             ret = {}
@@ -32,8 +29,8 @@ class _FrameStacking(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         num_frames: int = 1,
         multi_agent: bool = False,

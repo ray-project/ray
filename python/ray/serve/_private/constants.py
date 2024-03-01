@@ -315,3 +315,8 @@ RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
 
 # Timeout for gracefully shutting down metrics pusher, e.g. in routers or replicas
 METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
+
+# Feature flag to set `enable_task_events=True` on Serve-managed actors.
+RAY_SERVE_ENABLE_TASK_EVENTS = (
+    os.environ.get("RAY_SERVE_ENABLE_TASK_EVENTS", "0") == "1"
+)
