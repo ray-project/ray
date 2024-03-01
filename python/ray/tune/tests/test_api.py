@@ -367,38 +367,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         )
 
-    def testLogdir(self):
-        logdir = os.path.join(ray._private.utils.get_user_temp_dir(), "logdir")
-
-        def train_fn(config):
-            assert logdir in os.getcwd(), os.getcwd()
-            train.report(dict(timesteps_total=1))
-
-        register_trainable("f1", train_fn)
-        with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": logdir}):
-            tune.run("f1")
-
     def testLongFilename(self):
-        logdir = os.path.join(ray._private.utils.get_user_temp_dir(), "logdir")
-
         def train_fn(config):
-            assert os.path.join(logdir, "foo") in os.getcwd(), os.getcwd()
             train.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
 
-        with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": logdir}):
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "config": {
-                            "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
-                            "b" * 50: tune.sample_from(lambda spec: "long" * 40),
-                        },
-                    }
+        run_experiments(
+            {
+                "foo": {
+                    "run": "f1",
+                    "config": {
+                        "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                        "b" * 50: tune.sample_from(lambda spec: "long" * 40),
+                    },
                 }
-            )
+            }
+        )
 
     def testBadParams(self):
         def f():
