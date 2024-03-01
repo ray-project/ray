@@ -678,7 +678,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     # only bottleneck and this wouldn't impact downstream memory limits. This avoids
     # stalling the execution for memory bottlenecks that occur upstream.
     # See for more context: https://github.com/ray-project/ray/pull/32673
-    global_limits_sans_memory = ExecutionResources(
+    global_limits_sans_memory = ExecutionResources.for_limits(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)

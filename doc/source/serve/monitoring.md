@@ -234,22 +234,49 @@ In addition to the standard Python logger, Serve supports custom logging. Custom
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
 ### Configure Serve logging
-From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure logging for Ray Serve. Pass a dictionary of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) or object of [LOGGING_CONFIG](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) to the `logging_config` argument of `serve.run` or `@serve.deployment`.
+From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure
+logging for Ray Serve. Pass a dictionary or object of [LoggingConfig](../serve/api/doc/ray.serve.schema.LoggingConfig.rst)
+to the `logging_config` argument of `serve.run` or `@serve.deployment`.
 
 #### Configure logging format
-You can configure the JSON logging format by passing `encoding=JSON` to `logging_config` argument of `@serve.deployment`. For example:
+You can configure the JSON logging format by passing `encoding=JSON` to `logging_config`
+argument in `serve.run` or `@serve.deployment`
 
+::::{tab-set}
+
+:::{tab-item} serve.run
 ```{literalinclude} doc_code/monitoring/logging_config.py
-:start-after: __json_start__
-:end-before: __json_end__
+:start-after: __serve_run_json_start__
+:end-before: __serve_run_json_end__
 :language: python
 ```
-In the `Model` log file, you should see the following:
+:::
+
+:::{tab-item} @serve.deployment
+```{literalinclude} doc_code/monitoring/logging_config.py
+:start-after: __deployment_json_start__
+:end-before: __deployment_json_end__
+:language: python
+```
+:::
+
+::::
+
+In the replica `Model` log file, you should see the following:
 
 ```
-{"levelname": "INFO", "asctime": "2023-12-07 12:59:45,271", "deployment": "Model", "replica": "default#Model#PUGBSJ", "request_id": "8d316c3b-4c9f-4769-8080-b6867ca46d1e", "route": "/", "application": "default", "message": "replica.py:719 - Started executing request 8d316c3b-4c9f-4769-8080-b6867ca46d1e"}
-{"levelname": "INFO", "asctime": "2023-12-07 12:59:45,271", "deployment": "Model", "replica": "default#Model#PUGBSJ", "request_id": "8d316c3b-4c9f-4769-8080-b6867ca46d1e", "route": "/", "application": "default", "message": "replica.py:745 - __CALL__ OK 0.1ms"}
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:08,908", "deployment": "default_Model", "replica": "rdofcrh4", "message": "replica.py:855 - Started initializing replica."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:08,908", "deployment": "default_Model", "replica": "rdofcrh4", "message": "replica.py:877 - Finished initializing replica."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:1068 - Started executing request to method '__call__'."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:373 - __CALL__ OK 0.6ms"}
 ```
+
+:::{note}
+The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
+next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
+:::
 
 #### Disable access log
 
@@ -268,7 +295,11 @@ You can also disable the access log by passing `disable_access_log=True` to `log
 The `Model` replica log file doesn't include the Serve traffic log, you should only see the application log in the log file.
 
 ```
-INFO 2023-12-07 13:15:07,979 Model default#Model#LhNrRV 8c5fcdb2-87a0-46ed-b2f8-9336280c9c3d / default logging_config.py:50 - hello world
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+INFO 2024-02-27 15:43:12,983 default_Model 4guj63jr replica.py:855 - Started initializing replica.
+INFO 2024-02-27 15:43:12,984 default_Model 4guj63jr replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 15:43:13,492 default_Model 4guj63jr 2246c4bb-73dc-4524-bf37-c7746a6b3bba / <stdin>:5 - hello world
 ```
 
 #### Configure logging in different deployments and applications
@@ -283,16 +314,28 @@ You can also configure logging at the application level by passing `logging_conf
 In the Router log file, you should see the following:
 
 ```
-INFO 2023-12-07 14:18:18,811 Router default#Router#iNdKWL 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:719 - Started executing request 6fe398fa-17d6-4abe-8264-d69c12aa9884
-DEBUG 2023-12-07 14:18:18,811 Router default#Router#iNdKWL 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:68 - This debug message is from the router.
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Router_*`
+
+INFO 2024-02-27 16:05:10,738 default_Router cwnihe65 replica.py:855 - Started initializing replica.
+INFO 2024-02-27 16:05:10,739 default_Router cwnihe65 replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 16:05:11,233 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:1068 - Started executing request to method '__call__'.
+DEBUG 2024-02-27 16:05:11,234 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / <stdin>:7 - This debug message is from the router.
+INFO 2024-02-27 16:05:11,238 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / router.py:308 - Using router <class 'ray.serve._private.replica_scheduler.pow_2_scheduler.PowerOfTwoChoicesReplicaScheduler'>.
+DEBUG 2024-02-27 16:05:11,240 default_Router cwnihe65 long_poll.py:157 - LongPollClient <ray.serve._private.long_poll.LongPollClient object at 0x10daa5a80> received updates for keys: [(LongPollNamespace.DEPLOYMENT_CONFIG, DeploymentID(name='Model', app='default')), (LongPollNamespace.RUNNING_REPLICAS, DeploymentID(name='Model', app='default'))].
+INFO 2024-02-27 16:05:11,241 default_Router cwnihe65 pow_2_scheduler.py:255 - Got updated replicas for deployment 'Model' in application 'default': {'default#Model#256v3hq4'}.
+DEBUG 2024-02-27 16:05:11,241 default_Router cwnihe65 long_poll.py:157 - LongPollClient <ray.serve._private.long_poll.LongPollClient object at 0x10daa5900> received updates for keys: [(LongPollNamespace.DEPLOYMENT_CONFIG, DeploymentID(name='Model', app='default')), (LongPollNamespace.RUNNING_REPLICAS, DeploymentID(name='Model', app='default'))].
+INFO 2024-02-27 16:05:11,245 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:373 - __CALL__ OK 12.2ms
 ```
 
 In the Model log file, you should see the following:
 
 ```
-INFO 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:719 - Started executing request 6fe398fa-17d6-4abe-8264-d69c12aa9884
-DEBUG 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default logging_config.py:75 - This debug message is from the model.
-INFO 2023-12-07 14:18:18,821 Model default#Model#AHYvjY 6fe398fa-17d6-4abe-8264-d69c12aa9884 / default replica.py:745 - __CALL__ OK 0.1ms
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+INFO 2024-02-27 16:05:10,735 default_Model 256v3hq4 replica.py:855 - Started initializing replica.
+INFO 2024-02-27 16:05:10,735 default_Model 256v3hq4 replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:1068 - Started executing request to method '__call__'.
+INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:373 - __CALL__ OK 0.6ms
 ```
 
 When you set `logging_config` at the application level, Ray Serve applies to all deployments in the application. When you set `logging_config` at the deployment level at the same time, the deployment level configuration will overrides the application level configuration.
