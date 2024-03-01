@@ -510,7 +510,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -531,7 +530,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -554,7 +552,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -602,7 +599,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -639,7 +635,6 @@ class TestRouterMetricsManager:
             metrics_manager = RouterMetricsManager(
                 deployment_id,
                 handle_id,
-                get_or_create_event_loop(),
                 mock_controller_handle,
                 FakeCounter(tag_keys=("deployment", "route", "application")),
                 FakeGauge(tag_keys=("deployment", "application")),
@@ -677,7 +672,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
