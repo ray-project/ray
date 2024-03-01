@@ -561,10 +561,14 @@ if __name__ == "__main__":
         else:
             logger.info("Using Ray Datasets loader")
 
-            # Enable block splitting to support larger file sizes w/o OOM.
             ctx = ray.data.context.DataContext.get_current()
-
-            options.resource_limits.object_store_memory = 10e9
+            # Tweak the following configure options to maximize performance.
+            # Do not reserve resources for any op.
+            ctx.op_resource_reservation_ratio = 0
+            # Set a larger `target_min_block_size` to avoid too many small blocks.
+            ctx.target_min_block_size = 20 * 1024**2
+            # Increase the streaming gen buffer size.
+            ctx._max_num_blocks_in_streaming_gen_buffer = 8
 
             datasets["train"] = build_dataset(
                 args.data_root,

@@ -28,7 +28,9 @@ def test_map(shutdown_only, restore_data_context):
 
     # Test read.
     ds = ray.data.range(100_000, parallelism=1).materialize()
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected + 1
+    assert (
+        num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
+    )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected,
@@ -39,7 +41,11 @@ def test_map(shutdown_only, restore_data_context):
     # NOTE(swang): For some reason BlockBuilder's estimated memory usage when a
     # map fn is used is 2x the actual memory usage.
     ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
-    assert num_blocks_expected * 2 <= ds.num_blocks() <= num_blocks_expected * 2 + 1
+    assert (
+        num_blocks_expected * 2
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 2 + 1
+    )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected * 2,
@@ -52,7 +58,9 @@ def test_map(shutdown_only, restore_data_context):
 
     # Test read.
     ds = ray.data.range(100_000, parallelism=1).materialize()
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected + 1
+    assert (
+        num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
+    )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected,
@@ -61,7 +69,11 @@ def test_map(shutdown_only, restore_data_context):
 
     # Test read -> map.
     ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
-    assert num_blocks_expected * 2 <= ds.num_blocks() <= num_blocks_expected * 2 + 1
+    assert (
+        num_blocks_expected * 2
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 2 + 1
+    )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected * 2,
@@ -74,7 +86,9 @@ def test_map(shutdown_only, restore_data_context):
 
     # Test read.
     ds = ray.data.range(100_000, parallelism=1).materialize()
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected + 1
+    assert (
+        num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
+    )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected,
@@ -83,7 +97,11 @@ def test_map(shutdown_only, restore_data_context):
 
     # Test read -> map.
     ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
-    assert num_blocks_expected * 2 <= ds.num_blocks() <= num_blocks_expected * 2 + 1
+    assert (
+        num_blocks_expected * 2
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 2 + 1
+    )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected * 2,
@@ -127,7 +145,11 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     ds = shuffle_fn(ray.data.range(100_000), **kwargs).materialize()
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
+    assert (
+        num_blocks_expected
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 1.5
+    )
     # map * reduce intermediate blocks + 1 metadata ref per map/reduce task.
     # If fusion is not supported, the un-fused map stage produces 1 data and 1
     # metadata per task.
@@ -150,7 +172,11 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         # memory usage for range(1000)->map is 2x the actual memory usage.
         # Remove once https://github.com/ray-project/ray/issues/40246 is fixed.
         num_blocks_expected = int(num_blocks_expected * 2.2)
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
+    assert (
+        num_blocks_expected
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 1.5
+    )
     num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
         2 if fusion_supported else 4
     )
@@ -169,7 +195,11 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     block_size_expected = ctx.target_shuffle_max_block_size
 
     ds = shuffle_fn(ray.data.range(100_000), **kwargs).materialize()
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
+    assert (
+        num_blocks_expected
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 1.5
+    )
     num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
         2 if fusion_supported else 4
     )
@@ -183,7 +213,11 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     if not fusion_supported:
         num_blocks_expected = int(num_blocks_expected * 2.2)
         block_size_expected //= 2.2
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
+    assert (
+        num_blocks_expected
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 1.5
+    )
     num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
         2 if fusion_supported else 4
     )
@@ -197,7 +231,11 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     # shuffle downstream.
     ctx.target_max_block_size = ctx.target_shuffle_max_block_size * 2
     ds = shuffle_fn(ray.data.range(100_000).map(lambda x: x), **kwargs).materialize()
-    assert num_blocks_expected <= ds.num_blocks() <= num_blocks_expected * 1.5
+    assert (
+        num_blocks_expected
+        <= ds._plan.initial_num_blocks()
+        <= num_blocks_expected * 1.5
+    )
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_intermediate_blocks,

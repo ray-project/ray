@@ -378,7 +378,7 @@ For advanced users working with large models, you can use model parallelism to s
 Optimizing expensive CPU preprocessing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If your workload involves expensive CPU preprocessing in addition to model inference, you can optimize throughput by separating the preprocessing and inference logic into separate stages. This separation allows inference on batch :math:`N` to execute concurrently with preprocessing on batch :math:`N+1`.
+If your workload involves expensive CPU preprocessing in addition to model inference, you can optimize throughput by separating the preprocessing and inference logic into separate operations. This separation allows inference on batch :math:`N` to execute concurrently with preprocessing on batch :math:`N+1`.
 
 For an example where preprocessing is done in a separate `map` call, see :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`.
 

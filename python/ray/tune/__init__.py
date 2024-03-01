@@ -22,15 +22,6 @@ from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.callback import Callback
 from ray.tune.search import grid_search
-from ray.tune.trainable.session import (
-    report,
-    get_trial_dir,
-    get_trial_name,
-    get_trial_id,
-    get_trial_resources,
-    checkpoint_dir,
-    is_session_enabled,
-)
 from ray.tune.progress_reporter import (
     ProgressReporter,
     CLIReporter,
@@ -87,13 +78,6 @@ __all__ = [
     "CLIReporter",
     "JupyterNotebookReporter",
     "ProgressReporter",
-    "report",
-    "get_trial_dir",
-    "get_trial_name",
-    "get_trial_id",
-    "get_trial_resources",
-    "is_session_enabled",
-    "checkpoint_dir",
     "ResultGrid",
     "create_searcher",
     "create_scheduler",

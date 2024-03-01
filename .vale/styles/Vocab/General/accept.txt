@@ -12,3 +12,6 @@ URI[s]
 [Pp]arallelization
 [Pp]erformant
 [Ss]ubclassing
+Kueue
+GKE
+namespace

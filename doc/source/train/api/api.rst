@@ -177,7 +177,6 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.gbdt_trainer.GBDTTrainer
 
 
 Train Backend Base Classes
