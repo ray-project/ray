@@ -36,7 +36,7 @@ from ray.serve.tests.common.remote_uris import (
     TEST_RUNTIME_ENV_PINNED_URI,
 )
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
-from ray.util.state import list_actors, list_tasks
+from ray.util.state import list_actors
 
 
 @pytest.fixture
