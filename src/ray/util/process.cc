@@ -366,10 +366,10 @@ Process::Process(const char *argv[],
   /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
 #ifdef __linux__
-  KnownChildrenTracker::instance().addKnownChild([&ec, &p_]() -> pid_t {
-    ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+  KnownChildrenTracker::instance().addKnownChild([this, &]() -> pid_t {
+    ProcessFD procfd = ProcessFD::spawnvpe(argv, this->ec, decouple, env, pipe_to_stdin);
     if (!ec) {
-      p_ = std::make_shared<ProcessFD>(std::move(procfd));
+      this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
     }
   });
 #else
