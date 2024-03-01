@@ -45,14 +45,12 @@ class RouterMetricsManager:
         self,
         deployment_id: DeploymentID,
         handle_id: str,
-        event_loop: asyncio.BaseEventLoop,
         controller_handle: ActorHandle,
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
     ):
         self._deployment_id = deployment_id
         self._handle_id = handle_id
-        self._event_loop = event_loop
         self._controller_handle = controller_handle
 
         # Exported metrics
@@ -76,7 +74,7 @@ class RouterMetricsManager:
         # this thread-safe lock.
         self._queries_lock = threading.Lock()
         # Regularly aggregate and push autoscaling metrics to controller
-        self.metrics_pusher = MetricsPusher(event_loop)
+        self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
         self.deployment_config: Optional[DeploymentConfig] = None
 
@@ -246,14 +244,11 @@ class RouterMetricsManager:
             "running_requests": running_requests,
         }
 
-    def shutdown(self):
+    async def shutdown(self):
         """Shutdown metrics manager gracefully."""
 
         if self.metrics_pusher:
-            fut = asyncio.run_coroutine_threadsafe(
-                self.metrics_pusher.graceful_shutdown(), loop=self._event_loop
-            )
-            fut.result()
+            await self.metrics_pusher.graceful_shutdown()
 
 
 class Router:
@@ -293,11 +288,11 @@ class Router:
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
-                event_loop=event_loop, deployment_id=deployment_id
+                event_loop=self._event_loop, deployment_id=deployment_id
             )
         else:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop,
+                self._event_loop,
                 deployment_id,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
@@ -328,13 +323,12 @@ class Router:
                     deployment_id,
                 ): self.update_deployment_config,
             },
-            call_in_event_loop=event_loop,
+            call_in_event_loop=self._event_loop,
         )
 
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
-            event_loop,
             controller_handle,
             metrics.Counter(
                 "serve_num_router_requests",
@@ -502,4 +496,6 @@ class Router:
                 raise
 
     def shutdown(self):
-        self._metrics_manager.shutdown()
+        asyncio.run_coroutine_threadsafe(
+            self._metrics_manager.shutdown(), loop=self._event_loop
+        ).result()

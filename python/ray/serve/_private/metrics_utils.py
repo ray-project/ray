@@ -24,14 +24,13 @@ class MetricsPusher:
 
     def __init__(
         self,
-        event_loop: asyncio.AbstractEventLoop,
+        *,
         async_sleep: Optional[Callable[[int], None]] = None,
     ):
-        self._event_loop = event_loop
         self._async_sleep = async_sleep or asyncio.sleep
         self._tasks: Dict[str, _MetricsTask] = dict()
         self._async_tasks: Dict[str, asyncio.Task] = dict()
-        self._stop_event = asyncio.Event(loop=event_loop)
+        self._stop_event = asyncio.Event()
 
     def start(self):
         self._stop_event.clear()
@@ -74,9 +73,7 @@ class MetricsPusher:
 
         self._tasks[name] = _MetricsTask(task_func, interval_s)
         if name not in self._async_tasks or self._async_tasks[name].done():
-            self._async_tasks[name] = self._event_loop.create_task(
-                self.metrics_task(name)
-            )
+            self._async_tasks[name] = asyncio.create_task(self.metrics_task(name))
 
     def stop_tasks(self):
         self._stop_event.set()
