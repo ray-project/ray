@@ -219,7 +219,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
-    verbose_stats_log: bool = DEFAULT_VERBOSE_STATS_LOG
+    verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     log_internal_stack_trace_to_stdout: bool = (
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
