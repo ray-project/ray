@@ -82,6 +82,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
     placement_group_table_data_.set_max_cpu_fraction_per_node(
         placement_group_spec.max_cpu_fraction_per_node());
+    placement_group_table_data_.set_soft_target_node_id(
+        placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
@@ -157,6 +159,10 @@ class GcsPlacementGroup {
 
   /// Returns the maximum CPU fraction per node for this placement group.
   double GetMaxCpuFractionPerNode() const;
+
+  /// Return the target node ID where bundles of this placement group should be placed.
+  /// Only works for STRICT_PACK placement group.
+  NodeID GetSoftTargetNodeID() const;
 
   const rpc::PlacementGroupStats &GetStats() const;
 

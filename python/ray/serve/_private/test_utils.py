@@ -46,6 +46,34 @@ class MockTimer(TimerBase):
             self._curr += amt + 0.001
 
 
+class MockAsyncTimer:
+    def __init__(self, start_time: Optional[float] = 0):
+        self.reset(start_time=start_time)
+        self._num_sleepers = 0
+
+    def reset(self, start_time: 0):
+        self._curr = start_time
+
+    def time(self) -> float:
+        return self._curr
+
+    async def sleep(self, amt: float):
+        self._num_sleepers += 1
+        end = self._curr + amt
+
+        # Give up the event loop
+        while self._curr < end:
+            await asyncio.sleep(0)
+
+        self._num_sleepers -= 1
+
+    def advance(self, amt: float):
+        self._curr += amt
+
+    def num_sleepers(self):
+        return self._num_sleepers
+
+
 class MockKVStore:
     def __init__(self):
         self.store = dict()
@@ -111,7 +139,7 @@ def get_num_running_replicas(
 ) -> int:
     """Get the replicas currently running for the given deployment."""
 
-    dep_id = DeploymentID(deployment_name, app_name)
+    dep_id = DeploymentID(name=deployment_name, app_name=app_name)
     actors = state_api.list_actors(
         filters=[
             ("class_name", "=", dep_id.to_replica_actor_class_name()),

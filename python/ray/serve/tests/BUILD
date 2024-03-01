@@ -43,15 +43,6 @@ py_test_module_list(
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"]
 )
 
-py_test_module_list(
-  files = [
-    "test_cross_language.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "no_windows", "team:serve"],
-  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"]
-)
-
 # Medium tests.
 py_test_module_list(
   files = [

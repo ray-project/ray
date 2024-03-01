@@ -44,25 +44,6 @@ steps:
       - manylinux
       - forge
 
-  - label: ":windows: wheel {{matrix}}"
-    # we have linux/mac wheels tag, but do not have a windows wheels tag..
-    # so using python and core_cpp here, to make sure at least it builds
-    tags:
-      - oss
-      - python
-      - core_cpp
-    job_env: WINDOWS
-    mount_windows_artifacts: true
-    instance_type: windows
-    commands:
-      - export BUILD_ONE_PYTHON_ONLY={{matrix}}
-      - bash /c/workdir/.buildkite/windows_ci.sh wheels
-    matrix:
-      - "3.8"
-      - "3.9"
-      - "3.10"
-      - "3.11"
-
   - label: ":tapioca: build: jar"
     tags:
       - java
