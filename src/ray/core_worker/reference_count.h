@@ -190,8 +190,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
                           absl::optional<NodeID>()) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Add an owned object that was dynamically created. These are objects that
-  /// were created by a task that we called, but that we own.
+  /// Add an owned object that was dynamically created by a task as the task
+  /// executes. These are objects that were created by a (streaming generator)
+  /// task that we called.
+  ///
+  /// Initially, the object will get added with no local references because the
+  /// caller has not yet consumed it from the generator. Intially, the object
+  /// will stay in scope because we register it as contained in the generator
+  /// object. Once the caller consumes the ObjectRef from the generator, a
+  /// local reference is added through the normal ref counting protocol. Thus,
+  /// the object will go out of scope once the generator object ref has gone
+  /// out of scope AND, if the object's ref was consumed by the caller, once
+  /// the object's ref has gone out of scope.
   ///
   /// \param[in] object_id The ID of the object that we now own.
   /// \param[in] generator_id The ID of the object that wraps the dynamically
