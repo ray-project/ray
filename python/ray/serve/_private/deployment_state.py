@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -468,6 +469,7 @@ class ActorReplicaWrapper:
             "name": self._actor_name,
             "namespace": SERVE_NAMESPACE,
             "lifetime": "detached",
+            "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
