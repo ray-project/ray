@@ -1,12 +1,9 @@
 .. _data-context-api:
 
-DataContext API
-===============
+Global configuration
+====================
 
 .. currentmodule:: ray.data
-
-Constructor
------------
 
 .. autosummary::
    :nosignatures:
@@ -14,11 +11,3 @@ Constructor
 
    DataContext
 
-Get DataContext
----------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   DataContext.get_current
