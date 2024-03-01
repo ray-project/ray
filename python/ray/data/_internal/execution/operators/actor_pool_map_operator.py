@@ -85,6 +85,14 @@ class ActorPoolMapOperator(MapOperator):
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        data_context = DataContext.get_current()
+        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
+                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+            )
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -115,7 +123,7 @@ class ActorPoolMapOperator(MapOperator):
         # situations where the scheduler is unable to schedule downstream operators
         # due to lack of available actors, causing an initial "pileup" of objects on
         # upstream operators, leading to a spike in memory usage prior to steady state.
-        logger.get_logger().info(
+        logger.get_logger(log_to_stdout=False).info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
         try:
@@ -318,10 +326,12 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(
+        self, consider_autoscaling=True
+    ) -> ExecutionResources:
         # We would only have nonzero incremental CPU/GPU resources if a new task would
         # require scale-up to run.
-        if self._autoscaling_policy.should_scale_up(
+        if consider_autoscaling and self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_running_workers=self._actor_pool.num_running_actors(),
         ):
@@ -337,7 +347,8 @@ class ActorPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=num_cpus,
             gpu=num_gpus,
-            object_store_memory=self._metrics.average_bytes_outputs_per_task,
+            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            or 0,
         )
 
     def _extra_metrics(self) -> Dict[str, Any]:

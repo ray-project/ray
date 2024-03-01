@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -112,6 +113,11 @@ class OpRuntimeMetrics:
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
+    # Time operator spent in task submission backpressure
+    task_submission_backpressure_time: float = field(
+        default=0, metadata={"export": False}
+    )
+
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
@@ -119,6 +125,8 @@ class OpRuntimeMetrics:
         self._is_map = isinstance(op, MapOperator)
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
         self._extra_metrics: Dict[str, Any] = {}
+        # Start time of current pause due to task submission backpressure
+        self._task_submission_backpressure_start_time = -1
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -178,18 +186,42 @@ class OpRuntimeMetrics:
 
         If an estimate isn't available, this property returns ``None``.
         """
+        per_task_output = self.obj_store_mem_max_pending_output_per_task
+        if per_task_output is None:
+            return None
+
+        # Ray Data launches multiple tasks per actor, but only one task runs at a
+        # time per actor. So, the number of actually running tasks is capped by the
+        # number of active actors.
+        from ray.data._internal.execution.operators.actor_pool_map_operator import (
+            ActorPoolMapOperator,
+        )
+
+        num_tasks_running = self.num_tasks_running
+        if isinstance(self._op, ActorPoolMapOperator):
+            num_tasks_running = min(
+                num_tasks_running, self._op._actor_pool.num_active_actors()
+            )
+
+        return num_tasks_running * per_task_output
+
+    @property
+    def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
+        """Estimated size in bytes of output blocks in a task's generator buffer."""
         context = ray.data.DataContext.get_current()
         if context._max_num_blocks_in_streaming_gen_buffer is None:
             return None
 
-        estimated_bytes_per_output = (
+        bytes_per_output = (
             self.average_bytes_per_output or context.target_max_block_size
         )
-        return (
-            self.num_tasks_running
-            * estimated_bytes_per_output
-            * context._max_num_blocks_in_streaming_gen_buffer
-        )
+
+        num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
+        if self.average_num_outputs_per_task is not None:
+            num_pending_outputs = min(
+                num_pending_outputs, self.average_num_outputs_per_task
+            )
+        return bytes_per_output * num_pending_outputs
 
     @property
     def average_bytes_inputs_per_task(self) -> Optional[float]:
@@ -241,6 +273,17 @@ class OpRuntimeMetrics:
     def on_output_dequeued(self, output: RefBundle):
         """Callback when an output is dequeued by the operator."""
         self.obj_store_mem_internal_outqueue -= output.size_bytes()
+
+    def on_toggle_task_submission_backpressure(self, in_backpressure):
+        if in_backpressure and self._task_submission_backpressure_start_time == -1:
+            # backpressure starting, start timer
+            self._task_submission_backpressure_start_time = time.perf_counter()
+        elif self._task_submission_backpressure_start_time != -1:
+            # backpressure stopping, stop timer
+            self.task_submission_backpressure_time += (
+                time.perf_counter() - self._task_submission_backpressure_start_time
+            )
+            self._task_submission_backpressure_start_time = -1
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""

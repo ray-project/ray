@@ -42,9 +42,7 @@ from ray.serve.schema import ServeDeploySchema
 def get_running_replica_tags(name: str, controller: ServeController) -> List:
     """Get the replica tags of running replicas for given deployment"""
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(
-            DeploymentID(name, SERVE_DEFAULT_APP_NAME)
-        )
+        controller._dump_replica_states_for_testing.remote(DeploymentID(name=name))
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return [replica.replica_tag for replica in running_replicas]
@@ -53,7 +51,7 @@ def get_running_replica_tags(name: str, controller: ServeController) -> List:
 def get_deployment_start_time(controller: ServeController, name: str):
     """Return start time for given deployment"""
     deployments = ray.get(controller.list_deployments_internal.remote())
-    deployment_info, _ = deployments[DeploymentID(name, SERVE_DEFAULT_APP_NAME)]
+    deployment_info, _ = deployments[DeploymentID(name=name)]
     return deployment_info.start_time_ms
 
 
@@ -109,7 +107,7 @@ def test_autoscaling_metrics(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=25,
+        max_ongoing_requests=25,
         version="v1",
     )
     class A:
@@ -117,8 +115,8 @@ def test_autoscaling_metrics(serve_instance):
             ray.get(signal.wait.remote())
 
     handle = serve.run(A.bind())
-    dep_id = DeploymentID("A", "default")
-    [handle.remote()._to_object_ref_sync() for _ in range(50)]
+    dep_id = DeploymentID(name="A")
+    [handle.remote() for _ in range(50)]
 
     # Wait for metrics to propagate
     def get_data():
@@ -177,7 +175,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
     )
     class A:
         def __call__(self):
@@ -206,6 +204,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("smoothing_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance, smoothing_factor, use_upscale_downscale_config
 ):
@@ -233,7 +232,7 @@ def test_e2e_scale_up_down_with_0_replica(
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
         version="v1",
     )
     class A:
@@ -350,7 +349,7 @@ def test_e2e_bursty(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
         version="v1",
     )
     class A:
@@ -395,6 +394,7 @@ def test_e2e_bursty(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_intermediate_downscaling(serve_instance):
     """
     Scales up, then down, and up again.
@@ -415,7 +415,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
     )
     class A:
         def __call__(self):
@@ -468,7 +468,7 @@ def test_downscaling_with_fractional_smoothing_factor(
                     "downscale_delay_s": 5,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -524,7 +524,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
                     "upscale_delay_s": 0.2,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -613,7 +613,7 @@ def test_e2e_raise_min_replicas(serve_instance):
                     "upscale_delay_s": 0.2,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -693,7 +693,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=5,
+        max_ongoing_requests=5,
         # The config makes the deployment scale up really quickly and then
         # wait nearly forever to downscale.
         autoscaling_config=AutoscalingConfig(
@@ -711,7 +711,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
         return os.getpid()
 
     handle = serve.run(scaler.bind())
-    dep_id = DeploymentID("scaler", SERVE_DEFAULT_APP_NAME)
+    dep_id = DeploymentID(name="scaler")
     responses = [handle.remote() for _ in range(10)]
 
     wait_for_condition(
@@ -881,12 +881,17 @@ app = g.bind()
     not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     reason="Only works when collecting request metrics at handle.",
 )
-def test_max_concurrent_queries_set_to_one(serve_instance):
+@pytest.mark.parametrize(
+    "use_max_concurrent_queries,use_max_ongoing_requests",
+    [(True, True), (True, False), (False, True)],
+)
+def test_max_ongoing_requests_set_to_one(
+    serve_instance, use_max_concurrent_queries, use_max_ongoing_requests
+):
     assert RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=1,
         autoscaling_config=AutoscalingConfig(
             min_replicas=1,
             max_replicas=5,
@@ -902,7 +907,12 @@ def test_max_concurrent_queries_set_to_one(serve_instance):
         await signal.wait.remote()
         return os.getpid()
 
+    if use_max_concurrent_queries:
+        f = f.options(max_concurrent_queries=1)
+    if use_max_ongoing_requests:
+        f = f.options(max_ongoing_requests=1)
     h = serve.run(f.bind())
+
     check_num_replicas_eq("f", 1)
 
     # Repeatedly (5 times):
@@ -1081,7 +1091,7 @@ def test_autoscaling_status_changes(serve_instance):
     app = AutoscalingDeployment.bind()
 
     # Start the AutoscalingDeployment.
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
 
     # Active replicas are replicas that are waiting or running.
     expected_num_active_replicas: int = min_replicas
@@ -1165,7 +1175,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
@@ -1221,7 +1231,7 @@ def test_autoscaling_status_changes(serve_instance):
             max_replicas=max_replicas,
         )
     ).bind()
-    serve.run(app, name=app_name, _blocking=False)
+    serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
     wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)

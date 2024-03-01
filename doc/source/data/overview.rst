@@ -111,7 +111,7 @@ Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to di
 applications and libraries in Ray. Don't use it as a replacement for more general data
 processing systems. For more details on how to use Ray Data for preprocessing and ingest for ML training, see :ref:`Data loading for ML training <data-ingest-torch>`.
 
-.. image:: images/dataset-loading-1.png
+.. image:: images/dataset-loading-1.svg
    :width: 650px
    :align: center
 

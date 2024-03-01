@@ -36,6 +36,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -280,7 +281,7 @@ class ActorReplicaWrapper:
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app
+        return self._deployment_id.app_name
 
     @property
     def is_cross_language(self) -> bool:
@@ -332,8 +333,12 @@ class ActorReplicaWrapper:
         return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> int:
-        return self.deployment_config.max_concurrent_queries
+    def max_ongoing_requests(self) -> int:
+        return self.deployment_config.max_ongoing_requests
+
+    @property
+    def max_queued_requests(self) -> int:
+        return self.deployment_config.max_queued_requests
 
     @property
     def graceful_shutdown_timeout_s(self) -> float:
@@ -911,7 +916,7 @@ class DeploymentReplica(VersionedReplica):
             node_id=self.actor_node_id,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
-            max_concurrent_queries=self._actor.max_concurrent_queries,
+            max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
         )
@@ -938,7 +943,7 @@ class DeploymentReplica(VersionedReplica):
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app
+        return self._deployment_id.app_name
 
     @property
     def version(self):
@@ -1367,12 +1372,14 @@ class DeploymentState:
 
     @property
     def app_name(self) -> str:
-        return self._id.app
+        return self._id.app_name
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
             replica.get_running_replica_info(self._cluster_node_info_cache)
-            for replica in self._replicas.get([ReplicaState.RUNNING])
+            for replica in self._replicas.get(
+                [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+            )
         ]
 
     def get_active_node_ids(self) -> Set[str]:
@@ -1386,6 +1393,9 @@ class DeploymentState:
             ReplicaState.UPDATING,
             ReplicaState.RECOVERING,
             ReplicaState.RUNNING,
+            # NOTE(zcin): We still want a proxy to run on a draining
+            # node before all the replicas are migrated.
+            ReplicaState.PENDING_MIGRATION,
         ]
         return {
             replica.actor_node_id
@@ -1624,7 +1634,9 @@ class DeploymentState:
         """
 
         total_requests = 0
-        running_replicas = self._replicas.get([ReplicaState.RUNNING])
+        running_replicas = self._replicas.get(
+            [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+        )
 
         if (
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
@@ -1740,7 +1752,11 @@ class DeploymentState:
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
-            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
+            states=[
+                ReplicaState.STARTING,
+                ReplicaState.PENDING_MIGRATION,
+                ReplicaState.RUNNING,
+            ],
         )
         replicas_changed = False
         code_version_changes = 0
@@ -1776,7 +1792,7 @@ class DeploymentState:
                     f"{replica.replica_tag}, deployment_name: {self.deployment_name}, "
                     f"app_name: {self.app_name}"
                 )
-            # We don't allow going from STARTING to UPDATING.
+            # We don't allow going from STARTING, PENDING_MIGRATION to UPDATING.
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
@@ -1816,7 +1832,11 @@ class DeploymentState:
         # terminate them and start new version replicas instead.
         old_running_replicas = self._replicas.count(
             exclude_version=self._target_state.version,
-            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING],
+            states=[
+                ReplicaState.STARTING,
+                ReplicaState.UPDATING,
+                ReplicaState.RUNNING,
+            ],
         )
         old_stopping_replicas = self._replicas.count(
             exclude_version=self._target_state.version, states=[ReplicaState.STOPPING]
@@ -1879,13 +1899,12 @@ class DeploymentState:
             return (upscale, downscale)
 
         elif delta_replicas > 0:
-            # Don't ever exceed self._target_state.target_num_replicas.
-            stopping_replicas = self._replicas.count(
-                states=[
-                    ReplicaState.STOPPING,
-                ]
-            )
-            to_add = max(delta_replicas - stopping_replicas, 0)
+            to_add = delta_replicas
+            if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+                # Don't ever exceed target_num_replicas.
+                stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
+                to_add = max(delta_replicas - stopping_replicas, 0)
+
             if to_add > 0:
                 # Exponential backoff
                 failed_to_start_threshold = min(
@@ -1904,7 +1923,7 @@ class DeploymentState:
                 self._last_retry = time.time()
                 logger.info(
                     f"Adding {to_add} replica{'s' if to_add > 1 else ''} to deployment "
-                    f"{self.deployment_name} in application '{self.app_name}'."
+                    f"'{self.deployment_name}' in application '{self.app_name}'."
                 )
                 for _ in range(to_add):
                     replica_name = ReplicaName(
@@ -2049,7 +2068,7 @@ class DeploymentState:
                 )
                 logger.info(
                     f"Replica {replica.replica_tag} started successfully "
-                    f"on node {replica.actor_node_id}.",
+                    f"on node '{replica.actor_node_id}'.",
                     extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
@@ -2129,9 +2148,11 @@ class DeploymentState:
         transition happened.
         """
 
-        for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
+        for replica in self._replicas.pop(
+            states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+        ):
             if replica.check_health():
-                self._replicas.add(ReplicaState.RUNNING, replica)
+                self._replicas.add(replica.actor_details.state, replica)
                 self.health_check_gauge.set(
                     1,
                     tags={
@@ -2243,21 +2264,96 @@ class DeploymentState:
                 if replica.replica_tag in self.replica_average_ongoing_requests:
                     del self.replica_average_ongoing_requests[replica.replica_tag]
 
-    def _stop_replicas_on_draining_nodes(self):
-        draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
+    def _choose_pending_migration_replicas_to_stop(
+        self,
+        replicas: List[DeploymentReplica],
+        deadlines: Dict[str, int],
+        min_replicas_to_stop: int,
+    ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
+        """Returns a partition of replicas to stop and to keep.
+
+        Args:
+            replicas: The current list of replicas pending migration.
+            deadlines: The current draining node deadlines.
+            min_replicas_to_stop: The minimum number of replicas to stop.
+        """
+        to_stop = list()
+        remaining = list()
+
+        # Stop replicas whose deadline is up
+        for replica in replicas:
+            curr_timestamp_ms = time.time() * 1000
+            timeout_ms = replica._actor.graceful_shutdown_timeout_s * 1000
+            if (
+                replica.actor_node_id in deadlines
+                and curr_timestamp_ms >= deadlines[replica.actor_node_id] - timeout_ms
+            ):
+                to_stop.append(replica)
+            else:
+                remaining.append(replica)
+
+        # Stop excess PENDING_MIGRATION replicas when new "replacement"
+        # replicas have transitioned to RUNNING. The replicas with the
+        # earliest deadlines should be chosen greedily.
+        def order(deadline: int):
+            if deadline:
+                return deadline
+            else:
+                return float("inf")
+
+        # remaining.sort(key=lambda r: order(deadlines[r.actor_node_id]))
+        remaining.sort(key=lambda r: deadlines[r.actor_node_id])
+        num_excess = min_replicas_to_stop - len(to_stop)
+
+        if num_excess > 0:
+            to_stop.extend(remaining[:num_excess])
+            remaining = remaining[num_excess:]
+
+        return to_stop, remaining
+
+    def _migrate_replicas_on_draining_nodes(self):
+        draining_node_deadlines = self._cluster_node_info_cache.get_draining_nodes()
         for replica in self._replicas.pop(
-            states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
+            states=[ReplicaState.UPDATING, ReplicaState.RUNNING, ReplicaState.STARTING]
         ):
-            if replica.actor_node_id in draining_nodes:
-                state = replica._actor_details.state
-                logger.info(
-                    f"Stopping replica {replica.replica_tag} (currently {state}) "
-                    f"of deployment '{self.deployment_name}' in application "
-                    f"'{self.app_name}' on draining node {replica.actor_node_id}."
-                )
-                self._stop_replica(replica, graceful_stop=True)
+            if replica.actor_node_id in draining_node_deadlines:
+                # For RUNNING replicas, migrate them safely by starting
+                # a replacement replica first.
+                if replica.actor_details.state == ReplicaState.RUNNING:
+                    self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+                # For replicas that are STARTING or UPDATING, might as
+                # well terminate them immediately to allow replacement
+                # replicas to start. Otherwise we need to wait for them
+                # to transition to RUNNING before starting migration.
+                else:
+                    self._stop_replica(replica, graceful_stop=True)
             else:
                 self._replicas.add(replica.actor_details.state, replica)
+
+        num_running = self._replicas.count(states=[ReplicaState.RUNNING])
+        num_draining = self._replicas.count(states=[ReplicaState.PENDING_MIGRATION])
+        num_pending_migration_replicas_to_stop = (
+            num_running + num_draining - self._target_state.target_num_replicas
+        )
+
+        (
+            replicas_to_stop,
+            replicas_to_keep,
+        ) = self._choose_pending_migration_replicas_to_stop(
+            self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]),
+            draining_node_deadlines,
+            num_pending_migration_replicas_to_stop,
+        )
+        for replica in replicas_to_stop:
+            logger.info(
+                f"Stopping replica {replica.replica_tag} "
+                f"of deployment '{self.deployment_name}' in application "
+                f"'{self.app_name}' on draining node {replica.actor_node_id}."
+            )
+            self._stop_replica(replica, graceful_stop=True)
+
+        for replica in replicas_to_keep:
+            self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
 
     def update(self) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
@@ -2279,7 +2375,7 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             self._check_and_update_replicas()
 
-            self._stop_replicas_on_draining_nodes()
+            self._migrate_replicas_on_draining_nodes()
 
             upscale, downscale = self._scale_deployment_replicas()
 
@@ -2681,7 +2777,7 @@ class DeploymentStateManager:
 
         deployments = []
         for deployment_id in self._deployment_states:
-            if deployment_id.app == app_name:
+            if deployment_id.app_name == app_name:
                 deployments.append(deployment_id.name)
 
         return deployments
@@ -2765,7 +2861,7 @@ class DeploymentStateManager:
                 replica tag and model ids.
         """
         if info.deployment_id not in self._deployment_states:
-            app_msg = f" in application '{info.deployment_id.app}'"
+            app_msg = f" in application '{info.deployment_id.app_name}'"
             logger.error(
                 f"Deployment {info.deployment_id.name}{app_msg} not found in state "
                 "manager."

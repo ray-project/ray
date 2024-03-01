@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+import tree  # pip install dm_tree
+
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT, STATE_OUT
@@ -33,7 +35,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of
@@ -81,3 +83,21 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
+
+    @override(PPORLModule)
+    def _compute_values(self, batch, device=None):
+        infos = batch.pop(SampleBatch.INFOS, None)
+        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
+        if infos is not None:
+            batch[SampleBatch.INFOS] = infos
+
+        # Separate vf-encoder.
+        if hasattr(self.encoder, "critic_encoder"):
+            encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
+        # Shared encoder.
+        else:
+            encoder_outs = self.encoder(batch)[ENCODER_OUT][CRITIC]
+        # Value head.
+        vf_out = self.vf(encoder_outs)
+        # Squeeze out last dimension (single node value head).
+        return tf.squeeze(vf_out, -1)
