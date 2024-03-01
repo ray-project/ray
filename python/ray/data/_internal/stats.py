@@ -798,8 +798,16 @@ class DatasetStatsSummary:
                 [op_stats.wall_time["sum"] for op_stats in self.operators_stats]
             )
             out += "Dataset throughput:\n"
-            out += f"    * Ray Data throughput: {total_num_out_rows / self.time_total_s} rows/s\n"
-            out += f"    * Optimal single node throughput: {total_num_out_rows / total_wall_time} rows/s\n"
+            out += (
+                "    * Ray Data throughput:"
+                f" {total_num_out_rows / self.time_total_s} "
+                "rows/s\n"
+            )
+            out += (
+                "    * Optimal single node throughput:"
+                f" {total_num_out_rows / total_wall_time} "
+                "rows/s\n"
+            )
 
         return out
 
@@ -1112,12 +1120,14 @@ class OperatorStatsSummary:
             out += indent
             out += "* Operator throughput:\n"
             out += (
-                indent
-                + f"    * Ray Data throughput: {total_num_out_rows / self.time_total_s} rows/s\n"
+                indent + "    * Ray Data throughput:"
+                f" {total_num_out_rows / self.time_total_s} "
+                "rows/s\n"
             )
             out += (
-                indent
-                + f"    * Optimal single node throughput: {total_num_out_rows / wall_time_stats['sum']} rows/s\n"
+                indent + "    * Optimal single node throughput:"
+                f" {total_num_out_rows / wall_time_stats['sum']} "
+                "rows/s\n"
             )
         return out
 
