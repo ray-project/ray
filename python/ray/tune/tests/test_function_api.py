@@ -36,7 +36,6 @@ class FunctionCheckpointingTest(unittest.TestCase):
         self.logger_creator = creator_generator(
             os.path.join(self.tmpdir.name, "logdir")
         )
-        ray.init()
 
     def create_trainable(self, train_fn):
         return wrap_function(train_fn)(
@@ -45,7 +44,6 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
     def tearDown(self):
         self.tmpdir.cleanup()
-        ray.shutdown()
 
     def testCheckpointReuse(self):
         """Test that repeated save/restore never reuses same checkpoint dir."""
