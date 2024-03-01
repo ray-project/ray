@@ -1343,7 +1343,7 @@ class Learner:
             raise ValueError("`num_iters` must be >= 1")
 
         # Call the learner connector.
-        if self._learner_connector is not None:
+        if self._learner_connector is not None and episodes is not None:
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch,

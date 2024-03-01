@@ -57,8 +57,17 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
             explore=True,
             shared_data={},
         )
-        # The output data should now contain the last observations of both episodes.
-        check(output_data, {"obs": [eps_1_last_obs, eps_2_last_obs]})
+        # The output data should now contain the last observations of both episodes,
+        # in a "per-episode organized" fashion.
+        check(
+            output_data,
+            {
+                "obs": {
+                    (episodes[0].id_,): [eps_1_last_obs],
+                    (episodes[1].id_,): [eps_2_last_obs],
+                },
+            },
+        )
     """
 
     def __init__(
