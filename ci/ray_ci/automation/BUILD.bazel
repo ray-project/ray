@@ -99,3 +99,28 @@ py_test(
         ":docker_tags_lib",
     ],
 )
+
+py_library(
+    name = "pypi_lib",
+    srcs = ["pypi_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+        "//release:ray_release",
+    ],
+)
+
+py_test(
+    name = "test_pypi_lib",
+    srcs = ["test_pypi_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":pypi_lib",
+    ],
+)
+
