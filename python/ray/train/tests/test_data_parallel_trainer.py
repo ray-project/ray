@@ -39,23 +39,21 @@ def ray_start_4_cpus_4_gpus_4_extra():
 @pytest.fixture
 def ray_start_heterogenous_cluster():
     """
-    Start a heterogenous cluster with 8 nodes:
-        - 1 node with  4 x A100 and 100 x custom resource
-        - 3 nodes with 4 x A100 and  10 x custom resource
-        - 1 node with  4 x A10G and 100 x custom resource
-        - 3 nodes with 4 x A10G and  10 x custom resource
+    Start a heterogenous cluster with 6 nodes:
+        - 2 node with 4 x A100
+        - 2 node with 4 x A10G
+        - 2 node with 4 x GPU without accelerator_type
     """
     cluster = Cluster()
 
-    for accelerator_type in [NVIDIA_A100, NVIDIA_TESLA_A10G]:
-        for i in range(4):
+    for accelerator_type in [NVIDIA_A100, NVIDIA_TESLA_A10G, None]:
+        for _ in range(2):
             cluster.add_node(
                 num_cpus=4,
                 num_gpus=4,
-                resources={
-                    f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 4,
-                    "custom_resource": 100 if i == 0 else 10,
-                },
+                resources={f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 4}
+                if accelerator_type
+                else {},
             )
 
     ray.init(address=cluster.address)
@@ -369,7 +367,7 @@ def test_config_accelerator_type(
     trainer = DataParallelTrainer(
         train_func,
         scaling_config=ScalingConfig(
-            num_workers=8,
+            num_workers=4,
             use_gpu=True,
             accelerator_type=accelerator_type,
             resources_per_worker={"GPU": num_gpus},
