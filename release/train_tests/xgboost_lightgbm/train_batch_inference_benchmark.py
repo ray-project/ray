@@ -1,21 +1,18 @@
-from functools import wraps
 import json
-import multiprocessing
-from multiprocessing import Process
 import numpy as np
 import os
 import pandas as pd
 import time
-import traceback
 from typing import Dict
+
 import xgboost as xgb
 
 import ray
 from ray import data
+from ray.train.lightgbm import LightGBMTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train import RunConfig, ScalingConfig
 
-_XGB_MODEL_PATH = "model.json"
 _TRAINING_TIME_THRESHOLD = 1000
 _PREDICTION_TIME_THRESHOLD = 450
 
@@ -30,7 +27,7 @@ _EXPERIMENT_PARAMS = {
     },
     "10G": {
         "data": "s3://air-example-data-2/10G-xgboost-data.parquet/",
-        "num_workers": 1,
+        "num_workers": 10,
         "cpus_per_worker": 12,
     },
     "100G": {
@@ -41,103 +38,97 @@ _EXPERIMENT_PARAMS = {
 }
 
 
-def run_and_time_it(f):
-    """Runs f in a separate process and times it."""
+class BasePredictor:
+    def __init__(self, trainer_cls, result: ray.train.Result):
+        self.model = trainer_cls.get_model(result.checkpoint)
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        class MyProcess(Process):
-            def __init__(self, *args, **kwargs):
-                super(MyProcess, self).__init__(*args, **kwargs)
-                self._pconn, self._cconn = multiprocessing.Pipe()
-                self._exception = None
-
-            def run(self):
-                try:
-                    super(MyProcess, self).run()
-                except Exception as e:
-                    tb = traceback.format_exc()
-                    print(tb)
-                    self._cconn.send(e)
-
-            @property
-            def exception(self):
-                if self._pconn.poll():
-                    self._exception = self._pconn.recv()
-                return self._exception
-
-        p = MyProcess(target=f, args=args, kwargs=kwargs)
-        start = time.monotonic()
-        p.start()
-        p.join()
-        if p.exception:
-            raise p.exception
-        time_taken = time.monotonic() - start
-        print(f"{f.__name__} takes {time_taken} seconds.")
-        return time_taken
-
-    return wrapper
+    def __call__(self, data):
+        raise NotImplementedError
 
 
-@run_and_time_it
-def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int):
+class XGBoostPredictor(BasePredictor):
+    def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
+        dmatrix = xgb.DMatrix(data)
+        return {"predictions": self.model.predict(dmatrix)}
+
+
+class LightGBMPredictor(BasePredictor):
+    def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
+        return {"predictions": self.model.predict(data)}
+
+
+_FRAMEWORK_PARAMS = {
+    "xgboost": {
+        "trainer_cls": XGBoostTrainer,
+        "predictor_cls": XGBoostPredictor,
+        "params": {
+            "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"],
+        },
+    },
+    "lightgbm": {
+        "trainer_cls": LightGBMTrainer,
+        "predictor_cls": LightGBMPredictor,
+        "params": {
+            "objective": "binary",
+            "eval_metric": ["binary_logloss", "binary_error"],
+        },
+    },
+}
+
+
+def train(
+    framework: str, data_path: str, num_workers: int, cpus_per_worker: int
+) -> ray.train.Result:
     ds = data.read_parquet(data_path)
-    params = {
-        "objective": "binary:logistic",
-        "eval_metric": ["logloss", "error"],
-    }
+    framework_params = _FRAMEWORK_PARAMS[framework]
 
-    trainer = XGBoostTrainer(
+    trainer_cls = framework_params["trainer_cls"]
+
+    trainer = trainer_cls(
+        params=framework_params["params"],
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
         ),
         label_column="labels",
-        params=params,
         datasets={"train": ds},
         run_config=RunConfig(
-            storage_path="/mnt/cluster_storage", name="xgboost_benchmark"
+            storage_path="/mnt/cluster_storage", name=f"{framework}_benchmark"
         ),
     )
     result = trainer.fit()
-    xgboost_model = XGBoostTrainer.get_model(result.checkpoint)
-    xgboost_model.save_model(_XGB_MODEL_PATH)
-    ray.shutdown()
+    return result
 
 
-@run_and_time_it
-def run_xgboost_prediction(model_path: str, data_path: str):
-    model = xgb.Booster()
-    model.load_model(model_path)
+def predict(framework: str, result: ray.train.Result, data_path: str):
+    framework_params = _FRAMEWORK_PARAMS[framework]
+
+    predictor_cls = framework_params["predictor_cls"]
+
     ds = data.read_parquet(data_path)
     ds = ds.drop_columns(["labels"])
 
-    class XGBoostPredictor:
-        def __init__(self, model: xgb.Booster):
-            self.model = model
-
-        def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
-            dmatrix = xgb.DMatrix(data)
-            return {"predictions": self.model.predict(dmatrix)}
-
     concurrency = int(ray.cluster_resources()["CPU"] // 2)
     result = ds.map_batches(
-        XGBoostPredictor,
-        # Improve prediction throughput for xgboost with larger
-        # batch size than default 4096
+        predictor_cls,
+        # Improve prediction throughput with larger batch size than default 4096
         batch_size=8192,
         concurrency=concurrency,
-        fn_constructor_kwargs={"model": model},
+        fn_constructor_kwargs={
+            "trainer_cls": framework_params["trainer_cls"],
+            "result": result,
+        },
         batch_format="pandas",
     )
 
     for _ in result.iter_batches():
         pass
 
-    return result
-
 
 def main(args):
+    framework = args.framework
+
     experiment = args.size if not args.smoke_test else "smoke_test"
     experiment_params = _EXPERIMENT_PARAMS[experiment]
 
@@ -146,14 +137,18 @@ def main(args):
         experiment_params["num_workers"],
         experiment_params["cpus_per_worker"],
     )
+
     print("Running xgboost training benchmark...")
-    training_time = run_xgboost_training(data_path, num_workers, cpus_per_worker)
+    training_start = time.perf_counter()
+    result = train(framework, data_path, num_workers, cpus_per_worker)
+    training_time = time.perf_counter() - training_start
+
     print("Running xgboost prediction benchmark...")
-    prediction_time = run_xgboost_prediction(_XGB_MODEL_PATH, data_path)
-    result = {
-        "training_time": training_time,
-        "prediction_time": prediction_time,
-    }
+    prediction_start = time.perf_counter()
+    predict(framework, result, data_path)
+    prediction_time = time.perf_counter() - prediction_start
+
+    result = {"training_time": training_time, "prediction_time": prediction_time}
     print("Results:", result)
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
@@ -177,6 +172,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "framework", type=str, choices=["xgboost", "lightgbm"], default="xgboost"
+    )
     parser.add_argument("--size", type=str, choices=["10G", "100G"], default="100G")
     # Add a flag for disabling the timeout error.
     # Use case: running the benchmark as a documented example, in infra settings
