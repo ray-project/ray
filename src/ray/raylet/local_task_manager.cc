@@ -133,7 +133,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
   // Try to dispatch the task with larger scheduling class 
   // to make tasks excute in a steaming way.
   std::sort(keys.begin(), keys.end());
-  for (auto it = keys.rbegin(); it != keys.rend();) {
+  for (auto it = keys.rbegin(); it != keys.rend(); it++) {
     const SchedulingClass& scheduling_class = *it;
     auto dispatch_queue_it = tasks_to_dispatch_.find(scheduling_class);
     if (dispatch_queue_it != tasks_to_dispatch_.end()) {
@@ -320,12 +320,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         // TODO(scv119): fail the request.
         // Call CancelTask
         tasks_to_dispatch_.erase(dispatch_queue_it);
-        it++;
       } else if (dispatch_queue.empty()) {
         tasks_to_dispatch_.erase(dispatch_queue_it);
-        it++;
-      } else {
-        it++;
       }
     }
   }
