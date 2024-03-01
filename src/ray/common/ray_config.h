@@ -71,7 +71,7 @@ class RayConfig {
 /// \param default_value Default value of the config item.
 #define RAY_CONFIG(type, name, default_value)                       \
  private:                                                           \
-  type name##_ = ReadEnv<type>("RAY_" #name, #type, default_value); \
+  type name##_ = default_value; \
                                                                     \
  public:                                                            \
   inline type &name() { return name##_; }
