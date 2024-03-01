@@ -24,12 +24,10 @@ import { useViewServeDeploymentMetricsButtonUrl } from "./ServeDeploymentMetrics
 const useStyles = makeStyles((theme) =>
   createStyles({
     deploymentName: {
-      fontWeight: 500,
+      fontWeight: 400,
     },
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
+    deploymentNameAsFirstColumn: {
+      fontWeight: 500, // bold style for when name is the first column, e.g. on the Deployment page
     },
     statusMessage: {
       maxWidth: 400,
@@ -38,25 +36,38 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export type ServeDeployentRowProps = {
+export type ServeDeploymentRowProps = {
   deployment: ServeDeployment;
   application: ServeApplication;
+  // Optional prop to control the visibility of the first column.
+  // This is used to display an expand/collapse button on the applications page, but not the deployment page.
+  showExpandColumn?: boolean;
 };
 
 export const ServeDeploymentRow = ({
   deployment,
-  application: { last_deployed_time_s, name: applicationName, route_prefix },
-}: ServeDeployentRowProps) => {
+  application: { last_deployed_time_s, name: applicationName },
+  showExpandColumn = false,
+}: ServeDeploymentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
   const classes = useStyles();
 
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
+  const deploymentNameClass = showExpandColumn
+    ? classes.deploymentName
+    : `${classes.deploymentName} ${classes.deploymentNameAsFirstColumn}`;
+
   return (
     <React.Fragment>
       <TableRow>
-        <TableCell align="center" className={classes.deploymentName}>
+        {showExpandColumn && (
+          <TableCell>
+            {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
+          </TableCell>
+        )}
+        <TableCell align="center" className={deploymentNameClass}>
           <Link
             component={RouterLink}
             to={`/serve/applications/${encodeURIComponent(
@@ -80,7 +91,17 @@ export const ServeDeploymentRow = ({
             "-"
           )}
         </TableCell>
-        <TableCell align="center">{replicas.length}</TableCell>
+        <TableCell align="center">
+          {" "}
+          <Link
+            component={RouterLink}
+            to={`/serve/applications/${encodeURIComponent(
+              applicationName,
+            )}/${encodeURIComponent(name)}`}
+          >
+            {replicas.length}
+          </Link>
+        </TableCell>
         <TableCell align="center">
           <CodeDialogButton
             title={`Deployment config for ${name}`}
@@ -106,14 +127,9 @@ export const ServeDeploymentRow = ({
           )}
         </TableCell>
         <TableCell align="center">
-          <Link
-            component={RouterLink}
-            to={`/serve/applications/${encodeURIComponent(applicationName)}`}
-          >
-            {applicationName}
-          </Link>
+          {/* placeholder for route_prefix, which does not apply to a deployment */}
+          -
         </TableCell>
-        <TableCell align="center">{route_prefix}</TableCell>
         <TableCell align="center">
           {formatDateFromTimeMs(last_deployed_time_s * 1000)}
         </TableCell>

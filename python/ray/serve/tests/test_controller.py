@@ -157,6 +157,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "deployment_config": {
                                 "name": "autoscaling_app",
                                 "max_concurrent_queries": 100,
+                                "max_ongoing_requests": 100,
                                 "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
