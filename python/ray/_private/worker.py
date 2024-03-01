@@ -78,7 +78,6 @@ from ray._private.runtime_env.setup_hook import (
 )
 from ray._private.storage import _load_class
 from ray._private.utils import get_ray_doc_version
-from ray.core.generated import gcs_pb2
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
