@@ -1313,6 +1313,9 @@ class DeploymentState:
             f"application {self.app_name} from checkpoint."
         )
         self._target_state = target_state_checkpoint
+        self._deployment_scheduler.on_deployment_deployed(
+            self._id, self._target_state.info.replica_config
+        )
 
     def recover_current_state_from_replica_actor_names(
         self, replica_actor_names: List[str]
@@ -1589,6 +1592,9 @@ class DeploymentState:
 
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
+        self._deployment_scheduler.on_deployment_deployed(
+            self._id, deployment_info.replica_config
+        )
 
         # Determine if the updated target state simply scales the current state.
         if self._target_state.is_scaled_copy_of(old_target_state):
