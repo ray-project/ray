@@ -1712,7 +1712,7 @@ class MultiAgentEpisode:
         neg_indices_left_of_zero: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
-        extra_model_outputs_key: Optional[str],
+        extra_model_outputs_key: Optional[str] = None,
     ) -> List[MultiAgentDict]:
         """Returns data from the episode based on env step indices, as a list.
 
@@ -1812,13 +1812,13 @@ class MultiAgentEpisode:
     def _get_data_by_env_steps(
         self,
         *,
-        what,
-        indices,
-        agent_ids,
-        neg_indices_left_of_zero,
-        fill,
-        one_hot_discrete,
-        extra_model_outputs_key,
+        what: str,
+        indices: Union[int, slice, List[int]],
+        agent_ids: Collection[AgentID],
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[Any] = None,
+        one_hot_discrete: bool = False,
+        extra_model_outputs_key: Optional[str] = None,
     ) -> MultiAgentDict:
         """Returns data from the episode based on env step indices, as a MultiAgentDict.
 
@@ -1921,18 +1921,63 @@ class MultiAgentEpisode:
     def _get_single_agent_data_by_index(
         self,
         *,
-        what,
-        inf_lookback_buffer,
-        agent_id,
-        index,
-        fill,
-        one_hot_discrete,
-        buffer_val,
-        extra_model_outputs_key,
-    ):
+        what: str,
+        inf_lookback_buffer: InfiniteLookbackBuffer,
+        agent_id: AgentID,
+        index_incl_lookback: Union[int, str],
+        fill: Optional[Any] = None,
+        one_hot_discrete: bool = False,
+        extra_model_outputs_key: Optional[str] = None,
+        buffer_val: Optional[Any] = None,
+    ) -> Any:
+        """Returns single data item from the episode based on given (env step) index.
+
+        Args:
+            what: A (str) descriptor of what data to collect. Must be one of
+                "observations", "infos", "actions", "rewards", or "extra_model_outputs".
+            inf_lookback_buffer: The InfiniteLookbackBuffer to use for extracting the
+                data.
+            index_incl_lookback: An int specifying, which index to pull from the given
+                `inf_lookback_buffer`, but disregarding the special logic of the
+                lookback buffer. Meaning if the `index_incl_lookback` is 0, then the
+                first value in the lookback buffer should be returned, not the first
+                value after the lookback buffer (which would be normal behavior for
+                pulling items from an InfiniteLookbackBuffer object).
+                If the value is `self.SKIP_ENV_TS_TAG`, either None is returned (if
+                `fill` is None) or the provided `fill` value.
+            agent_id: The individual agent ID to pull data for. Used to lookup the
+                `SingleAgentEpisode` object for this agent in `self`.
+            fill: An optional float value to use for filling up the returned results at
+                the boundaries. This filling only happens if the requested index range's
+                start/stop boundaries exceed the buffer's boundaries (including the
+                lookback buffer on the left side). This comes in very handy, if users
+                don't want to worry about reaching such boundaries and want to zero-pad.
+                For example, a buffer with data [10, 11,  12, 13, 14] and lookback
+                buffer size of 2 (meaning `10` and `11` are part of the lookback buffer)
+                will respond to `index_incl_lookback=-6` and `fill=0.0`
+                with `0.0`.
+            one_hot_discrete: If True, will return one-hot vectors (instead of
+                int-values) for those sub-components of a (possibly complex) space
+                that are Discrete or MultiDiscrete. Note that if `fill=0` and the
+                requested `index_incl_lookback` is out of the range of our data, the
+                returned one-hot vectors will actually be zero-hot (all slots zero).
+            extra_model_outputs_key: Only if what is "extra_model_outputs", this
+                specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
+                STATE_OUT or ACTION_DIST_INPUTS.
+            buffer_val: In case we are pulling actions, rewards, or extra_model_outputs
+                data, there might be information "in-flight" (buffered). For example,
+                if an agent receives an observation o0 and then immediately sends an
+                action a0 back, but then does NOT immediately reveive a next
+                observation, a0 is now buffered (not fully logged yet with this
+                episode). The currently buffered value must be provided here to be able
+                to return it in case the index is -1 (most recent timestep).
+
+        Returns:
+            A data item corresponding to the provided args.
+        """
         sa_episode = self.agent_episodes[agent_id]
 
-        if index == self.SKIP_ENV_TS_TAG:
+        if index_incl_lookback == self.SKIP_ENV_TS_TAG:
             # We don't want to fill -> Skip this agent.
             if fill is None:
                 return
@@ -1958,7 +2003,7 @@ class MultiAgentEpisode:
                 if extra_model_outputs_key is None:
                     return {
                         key: sub_buffer.get(
-                            indices=index - sub_buffer.lookback,
+                            indices=index_incl_lookback - sub_buffer.lookback,
                             neg_indices_left_of_zero=True,
                             fill=fill,
                             _add_last_ts_value=buffer_val,
@@ -1969,7 +2014,7 @@ class MultiAgentEpisode:
 
             # Extract data directly from the infinite lookback buffer object.
             return inf_lookback_buffer.get(
-                indices=index - inf_lookback_buffer.lookback,
+                indices=index_incl_lookback - inf_lookback_buffer.lookback,
                 neg_indices_left_of_zero=True,
                 fill=fill,
                 _add_last_ts_value=buffer_val,
@@ -1979,24 +2024,70 @@ class MultiAgentEpisode:
     def _get_single_agent_data_by_env_step_indices(
         self,
         *,
-        what,
-        agent_id,
-        indices,
-        fill,
-        one_hot_discrete,
-        buffer_val,
-        extra_model_outputs_key,
-    ):
+        what: str,
+        agent_id: AgentID,
+        indices_incl_lookback: Union[int, str],
+        fill: Optional[Any] = None,
+        one_hot_discrete: bool = False,
+        extra_model_outputs_key: Optional[str] = None,
+        buffer_val: Optional[Any] = None,
+    ) -> Any:
+        """Returns single data item from the episode based on given (env step) indices.
+
+        The returned data item will have a batch size that matches the env timesteps
+        defined via `indices_incl_lookback`.
+
+        Args:
+            what: A (str) descriptor of what data to collect. Must be one of
+                "observations", "infos", "actions", "rewards", or "extra_model_outputs".
+            indices_incl_lookback: A list of ints specifying, which indices
+                to pull from the InfiniteLookbackBuffer defined by `agent_id` and `what`
+                (and maybe `extra_model_outputs_key`). Note that these indices
+                disregard the special logic of the lookback buffer. Meaning if one
+                index in `indices_incl_lookback` is 0, then the first value in the
+                lookback buffer should be returned, not the first value after the
+                lookback buffer (which would be normal behavior for pulling items from
+                an `InfiniteLookbackBuffer` object).
+            agent_id: The individual agent ID to pull data for. Used to lookup the
+                `SingleAgentEpisode` object for this agent in `self`.
+            fill: An optional float value to use for filling up the returned results at
+                the boundaries. This filling only happens if the requested index range's
+                start/stop boundaries exceed the buffer's boundaries (including the
+                lookback buffer on the left side). This comes in very handy, if users
+                don't want to worry about reaching such boundaries and want to zero-pad.
+                For example, a buffer with data [10, 11,  12, 13, 14] and lookback
+                buffer size of 2 (meaning `10` and `11` are part of the lookback buffer)
+                will respond to `indices_incl_lookback=[-1, -2, 0]` and `fill=0.0`
+                with `[0.0, 0.0, 10]`.
+            one_hot_discrete: If True, will return one-hot vectors (instead of
+                int-values) for those sub-components of a (possibly complex) space
+                that are Discrete or MultiDiscrete. Note that if `fill=0` and the
+                requested `indices_incl_lookback` are out of the range of our data, the
+                returned one-hot vectors will actually be zero-hot (all slots zero).
+            extra_model_outputs_key: Only if what is "extra_model_outputs", this
+                specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
+                STATE_OUT or ACTION_DIST_INPUTS.
+            buffer_val: In case we are pulling actions, rewards, or extra_model_outputs
+                data, there might be information "in-flight" (buffered). For example,
+                if an agent receives an observation o0 and then immediately sends an
+                action a0 back, but then does NOT immediately reveive a next
+                observation, a0 is now buffered (not fully logged yet with this
+                episode). The currently buffered value must be provided here to be able
+                to return it in case the index is -1 (most recent timestep).
+
+        Returns:
+            A data item corresponding to the provided args.
+        """
         sa_episode = self.agent_episodes[agent_id]
 
         inf_lookback_buffer = getattr(sa_episode, what)
         if extra_model_outputs_key is not None:
             inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
 
-        # If there are self.SKIP_ENV_TS_TAG items in `agent_indices` and user
+        # If there are self.SKIP_ENV_TS_TAG items in `indices_incl_lookback` and user
         # wants to fill these (together with outside-episode-bounds indices) ->
         # Provide these skipped timesteps as filled values.
-        if self.SKIP_ENV_TS_TAG in indices and fill is not None:
+        if self.SKIP_ENV_TS_TAG in indices_incl_lookback and fill is not None:
             single_fill_value = inf_lookback_buffer.get(
                 indices=1000000000000,
                 neg_indices_left_of_zero=False,
@@ -2004,7 +2095,7 @@ class MultiAgentEpisode:
                 **one_hot_discrete,
             )
             ret = []
-            for i in indices:
+            for i in indices_incl_lookback:
                 if i == self.SKIP_ENV_TS_TAG:
                     ret.append(single_fill_value)
                 else:
@@ -2023,7 +2114,7 @@ class MultiAgentEpisode:
             # Filter these indices out up front.
             indices = [
                 i - inf_lookback_buffer.lookback
-                for i in indices
+                for i in indices_incl_lookback
                 if i != self.SKIP_ENV_TS_TAG
             ]
             ret = inf_lookback_buffer.get(
@@ -2035,7 +2126,8 @@ class MultiAgentEpisode:
             )
         return ret
 
-    def _get_buffer_value(self, what, agent_id):
+    def _get_buffer_value(self, what: str, agent_id: AgentID) -> Any:
+        """Returns the buffered action/reward/extra_model_outputs for given agent."""
         if what == "actions":
             return self._agent_buffered_actions.get(agent_id)
         elif what == "extra_model_outputs":
@@ -2043,19 +2135,26 @@ class MultiAgentEpisode:
         elif what == "rewards":
             return self._agent_buffered_rewards.get(agent_id)
 
-    def _del_buffers(self, agent_id):
+    def _del_buffers(self, agent_id: AgentID) -> None:
+        """Deletes all action, reward, extra_model_outputs buffers for given agent."""
         self._agent_buffered_actions.pop(agent_id, None)
         self._agent_buffered_extra_model_outputs.pop(agent_id, None)
         self._agent_buffered_rewards.pop(agent_id, None)
 
     def _get_inf_lookback_buffer_or_dict(
         self,
-        agent_id,
-        what,
-        extra_model_outputs_key,
-        buffer_val,
+        agent_id: AgentID,
+        what: str,
+        extra_model_outputs_key: Optional[str] = None,
+        buffer_val: Optional[Any] = None,
         filter_for_skip_indices=None,
     ):
+        """Returns a single InfiniteLookbackBuffer or a dict of such.
+
+        In case `what` is "extra_model_outputs" AND `extra_model_outputs_key` is None,
+        a dict is returned. In all other cases, a single InfiniteLookbackBuffer is
+        returned.
+        """
         inf_lookback_buffer_or_dict = inf_lookback_buffer = getattr(
             self.agent_episodes[agent_id], what
         )

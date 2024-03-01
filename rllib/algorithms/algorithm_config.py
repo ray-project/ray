@@ -854,7 +854,7 @@ class AlgorithmConfig(_Config):
 
     def build_env_to_module_connector(self, env):
         from ray.rllib.connectors.env_to_module import (
-            AddObservationsFromEpisodeToBatch,
+            AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
             AgentToModuleMapping,
             BatchIndividualItems,
@@ -894,7 +894,7 @@ class AlgorithmConfig(_Config):
 
         if self.add_default_connectors_to_env_to_module_pipeline:
             # Append OBS handling.
-            pipeline.append(AddObservationsFromEpisodeToBatch())
+            pipeline.append(AddObservationsFromEpisodesToBatch())
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(AddStatesFromEpisodesToBatch())
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
