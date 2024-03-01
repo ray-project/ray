@@ -1309,6 +1309,7 @@ def test_usage_report_disabled(
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        m.delenv("RAY_USAGE_STATS_RAY_INIT_CLUSTER", raising=False)
 
         usage_stats_server = start_usage_stats_server
 
