@@ -31,6 +31,8 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, U
 from ray.air._internal.filelock import TempFileLock
 from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
 from ray.train.constants import _get_ray_train_session_dir
+from ray.util.annotations import DeveloperAPI
+
 
 if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
@@ -344,11 +346,12 @@ class _FilesystemSyncer(_BackgroundSyncer):
         return _delete_fs_path, dict(fs=self.storage_filesystem, fs_path=fs_path)
 
 
+@DeveloperAPI
 class StorageContext:
-    """Shared context that holds all paths and storage utilities, passed along from
-    the driver to workers.
+    """Shared context that holds the source of truth for all paths and
+    storage utilities, passed along from the driver to workers.
 
-    There are 2 types of paths:
+    This object defines a few types of paths:
     1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
         which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and
         can be joined with `Path(...).as_posix()`.
@@ -405,6 +408,10 @@ class StorageContext:
             Path(storage.trial_fs_path, "subdir").as_posix(),
             destination_filesystem=storage.filesystem
         )
+
+    .. warning::
+        This is an experimental developer API and the interface is subject to change
+        without notice between versions.
     """
 
     def __init__(
@@ -441,6 +448,10 @@ class StorageContext:
         self._create_validation_file()
         self._check_validation_file()
 
+        # Timestamp is used to create a unique session directory for the current
+        # training job. This is used to avoid conflicts when multiple training jobs
+        # run with the same name in the same cluster.
+        # This is set ONCE at the creation of the storage context, on the driver.
         self._timestamp = date_str()
 
     def __str__(self):
@@ -582,6 +593,8 @@ class StorageContext:
         return Path(self.storage_fs_path, self.experiment_dir_name).as_posix()
 
     def _get_session_path(self) -> str:
+        """The Ray Train/Tune session local directory used to stage files
+        before persisting to the storage filesystem."""
         return Path(
             _get_ray_train_session_dir(), self._timestamp, self.experiment_dir_name
         ).as_posix()
@@ -597,9 +610,9 @@ class StorageContext:
         <experiment_dir_name>/driver_artifacts`
 
         This should be used as the temporary staging location for files *on the driver*
-        before syncing them to `(storage_filesystem, storage_path)`.
+        before syncing them to `experiment_fs_path`.
         For example, the search algorithm should dump its state to this directory.
-        See `trial_staging_path` for files that should be written to trial folders.
+        See `trial_local_staging_path` for writing trial-specific artifacts.
 
         The directory is synced to
         `{storage_path}/{experiment_dir_name}` periodically.
@@ -630,7 +643,7 @@ class StorageContext:
         <experiment_dir_name>/driver_artifacts/<trial_dir_name>`
 
         This should be used as the temporary location for files on the driver
-        before syncing them to `(storage_filesystem, storage_path)`.
+        before persisting them to `trial_fs_path`.
 
         For example, callbacks (e.g., JsonLoggerCallback) should write trial-specific
         logfiles within this directory.
