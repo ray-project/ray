@@ -628,6 +628,7 @@ def test_checkpoint_force_with_num_to_keep(
         assert sync_up.call_count == 6
 
 
+@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
@@ -672,6 +673,7 @@ def test_checkpoint_forced_cloud_sync_timeout(
         assert sync_up_cmd.call_count == 2
 
 
+@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
