@@ -36,16 +36,12 @@ training parameters are passed as the ``params`` dictionary.
 
     .. tab-item:: XGBoost
 
-        Run ``pip install -U xgboost_ray``.
-
         .. literalinclude:: doc_code/gbdt_user_guide.py
             :language: python
             :start-after: __xgboost_start__
             :end-before: __xgboost_end__
 
     .. tab-item:: LightGBM
-
-        Run ``pip install -U lightgbm_ray``.
 
         .. literalinclude:: doc_code/gbdt_user_guide.py
             :language: python

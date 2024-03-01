@@ -33,7 +33,8 @@ class SACTorchLearner(SACLearner, TorchLearner):
     """Implements `torch`-specific SAC loss logic on top of `SACLearner`
 
     This ' Learner' class implements the loss in its
-    `self.compute_loss_for_module()` method.
+    `self.compute_loss_for_module()` method. In addition it updates
+    target networks in its inherited method `_update_module_target_networks`.
     """
 
     # TODO (simon): Set different learning rates for optimizers.
@@ -182,8 +183,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
         if self.config.twin_q:
             q_twin_selected = fwd_out[QF_TWIN_PREDS]
 
-        # TODO (simon): Implement twin Q.
-
         # Compute Q-values for the current policy in the current state with
         # the sampled actions.
         q_batch_curr = NestedDict(
@@ -258,8 +257,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # If a twin Q network should be used, add the critic loss of the twin Q network.
         if self.config.twin_q:
             critic_twin_loss = torch.mean(
-                # TODO (simon): Introduce priority weights when episode buffer is ready.
-                # batch[PRIO_WEIGHTS] *
                 batch["weights"]
                 * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                     q_twin_selected, q_selected_target
@@ -320,10 +317,6 @@ class SACTorchLearner(SACLearner, TorchLearner):
     def _update_module_target_networks(
         self, module_id: ModuleID, config: SACConfig
     ) -> None:
-        """Updates the target Q network(s) of a module.
-
-        Applies Polyak averaging for the update.
-        """
         module = self.module[module_id]
 
         # Note, we have pairs of encoder and head networks.
@@ -331,7 +324,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
         for target_network, current_network in target_current_network_pairs:
             # Get the current parameters from the Q network.
             current_state_dict = current_network.state_dict()
-            # Use here Polyak avereging.
+            # Use here Polyak averaging.
             new_state_dict = {
                 k: config.tau * current_state_dict[k] + (1 - config.tau) * v
                 for k, v in target_network.state_dict().items()
