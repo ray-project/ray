@@ -27,7 +27,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
-    DEFAULT_MAX_CONCURRENT_QUERIES,
+    DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
@@ -320,19 +320,26 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     max_concurrent_queries: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "The max number of requests that will be executed at once in each replica. "
-            f"Defaults to {DEFAULT_MAX_CONCURRENT_QUERIES}."
+            "[DEPRECATED] The max number of requests that will be executed at once in "
+            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
+        ),
+        gt=0,
+    )
+    max_ongoing_requests: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Maximum number of requests that are sent in parallel "
+            "to each replica of this deployment. The limit is enforced across all "
+            "callers (HTTP requests or DeploymentHandles). Defaults to "
+            f"{DEFAULT_MAX_ONGOING_REQUESTS}."
         ),
         gt=0,
     )
     max_queued_requests: StrictInt = Field(
         default=DEFAULT.VALUE,
         description=(
-            "Maximum number of requests to this deployment that will be queued at each "
-            "*caller* (proxy or DeploymentHandle). Once this limit is reached, "
-            "subsequent requests will raise a BackPressureError (for handles) or "
-            "return an HTTP 503 status code (for HTTP requests). Defaults to -1 (no "
-            "limit)."
+            "[DEPRECATED] The max number of requests that will be executed at once in "
+            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
         ),
     )
     user_config: Optional[Dict] = Field(
@@ -486,7 +493,8 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
     schema = DeploymentSchema(
         name=name,
-        max_concurrent_queries=info.deployment_config.max_concurrent_queries,
+        max_concurrent_queries=info.deployment_config.max_ongoing_requests,
+        max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(

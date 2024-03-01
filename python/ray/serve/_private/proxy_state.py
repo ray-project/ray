@@ -19,6 +19,7 @@ from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
     RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -148,7 +149,7 @@ class ActorProxyWrapper(ProxyWrapper):
             proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
         except ValueError:
             logger.info(
-                f"Starting proxy with name '{name}' on node '{node_id}' "
+                f"Starting proxy on node '{node_id}' "
                 f"listening on '{config.host}:{port}'",
                 extra={"log_to_stderr": False},
             )
@@ -161,6 +162,7 @@ class ActorProxyWrapper(ProxyWrapper):
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
         ).remote(
             config.host,
             port,
