@@ -4,6 +4,7 @@ import threading
 import time
 from typing import Any, List
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -276,14 +277,76 @@ def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
         )
 
 
+def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
+    """Test that stream_split iterators can finish independently without
+    waiting for other iterators to finish. Otherwise, this would cause
+    deadlocks.
+    """
+    num_blocks_per_split = 10
+    num_splits = 2
+    ds = ray.data.range(
+        num_splits * num_blocks_per_split,
+        parallelism=num_splits * num_blocks_per_split,
+    )
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(num_splits, equal=True)
+
+    @ray.remote(max_concurrency=2)
+    class SignalActor:
+        def __init__(self):
+            self._event = threading.Event()
+
+        def wait(self):
+            self._event.wait()
+
+        def set(self):
+            self._event.set()
+
+    @ray.remote
+    class Consumer:
+        def consume(self, it, signal_actor, split_index):
+            for i, _ in enumerate(it.iter_batches(batch_size=None, prefetch_batches=0)):
+                if i == num_blocks_per_split // 2 and split_index == 0:
+                    # The first consumer waits for the second consumer to
+                    # finish first in the middle of the iteration.
+                    print("before wait")
+                    ray.get(signal_actor.wait.remote())
+                    print("after wait")
+            if split_index == 1:
+                # The second consumer sends a signal to unblock the
+                # first consumer. It should finish the iteration independently.
+                # Otherwise, there will be a deadlock.
+                print("before set")
+                # Sleep some time to make sure the other
+                # consume calls wait first.
+                time.sleep(2)
+                ray.get(signal_actor.set.remote())
+                print("after set")
+            pass
+
+    signal_actor = SignalActor.remote()
+    consumer1 = Consumer.remote()
+    consumer2 = Consumer.remote()
+
+    ready, _ = ray.wait(
+        [
+            consumer1.consume.remote(i1, signal_actor, 0),
+            consumer2.consume.remote(i2, signal_actor, 1),
+        ],
+        num_returns=2,
+        timeout=20,
+    )
+
+    assert len(ready) == 2
+
+
 @pytest.mark.skip(
     reason="Incomplete implementation of _validate_dag causes other errors, so we "
     "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
 )
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     def run():
         ray.data.range(5, parallelism=5).map(
             lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
@@ -307,11 +370,10 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
             tasks.append(strategy)
 
     remote_function._task_launch_hook = _test_hook
-    DataContext.get_current().use_streaming_executor = True
     DataContext.get_current().execution_options.preserve_order = True
     DataContext.get_current().large_args_threshold = 0
 
-    # Simple 2-stage pipeline.
+    # Simple 2-operator pipeline.
     ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
 
     # Read tasks get SPREAD by default, subsequent ones use default policy.
@@ -322,7 +384,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
 def test_scheduling_progress_when_output_blocked(
     ray_start_10_cpus_shared, restore_data_context
 ):
-    # Processing stages should fully finish even if output is completely stalled.
+    # Processing operators should fully finish even if output is completely stalled.
 
     @ray.remote
     class Counter:
@@ -341,7 +403,6 @@ def test_scheduling_progress_when_output_blocked(
         ray.get(counter.inc.remote())
         return x
 
-    DataContext.get_current().use_streaming_executor = True
     DataContext.get_current().execution_options.preserve_order = True
 
     # Only take the first item from the iterator.
@@ -360,6 +421,7 @@ def test_scheduling_progress_when_output_blocked(
 def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
+    block_size = 10 * 1024 * 1024
 
     @ray.remote
     class Counter:
@@ -376,15 +438,17 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
 
     def func(x):
         ray.get(counter.inc.remote())
-        return x
+        return {
+            "data": [np.ones(block_size, dtype=np.uint8)],
+        }
 
     ctx = DataContext.get_current()
-    ctx.use_streaming_executor = True
-    ctx.execution_options.resource_limits.object_store_memory = 10000
+    ctx.target_max_block_size = block_size
+    ctx.execution_options.resource_limits.object_store_memory = block_size
 
     # Only take the first item from the iterator.
-    ds = ray.data.range(100000, parallelism=100).map_batches(func, batch_size=None)
-    it = iter(ds.iter_batches(batch_size=None))
+    ds = ray.data.range(100, parallelism=100).map_batches(func, batch_size=None)
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
     next(it)
     time.sleep(3)  # Pause a little so anything that would be executed runs.
     num_finished = ray.get(counter.get.remote())
@@ -407,7 +471,6 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
 ):
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DataContext.get_current()
-    ctx.use_streaming_executor = True
     ctx.execution_options.preserve_order = True
     ctx.execution_options.resource_limits.object_store_memory = 1
     ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
@@ -417,8 +480,9 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
 
 
 def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits.object_store_memory = 100 * 1024**2
+    ctx.target_max_block_size = 1 * 1024**2
 
     @ray.remote(max_concurrency=10)
     class Barrier:
@@ -492,9 +556,6 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     class UDFClass:
         def __call__(self, x):
             time.sleep(1)
@@ -511,9 +572,6 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     ds = ray.data.range(1000000)
     it = iter(ds.iter_batches())
     next(it)
@@ -524,9 +582,6 @@ def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_context):
-    DataContext.get_current().new_execution_backend = True
-    DataContext.get_current().use_streaming_executor = True
-
     class RandomExit:
         def __call__(self, x):
             import os

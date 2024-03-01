@@ -1,11 +1,11 @@
 - file: ray-overview/getting-started
-  title: "Getting Started"
+  title: "Get Started"
 - file: ray-overview/use-cases
   title: "Use Cases"
 - file: ray-overview/examples
-  title: "Example Gallery"
+  title: "Example gallery"
 - file: ray-overview/installation
-  title: "Libraries"
+  title: "Library"
   sections:
     - file: ray-core/walkthrough
       title: Ray Core

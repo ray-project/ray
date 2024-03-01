@@ -1,44 +1,44 @@
 (serve-ml-models-tutorial)=
 
-# Serving ML Models (Tensorflow, PyTorch, Scikit-Learn, others)
+# Serve ML Models (Tensorflow, PyTorch, Scikit-Learn, others)
 
-In this guide, we will show you how to train models from various machine learning frameworks and deploy them to Ray Serve.
+This guide shows how to train models from various machine learning frameworks and deploy them to Ray Serve.
 
 
-Please see the [Key Concepts](serve-key-concepts) to learn more general information about Ray Serve.
+See the [Key Concepts](serve-key-concepts) to learn more general information about Ray Serve.
 
 :::::{tab-set} 
 
-::::{tab-item} Keras and Tensorflow
+::::{tab-item} Keras and TensorFlow
 
-Let's train and deploy a simple Tensorflow neural net.
-In particular, we will show:
+This example trains and deploys a simple TensorFlow neural net.
+In particular, it shows:
 
-- How to train a Tensorflow model and load the model from your file system in your Ray Serve deployment.
+- How to train a TensorFlow model and load the model from your file system in your Ray Serve deployment.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework-agnostic -- you can use any version of Tensorflow.
-However, for this tutorial, we will use Tensorflow 2 and Keras. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install Tensorflow 2 and requests by running:
+Ray Serve is framework-agnostic--you can use any version of TensorFlow.
+This tutorial uses TensorFlow 2 and Keras. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install TensorFlow 2 and requests by running:
 
 ```console
 $ pip install "tensorflow>=2.0" requests
 ```
 
-Open a new Python file called `tutorial_tensorflow.py`. First, let's import Ray Serve and some other helpers.
+Open a new Python file called `tutorial_tensorflow.py`. First, import Ray Serve and some other helpers.
 
 ```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
 
-Next, let's train a simple MNIST model using Keras.
+Next, train a simple MNIST model using Keras.
 
 ```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_train_model_begin__
 :end-before: __doc_train_model_end__
 ```
 
-Next, we define a class `TFMnistModel` that will accept HTTP requests and run the MNIST model that we trained. It is decorated with `@serve.deployment` to make it a deployment object, so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
+Next, define a `TFMnistModel` class that accepts HTTP requests and runs the MNIST model that you trained. The `@serve.deployment` decorator makes it a deployment object that you can deploy onto Ray Serve. Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, Ray Serve invokes the `__call__` method.
 
 ```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_define_servable_begin__
@@ -46,10 +46,10 @@ Next, we define a class `TFMnistModel` that will accept HTTP requests and run th
 ```
 
 :::{note}
-When `TFMnistModel` is deployed and instantiated, it will load the Tensorflow model from your file system so that it can be ready to run inference on the model and serve requests later.
+When you deploy and instantiate the `TFMnistModel` class, Ray Serve loads the TensorFlow model from your file system so that it can be ready to run inference on the model and serve requests later.
 :::
 
-Now that we've defined our Serve deployment, let's prepare it so that it can be deployed.
+Now that you've defined the Serve deployment, prepare it so that you can deploy it.
 
 ```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_deploy_begin__
@@ -57,44 +57,16 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note}
-`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
+`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to the deployment and returns a `DeploymentNode` object, a wrapping of the `TFMnistModel` deployment object, that you can then use to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
 :::
 
-Finally, we can deploy our model to Ray Serve through the terminal.
+Finally, deploy the model to Ray Serve through the terminal.
 
 ```console
 $ serve run tutorial_tensorflow:mnist_model
 ```
 
-:::{note}
-If you see the following error:
-
-```console
-TypeError: Descriptors cannot not be created directly.
-    If this call came from a _pb2.py file, your generated code is out of date and must be regenerated with protoc >= 3.19.0.
-    If you cannot immediately regenerate your protos, some other possible workarounds are:
-     1. Downgrade the protobuf package to 3.20.x or lower.
-     2. Set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python (but this will use pure-Python parsing and will be much slower).
-```
-
-You can downgrade the protobuf package to 3.20.x or lower in your Docker image, or tell Ray to do it at runtime by specifying a [runtime environment](runtime-environments):
-
-Open a new YAML file called `tf_env.yaml` for runtime environment.
-
-```yaml
-pip:
- - protobuf==3.20.3
-```
-
-Then, run the following command to deploy the model with the runtime environment.
-
-```console
-$ serve run --runtime-env tf_env.yaml tutorial_tensorflow:mnist_model
-```
-
-:::
-
-Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
+Next, query the model. While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 
 ```python
 import requests
@@ -106,7 +78,7 @@ resp = requests.get(
 print(resp.json())
 ```
 
-You should get an output like the following (the exact prediction may vary):
+You should get an output like the following, although the exact prediction may vary:
 
 ```bash
 {
@@ -116,28 +88,28 @@ You should get an output like the following (the exact prediction may vary):
 ```
 ::::
 
-::::{tab-item} Pytorch
+::::{tab-item} PyTorch
 
-Let's load and deploy a PyTorch Resnet Model.
-In particular, we will show:
+This example loads and deploys a PyTorch ResNet model.
+In particular, it shows:
 
-- How to load the model from PyTorch's pre-trained modelzoo.
+- How to load the model from PyTorch's pre-trained Model Zoo.
 - How to parse the JSON request, transform the payload and make a prediction.
 
-This tutorial will require PyTorch and Torchvision. Ray Serve is framework agnostic and works with any version of PyTorch. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install them by running:
+This tutorial requires PyTorch and Torchvision. Ray Serve is framework agnostic and works with any version of PyTorch. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install them by running:
 
 ```console
 $ pip install torch torchvision requests
 ```
 
-Open a new Python file called `tutorial_pytorch.py`. First, let's import Ray Serve and some other helpers.
+Open a new Python file called `tutorial_pytorch.py`. First, import Ray Serve and some other helpers.
 
 ```{literalinclude} ../doc_code/tutorial_pytorch.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
 
-We define a class `ImageModel` that parses the input data, transforms the images, and runs the ResNet18 model loaded from `torchvision`. It is decorated with `@serve.deployment` to make it a deployment object so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
+Define a class `ImageModel` that parses the input data, transforms the images, and runs the ResNet18 model loaded from `torchvision`. The `@serve.deployment` decorator makes it a deployment object that you can deploy onto Ray Serve.  Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, Ray Serve invokes the `__call__` method.
 
 ```{literalinclude} ../doc_code/tutorial_pytorch.py
 :start-after: __doc_define_servable_begin__
@@ -145,10 +117,10 @@ We define a class `ImageModel` that parses the input data, transforms the images
 ```
 
 :::{note}
-When `ImageModel` is deployed and instantiated, it will load the resnet18 model from `torchvision` so that it can be ready to run inference on the model and serve requests later.
+When you deploy and instantiate an `ImageModel` class, Ray Serve loads the ResNet18 model from `torchvision` so that it can be ready to run inference on the model and serve requests later.
 :::
 
-Now that we've defined our Serve deployment, let's prepare it so that it can be deployed.
+Now that you've defined the Serve deployment, prepare it so that you can deploy it.
 
 ```{literalinclude} ../doc_code/tutorial_pytorch.py
 :start-after: __doc_deploy_begin__
@@ -156,15 +128,15 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note}
-`ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
+`ImageModel.bind()` returns a `DeploymentNode` object, a wrapping of the `ImageModel` deployment object, that you can then use to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
 :::
 
-Finally, we can deploy our model to Ray Serve through the terminal.
+Finally, deploy the model to Ray Serve through the terminal.
 ```console
 $ serve run tutorial_pytorch:image_model
 ```
 
-Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
+Next, query the model. While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 
 ```python
 import requests
@@ -178,28 +150,28 @@ resp = requests.post("http://localhost:8000/", data=ray_logo_bytes)
 print(resp.json())
 ```
 
-You should get an output like the following (the exact number may vary):
+You should get an output like the following, although the exact number may vary:
 
 ```bash
 {'class_index': 919}
 ```
 ::::
 
-::::{tab-item} Scikit-Learn
+::::{tab-item} Scikit-learn
 
-Let's train and deploy a simple Scikit-Learn classifier.
-In particular, we will show:
+This example trains and deploys a simple scikit-learn classifier.
+In particular, it shows:
 
-- How to load the Scikit-Learn model from file system in your Ray Serve definition.
+- How to load the scikit-learn model from file system in your Ray Serve definition.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework-agnostic. You can use any version of sklearn. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install scikit-learn and requests by running:
+Ray Serve is framework-agnostic. You can use any version of sklearn. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install scikit-learn and requests by running:
 
 ```console
 $ pip install scikit-learn requests
 ```
 
-Open a new Python file called `tutorial_sklearn.py`. Let's import Ray Serve and some other helpers.
+Open a new Python file called `tutorial_sklearn.py`. Import Ray Serve and some other helpers.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_import_begin__
@@ -208,24 +180,24 @@ Open a new Python file called `tutorial_sklearn.py`. Let's import Ray Serve and 
 
 **Train a Classifier**
 
-We will train a classifier with the [iris dataset](https://scikit-learn.org/stable/auto_examples/datasets/plot_iris_dataset.html).
+Next, train a classifier with the [Iris dataset](https://scikit-learn.org/stable/auto_examples/datasets/plot_iris_dataset.html).
 
 
-First, let's instantiate a `GradientBoostingClassifier` loaded from Scikit-Learn.
+First, instantiate a `GradientBoostingClassifier` loaded from scikit-learn.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_instantiate_model_begin__
 :end-before: __doc_instantiate_model_end__
 ```
 
-Next, load the iris dataset and split the data into training and validation sets.
+Next, load the Iris dataset and split the data into training and validation sets.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_data_begin__
 :end-before: __doc_data_end__
 ```
 
-We then train the model and save it to file.
+Then, train the model and save it to a file.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_train_model_begin__
@@ -234,9 +206,9 @@ We then train the model and save it to file.
 
 **Deploy with Ray Serve**
 
-Finally, we are ready to deploy the classifier using Ray Serve!
+Finally, you're ready to deploy the classifier using Ray Serve.
 
-We define a class `BoostingModel` that runs inference on the `GradientBoosingClassifier` model we trained and returns the resulting label. It is decorated with `@serve.deployment` to make it a deployment object so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
+Define a `BoostingModel` class that runs inference on the `GradientBoosingClassifier` model you trained and returns the resulting label. It's decorated with `@serve.deployment` to make it a deployment object so you can deploy it onto Ray Serve. Note that Ray Serve exposes the deployment over an HTTP route. By default, when the deployment receives a request over HTTP, Ray Serve invokes the `__call__` method.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_define_servable_begin__
@@ -244,10 +216,10 @@ We define a class `BoostingModel` that runs inference on the `GradientBoosingCla
 ```
 
 :::{note}
-When `BoostingModel` is deployed and instantiated, it will load the classifier model that we trained from your file system so that it can be ready to run inference on the model and serve requests later.
+When you deploy and instantiate a `BoostingModel` class, Ray Serve loads the classifier model that you trained from the file system so that it can be ready to run inference on the model and serve requests later.
 :::
 
-Now that we've defined our Serve deployment, let's prepare it so that it can be deployed.
+After you've defined the Serve deployment, prepare it so that you can deploy it.
 
 ```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_deploy_begin__
@@ -255,15 +227,15 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note}
-`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
+`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to the deployment and returns a `DeploymentNode` object, a wrapping of the `BoostingModel` deployment object, that you can then use to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition).
 :::
 
-Finally, we can deploy our model to Ray Serve through the terminal.
+Finally, deploy the model to Ray Serve through the terminal.
 ```console
 $ serve run tutorial_sklearn:boosting_model
 ```
 
-Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
+Next, query the model. While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 
 ```python
 import requests
@@ -278,7 +250,7 @@ response = requests.get("http://localhost:8000/", json=sample_request_input)
 print(response.text)
 ```
 
-You should get an output like the following (the exact prediction may vary):
+You should get an output like the following, although the exact prediction may vary:
 ```python
 {"result": "versicolor"}
 ```

@@ -12,8 +12,7 @@ from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.context import DataContext
@@ -45,7 +44,11 @@ def generate_sort_fn(
         num_outputs = num_mappers
 
         # Sample boundaries for sort key.
-        boundaries = SortTaskSpec.sample_boundaries(blocks, sort_key, num_outputs)
+        if not sort_key.boundaries:
+            boundaries = SortTaskSpec.sample_boundaries(blocks, sort_key, num_outputs)
+        else:
+            boundaries = [(b,) for b in sort_key.boundaries]
+            num_outputs = len(boundaries) + 1
         _, ascending = sort_key.to_pandas_sort_args()
         if not ascending:
             boundaries.reverse()

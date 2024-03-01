@@ -1,110 +1,13 @@
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
-from ._internal.table_block import TableBlockAccessor
-from ray.data._internal import sort
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data._internal.plan import AllToAllStage
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
-from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data._internal.sort import SortKey
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.aggregate._aggregate import _AggregateOnKeyBase
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockExecStats,
-    BlockMetadata,
-    KeyType,
-    UserDefinedFunction,
-)
-from ray.data.context import DataContext
+from ray.data.block import BlockAccessor, UserDefinedFunction
 from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
-
-
-class _GroupbyOp(ShuffleOp):
-    @staticmethod
-    def map(
-        idx: int,
-        block: Block,
-        output_num_blocks: int,
-        boundaries: List[KeyType],
-        key: str,
-        aggs: Tuple[AggregateFn],
-    ) -> List[Union[BlockMetadata, Block]]:
-        """Partition the block and combine rows with the same key."""
-        stats = BlockExecStats.builder()
-
-        block = _GroupbyOp._prune_unused_columns(block, key, aggs)
-
-        if key is None:
-            partitions = [block]
-        else:
-            partitions = BlockAccessor.for_block(block).sort_and_partition(
-                boundaries,
-                SortKey(key),
-            )
-        parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
-        meta = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
-        return parts + [meta]
-
-    @staticmethod
-    def reduce(
-        key: str,
-        aggs: Tuple[AggregateFn],
-        *mapper_outputs: List[Block],
-        partial_reduce: bool = False,
-    ) -> (Block, BlockMetadata):
-        """Aggregate sorted and partially combined blocks."""
-        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs, finalize=not partial_reduce
-        )
-
-    @staticmethod
-    def _prune_unused_columns(
-        block: Block,
-        key: str,
-        aggs: Tuple[AggregateFn],
-    ) -> Block:
-        """Prune unused columns from block before aggregate."""
-        prune_columns = True
-        columns = set()
-
-        if isinstance(key, str):
-            columns.add(key)
-        elif callable(key):
-            prune_columns = False
-
-        for agg in aggs:
-            if isinstance(agg, _AggregateOnKeyBase) and isinstance(agg._key_fn, str):
-                columns.add(agg._key_fn)
-            elif not isinstance(agg, Count):
-                # Don't prune columns if any aggregate key is not string.
-                prune_columns = False
-
-        block_accessor = BlockAccessor.for_block(block)
-        if (
-            prune_columns
-            and isinstance(block_accessor, TableBlockAccessor)
-            and block_accessor.num_rows() > 0
-        ):
-            return block_accessor.select(list(columns))
-        else:
-            return block
-
-
-class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
-    pass
-
-
-class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
-    pass
 
 
 class _MultiColumnSortedKey:
@@ -167,61 +70,13 @@ class GroupedData:
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        def do_agg(blocks, task_ctx: TaskContext, clear_input_blocks: bool, *_):
-            # TODO: implement clear_input_blocks
-            stage_info = {}
-            if len(aggs) == 0:
-                raise ValueError("Aggregate requires at least one aggregation")
-            for agg in aggs:
-                agg._validate(self._dataset.schema(fetch_if_missing=True))
-            # Handle empty dataset.
-            if blocks.initial_num_blocks() == 0:
-                return blocks, stage_info
-
-            num_mappers = blocks.initial_num_blocks()
-            num_reducers = num_mappers
-            if self._key is None:
-                num_reducers = 1
-                boundaries = []
-            else:
-                boundaries = sort.sample_boundaries(
-                    blocks.get_blocks(),
-                    SortKey(self._key),
-                    num_reducers,
-                    task_ctx,
-                )
-            ctx = DataContext.get_current()
-            if ctx.use_push_based_shuffle:
-                shuffle_op_cls = PushBasedGroupbyOp
-            else:
-                shuffle_op_cls = SimpleShuffleGroupbyOp
-            shuffle_op = shuffle_op_cls(
-                map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
-            )
-            return shuffle_op.execute(
-                blocks,
-                num_reducers,
-                clear_input_blocks,
-                ctx=task_ctx,
-            )
-
-        plan = self._dataset._plan.with_stage(
-            AllToAllStage(
-                "Aggregate",
-                None,
-                do_agg,
-                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
-            )
+        plan = self._dataset._plan.copy()
+        op = Aggregate(
+            self._dataset._logical_plan.dag,
+            key=self._key,
+            aggs=aggs,
         )
-
-        logical_plan = self._dataset._logical_plan
-        if logical_plan is not None:
-            op = Aggregate(
-                logical_plan.dag,
-                key=self._key,
-                aggs=aggs,
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
             logical_plan,

@@ -48,8 +48,8 @@ def test_spread_deployment_scheduling_policy_upscale(
     )
     cluster_node_info_cache.update()
 
-    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
-    dep_id = DeploymentID("deployment1", "default")
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache, get_head_node_id())
+    dep_id = DeploymentID(name="deployment1")
     scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
     replica_actor_handles = []
     replica_placement_groups = []
@@ -136,9 +136,9 @@ def test_spread_deployment_scheduling_policy_downscale_multiple_deployments(
     )
     cluster_node_info_cache.update()
 
-    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
-    d1_id = DeploymentID("deployment1", "default")
-    d2_id = DeploymentID("deployment2", "default")
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache, get_head_node_id())
+    d1_id = DeploymentID(name="deployment1")
+    d2_id = DeploymentID(name="deployment2")
     scheduler.on_deployment_created(d1_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_deployment_created(d2_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_replica_running(d1_id, "replica1", "node1")
@@ -203,8 +203,8 @@ def test_spread_deployment_scheduling_policy_downscale_single_deployment(
     )
     cluster_node_info_cache.update()
 
-    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
-    dep_id = DeploymentID("deployment1", "my_app")
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache, get_head_node_id())
+    dep_id = DeploymentID(name="deployment1")
     scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_replica_running(dep_id, "replica1", "node1")
     scheduler.on_replica_running(dep_id, "replica2", "node1")
@@ -286,8 +286,8 @@ def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_clust
     )
     cluster_node_info_cache.update()
 
-    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
-    dep_id = DeploymentID("deployment1", "my_app")
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache, get_head_node_id())
+    dep_id = DeploymentID(name="deployment1")
     scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_replica_running(dep_id, "replica1", head_node_id)
     scheduler.on_replica_running(dep_id, "replica2", "node2")

@@ -544,12 +544,15 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
 Status PythonGcsClient::DrainNode(const std::string &node_id,
                                   int32_t reason,
                                   const std::string &reason_message,
+                                  int64_t deadline_timestamp_ms,
                                   int64_t timeout_ms,
-                                  bool &is_accepted) {
+                                  bool &is_accepted,
+                                  std::string &rejection_reason_message) {
   rpc::autoscaler::DrainNodeRequest request;
   request.set_node_id(NodeID::FromHex(node_id).Binary());
   request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));
   request.set_reason_message(reason_message);
+  request.set_deadline_timestamp_ms(deadline_timestamp_ms);
 
   rpc::autoscaler::DrainNodeReply reply;
 
@@ -561,6 +564,9 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
 
   if (status.ok()) {
     is_accepted = reply.is_accepted();
+    if (!is_accepted) {
+      rejection_reason_message = reply.rejection_reason_message();
+    }
     return Status::OK();
   }
   return Status::RpcError(status.error_message(), status.error_code());

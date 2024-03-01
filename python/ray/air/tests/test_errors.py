@@ -15,6 +15,7 @@ These tests should:
 - Assert how errors from the trainable/Trainer get propagated to the user.
 - Assert how errors from the Tune driver get propagated to the user.
 """
+
 import gc
 import threading
 import time
@@ -55,12 +56,11 @@ def gc_collect():
 
 @pytest.fixture
 def cluster_setup(ray_start_cluster_head: Cluster):
-    # Sets up a cluster with 4 nodes: head node + 3 workers
+    # Sets up a cluster with 3 nodes: head node + 2 workers
     cluster = ray_start_cluster_head
     nodes = []
-    nodes.append(cluster.add_node(resources={"worker1": 1, "coordinator": 1}))
+    nodes.append(cluster.add_node(resources={"worker1": 1, "cpu": 1, "coordinator": 1}))
     nodes.append(cluster.add_node(resources={"worker2": 1, "cpu": 1}))
-    nodes.append(cluster.add_node(resources={"worker3": 1, "cpu": 1}))
     cluster.wait_for_nodes()
 
     @ray.remote
@@ -69,15 +69,13 @@ def cluster_setup(ray_start_cluster_head: Cluster):
 
     worker1_node_id = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
     worker2_node_id = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
-    worker3_node_id = ray.get(get_node_id.options(resources={"worker3": 1}).remote())
     wait_for_condition(
-        lambda: len({node["NodeID"] for node in ray.nodes() if (node["Alive"])}) == 4
+        lambda: len({node["NodeID"] for node in ray.nodes() if (node["Alive"])}) == 3
     )
 
     yield cluster, nodes, [
         worker1_node_id,
         worker2_node_id,
-        worker3_node_id,
     ]
 
 
@@ -155,6 +153,7 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
             name=name,
             failure_config=FailureConfig(fail_fast=fail_fast),
         ),
+        scaling_config=ScalingConfig(num_workers=1),
     )
 
     if fail_fast in [False, True]:
@@ -200,7 +199,7 @@ def test_driver_error_with_tuner(ray_start_4_cpus, error_on):
         tuner.fit()
 
     # TODO(ml-team): Assert the cause error type once driver error propagation is fixed
-    assert "_TestSpecificError" in str(exc_info.value.__cause__)
+    assert "_TestSpecificError" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("error_on", ["on_trial_result"])
@@ -242,9 +241,9 @@ def test_preemption_handling(
     """Integration test for node preemption handling in Ray Train/Tune.
     Even though `max_failures=0`, preemption errors should still be retried."""
     cluster, nodes, node_ids = cluster_setup
-    # node 1 = coordinator, node 2 = worker, node 3 = worker
-    coordinator_node, worker_node, _ = nodes
-    coordinator_node_id, worker_node_id, _ = node_ids
+    # node 1 = coordinator and worker, node 2 = worker
+    coordinator_node, worker_node = nodes
+    coordinator_node_id, worker_node_id = node_ids
 
     num_workers = 2
     tmp_path.joinpath("markers").mkdir()
@@ -302,10 +301,11 @@ def test_preemption_handling(
     # Preempt a node.
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
     print("Draining node...")
-    is_accepted = gcs_client.drain_node(
+    is_accepted, _ = gcs_client.drain_node(
         node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        0,
     )
     assert is_accepted
     print("Killing node...")

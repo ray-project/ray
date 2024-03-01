@@ -36,7 +36,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
-        self.config = config
+        self.config = config.copy(copy_frozen=False)
         super().__init__(**kwargs)
 
         # This eager check is necessary for certain all-framework tests

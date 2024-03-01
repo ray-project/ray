@@ -447,7 +447,6 @@ std::vector<std::string> ResolveDNS(const std::string &address, int port) {
 
 Status RedisContext::Connect(const std::string &address,
                              int port,
-                             bool sharding,
                              const std::string &password,
                              bool enable_ssl) {
   // Connect to the leader of the Redis cluster:
@@ -532,7 +531,7 @@ Status RedisContext::Connect(const std::string &address,
     // Connect to the true leader.
     RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
                   << ". Reconnect to it.";
-    return Connect(ip, port, sharding, password, enable_ssl);
+    return Connect(ip, port, password, enable_ssl);
   } else {
     RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
     freeReplyObject(redis_reply);
@@ -571,8 +570,6 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                                  std::move(args));
   request_context->Run();
 }
-
-void RedisContext::FreeRedisReply(void *reply) { return freeReplyObject(reply); }
 
 }  // namespace gcs
 

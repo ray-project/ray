@@ -9,7 +9,7 @@ import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
-from ray_release.buildkite.step import get_step
+from ray_release.buildkite.step import get_step_for_test_group
 from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
@@ -142,42 +142,19 @@ def main(
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule or it's a release branch (i.e.
-    # both the buildkite wheel branch and the test branch started with 'releases/')
     _, buildkite_branch = get_buildkite_repo_branch()
-    report = (
-        bool(int(os.environ.get("REPORT", "0")))
-        or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
-        or buildkite_branch.startswith("releases/")
-    )
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
-    steps = []
-    for group in sorted(grouped_tests):
-        tests = grouped_tests[group]
-        group_steps = []
-        for test, smoke_test in tests:
-            for run_id in range(run_per_test):
-                step = get_step(
-                    test,
-                    test_collection_file,
-                    run_id=run_id,
-                    report=report,
-                    smoke_test=smoke_test,
-                    env=env,
-                    priority_val=priority.value,
-                    global_config=global_config,
-                )
-
-                if no_concurrency_limit:
-                    step.pop("concurrency", None)
-                    step.pop("concurrency_group", None)
-
-                group_steps.append(step)
-
-        group_step = {"group": group, "steps": group_steps}
-        steps.append(group_step)
+    steps = get_step_for_test_group(
+        grouped_tests,
+        minimum_run_per_test=run_per_test,
+        test_collection_file=test_collection_file,
+        env=env,
+        priority=priority.value,
+        global_config=global_config,
+        is_concurrency_limit=not no_concurrency_limit,
+    )
 
     if "BUILDKITE" in os.environ:
         if os.path.exists(PIPELINE_ARTIFACT_PATH):

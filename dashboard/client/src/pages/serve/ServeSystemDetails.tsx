@@ -20,6 +20,7 @@ import { HelpInfo } from "../../components/Tooltip";
 import {
   ServeApplication,
   ServeApplicationsRsp,
+  ServeDeployment,
   ServeProxy,
 } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
@@ -158,12 +159,14 @@ export const ServeSystemDetails = ({
 type ServeSystemPreviewProps = {
   serveDetails: ServeDetails;
   proxies: ServeProxy[];
+  allDeployments: ServeDeployment[];
   allApplications: ServeApplication[];
 };
 
 export const ServeSystemPreview = ({
   serveDetails,
   proxies,
+  allDeployments,
   allApplications,
 }: ServeSystemPreviewProps) => {
   const { data: controllerActor } = useFetchActor(

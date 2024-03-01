@@ -133,7 +133,8 @@ def report_predicted_vs_sampled_obs(
     Continues: Compute MSE (sampled vs predicted).
 
     Args:
-        results: The results dict that was returned by `LearnerGroup.update()`.
+        results: The results dict that was returned by
+            `LearnerGroup.update_from_batch()`.
         sample: The sampled data (dict) from the replay buffer. Already tf-tensor
             converted.
         batch_size_B: The batch size (B). This is the number of trajectories sampled

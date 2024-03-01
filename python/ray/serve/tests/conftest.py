@@ -11,7 +11,6 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
-from ray.serve._private import api as _private_api
 from ray.serve._private.test_utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
@@ -19,6 +18,11 @@ from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
+
+TEST_GRPC_SERVICER_FUNCTIONS = [
+    "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+]
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -95,7 +99,13 @@ def _shared_serve_instance():
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
-    serve.start(http_options={"host": "0.0.0.0"})
+    serve.start(
+        http_options={"host": "0.0.0.0"},
+        grpc_options={
+            "port": 9000,
+            "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
+        },
+    )
     yield _get_global_client()
 
 
@@ -104,8 +114,6 @@ def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
-    # Clear all state for 1.x deployments.
-    _shared_serve_instance.delete_deployments(_private_api.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles()
 
@@ -156,7 +164,6 @@ def ray_instance(request):
         requested_env_vars = {}
 
     os.environ.update(requested_env_vars)
-
     yield ray.init(
         _metrics_export_port=9999,
         _system_config={

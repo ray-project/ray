@@ -15,7 +15,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import CheckpointConfig, ScalingConfig
+from ray.train import CheckpointConfig
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.train._internal.session import shutdown_session
@@ -711,11 +711,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
-        new_trials = tune.run(test, resume="ERRORED_ONLY", **config).trials
+        new_trials = tune.run(test, resume="AUTO+ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(all(t.last_result.get("hello") == 123 for t in new_trials))
 
-    # Test rerunning rllib trials with ERRORED_ONLY.
     def testRerunRlLib(self):
         class TestEnv(gym.Env):
             counter = 0
@@ -755,7 +754,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "num_workers": 0,
             },
             name="my_experiment",
-            resume="ERRORED_ONLY",
+            resume="AUTO+ERRORED_ONLY",
             stop={"training_iteration": 1},
         ).trials
         assert len(trials) == 1 and trials[0].status == Trial.TERMINATED
@@ -1384,21 +1383,6 @@ def test_with_resources_pgf(ray_start_2_cpus_2_gpus, num_gpus):
     [trial] = tune.run(
         tune.with_resources(
             train_fn, resources=PlacementGroupFactory([{"GPU": num_gpus}])
-        )
-    ).trials
-
-    assert trial.last_result["_metric"] == num_gpus
-
-
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_scaling_config(ray_start_2_cpus_2_gpus, num_gpus):
-    def train_fn(config):
-        return len(ray.get_gpu_ids())
-
-    [trial] = tune.run(
-        tune.with_resources(
-            train_fn,
-            resources=ScalingConfig(trainer_resources={"GPU": num_gpus}, num_workers=0),
         )
     ).trials
 

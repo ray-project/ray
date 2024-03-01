@@ -8,7 +8,15 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ray._private.ray_constants import env_integer
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+    DEFAULT_UPSCALING_SPEED,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    WORKER_RPC_DRAIN_KEY,
+)
 from ray.autoscaler._private.util import (
+    hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
     validate_config,
@@ -41,6 +49,40 @@ class IConfigReader(ABC):
         pass
 
 
+@dataclass(frozen=True)
+class InstanceReconcileConfig:
+    # The timeout for waiting for a REQUESTED instance to be ALLOCATED.
+    request_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_REQUEST_STATUS_TIMEOUT_S", 10 * 60
+    )
+    # The timeout for waiting for a ALLOCATED instance to be RAY_RUNNING.
+    allocate_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_ALLOCATE_STATUS_TIMEOUT_S", 300
+    )
+    # The timeout for waiting for a RAY_INSTALLING instance to be RAY_RUNNING.
+    ray_install_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_RAY_INSTALL_STATUS_TIMEOUT_S", 30 * 60
+    )
+    # The timeout for waiting for a TERMINATING instance to be TERMINATED.
+    terminating_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_TERMINATING_STATUS_TIMEOUT_S", 300
+    )
+    # The timeout for waiting for a RAY_STOP_REQUESTED instance
+    # to be RAY_STOPPING or RAY_STOPPED.
+    ray_stop_requested_status_timeout_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_RAY_STOP_REQUESTED_STATUS_TIMEOUT_S", 300
+    )
+    # The interval for raise a warning when an instance in transient status
+    # is not updated for a long time.
+    transient_status_warn_interval_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_TRANSIENT_STATUS_WARN_INTERVAL_S", 90
+    )
+    # The number of times to retry requesting to allocate an instance.
+    max_num_retry_request_to_allocate: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_MAX_NUM_RETRY_REQUEST_TO_ALLOCATE", 3
+    )
+
+
 @dataclass
 class NodeTypeConfig:
     """
@@ -59,6 +101,10 @@ class NodeTypeConfig:
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
+    # The node config's launch config hash. It's calculated from the auth
+    # config, and the node's config in the `AutoscalingConfig` for the node
+    # type when launching the node. It's used to detect config changes.
+    launch_config_hash: str = ""
 
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
@@ -252,21 +298,61 @@ class AutoscalingConfig:
         if not available_node_types:
             return None
         node_type_configs = {}
+        auth_config = self._configs.get("auth", {})
         for node_type, node_config in available_node_types.items():
+            launch_config_hash = hash_launch_conf(
+                node_config.get("node_config", {}), auth_config
+            )
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
                 max_worker_nodes=node_config.get("max_workers", 0),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
+                launch_config_hash=launch_config_hash,
             )
         return node_type_configs
 
     def get_max_num_worker_nodes(self) -> Optional[int]:
         return self.get_config("max_workers", None)
 
+    def get_max_num_nodes(self) -> Optional[int]:
+        max_num_workers = self.get_max_num_worker_nodes()
+        if max_num_workers is not None:
+            return max_num_workers + 1  # For head node
+        return None
+
     def get_raw_config_mutable(self) -> Dict[str, Any]:
         return self._configs
+
+    def get_upscaling_speed(self) -> float:
+        return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
+
+    def get_max_concurrent_launches(self) -> int:
+        return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
+
+    def get_idle_timeout_s(self) -> float:
+        return self.get_config("idle_timeout_minutes", 0) * 60
+
+    def disable_launch_config_check(self) -> bool:
+        provider_config = self.get_provider_config()
+        return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
+
+    def skip_ray_install(self) -> bool:
+        return self.provider == Provider.KUBERAY
+
+    def need_ray_stop(self) -> bool:
+        provider_config = self._configs.get("provider", {})
+        return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
+
+    def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
+        # TODO(rickyx): we need a way to customize these configs,
+        # either extending the current ray-schema.json, or just use another
+        # schema validation paths.
+        return InstanceReconcileConfig()
+
+    def get_provider_config(self) -> Dict[str, Any]:
+        return self._configs.get("provider", {})
 
     @property
     def provider(self) -> Provider:

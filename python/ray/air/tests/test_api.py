@@ -3,7 +3,6 @@ import pytest
 import ray
 from ray.train import Checkpoint, CheckpointConfig, ScalingConfig
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer
 
 
@@ -144,7 +143,6 @@ def test_scaling_config_validate_config_bad_allowed_keys():
 @pytest.mark.parametrize(
     "trainer_resources", [None, {}, {"CPU": 1}, {"CPU": 2, "GPU": 1}, {"CPU": 0}]
 )
-@pytest.mark.parametrize("num_workers", [None, 1, 2])
 @pytest.mark.parametrize(
     "resources_per_worker_and_use_gpu",
     [
@@ -158,8 +156,10 @@ def test_scaling_config_validate_config_bad_allowed_keys():
 )
 @pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
 def test_scaling_config_pgf_equivalance(
-    trainer_resources, resources_per_worker_and_use_gpu, num_workers, placement_strategy
+    trainer_resources, resources_per_worker_and_use_gpu, placement_strategy
 ):
+    num_workers = 2
+
     resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
     scaling_config = ScalingConfig(
         trainer_resources=trainer_resources,
@@ -199,11 +199,6 @@ def test_datasets():
 
     # Succeed
     DummyTrainer(datasets={"test": DummyDataset()})
-
-
-def test_preprocessor_deprecated():
-    with pytest.raises(DeprecationWarning):
-        DummyTrainer(preprocessor=Preprocessor())
 
 
 def test_resume_from_checkpoint(tmpdir):

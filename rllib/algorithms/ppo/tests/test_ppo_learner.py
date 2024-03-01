@@ -58,7 +58,6 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_loss(self):
-
         config = (
             ppo.PPOConfig()
             .experimental(_enable_new_api_stack=True)
@@ -101,7 +100,7 @@ class TestPPO(unittest.TestCase):
 
             # Load the algo weights onto the learner_group.
             learner_group.set_weights(algo.get_weights())
-            learner_group.update(train_batch.as_multi_agent())
+            learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
             algo.stop()
 
@@ -135,9 +134,7 @@ class TestPPO(unittest.TestCase):
                 learner_group2.load_state(tmpdir)
                 # Remove functions from state b/c they are not comparable via `check`.
                 s1 = learner_group1.get_state()
-                s1.pop("should_module_be_updated_fn")
                 s2 = learner_group2.get_state()
-                s2.pop("should_module_be_updated_fn")
                 check(s1, s2)
 
     def test_kl_coeff_changes(self):

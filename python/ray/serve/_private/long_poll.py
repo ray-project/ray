@@ -41,6 +41,7 @@ class LongPollNamespace(Enum):
     RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
     GLOBAL_LOGGING_CONFIG = auto()
+    DEPLOYMENT_CONFIG = auto()
 
 
 @dataclass
@@ -357,7 +358,7 @@ class LongPollHost:
         self, key: KeyType, object_snapshot: Any
     ) -> bytes:
         if key == LongPollNamespace.ROUTE_TABLE:
-            # object_snapshot is Dict[EndpointTag, EndpointInfo]
+            # object_snapshot is Dict[DeploymentID, EndpointInfo]
             # NOTE(zcin): the endpoint dictionary broadcasted to Java
             # HTTP proxies should use string as key because Java does
             # not yet support 2.x or applications

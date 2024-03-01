@@ -1,0 +1,45 @@
+group: Validate wheels
+steps:
+  - block: "Validate Ray wheels from TestPyPI"
+    depends_on: 
+      - forge
+      - forge_arm64
+
+  - label: "Linux x86_64 Python {{matrix}}"
+    job_env: forge
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_HASH="$RAY_HASH"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: "Linux arm64 Python {{matrix}}"
+    instance_type: medium-arm64
+    job_env: forge-arm64
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_HASH="$RAY_HASH"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: "MacOS x86_64"
+    job_env: MACOS
+    instance_type: macos
+    commands:
+      - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
+
+  - label: "MacOS arm64"
+    job_env: MACOS
+    instance_type: macos-arm64
+    commands:
+      - ./.buildkite/release-automation/verify-macos-wheels.sh arm64

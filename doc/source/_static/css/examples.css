@@ -85,6 +85,11 @@
   line-height: 20px;
 }
 
+.tag > span {
+  white-space: nowrap;
+  min-width: auto;
+}
+
 .tag > svg > path {
   fill: var(--pst-color-text-base);
 }

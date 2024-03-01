@@ -39,6 +39,7 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
+from ray.data.exceptions import UserCodeException
 
 
 def plan_udf_map_op(
@@ -82,7 +83,7 @@ def plan_udf_map_op(
         name=op.name,
         target_max_block_size=None,
         compute_strategy=compute,
-        min_rows_per_bundle=op._min_rows_per_block,
+        min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args=op._ray_remote_args,
     )
 
@@ -104,7 +105,10 @@ def _parse_op_fn(op: AbstractUDFMap):
         def fn(item: Any) -> Any:
             assert ray.data._cached_fn is not None
             assert ray.data._cached_cls == op_fn
-            return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+            try:
+                return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+            except Exception as e:
+                raise UserCodeException() from e
 
         def init_fn():
             if ray.data._cached_fn is None:
@@ -116,7 +120,10 @@ def _parse_op_fn(op: AbstractUDFMap):
     else:
 
         def fn(item: Any) -> Any:
-            return op_fn(item, *fn_args, **fn_kwargs)
+            try:
+                return op_fn(item, *fn_args, **fn_kwargs)
+            except Exception as e:
+                raise UserCodeException() from e
 
         def init_fn():
             pass
