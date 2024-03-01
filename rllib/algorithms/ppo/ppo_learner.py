@@ -63,7 +63,7 @@ class PPOLearner(Learner):
     ):
         # Call the train data preprocessor.
         if self.config.uses_new_env_runners:
-            batch, episodes = self._preprocess_train_data(episodes=episodes)
+            batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
 
         return super()._update_from_batch_or_episodes(
             batch=batch,

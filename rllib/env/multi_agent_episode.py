@@ -1706,25 +1706,72 @@ class MultiAgentEpisode:
     def _get_data_by_env_steps_as_list(
         self,
         *,
-        what,
-        indices,
-        agent_ids,
-        neg_indices_left_of_zero,
-        fill,
-        one_hot_discrete,
-        extra_model_outputs_key,
-    ):
+        what: str,
+        indices: Union[int, slice, List[int]],
+        agent_ids: Collection[AgentID],
+        neg_indices_left_of_zero: bool = False,
+        fill: Optional[Any] = None,
+        one_hot_discrete: bool = False,
+        extra_model_outputs_key: Optional[str],
+    ) -> List[MultiAgentDict]:
+        """Returns data from the episode based on env step indices, as a list.
+
+        The returned list contains n MultiAgentDict objects, one for each env timestep
+        defined via `indices`.
+
+        Args:
+            what: A (str) descriptor of what data to collect. Must be one of
+                "observations", "infos", "actions", "rewards", or "extra_model_outputs".
+            indices: A single int is interpreted as an index, from which to return the
+                individual data stored at this (env step) index.
+                A list of ints is interpreted as a list of indices from which to gather
+                individual data in a batch of size len(indices).
+                A slice object is interpreted as a range of data to be returned.
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            agent_ids: A collection of AgentIDs to filter for. Only data for those
+                agents will be returned, all other agents will be ignored.
+            neg_indices_left_of_zero: If True, negative values in `indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
+                where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
+                respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
+                `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+            fill: An optional float value to use for filling up the returned results at
+                the boundaries. This filling only happens if the requested index range's
+                start/stop boundaries exceed the buffer's boundaries (including the
+                lookback buffer on the left side). This comes in very handy, if users
+                don't want to worry about reaching such boundaries and want to zero-pad.
+                For example, a buffer with data [10, 11,  12, 13, 14] and lookback
+                buffer size of 2 (meaning `10` and `11` are part of the lookback buffer)
+                will respond to `indices=slice(-7, -2)` and `fill=0.0`
+                with `[0.0, 0.0, 10, 11, 12]`.
+            one_hot_discrete: If True, will return one-hot vectors (instead of
+                int-values) for those sub-components of a (possibly complex) space
+                that are Discrete or MultiDiscrete. Note that if `fill=0` and the
+                requested `indices` are out of the range of our data, the returned
+                one-hot vectors will actually be zero-hot (all slots zero).
+            extra_model_outputs_key: Only if what is "extra_model_outputs", this
+                specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
+                STATE_OUT or ACTION_DIST_INPUTS.
+
+        Returns:
+            A list of MultiAgentDict, where each item in the list corresponds to one
+            env timestep defined via `indices`.
+        """
+
         # Collect indices for each agent first, so we can construct the list in
         # the next step.
         agent_indices = {}
-        agent_id = None
         for agent_id in self.agent_episodes.keys():
             if agent_id not in agent_ids:
                 continue
             agent_indices[agent_id] = self.env_t_to_agent_t[agent_id].get(
                 indices,
                 neg_indices_left_of_zero=neg_indices_left_of_zero,
-                fill=self.SKIP_ENV_TS_TAG,  # if fill is not None else None,
+                fill=self.SKIP_ENV_TS_TAG,
                 # For those records where there is no "hanging" last timestep (all
                 # other than obs and infos), we have to ignore the last entry in
                 # the env_t_to_agent_t mappings.
@@ -1772,7 +1819,56 @@ class MultiAgentEpisode:
         fill,
         one_hot_discrete,
         extra_model_outputs_key,
-    ):
+    ) -> MultiAgentDict:
+        """Returns data from the episode based on env step indices, as a MultiAgentDict.
+
+        The returned dict maps AgentID keys to individual or batched values, where the
+        batch size matches the env timesteps defined via `indices`.
+
+        Args:
+            what: A (str) descriptor of what data to collect. Must be one of
+                "observations", "infos", "actions", "rewards", or "extra_model_outputs".
+            indices: A single int is interpreted as an index, from which to return the
+                individual data stored at this (env step) index.
+                A list of ints is interpreted as a list of indices from which to gather
+                individual data in a batch of size len(indices).
+                A slice object is interpreted as a range of data to be returned.
+                Thereby, negative indices by default are interpreted as "before the end"
+                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                negative indices are interpreted as "before ts=0", meaning going back
+                into the lookback buffer.
+            agent_ids: A collection of AgentIDs to filter for. Only data for those
+                agents will be returned, all other agents will be ignored.
+            neg_indices_left_of_zero: If True, negative values in `indices` are
+                interpreted as "before ts=0", meaning going back into the lookback
+                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
+                where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
+                respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
+                `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+            fill: An optional float value to use for filling up the returned results at
+                the boundaries. This filling only happens if the requested index range's
+                start/stop boundaries exceed the buffer's boundaries (including the
+                lookback buffer on the left side). This comes in very handy, if users
+                don't want to worry about reaching such boundaries and want to zero-pad.
+                For example, a buffer with data [10, 11,  12, 13, 14] and lookback
+                buffer size of 2 (meaning `10` and `11` are part of the lookback buffer)
+                will respond to `indices=slice(-7, -2)` and `fill=0.0`
+                with `[0.0, 0.0, 10, 11, 12]`.
+            one_hot_discrete: If True, will return one-hot vectors (instead of
+                int-values) for those sub-components of a (possibly complex) space
+                that are Discrete or MultiDiscrete. Note that if `fill=0` and the
+                requested `indices` are out of the range of our data, the returned
+                one-hot vectors will actually be zero-hot (all slots zero).
+            extra_model_outputs_key: Only if what is "extra_model_outputs", this
+                specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
+                STATE_OUT or ACTION_DIST_INPUTS.
+
+        Returns:
+            A single MultiAgentDict with individual leaf-values (in case `indices` is an
+            int), or batched leaf-data (in case `indices` is a list of ints or a slice
+            object). In the latter case, the batch size matches the env timesteps
+            defined via `indices`.
+        """
         ignore_last_ts = what not in ["observations", "infos"]
         ret = {}
         for agent_id, sa_episode in self.agent_episodes.items():

@@ -525,9 +525,6 @@ def make_multi_agent(
             self._action_space_in_preferred_format = True
             self._agent_ids = set(range(num))
 
-            # TEST
-            self._ts = {a: 0 for a in self._agent_ids}
-
         @override(MultiAgentEnv)
         def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
             self.terminateds = set()
@@ -536,18 +533,11 @@ def make_multi_agent(
             for i, env in enumerate(self.envs):
                 obs[i], infos[i] = env.reset(seed=seed, options=options)
 
-            # TEST
-            self._ts = {a: 0 for a in self._agent_ids}
-
             return obs, infos
 
         @override(MultiAgentEnv)
         def step(self, action_dict):
             obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
-
-            # TEST
-            for a in action_dict.keys():
-                self._ts[a] += 1
 
             # the environment is expecting action for at least one agent
             if len(action_dict) == 0:
