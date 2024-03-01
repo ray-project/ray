@@ -28,7 +28,6 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
 from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
 from ray.train.constants import _get_ray_train_session_dir
@@ -420,15 +419,6 @@ class StorageContext:
         from ray.tune.utils import date_str
 
         self.custom_fs_provided = storage_filesystem is not None
-
-        # If no remote path is set, try to get Ray Storage URI
-        ray_storage_uri: Optional[str] = _get_storage_uri()
-        if ray_storage_uri is not None:
-            logger.info(
-                "Using configured Ray Storage URI as the `storage_path`: "
-                f"{ray_storage_uri}"
-            )
-            storage_path = ray_storage_uri
 
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.

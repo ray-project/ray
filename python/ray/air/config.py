@@ -16,6 +16,7 @@ from typing import (
 
 import pyarrow.fs
 
+from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
@@ -638,8 +639,16 @@ class RunConfig:
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if self.storage_path is None:
-
             self.storage_path = DEFAULT_STORAGE_PATH
+
+            # If no remote path is set, try to get Ray Storage URI
+            ray_storage_uri: Optional[str] = _get_storage_uri()
+            if ray_storage_uri is not None:
+                logger.info(
+                    "Using configured Ray Storage URI as the `storage_path`: "
+                    f"{ray_storage_uri}"
+                )
+                self.storage_path = ray_storage_uri
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
