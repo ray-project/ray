@@ -351,7 +351,7 @@ def configure_component_logger(
     if not RAY_SERVE_LOG_TO_STDERR:
         builtins.print = redirected_print
         sys.stdout = StreamToLogger(logger, logging.INFO)
-        sys.stderr = StreamToLogger(logger, logging.ERROR)
+        sys.stderr = StreamToLogger(logger, logging.INFO)
 
     logger.addHandler(file_handler)
 
