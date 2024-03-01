@@ -64,7 +64,7 @@ def _get_wheel_names(ray_version: str) -> List[str]:
             for ray_type in RAY_TYPES:
                 wheel_name = f"{ray_type}-{ray_version}-{python_version}-{platform}"
                 wheel_names.append(wheel_name)
-    return sorted(wheel_names)
+    return wheel_names
 
 
 def download_wheel_from_s3(key: str, directory_path: str) -> Tuple[bool, str]:
