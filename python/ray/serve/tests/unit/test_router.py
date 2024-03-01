@@ -170,8 +170,8 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
         # TODO(edoakes): just pass a class instance here.
         _router_cls="ray.serve.tests.unit.test_router.FakeReplicaScheduler",
         enable_queue_len_cache=request.param.get("enable_queue_len_cache", False),
-        enable_strict_max_concurrent_queries=request.param.get(
-            "enable_strict_max_concurrent_queries", False
+        enable_strict_max_ongoing_requests=request.param.get(
+            "enable_strict_max_ongoing_requests", False
         ),
     )
     return router, router._replica_scheduler
@@ -204,11 +204,11 @@ class TestAssignRequest:
         "setup_router",
         [
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": False,
             },
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": True,
             },
         ],
@@ -247,11 +247,11 @@ class TestAssignRequest:
         "setup_router",
         [
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": False,
             },
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": True,
             },
         ],
@@ -299,9 +299,7 @@ class TestAssignRequest:
 
     @pytest.mark.parametrize(
         "setup_router",
-        [
-            {"enable_strict_max_concurrent_queries": True},
-        ],
+        [{"enable_strict_max_ongoing_requests": True}],
         indirect=True,
     )
     async def test_cross_lang_no_rejection(
@@ -502,7 +500,7 @@ def running_replica_info(replica_tag: str) -> RunningReplicaInfo:
         node_id="node_id",
         availability_zone="some-az",
         actor_handle=Mock(),
-        max_concurrent_queries=1,
+        max_ongoing_requests=1,
     )
 
 

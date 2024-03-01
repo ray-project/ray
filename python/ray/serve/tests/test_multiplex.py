@@ -440,7 +440,7 @@ def test_multiplexed_multiple_replicas(serve_instance):
     """Test multiplexed traffic can be sent to multiple replicas"""
     signal = SignalActor.remote()
 
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=2, max_ongoing_requests=1)
     class Model:
         @serve.multiplexed(max_num_models_per_replica=2)
         async def get_model(self, tag):
