@@ -192,6 +192,9 @@ class FileBasedDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
+        from ray.data._internal.delegating_block_builder import (
+            DelegatingBlockBuilder,
+        )
 
         ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
@@ -223,6 +226,7 @@ class FileBasedDatasource(Datasource):
 
             DataContext._set_current(ctx)
             fs = _unwrap_s3_serialization_workaround(filesystem)
+            builder = DelegatingBlockBuilder()
             for read_path in read_paths:
                 partitions: Dict[str, str] = {}
                 if partitioning is not None:
@@ -241,7 +245,9 @@ class FileBasedDatasource(Datasource):
                             block = block_accessor.append_column(
                                 "path", [read_path] * block_accessor.num_rows()
                             )
-                        yield block
+                        builder.add(block)
+
+            yield builder.build()
 
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():
@@ -273,7 +279,8 @@ class FileBasedDatasource(Datasource):
 
         read_tasks = []
         for read_paths, file_sizes in zip(
-            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
+            np.array_split(paths, parallelism),
+            np.array_split(file_sizes, parallelism),
         ):
             if len(read_paths) <= 0:
                 continue
@@ -455,7 +462,7 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
 
 
 def _unwrap_s3_serialization_workaround(
-    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"]
+    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
 ):
     if isinstance(filesystem, _S3FileSystemWrapper):
         return filesystem.unwrap()
