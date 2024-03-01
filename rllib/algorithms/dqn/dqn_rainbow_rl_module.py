@@ -44,10 +44,14 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             self.v_max: float = self.config.model_config_dict.get("v_max")
         # In case of noisy networks no need for epsilon greedy (see DQN Rainbow
         # paper).
-        if not self.uses_noisy:
+        if True:  # not self.uses_noisy:
             # The epsilon scheduler for epsilon greedy exploration.
+            # self.epsilon_schedule = Scheduler(
+            #     self.config.model_config_dict["epsilon"], framework=self.framework
+            # )
             self.epsilon_schedule = Scheduler(
-                self.config.model_config_dict["epsilon"], framework=self.framework
+                fixed_value_or_schedule=[[0, 1.0], [10000, 0.2]],
+                framework=self.framework,
             )
 
         # Build the encoder for the advantage and value streams. Note,

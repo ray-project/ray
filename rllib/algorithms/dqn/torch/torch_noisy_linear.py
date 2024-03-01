@@ -104,7 +104,7 @@ class NoisyLinear(nn.Linear):
         self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
         # If bias is used initial these parameters, too.
         if self.bias_mu is not None:
-            self.bias_mu.data.uniform_(-mu_range, mu_range)
+            self.bias_mu.data.zero_()  # (-mu_range, mu_range)
             self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
 
     def reset_noise(self) -> None:
@@ -122,8 +122,10 @@ class NoisyLinear(nn.Linear):
         return x.sign().mul_(x.abs().sqrt_())
 
     def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+        # If in training reset the noise for each call to produce variation.
         if self.training:
             self.reset_noise()
+        # Then call the super's forward method.
         return super().forward(tensor)
 
     @property

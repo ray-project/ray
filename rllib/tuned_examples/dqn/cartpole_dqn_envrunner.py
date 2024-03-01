@@ -15,7 +15,9 @@ config = (
         model={
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
-            "epsilon": 0.1,
+            "epsilon": 0.2,
+            "fcnet_weights_initializer": "xavier_uniform_",
+            "post_fcnet_weights_initializer": "xavier_uniform_",
         },
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
@@ -33,7 +35,7 @@ config = (
 
 stop = {
     "sampler_results/episode_reward_mean": 100,
-    "timesteps_total": 10000,
+    "timesteps_total": 100000,
 }
 
 

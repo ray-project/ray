@@ -110,7 +110,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 .long(),
             ).squeeze(dim=1)
             # Get the probabilies for the maximum Q-value(s).
-            probs_q_next_best = torch.gather(
+            q_probs_next_best = torch.gather(
                 fwd_out[QF_TARGET_NEXT_PROBS],
                 dim=1,
                 # Change the view and then expand to get to the dimensions
@@ -156,8 +156,8 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 upper_bound.long(), self.config.num_atoms
             )
             # (32, 10)
-            ml_delta = probs_q_next_best * (upper_bound - b + floor_equal_ceil)
-            mu_delta = probs_q_next_best * (b - lower_bound)
+            ml_delta = q_probs_next_best * (upper_bound - b + floor_equal_ceil)
+            mu_delta = q_probs_next_best * (b - lower_bound)
             # (32, 10)
             ml_delta = torch.sum(lower_projection * ml_delta.unsqueeze(dim=-1), dim=1)
             mu_delta = torch.sum(upper_projection * mu_delta.unsqueeze(dim=-1), dim=1)
@@ -211,7 +211,19 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 module_id,
                 {
                     ATOMS: z,
-                    QF_PROBS: torch.mean(fwd_out[QF_PROBS], dim=0),
+                    "dist_diff": torch.mean(
+                        torch.abs(
+                            torch.diff(
+                                torch.sum(fwd_out[QF_PROBS].mean(dim=0) * z, dim=1)
+                            )
+                        )
+                    ),
+                    "dist_total_variation_distance": torch.diff(
+                        fwd_out[QF_PROBS].mean(dim=0), dim=0
+                    )
+                    .abs()
+                    .sum()
+                    * 0.5,
                 },
             )
 

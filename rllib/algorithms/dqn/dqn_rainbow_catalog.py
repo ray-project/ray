@@ -181,7 +181,8 @@ class DQNRainbowCatalog(Catalog):
                 return NoisyMLPEncoderConfig(
                     input_dims=observation_space.shape,
                     hidden_layer_dims=af_and_vf_encoder_hiddens,
-                    hidden_layer_activation=model_config_dict["fcnet_activation"],
+                    hidden_layer_activation="relu",
+                    # model_config_dict["fcnet_activation"],
                     # TODO (simon): Not yet available.
                     # hidden_layer_use_layernorm=self._model_config_dict[
                     #     "hidden_layer_use_layernorm"
@@ -201,6 +202,7 @@ class DQNRainbowCatalog(Catalog):
                     hidden_layer_bias_initializer_config=model_config_dict[
                         "fcnet_bias_initializer_config"
                     ],
+                    # Note, `"post_fcnet_activation"` is `"relu"` by definition.
                     output_layer_activation=model_config_dict["post_fcnet_activation"],
                     output_layer_dim=latent_dims[0],
                     # TODO (simon): Not yet available.
@@ -254,6 +256,7 @@ class DQNRainbowCatalog(Catalog):
         return config_cls(
             input_dims=self.latent_dims,
             hidden_layer_dims=self._model_config_dict["post_fcnet_hiddens"],
+            # Note, `"post_fcnet_activation"` is `"relu"` by definition.
             hidden_layer_activation=self._model_config_dict["post_fcnet_activation"],
             # TODO (simon): Not yet available.
             # hidden_layer_use_layernorm=self._model_config_dict[

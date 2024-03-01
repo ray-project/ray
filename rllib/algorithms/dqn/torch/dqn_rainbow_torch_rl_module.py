@@ -68,7 +68,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # In case of noisy networks the parameter noise is sufficient for
         # variation in exploration.
-        if self.uses_noisy:
+        if False:  # self.uses_noisy:
             # Use the exploitation action (coming from the noisy network).
             output[SampleBatch.ACTIONS] = exploit_actions
         # Otherwise we need epsilon greedy to support exploration.
@@ -77,7 +77,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             # Update scheduler.
             self.epsilon_schedule.update(t)
             # Get the actual epsilon,
-            epsilon = self.epsilon_scheduler.get_current_value()
+            epsilon = self.epsilon_schedule.get_current_value()
             # Apply epsilon-greedy exploration.
             B = qf_outs[QF_PREDS].shape[0]
             random_actions = torch.squeeze(
