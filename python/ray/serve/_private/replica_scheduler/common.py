@@ -60,7 +60,7 @@ class ReplicaWrapper(ABC):
         pass
 
     @property
-    def max_concurrent_requests(self) -> int:
+    def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
         pass
 
@@ -73,6 +73,22 @@ class ReplicaWrapper(ABC):
 
     def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
         """Send request to this replica."""
+        pass
+
+    async def send_request_with_rejection(
+        self,
+        pr: PendingRequest,
+    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
+        """Send request to this replica.
+
+        The replica will yield a system message (ReplicaQueueLengthInfo) before
+        executing the actual request. This can cause it to reject the request.
+
+        The result will *always* be a generator, so for non-streaming requests it's up
+        to the caller to resolve it to its first (and only) ObjectRef.
+
+        Only supported for Python replicas.
+        """
         pass
 
 
@@ -103,8 +119,8 @@ class ActorReplicaWrapper:
         return self._multiplexed_model_ids
 
     @property
-    def max_concurrent_requests(self) -> int:
-        return self._replica_info.max_concurrent_queries
+    def max_ongoing_requests(self) -> int:
+        return self._replica_info.max_ongoing_requests
 
     @property
     def is_cross_language(self) -> bool:
@@ -173,23 +189,23 @@ class ActorReplicaWrapper:
     async def send_request_with_rejection(
         self,
         pr: PendingRequest,
-    ) -> Tuple[Optional[Union[ObjectRef, ObjectRefGenerator]], ReplicaQueueLengthInfo]:
+    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
         assert (
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
+
         obj_ref_gen = self._send_request_python(pr, with_rejection=True)
+        try:
+            first_ref = await obj_ref_gen.__anext__()
+            queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
 
-        first_ref = await obj_ref_gen.__anext__()
-        queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
-
-        if not queue_len_info.accepted:
-            return None, queue_len_info
-        elif pr.metadata.is_streaming:
-            return obj_ref_gen, queue_len_info
-        else:
-            # For non-streaming requests, resolve the generator to its next
-            # object ref, which will contain the unary response.
-            return await obj_ref_gen.__anext__(), queue_len_info
+            if not queue_len_info.accepted:
+                return None, queue_len_info
+            else:
+                return obj_ref_gen, queue_len_info
+        except asyncio.CancelledError as e:
+            ray.cancel(obj_ref_gen)
+            raise e from None
 
 
 @dataclass(frozen=True)
@@ -249,7 +265,7 @@ class ReplicaScheduler(ABC):
         pass
 
     @abstractmethod
-    def update_replicas(self, replicas: List[ActorReplicaWrapper]):
+    def update_replicas(self, replicas: List[ReplicaWrapper]):
         pass
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):

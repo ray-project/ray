@@ -12,9 +12,11 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -61,6 +63,8 @@ NUM_CPUS_FOR_META_FETCH_TASK = 0.5
 RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
 # Maximum number of retries for metadata prefetching task due to transient errors.
 RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
+# Maximum retry back-off interval in seconds for failed metadata prefetching task.
+RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -200,12 +204,20 @@ class ParquetDatasource(Datasource):
             dataset_kwargs = {}
 
         try:
-            pq_ds = pq.ParquetDataset(
-                paths,
-                **dataset_kwargs,
-                filesystem=filesystem,
-                use_legacy_dataset=False,
-            )
+            # The `use_legacy_dataset` parameter is deprecated in Arrow 15.
+            if parse_version(_get_pyarrow_version()) >= parse_version("15.0.0"):
+                pq_ds = pq.ParquetDataset(
+                    paths,
+                    **dataset_kwargs,
+                    filesystem=filesystem,
+                )
+            else:
+                pq_ds = pq.ParquetDataset(
+                    paths,
+                    **dataset_kwargs,
+                    filesystem=filesystem,
+                    use_legacy_dataset=False,
+                )
         except OSError as e:
             _handle_read_os_error(e, paths)
         if schema is None:
@@ -516,6 +528,7 @@ def _fetch_metadata_serialization_wrapper(
     fragments: List[_SerializedFragment],
     retry_match: Optional[List[str]],
     retry_max_attempts: int,
+    retry_max_interval: int,
 ) -> List["pyarrow.parquet.FileMetaData"]:
     deserialized_fragments = _deserialize_fragments_with_retry(fragments)
     try:
@@ -524,6 +537,7 @@ def _fetch_metadata_serialization_wrapper(
             description="fetch metdata",
             match=retry_match,
             max_attempts=retry_max_attempts,
+            max_backoff_s=retry_max_interval,
         )
     except OSError as e:
         raise RuntimeError(
@@ -536,7 +550,17 @@ def _fetch_metadata_serialization_wrapper(
             "```\n"
             "ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
             "```\n"
-            "\n"
+            "To increase the maximum retry backoff interval, configure "
+            "`RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK`. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
+            "```\n"
+            "If the error continues to occur, you can also try decresasing the "
+            "concurency of metadata fetching tasks by setting "
+            "`NUM_CPUS_FOR_META_FETCH_TASK` to a larger value. For example:\n"
+            "```\n"
+            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n"  # noqa: E501
+            "```\n"
             "To change which exceptions to retry on, set "
             "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
             "example:\n"

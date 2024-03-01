@@ -1,13 +1,16 @@
 group: Validate wheels
 steps:
-  - name: forge
-    wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
+  - block: "Validate Ray wheels from TestPyPI"
+    depends_on: 
+      - forge
+      - forge_arm64
 
   - label: "Linux x86_64 Python {{matrix}}"
-    depends_on: forge
     job_env: forge
     commands:
       - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_HASH="$RAY_HASH"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.8"
@@ -15,16 +18,13 @@ steps:
       - "3.10"
       - "3.11"
 
-  - name: forge_arm64
-    wanda: .buildkite/release-automation/forge_arm64.wanda.yaml
-    instance_type: builder-arm64
-
   - label: "Linux arm64 Python {{matrix}}"
-    depends_on: forge_arm64
     instance_type: medium-arm64
     job_env: forge-arm64
     commands:
       - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_HASH="$RAY_HASH"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.8"

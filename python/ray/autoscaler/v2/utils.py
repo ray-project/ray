@@ -77,10 +77,12 @@ class ProtobufUtil:
         Returns:
             dict: the dict
         """
-        from google.protobuf.json_format import MessageToDict
+        from ray._private.protobuf_compat import message_to_dict
 
-        return MessageToDict(
-            proto, preserving_proto_field_name=True, including_default_value_fields=True
+        return message_to_dict(
+            proto,
+            preserving_proto_field_name=True,
+            always_print_fields_with_no_presence=True,
         )
 
     @staticmethod

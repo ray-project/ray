@@ -1,9 +1,10 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, NamedTuple, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from ray.actor import ActorHandle
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
@@ -22,26 +23,18 @@ from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.grpc_util import RayServegRPCContext
 
 
-class DeploymentID(NamedTuple):
+@dataclass(frozen=True)
+class DeploymentID:
     name: str
-    app: str
+    app_name: str = SERVE_DEFAULT_APP_NAME
 
     def __str__(self):
-        # TODO(zcin): remove this once we no longer use the concatenated
-        # string for metrics
-        if self.app:
-            return f"{self.app}_{self.name}"
-        else:
-            return self.name
+        return f"{self.app_name}_{self.name}"
 
     def to_replica_actor_class_name(self):
-        if self.app:
-            return f"ServeReplica:{self.app}:{self.name}"
-        else:
-            return f"ServeReplica:{self.name}"
+        return f"ServeReplica:{self.app_name}:{self.name}"
 
 
-EndpointTag = DeploymentID
 ReplicaTag = str
 NodeId = str
 Duration = float
@@ -61,6 +54,7 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
+    PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
 class ApplicationStatus(str, Enum):
@@ -543,7 +537,7 @@ class ReplicaName:
 
     @property
     def deployment_id(self):
-        return DeploymentID(self.deployment_name, self.app_name)
+        return DeploymentID(name=self.deployment_name, app_name=self.app_name)
 
     @staticmethod
     def is_replica_name(actor_name: str) -> bool:
@@ -584,7 +578,7 @@ class RunningReplicaInfo:
     node_id: Optional[str]
     availability_zone: Optional[str]
     actor_handle: ActorHandle
-    max_concurrent_queries: int
+    max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
 
@@ -602,7 +596,7 @@ class RunningReplicaInfo:
                     self.replica_tag,
                     self.node_id if self.node_id else "",
                     str(self.actor_handle._actor_id),
-                    str(self.max_concurrent_queries),
+                    str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                 ]

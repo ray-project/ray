@@ -70,7 +70,3 @@ steps:
   - name: docgpubuild
     wanda: ci/docker/docgpu.build.wanda.yaml
     depends_on: oss-ci-base_gpu
-
-  - name: windowsbuild
-    wanda: ci/docker/windows.build.wanda.yaml
-    instance_type: builder-windows

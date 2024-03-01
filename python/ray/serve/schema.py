@@ -12,6 +12,7 @@ from ray._private.pydantic_compat import (
     Extra,
     Field,
     PositiveInt,
+    StrictInt,
     root_validator,
     validator,
 )
@@ -26,6 +27,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
+    DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
@@ -318,10 +320,27 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     max_concurrent_queries: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "The max number of pending queries in a single replica. "
-            "Uses a default if null."
+            "[DEPRECATED] The max number of requests that will be executed at once in "
+            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
         ),
         gt=0,
+    )
+    max_ongoing_requests: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Maximum number of requests that are sent in parallel "
+            "to each replica of this deployment. The limit is enforced across all "
+            "callers (HTTP requests or DeploymentHandles). Defaults to "
+            f"{DEFAULT_MAX_ONGOING_REQUESTS}."
+        ),
+        gt=0,
+    )
+    max_queued_requests: StrictInt = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "[DEPRECATED] The max number of requests that will be executed at once in "
+            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
+        ),
     )
     user_config: Optional[Dict] = Field(
         default=DEFAULT.VALUE,
@@ -404,10 +423,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "[EXPERIMENTAL] The max number of deployment replicas can "
-            "run on a single node. Valid values are None (no limitation) "
-            "or an integer in the range of [1, 100]. "
-            "Defaults to no limitation."
+            "The max number of replicas of this deployment that can run on a single "
+            "Valid values are None (default, no limit) or an integer in the range of "
+            "[1, 100]. "
         ),
     )
     logging_config: LoggingConfig = Field(
@@ -416,7 +434,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     )
 
     @root_validator
-    def num_replicas_and_autoscaling_config(cls, values):
+    def validate_num_replicas_and_autoscaling_config(cls, values):
         num_replicas = values.get("num_replicas", None)
         autoscaling_config = values.get("autoscaling_config", None)
 
@@ -437,11 +455,24 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
         return values
 
+    @root_validator
+    def validate_max_queued_requests(cls, values):
+        max_queued_requests = values.get("max_queued_requests", None)
+        if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
+            return values
+
+        if max_queued_requests < 1 and max_queued_requests != -1:
+            raise ValueError(
+                "max_queued_requests must be -1 (no limit) or a positive integer."
+            )
+
+        return values
+
     deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
     )
 
-    def get_user_configured_option_names(self) -> Set[str]:
+    def _get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
 
         Any field not set to DEFAULT.VALUE is considered a user-configured option.
@@ -462,7 +493,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
     schema = DeploymentSchema(
         name=name,
-        max_concurrent_queries=info.deployment_config.max_concurrent_queries,
+        max_concurrent_queries=info.deployment_config.max_ongoing_requests,
+        max_ongoing_requests=info.deployment_config.max_ongoing_requests,
+        max_queued_requests=info.deployment_config.max_queued_requests,
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
@@ -1099,7 +1132,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     and "autoscaling_config" in deployment["deployment_config"]
                 ):
                     deployment["deployment_config"]["autoscaling_config"].pop(
-                        "serialized_policy_def", None
+                        "_serialized_policy_def", None
                     )
 
         return values
