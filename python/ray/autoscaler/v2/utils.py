@@ -785,7 +785,7 @@ class ClusterStatusParser:
 cached_is_autoscaler_v2 = None
 
 
-def is_autoscaler_v2() -> bool:
+def is_autoscaler_v2(fetch_from_server: bool = False) -> bool:
     """
     Check if the autoscaler is v2 from reading GCS internal KV.
 
@@ -798,7 +798,7 @@ def is_autoscaler_v2() -> bool:
         Exception: if GCS address could not be resolved (e.g. ray.init() not called)
     """
     # If env var is set to enable autoscaler v2, we should always return True.
-    if ray._config.enable_autoscaler_v2():
+    if ray._config.enable_autoscaler_v2() and not fetch_from_server:
         # TODO(rickyx): Once we migrate completely to v2, we should remove this.
         # While this short-circuit may allow client-server inconsistency
         # (e.g. client running v1, while server running v2), it's currently
@@ -806,7 +806,7 @@ def is_autoscaler_v2() -> bool:
         return True
 
     global cached_is_autoscaler_v2
-    if cached_is_autoscaler_v2 is not None:
+    if cached_is_autoscaler_v2 is not None and not fetch_from_server:
         return cached_is_autoscaler_v2
 
     if not _internal_kv_initialized():
