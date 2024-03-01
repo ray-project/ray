@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+import traceback
 from typing import Optional, Tuple
 
 import ray
@@ -201,6 +202,22 @@ class StreamToLogger(object):
         self.log_level = log_level
         self.linebuf = ""
 
+    @staticmethod
+    def get_stacklevel():
+        """Rewind stack to get the stacklevel for the user code.
+
+        Going from the back of the traceback and traverse until it's no longer in
+        logging_utils.py or site-packages.
+        """
+        reverse_traces = traceback.extract_stack()[::-1]
+        for index, trace in enumerate(reverse_traces):
+            if (
+                "logging_utils.py" not in trace.filename
+                and "site-packages" not in trace.filename
+            ):
+                return index
+        return 1
+
     def write(self, buf):
         temp_linebuf = self.linebuf + buf
         self.linebuf = ""
@@ -209,15 +226,23 @@ class StreamToLogger(object):
             #   On output, if newline is None, any '\n' characters written
             #   are translated to the system default line separator.
             # By default sys.stdout.write() expects '\n' newlines and then
-            # translates them so this is still cross platform.
+            # translates them so this is still cross-platform.
             if line[-1] == "\n":
-                self.logger.log(self.log_level, line.rstrip())
+                self.logger.log(
+                    self.log_level,
+                    line.rstrip(),
+                    stacklevel=self.get_stacklevel(),
+                )
             else:
                 self.linebuf += line
 
     def flush(self):
         if self.linebuf != "":
-            self.logger.log(self.log_level, self.linebuf.rstrip())
+            self.logger.log(
+                self.log_level,
+                self.linebuf.rstrip(),
+                stacklevel=self.get_stacklevel(),
+            )
         self.linebuf = ""
 
     def isatty(self) -> bool:
@@ -229,6 +254,7 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
 
     If the file is set to anything other than stdout, stderr, or None, call the
     builtin print. Else, construct the message and redirect to Serve's logger.
+
     See https://docs.python.org/3/library/functions.html#print
     """
     if file not in [sys.stdout, sys.stderr, None]:
@@ -236,7 +262,8 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
 
     serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
     message = sep.join(map(str, objects)) + end
-    serve_logger.info(message)
+    # We monkey patched print function, so this is always at stack level 2.
+    serve_logger.log(logging.INFO, message, stacklevel=2)
 
 
 def configure_component_logger(

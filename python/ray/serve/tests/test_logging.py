@@ -691,6 +691,10 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     serve.run(app)
     requests.get("http://127.0.0.1:8000")
 
+    def contain_logging_prefix(message: str, from_replica: bool = False) -> bool:
+        logging_prefix = r"^test_logging.py:" if not from_replica else r"^replica.py:"
+        return len(re.findall(logging_prefix, message)) == 1
+
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
     from_print_check = False
@@ -703,17 +707,31 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
             with open(logs_dir / log_file) as f:
                 for line in f:
                     structured_log = json.loads(line)
-                    if "from_serve_logger" in structured_log["message"]:
+                    _message = structured_log["message"]
+                    if "from_serve_logger" in _message and contain_logging_prefix(
+                        _message
+                    ):
                         from_serve_logger_check = True
-                    elif "from_print" in structured_log["message"]:
+                    elif "from_print" in _message and contain_logging_prefix(_message):
                         from_print_check = True
-                    elif "from_error" in structured_log["message"]:
+
+                    # Error was logged from replica directly.
+                    elif "from_error" in _message and contain_logging_prefix(
+                        _message, from_replica=True
+                    ):
                         from_error_check = True
-                    elif "direct_from_stdout" in structured_log["message"]:
+                    elif "direct_from_stdout" in _message and contain_logging_prefix(
+                        _message
+                    ):
                         direct_from_stdout = True
-                    elif "direct_from_stderr" in structured_log["message"]:
+                    elif "direct_from_stderr" in _message and contain_logging_prefix(
+                        _message
+                    ):
                         direct_from_stderr = True
-                    elif "this\nis\nmultiline\nlog\n" in structured_log["message"]:
+                    elif (
+                        "this\nis\nmultiline\nlog\n" in _message
+                        and contain_logging_prefix(_message)
+                    ):
                         multiline_log = True
     assert from_serve_logger_check
     assert from_print_check
