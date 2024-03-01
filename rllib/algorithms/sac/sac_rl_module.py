@@ -20,6 +20,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 CRITIC_TARGET = "critic_target"
 QF_PREDS = "qf_preds"
+QF_NEXT_PREDS = "qf_next_preds"
 QF_TWIN_PREDS = "qf_twin_preds"
 ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 
@@ -33,11 +34,11 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     The policy (actor) contains a state encoder (`pi_encoder`) and
     a head (`pi_head`) that feeds into an action distribution (a
-    squashed Gaussian, i.e. outputs defione the location and the log
+    squashed Gaussian, i.e. outputs define the location and the log
     scale parameters).
 
-    In addition, two (or three in case `twin_q=True`) Q networks are
-    defined, the second one (and third, if `twin_q=True`) of them the
+    In addition, two (or four in case `twin_q=True`) Q networks are
+    defined, the second one (and fourth, if `twin_q=True`) of them the
     Q target network(s). All of these in turn are - similar to the
     policy network - composed of an encoder and a head network. Each of
     the encoders forms a state-action encoding that feeds into the
@@ -61,6 +62,9 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Get the SAC catalog.
         catalog: SACCatalog = self.config.get_catalog()
 
+        # If a twin Q architecture should be used.
+        self.twin_q = self.config.model_config_dict["twin_q"]
+
         # Build the encoder for the policy.
         self.pi_encoder = catalog.build_encoder(framework=self.framework)
 
@@ -74,7 +78,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # and keep only the heads differently?
         self.qf_target_encoder = catalog.build_qf_encoder(framework=self.framework)
         # If necessary, build also a twin Q encoders.
-        if self.config.model_config_dict["twin_q"]:
+        if self.twin_q:
             self.qf_twin_encoder = catalog.build_qf_encoder(framework=self.framework)
             self.qf_target_twin_encoder = catalog.build_qf_encoder(
                 framework=self.framework
@@ -86,14 +90,14 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # The Q target network head is an identical copy of the Q network head.
         self.qf_target = catalog.build_qf_head(framework=self.framework)
         # If necessary build also a twin Q heads.
-        if self.config.model_config_dict["twin_q"]:
+        if self.twin_q:
             self.qf_twin = catalog.build_qf_head(framework=self.framework)
             self.qf_target_twin = catalog.build_qf_head(framework=self.framework)
 
         # We do not want to train the target network.
         self.qf_target_encoder.trainable = False
         self.qf_target.trainable = False
-        if self.config.model_config_dict["twin_q"]:
+        if self.twin_q:
             self.qf_target_twin_encoder.trainable = False
             self.qf_target_twin.trainable = False
 
@@ -158,7 +162,7 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
                 ACTION_DIST_INPUTS_NEXT,
             ]
             + [QF_TWIN_PREDS]
-            if self.config.model_config_dict["twin_q"]
+            if self.twin_q
             else []
         )
 

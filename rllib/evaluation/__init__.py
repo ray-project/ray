@@ -1,4 +1,4 @@
-from ray.rllib.evaluation.episode import Episode, MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.sample_batch_builder import (
     SampleBatchBuilder,
@@ -19,5 +19,4 @@ __all__ = [
     "compute_advantages",
     "collect_metrics",
     "Episode",
-    "MultiAgentEpisode",  # Deprecated -> Use `Episode` instead.
 ]

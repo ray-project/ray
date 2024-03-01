@@ -8,7 +8,7 @@ from ray.rllib.algorithms.dqn.dqn import calculate_rr_weights, DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
@@ -187,7 +187,10 @@ class SACConfig(AlgorithmConfig):
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
-                postprocessed to become sa[discounted sum of R][s t+n] tuples.
+                postprocessed to become sa[discounted sum of R][s t+n] tuples. An
+                integer will be interpreted as a fixed n-step value. In case of a tuple
+                the n-step value will be drawn for each sample in the train batch from
+                a uniform distribution over the  interval defined by the 'n-step'-tuple.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -327,15 +330,23 @@ class SACConfig(AlgorithmConfig):
         super().validate()
 
         # Check rollout_fragment_length to be compatible with n_step.
+        if isinstance(self.n_step, tuple):
+            min_rollout_fragment_length = self.n_step[1]
+        else:
+            min_rollout_fragment_length = self.n_step
+
         if (
             not self.in_evaluation
             and self.rollout_fragment_length != "auto"
-            and self.rollout_fragment_length < self.n_step
+            and self.rollout_fragment_length
+            < min_rollout_fragment_length  # (self.n_step or 1)
         ):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
-                f"smaller than `n_step` ({self.n_step})! "
-                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+                f"smaller than needed for `n_step` ({self.n_step})! If `n_step` is "
+                f"an integer try setting `rollout_fragment_length={self.n_step}`. If "
+                "`n_step` is a tuple, try setting "
+                f"`rollout_fragment_length={self.n_step[1]}`."
             )
 
         if self.use_state_preprocessor != DEPRECATED_VALUE:
@@ -371,7 +382,7 @@ class SACConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step
+            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
         else:
             return self.rollout_fragment_length
 
@@ -449,19 +460,13 @@ class SAC(DQN):
 
         # Run multiple sampling iterations.
         for _ in range(store_weight):
+            # Time sampling.
             with self._timers[SAMPLE_TIMER]:
-                # TODO (simon): Use `sychnronous_parallel_sample()` here.
-                if self.workers.num_remote_workers() <= 0:
-                    episodes: List[SingleAgentEpisode] = [
-                        self.workers.local_worker().sample()
-                    ]
-                else:
-                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
-                        lambda w: w.sample(),
-                        local_worker=False,
-                    )
-
-            episodes = tree.flatten(episodes)
+                # Sample in parallel from workers.
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    uses_new_env_runners=self.config.uses_new_env_runners,
+                )
             # TODO (sven): single- vs multi-agent.
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)

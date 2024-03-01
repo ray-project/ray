@@ -162,10 +162,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- 
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --build-name data14build
+        --build-name data15build
         --parallelism-per-worker 2
     depends_on:
-      - data14build
+      - data15build
       - forge
 
   - label: ":ray: core: dashboard tests"
@@ -232,7 +232,9 @@ steps:
     job_env: forge-aarch64
 
   - label: ":ray: core: minimal tests {{matrix}}"
-    tags: python
+    tags:
+      - python
+      - oss
     instance_type: medium
     commands:
       # validate minimal installation

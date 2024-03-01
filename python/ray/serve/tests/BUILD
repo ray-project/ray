@@ -36,18 +36,10 @@ py_test_module_list(
     "test_deployment_node.py",
     "test_expected_versions.py",
     "test_actor_replica_wrapper.py",
+    "test_max_queued_requests.py",
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
-  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"]
-)
-
-py_test_module_list(
-  files = [
-    "test_cross_language.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "no_windows", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"]
 )
 
@@ -62,7 +54,7 @@ py_test_module_list(
     "test_failure.py",
     "test_handle.py",
     "test_handle_streaming.py",
-    "test_new_handle_api.py",
+    "test_handle_api.py",
     "test_regression.py",
     "test_request_timeout.py",
     "test_cluster.py",
@@ -178,15 +170,6 @@ py_test(
 )
 
 py_test(
-    name = "test_new_handle_api_set_via_env_var",
-    size = "medium",
-    srcs = ["test_new_handle_api_set_via_env_var.py"],
-    env = {"RAY_SERVE_ENABLE_NEW_HANDLE_API": "1"},
-    tags = ["exclusive", "team:serve"],
-    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-)
-
-py_test(
     name = "test_serve_ha",
     srcs = ["test_serve_ha.py"],
     size = "medium",
@@ -194,16 +177,35 @@ py_test(
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
-# Tests enabling queue len caching feature flag.
-# TODO(edoakes): remove this after it's on by default.
+# Tests disabling queue len caching feature flag.
+# TODO(edoakes): remove this after the FF is removed.
 py_test_module_list(
-  name_suffix="_with_queue_len_cache_enabled",
-  env={"RAY_SERVE_ENABLE_QUEUE_LEN_CACHE": "1"},
+  name_suffix="_with_queue_len_cache_disabled",
+  env={"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
   files = [
     "test_autoscaling_policy.py",
+    "test_cancellation.py",
     "test_handle.py",
+    "test_handle_api.py",
     "test_handle_streaming.py",
+    "test_request_timeout.py",
     "test_multiplex.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
+)
+
+# Test old stop-fully-then-start behavior.
+# TODO(zcin): remove this after the old behavior is completely removed
+py_test_module_list(
+  name_suffix="_with_stop_fully_then_start_behavior",
+  env={"RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS": "0"},
+  files = [
+    "test_controller_recovery.py",
+    "test_deploy.py",
+    "test_max_replicas_per_node.py",
   ],
   size = "medium",
   tags = ["exclusive", "no_windows", "team:serve"],

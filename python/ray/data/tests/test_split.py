@@ -337,7 +337,7 @@ def test_split_proportionately(ray_start_regular_shared):
 
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 

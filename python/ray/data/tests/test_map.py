@@ -13,7 +13,9 @@ import pytest
 
 import ray
 from ray.data.context import DataContext
+from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -197,7 +199,7 @@ def test_concurrent_callable_classes(shutdown_only):
         def __call__(self, x):
             raise ValueError
 
-    with pytest.raises(ValueError):
+    with pytest.raises((UserCodeException, ValueError)):
         ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
 
 
@@ -318,7 +320,7 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
             {"col3": 3}
         ]
         # Test dropping non-existent column
-        with pytest.raises(KeyError):
+        with pytest.raises((UserCodeException, KeyError)):
             ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
 
@@ -347,7 +349,7 @@ def test_select_columns(ray_start_regular_shared):
             "col2",
         ]
         # Test selecting a column that is not in the dataset schema
-        with pytest.raises(KeyError):
+        with pytest.raises((UserCodeException, KeyError)):
             each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
 
 
@@ -647,25 +649,6 @@ def test_map_with_memory_resources(shutdown_only):
     max_concurrency = 5
     ray.init(num_cpus=num_blocks, _memory=memory_per_task * max_concurrency)
 
-    @ray.remote
-    class ConcurrencyCounter:
-        def __init__(self):
-            self.concurrency = 0
-            self.max_concurrency = 0
-
-        def inc(self):
-            self.concurrency += 1
-            if self.concurrency > self.max_concurrency:
-                self.max_concurrency = self.concurrency
-            return self.concurrency
-
-        def decr(self):
-            self.concurrency -= 1
-            return self.concurrency
-
-        def get_max_concurrency(self):
-            return self.max_concurrency
-
     concurrency_counter = ConcurrencyCounter.remote()
 
     def map_batches(batch):
@@ -785,11 +768,17 @@ def test_map_batches_batch_zero_copy(
 
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
-    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
-        ds = ds.map_batches(
-            mutate, batch_format="pandas", batch_size=batch_size, zero_copy_batch=True
-        )
-        ds.materialize()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(
+            ValueError, match="tried to mutate a zero-copy read-only batch"
+        ):
+            ds = ds.map_batches(
+                mutate,
+                batch_format="pandas",
+                batch_size=batch_size,
+                zero_copy_batch=True,
+            )
+            ds.materialize()
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -807,15 +796,17 @@ def test_map_batches_block_bundling_auto(
     num_blocks = max(10, 2 * batch_size // block_size)
     ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
     # Confirm that we have the expected number of initial blocks.
-    assert ds.num_blocks() == num_blocks
+    assert ds._plan.initial_num_blocks() == num_blocks
 
     # Blocks should be bundled up to the batch size.
     ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
-    assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+    assert ds1._plan.initial_num_blocks() == math.ceil(
+        num_blocks / max(batch_size // block_size, 1)
+    )
 
     # Blocks should not be bundled up when batch_size is not specified.
     ds2 = ds.map_batches(lambda x: x).materialize()
-    assert ds2.num_blocks() == num_blocks
+    assert ds2._plan.initial_num_blocks() == num_blocks
 
 
 @pytest.mark.parametrize(
@@ -839,11 +830,11 @@ def test_map_batches_block_bundling_skewed_manual(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds.num_blocks() == num_blocks
+    assert ds._plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
 
     # Blocks should be bundled up to the batch size.
-    assert ds.num_blocks() == expected_num_blocks
+    assert ds._plan.initial_num_blocks() == expected_num_blocks
 
 
 BLOCK_BUNDLING_SKEWED_TEST_CASES = [
@@ -865,7 +856,7 @@ def test_map_batches_block_bundling_skewed_auto(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds.num_blocks() == num_blocks
+    assert ds._plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
     curr = 0
     num_out_blocks = 0
@@ -878,7 +869,7 @@ def test_map_batches_block_bundling_skewed_auto(
         num_out_blocks += 1
 
     # Blocks should be bundled up to the batch size.
-    assert ds.num_blocks() == num_out_blocks
+    assert ds._plan.initial_num_blocks() == num_out_blocks
 
 
 def test_map_with_mismatched_columns(ray_start_regular_shared):
@@ -907,7 +898,7 @@ def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds = ds.map_batches(lambda x: [])
     ds = ds.map_batches(lambda x: x)
-    assert ds.num_blocks() == 10, ds
+    assert ds._plan.initial_num_blocks() == 10, ds
 
 
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):

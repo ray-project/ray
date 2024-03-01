@@ -80,7 +80,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         if _debug_limit_execution_to_num_blocks is not None:
             input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
-            logger.get_logger().info(
+            logger.get_logger(log_to_stdout=False).info(
                 f"Limiting execution to {len(input_blocks_list)} map tasks"
             )
         shuffle_map_out = [
@@ -112,7 +112,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         if _debug_limit_execution_to_num_blocks is not None:
             output_num_blocks = _debug_limit_execution_to_num_blocks
-            logger.get_logger().info(
+            logger.get_logger(log_to_stdout=False).info(
                 f"Limiting execution to {output_num_blocks} reduce tasks"
             )
         shuffle_reduce_out = [

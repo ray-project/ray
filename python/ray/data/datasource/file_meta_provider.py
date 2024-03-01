@@ -332,6 +332,9 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         from ray.data.datasource.parquet_datasource import (
             FRAGMENTS_PER_META_FETCH,
             PARALLELIZE_META_FETCH_THRESHOLD,
+            RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
+            RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK,
+            RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK,
             _fetch_metadata,
             _fetch_metadata_serialization_wrapper,
             _SerializedFragment,
@@ -341,10 +344,20 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             # Wrap Parquet fragments in serialization workaround.
             fragments = [_SerializedFragment(fragment) for fragment in fragments]
             # Fetch Parquet metadata in parallel using Ray tasks.
+
+            def fetch_func(fragments):
+                return _fetch_metadata_serialization_wrapper(
+                    fragments,
+                    # Ensure that retry settings are propagated to remote tasks.
+                    retry_match=RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
+                    retry_max_attempts=RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK,
+                    retry_max_interval=RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK,
+                )
+
             return list(
                 _fetch_metadata_parallel(
                     fragments,
-                    _fetch_metadata_serialization_wrapper,
+                    fetch_func,
                     FRAGMENTS_PER_META_FETCH,
                     **ray_remote_args,
                 )
