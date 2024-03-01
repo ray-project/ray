@@ -2705,7 +2705,7 @@
 
 - name: train_multinode_persistence
   group: Train tests
-  working_dir: train_tests/e2e
+  working_dir: train_tests/multinode_persistence
 
   frequency: nightly
   team: ml
