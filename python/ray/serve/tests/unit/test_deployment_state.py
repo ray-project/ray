@@ -54,7 +54,7 @@ from ray.serve._private.utils import (
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
-TEST_DEPLOYMENT_ID = DeploymentID("test_deployment", "test_app")
+TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 
 
 class FakeRemoteFunction:
@@ -344,7 +344,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
         deployment_state = DeploymentState(
-            DeploymentID("name", "my_app"),
+            DeploymentID(name="name", app_name="my_app"),
             mock_long_poll,
             DefaultDeploymentScheduler(
                 cluster_node_info_cache, head_node_id="fake-head-node-id"
@@ -3210,7 +3210,7 @@ class TestActorReplicaWrapper:
             version=deployment_version("1"),
             actor_name="test",
             replica_tag="test_tag",
-            deployment_id=DeploymentID("test_deployment", "test_app"),
+            deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
         )
         assert (
             actor_replica.graceful_shutdown_timeout_s

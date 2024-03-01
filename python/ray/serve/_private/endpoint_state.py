@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from ray import cloudpickle
-from ray.serve._private.common import EndpointInfo, EndpointTag
+from ray.serve._private.common import DeploymentID, EndpointInfo
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
@@ -22,7 +22,7 @@ class EndpointState:
     def __init__(self, kv_store: KVStoreBase, long_poll_host: LongPollHost):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
-        self._endpoints: Dict[EndpointTag, EndpointInfo] = dict()
+        self._endpoints: Dict[DeploymentID, EndpointInfo] = dict()
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
@@ -49,7 +49,7 @@ class EndpointState:
             LongPollNamespace.ROUTE_TABLE, self._endpoints
         )
 
-    def _get_endpoint_for_route(self, route: str) -> Optional[EndpointTag]:
+    def _get_endpoint_for_route(self, route: str) -> Optional[DeploymentID]:
         for endpoint, info in self._endpoints.items():
             if info.route == route:
                 return endpoint
@@ -57,7 +57,7 @@ class EndpointState:
         return None
 
     def update_endpoint(
-        self, endpoint: EndpointTag, endpoint_info: EndpointInfo
+        self, endpoint: DeploymentID, endpoint_info: EndpointInfo
     ) -> None:
         """Create or update the given endpoint.
 
@@ -84,12 +84,12 @@ class EndpointState:
         self._checkpoint()
         self._notify_route_table_changed()
 
-    def get_endpoint_route(self, endpoint: EndpointTag) -> Optional[str]:
+    def get_endpoint_route(self, endpoint: DeploymentID) -> Optional[str]:
         if endpoint in self._endpoints:
             return self._endpoints[endpoint].route
         return None
 
-    def get_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+    def get_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         endpoints = {}
         for endpoint, info in self._endpoints.items():
             endpoints[endpoint] = {
@@ -97,7 +97,7 @@ class EndpointState:
             }
         return endpoints
 
-    def delete_endpoint(self, endpoint: EndpointTag) -> None:
+    def delete_endpoint(self, endpoint: DeploymentID) -> None:
         # This method must be idempotent. We should validate that the
         # specified endpoint exists on the client.
         if endpoint not in self._endpoints:

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -179,12 +179,26 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._target_max_block_size = target_max_block_size
         self._started = False
+        self._in_task_submission_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_output_blocks = None
         self._execution_completed = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    # Override the following 3 methods to correct type hints.
+
+    @property
+    def input_dependencies(self) -> List["PhysicalOperator"]:
+        return super().input_dependencies  # type: ignore
+
+    @property
+    def output_dependencies(self) -> List["PhysicalOperator"]:
+        return super().output_dependencies  # type: ignore
+
+    def post_order_iter(self) -> Iterator["PhysicalOperator"]:
+        return super().post_order_iter()  # type: ignore
 
     @property
     def target_max_block_size(self) -> Optional[int]:
@@ -409,3 +423,15 @@ class PhysicalOperator(Operator):
             under_resource_limits: Whether this operator is under resource limits.
         """
         pass
+
+    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal in backpressure
+        status for stats collection purposes.
+
+        Args:
+            in_backpressure: Value this operator's in_backpressure should be set to.
+        """
+        # only update on change to in_backpressure
+        if self._in_task_submission_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
+            self._in_task_submission_backpressure = in_backpressure

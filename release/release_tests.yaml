@@ -9,10 +9,6 @@
 #  # Provide the working directory which will be uploaded to the cluster
 #  working_dir: example_dir
 #
-#  The number of time we run test on the same commit. This number might be 
-#  overritten by the global pipeline config (whichever is higher)
-#  repeated_run: 5
-#
 #  # How often to run the tests.
 #  # One of [manual, any, multi, nightly, nightly-3x, weekly].
 #  # Descriptions of each frequency (that's not immediately obvious):
@@ -2736,6 +2732,26 @@
 
   alert: default
 
+- name: train_colocate_trainer
+  group: Train tests
+  working_dir: train_tests/colocate_trainer
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod: {}
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 3000
+    script: pytest -v test_colocate_trainer.py -s
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  alert: default
+
 
 ########################
 # RLlib tests
@@ -4072,7 +4088,6 @@
   group: core-daily-test
   team: core
   frequency: nightly
-  repeated_run: 5
   working_dir: microbenchmark
 
   cluster:
@@ -4085,6 +4100,7 @@
 
   variations:
     - __suffix__: aws
+      repeated_run: 5
     - __suffix__: gce
       env: gce
       frequency: manual
