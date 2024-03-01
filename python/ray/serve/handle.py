@@ -218,6 +218,7 @@ class _DeploymentHandleBase:
             self.deployment_name,
             self.app_name,
             handle_options=new_handle_options,
+            _router=self._router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
         )
