@@ -17,6 +17,7 @@ from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune.callback import Callback
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+from ray.util.accelerators import NVIDIA_A100, NVIDIA_TESLA_A10G
 
 
 @pytest.fixture
@@ -46,7 +47,7 @@ def ray_start_heterogenous_cluster():
     """
     cluster = Cluster()
 
-    for accelerator_type in ["A100", "A10G"]:
+    for accelerator_type in [NVIDIA_A100, NVIDIA_TESLA_A10G]:
         for i in range(4):
             cluster.add_node(
                 num_cpus=4,
@@ -352,60 +353,26 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     assert visible_devices == ["0,1,2,3", "0,1,2,3"]
 
 
-@pytest.mark.parametrize("accelerator_type", ["A100", "A10G", None])
-def test_config_accelerator_type(ray_start_heterogenous_cluster, accelerator_type):
-    def train_func(config):
+@pytest.mark.parametrize("num_gpus", [1, 2])
+@pytest.mark.parametrize("accelerator_type", [NVIDIA_A100, NVIDIA_TESLA_A10G, None])
+def test_config_accelerator_type(
+    ray_start_heterogenous_cluster, num_gpus, accelerator_type
+):
+    def train_func():
         # Ensure all workers are scheduled on nodes with specified accelerators
         assigned_resources = ray.get_runtime_context().get_assigned_resources()
-        assert assigned_resources["GPU"] == config["num_gpus"]
+        assert assigned_resources["GPU"] == num_gpus
         if accelerator_type:
-            assert (
-                f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}" in assigned_resources
-            )
+            accelerator_key = f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
+            assert accelerator_key in assigned_resources
 
-    # Single GPU workers
     trainer = DataParallelTrainer(
         train_func,
-        train_loop_config={"num_gpus": 1},
-        scaling_config=ScalingConfig(
-            num_workers=16, use_gpu=True, accelerator_type=accelerator_type
-        ),
-    )
-    trainer.fit()
-
-    # Multi-GPU workers
-    trainer = DataParallelTrainer(
-        train_func,
-        train_loop_config={"num_gpus": 2},
         scaling_config=ScalingConfig(
             num_workers=8,
             use_gpu=True,
             accelerator_type=accelerator_type,
-            resources_per_worker={"GPU": 2},
-        ),
-    )
-    trainer.fit()
-
-
-def test_colocate_trainer_and_rank_0_worker(ray_start_heterogenous_cluster):
-    from ray.util.state import get_node
-
-    rank_0_resource = 100
-
-    def train_func():
-        # Ensure rank 0 worker is scheduled on a highmem node
-        if ray.train.get_context().get_world_rank() == 0:
-            node_id = ray.get_runtime_context().get_node_id()
-            node_resources = get_node(node_id).resources_total
-            assert node_resources["custom_resource"] >= rank_0_resource
-
-    trainer = DataParallelTrainer(
-        train_func,
-        scaling_config=ScalingConfig(
-            num_workers=8,
-            use_gpu=True,
-            accelerator_type="A100",
-            trainer_resources={"custom_resource": rank_0_resource},
+            resources_per_worker={"GPU": num_gpus},
         ),
     )
     trainer.fit()

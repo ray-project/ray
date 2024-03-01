@@ -155,6 +155,10 @@ def test_scaling_config_accelerator_type():
     assert scaling_config.additional_resources_per_worker == {
         "accelerator_type:A100": 0.001
     }
+    assert scaling_config.as_placement_group_factory().bundles == [
+        {"GPU": 1, "accelerator_type:A100": 0.002, "CPU": 1},
+        {"GPU": 1, "accelerator_type:A100": 0.001},
+    ]
 
     # With resources_per_worker
     scaling_config = ScalingConfig(
@@ -176,6 +180,10 @@ def test_scaling_config_accelerator_type():
         "custom_resource": 1,
         "accelerator_type:A100": 0.001,
     }
+    assert scaling_config.as_placement_group_factory().bundles == [
+        {"GPU": 1, "custom_resource": 1, "accelerator_type:A100": 0.002, "CPU": 1},
+        {"GPU": 1, "custom_resource": 1, "accelerator_type:A100": 0.001},
+    ]
 
     # With trainer_resources
     scaling_config = ScalingConfig(
@@ -195,6 +203,10 @@ def test_scaling_config_accelerator_type():
     assert scaling_config.additional_resources_per_worker == {
         "accelerator_type:A100": 0.001
     }
+    assert scaling_config.as_placement_group_factory().bundles == [
+        {"GPU": 1, "accelerator_type:A100": 0.002, "memory": 10 * 1024**3},
+        {"GPU": 1, "accelerator_type:A100": 0.001},
+    ]
 
 
 @pytest.mark.parametrize(
