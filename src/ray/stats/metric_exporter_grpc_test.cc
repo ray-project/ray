@@ -25,7 +25,6 @@
 #include "opencensus/stats/stats.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/metric_exporter.h"
-#include "ray/stats/metric_exporter_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
@@ -39,111 +38,6 @@ using opencensus::stats::ViewData;
 using opencensus::stats::ViewDescriptor;
 using opencensus::tags::TagKey;
 using ::testing::UnorderedPointwise;
-
-struct ExpectedPoint {
-  std::string metric_name;
-  // Not recording timestamp because we don't have a way to expect it.
-  double value;
-  std::unordered_map<std::string, std::string> tags;
-
-  constexpr static double epsilion = 0.00001;
-  bool operator==(const ExpectedPoint &rhs) const {
-    return metric_name == rhs.metric_name && fabs(value - rhs.value) < epsilion &&
-           tags == rhs.tags;
-  }
-};
-
-std::ostream &operator<<(std::ostream &os, const ExpectedPoint &point) {
-  os << "{.metric_name=\"" << point.metric_name << "\",.value=" << point.value
-     << ",.tags={";
-  for (const auto &[k, v] : point.tags) {
-    os << "{\"" << k << "\",\"" << v << "\"},";
-  }
-  os << "}";
-  return os;
-}
-
-class MockExporterClientKeepsAll : public MetricExporterClient {
- public:
-  MockExporterClientKeepsAll() {}
-
-  void ReportMetrics(const std::vector<MetricPoint> &points) override {
-    for (const auto &point : points) {
-      points_.push_back({
-          point.metric_name,
-          point.value,
-          point.tags,
-      });
-      RAY_LOG(INFO) << "received metrics " << point.metric_name << ", " << point.timestamp
-                    << ", " << point.value << ", ";
-      for (const auto &[k, v] : point.tags) {
-        RAY_LOG(INFO) << "tag" << k << " = " << v;
-      }
-    }
-  }
-
-  const std::vector<ExpectedPoint> &ReportedMetrics() const { return points_; }
-
- private:
-  std::vector<ExpectedPoint> points_;
-};
-
-const auto method_tag_key = TagKey::Register("grpc_client_method");
-const auto status_tag_key = TagKey::Register("grpc_client_status");
-
-TEST(MetricPointExporterTest, adds_global_tags_to_grpc) {
-  const int MetricsAgentPort = 10054;
-
-  auto measure = MeasureInt64::Register(
-      "grpc.io/client/sent_messages_per_rpc", "Number of messages received per RPC", "1");
-
-  const opencensus::stats::ViewDescriptor view_descriptor =
-      ViewDescriptor()
-          .set_name("grpc.io/client/received_messages_per_rpc/cumulative")
-          .set_measure(measure.GetDescriptor().name())
-          .set_aggregation(Aggregation::Distribution(
-              opencensus::stats::BucketBoundaries::Exponential(17, 1.0, 2.0)))
-          .add_column(method_tag_key);
-
-  view_descriptor.RegisterForExport();
-
-  auto exporter = std::make_shared<MockExporterClientKeepsAll>();
-
-  const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                       {stats::WorkerPidKey, "1000"}};
-  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter, 10);
-
-  opencensus::stats::Record(
-      {{measure, 1}}, {{method_tag_key, "MyService.myMethod"}, {status_tag_key, "OK"}});
-
-  opencensus::stats::DeltaProducer::Get()->Flush();
-  opencensus::stats::StatsExporterImpl::Get()->Export();
-
-  const auto &out_data = exporter->ReportedMetrics();
-
-  // Expected tags:
-  // - "grpc_client_method" as registered in the ViewDescriptor
-  // - NO "grpc_client_status" although it's recorded
-  // - global tags "tagWorkerPid" and "tagLanguage".
-  std::unordered_map<std::string, std::string> expected_tags{
-      {"grpc_client_method", "MyService.myMethod"},
-      {"WorkerPid", "1000"},
-      {"Language", "CPP"}};
-
-  ASSERT_THAT(
-      out_data,
-      testing::UnorderedElementsAre(
-          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.mean",
-                        /*.value=*/1.0,
-                        /*.tags=*/expected_tags},
-          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.min",
-                        /*.value=*/1.0,
-                        /*.tags=*/expected_tags},
-          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.max",
-                        /*.value=*/1.0,
-                        /*.tags=*/expected_tags}));
-  ray::stats::Shutdown();
-}
 
 class MockMetricsAgentClient : public rpc::MetricsAgentClient {
  public:
@@ -176,6 +70,56 @@ class MockMetricsAgentClient : public rpc::MetricsAgentClient {
   std::vector<rpc::ReportMetricsRequest> reportMetricsRequests_;
   std::vector<rpc::ReportOCMetricsRequest> reportOCMetricsRequests_;
 };
+
+const auto method_tag_key = TagKey::Register("grpc_client_method");
+const auto status_tag_key = TagKey::Register("grpc_client_status");
+
+TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
+  const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
+                                       {stats::WorkerPidKey, "1000"}};
+  StatsConfig::instance().SetGlobalTags(global_tags);
+
+  auto measure = MeasureInt64::Register(
+      "grpc.io/client/sent_messages_per_rpc", "Number of messages received per RPC", "1");
+
+  const opencensus::stats::ViewDescriptor view_descriptor =
+      ViewDescriptor()
+          .set_name("grpc.io/client/sent_messages_per_rpc")
+          .set_measure(measure.GetDescriptor().name())
+          .set_aggregation(opencensus::stats::Aggregation::Count())
+          .add_column(method_tag_key);
+
+  view_descriptor.RegisterForExport();
+  opencensus::stats::View view(view_descriptor);
+
+  opencensus::stats::Record({{measure, 1}}, {{method_tag_key, "MyService.myMethod"}});
+
+  opencensus::stats::DeltaProducer::Get()->Flush();
+  opencensus::stats::StatsExporterImpl::Get()->Export();
+
+  const auto view_data = view.GetData();
+  auto mockClient = std::make_shared<MockMetricsAgentClient>();
+  OpenCensusProtoExporter ocProtoExporter(mockClient, WorkerID::Nil(), 1000, 10000);
+
+  rpc::ReportOCMetricsRequest proto;
+
+  ocProtoExporter.ExportViewData({
+      {view_descriptor, view_data},
+  });
+
+  ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 1);
+  std::unordered_map<std::string, std::string> labels;
+  auto metric = mockClient->CollectedReportOCMetricsRequests()[0].metrics()[0];
+  for (size_t i = 0; i < metric.metric_descriptor().label_keys_size(); i++) {
+    labels.emplace(metric.metric_descriptor().label_keys(i).key(),
+                   metric.timeseries(0).label_values(i).value());
+  }
+  std::unordered_map<std::string, std::string> expected_labels = {
+      {method_tag_key.name(), "MyService.myMethod"},
+      {stats::LanguageKey.name(), "CPP"},
+      {stats::WorkerPidKey.name(), "1000"}};
+  ASSERT_EQ(labels, expected_labels);
+}
 
 // Register view
 auto measure =
