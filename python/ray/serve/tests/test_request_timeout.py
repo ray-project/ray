@@ -240,6 +240,7 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
     "ray_instance",
     [
         {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"},
+        {"RAY_SERVE_ENABLE_TASK_EVENTS": "1"},
     ],
     indirect=True,
 )
