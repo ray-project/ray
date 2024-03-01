@@ -21,6 +21,7 @@ RolloutMetrics = DeveloperAPI(
             "episode_reward",
             "episode_duration_s",
             "agent_rewards",
+            "agent_steps",
             "custom_metrics",
             "perf_stats",
             "hist_data",
@@ -30,7 +31,7 @@ RolloutMetrics = DeveloperAPI(
         ],
     )
 )
-RolloutMetrics.__new__.__defaults__ = (0, 0, 0.0, {}, {}, {}, {}, {}, False, {})
+RolloutMetrics.__new__.__defaults__ = (0, 0, 0.0, {}, {}, {}, {}, {}, {}, False, {})
 
 
 def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
@@ -166,6 +167,7 @@ def summarize_episodes(
     episode_rewards = []
     episode_lengths = []
     episode_durations_s = []
+    episode_agent_steps = collections.defaultdict(list)
     policy_rewards = collections.defaultdict(list)
     custom_metrics = collections.defaultdict(list)
     perf_stats = collections.defaultdict(list)
@@ -189,6 +191,8 @@ def summarize_episodes(
         episode_durations_s.append(episode.episode_duration_s)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
+        for agent_id, agent_steps in episode.agent_steps.items():
+            episode_agent_steps[agent_id].append(agent_steps)
         for (_, policy_id), reward in episode.agent_rewards.items():
             if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
@@ -236,6 +240,10 @@ def summarize_episodes(
         # Show as histogram distributions.
         hist_stats["policy_{}_reward".format(policy_id)] = rewards
 
+    episode_agent_steps_mean = {}
+    for agent_id, agent_steps in episode_agent_steps.items():
+        episode_agent_steps_mean[agent_id] = np.mean(agent_steps)
+
     for k, v_list in custom_metrics.copy().items():
         filt = [v for v in v_list if not np.any(np.isnan(v))]
         if keep_custom_metrics:
@@ -265,6 +273,7 @@ def summarize_episodes(
         episode_duration_s_mean=avg_duration_s,
         episode_media=dict(episode_media),
         num_episodes_this_iter=len(new_episodes),
+        episode_agent_steps_mean=episode_agent_steps_mean,
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
         policy_reward_mean=policy_reward_mean,

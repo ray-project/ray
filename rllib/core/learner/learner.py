@@ -791,8 +791,8 @@ class Learner:
         # top-level key.
         module_learner_stats = defaultdict(dict)
         # Add the num agent|env steps trained counts for all modules.
-        module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
+        #module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
+        #module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
 
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 

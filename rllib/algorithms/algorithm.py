@@ -189,6 +189,15 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+@Deprecated(
+    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
+    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
+    error=True,
+)
+def with_common_config(*args, **kwargs):
+    pass
+
+
 @PublicAPI
 class Algorithm(Trainable, AlgorithmBase):
     """An RLlib algorithm responsible for optimizing one or more Policies.
@@ -3186,26 +3195,30 @@ class Algorithm(Trainable, AlgorithmBase):
             tf1.enable_eager_execution()
 
         results = None
+        training_step_results = {}
         episodes_this_iter = []
         # Create a step context ...
         with TrainIterCtx(algo=self) as train_iter_ctx:
             # .. so we can query it whether we should stop the iteration loop (e.g.
             # when we have reached `min_time_s_per_iteration`).
-            while not train_iter_ctx.should_stop(results):
+            while not train_iter_ctx.should_stop(training_step_results):
                 # Try to train one step.
                 with self._timers[TRAINING_ITERATION_TIMER]:
                     # TODO (sven): Add capability to reduce results over different
                     #  iterations.
-                    results = self.training_step()
+                    training_step_results = self.training_step()
 
                     # Collect returned episode metrics from each `trainin_step` call,
                     # so nothing gets lost (in this mode, we do NOT call get_metrics()
                     # here automatically, it has already been done by the
                     # `training_step` method).
-                    if "_episodes_this_training_step" in results:
+                    if "_episodes_this_training_step" in training_step_results:
                         episodes_this_iter.extend(
-                            results.pop("_episodes_this_training_step")
+                            training_step_results.pop("_episodes_this_training_step")
                         )
+
+                    if training_step_results:
+                        results = training_step_results
 
         # With training step done. Try to bring failed workers back.
         self.restore_workers(self.workers)
@@ -3555,6 +3568,11 @@ class Algorithm(Trainable, AlgorithmBase):
     @Deprecated(new="AlgorithmConfig.validate()", error=True)
     def validate_config(self, config):
         pass
+
+
+# TODO: Create a dict that throw a deprecation warning once we have fully moved
+#  to AlgorithmConfig() objects (some algos still missing).
+COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
 
 
 class TrainIterCtx:

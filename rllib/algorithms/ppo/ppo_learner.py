@@ -10,7 +10,6 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.episodes import (
@@ -188,7 +187,7 @@ class PPOLearner(Learner):
     @OverrideToImplementCustomLogic
     def _compute_values(
         self,
-        batch_for_vf: Union[MultiAgentBatch, NestedDict],
+        batch_for_vf: MultiAgentBatch,
     ) -> Union[TensorType, Dict[str, Any]]:
         """Computes the value function predictions for the module being optimized.
 
@@ -205,7 +204,7 @@ class PPOLearner(Learner):
             tensors.
         """
         return {
-            module_id: self.module[module_id]._compute_values(
+            module_id: self.module[module_id].unwrapped()._compute_values(
                 module_batch, self._device
             )
             for module_id, module_batch in batch_for_vf.policy_batches.items()

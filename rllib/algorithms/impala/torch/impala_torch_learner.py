@@ -149,21 +149,3 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         )
         # Return the total loss.
         return total_loss
-
-    @override(ImpalaLearner)
-    def _compute_values(self, batch):
-        infos = batch.pop(SampleBatch.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=self._device)
-        # batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
-        if infos is not None:
-            batch[SampleBatch.INFOS] = infos
-
-        # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
-
-        # Shared encoder.
-        encoder_outs = module.encoder(batch)
-        # Value head.
-        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)

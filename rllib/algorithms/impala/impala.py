@@ -52,6 +52,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
+    LearningRateOrSchedule,
     PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
@@ -203,7 +204,7 @@ class ImpalaConfig(AlgorithmConfig):
         momentum: Optional[float] = NotProvided,
         epsilon: Optional[float] = NotProvided,
         vf_loss_coeff: Optional[float] = NotProvided,
-        entropy_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[LearningRateOrSchedule] = NotProvided,
         entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         _separate_vf_optimizer: Optional[bool] = NotProvided,
         _lr_vf: Optional[float] = NotProvided,
@@ -641,6 +642,12 @@ class Impala(Algorithm):
         env_runners_to_update, episode_refs, env_runner_states, env_runner_metrics = (
             self._training_step_sample_and_get_states()
         )
+        # Increase sampling counters.
+        for rollout_metric in env_runner_metrics:
+            self._counters[NUM_ENV_STEPS_SAMPLED] += rollout_metric.episode_length
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += (
+                sum(s for s in rollout_metric.agent_steps.values())
+            )
 
         # Concatenate single batches into batches of size `train_batch_size`.
         episode_refs_for_learner_group = (
@@ -651,12 +658,14 @@ class Impala(Algorithm):
         learner_state = None
         for to_learner_group in episode_refs_for_learner_group:
             _upd_res = self.learner_group.update_from_episodes(
-                episodes=episode_refs_for_learner_group,
+                episodes=to_learner_group,
                 async_update=True,
                 return_state=True,
                 reduce_fn=_reduce_impala_results,
             )
             # TODO (sven): Add capability to reduce results over different iterations.
+            #  Right now, we are only updating from the last returned async call result
+            #  (w/o reducing over the n async call results).
             if _upd_res:
                 update_results = _upd_res[-1]
 
@@ -664,8 +673,20 @@ class Impala(Algorithm):
         # item in the list representing the (reduced-over-learners) results of a
         # different async update request to all Learners.
         if update_results:
-            learner_state = update_results["_state_after_update"]
+            learner_state = update_results.pop("_state_after_update")
+            #print("vf-1st-bias =", learner_state["module_state"]["default_policy"]["vf.net.mlp.0.bias"][0])
             module_ids_to_update = set(update_results.keys()) - {ALL_MODULES}
+
+            # Update trained steps counters.
+            self._counters[NUM_ENV_STEPS_TRAINED] += (
+                update_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
+            )
+            self._counters[NUM_AGENT_STEPS_TRAINED] += sum(
+                update_results[mid][NUM_AGENT_STEPS_TRAINED]
+                for mid in module_ids_to_update
+            )
+
+            # Perform additional updates on those modules that delivered results.
             additional_update_results = self.learner_group.additional_update(
                 async_update=True,
                 module_ids_to_update=module_ids_to_update,
@@ -682,8 +703,13 @@ class Impala(Algorithm):
                 **self._get_additional_update_kwargs(update_results),
             )
             # TODO (sven): Add capability to reduce results over different iterations.
+            #  Right now, we are only updating from the last returned async call result
+            #  (w/o reducing over the n async call results).
             if additional_update_results:
-                update_results.update(additional_update_results[-1])
+                #print("curr_entropy_coeff =", additional_update_results[-1]["default_policy"]["curr_entropy_coeff"])
+                for key, res in additional_update_results[-1].items():
+                    if key in update_results:
+                        update_results[key].update(res)
 
         # Merge EnvRunner states into local worker's EnvRunner state.
         #TODO: Merge Connector states into local worker, then broadcast from there
@@ -699,9 +725,10 @@ class Impala(Algorithm):
             )
 
         # Add already collected metrics to results for later processing.
-        update_results.update({
-            "_episodes_this_training_step": env_runner_metrics
-        })
+        if env_runner_metrics:
+            update_results.update({
+                "_episodes_this_training_step": env_runner_metrics
+            })
 
         return update_results
 
@@ -1525,10 +1552,10 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
         Final reduced results dict.
     """
     result = tree.map_structure(lambda *x: np.mean(x), *results)
-    agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
-    env_steps_trained = sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
-    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
-    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
+    #agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
+    #env_steps_trained = sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
+    #result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
+    #result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
     return result
 
 
