@@ -804,7 +804,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
   void DelObjectRefStream(const ObjectID &generator_id)
-      ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
+      ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -843,6 +843,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// The lock to protect concurrency problems when
   /// using object ref stream APIs
+  /// TODO(swang): Merge this with the global TaskManager::mu_ and make
+  /// ObjectRefStream a member of submissible_tasks_ to avoid bugs where we
+  /// delete from submissible_tasks_ but not object_ref_streams_, and vice
+  /// versa.
   mutable absl::Mutex object_ref_stream_ops_mu_;
 
   /// Tracks per-task-state counters for metric purposes.

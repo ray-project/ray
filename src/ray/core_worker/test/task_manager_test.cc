@@ -25,6 +25,9 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 
+using ::testing::_;
+using ::testing::Return;
+
 namespace ray {
 namespace core {
 
@@ -101,7 +104,9 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(void, Stop, (), (override));
 
-  MOCK_METHOD(bool, Enabled, (), (const, override));
+  bool Enabled() const override {
+    return false;
+  }
 
   MOCK_METHOD(const std::string, DebugString, (), (override));
 };
@@ -150,6 +155,7 @@ class TaskManagerTest : public ::testing::Test {
   void AssertNoLeaks() {
     absl::MutexLock lock(&manager_.mu_);
     ASSERT_EQ(manager_.submissible_tasks_.size(), 0);
+    ASSERT_EQ(manager_.object_ref_streams_.size(), 0);
     ASSERT_EQ(manager_.num_pending_tasks_, 0);
     ASSERT_EQ(manager_.total_lineage_footprint_bytes_, 0);
   }

@@ -237,6 +237,15 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
         spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
+
+    if (spec.IsStreamingGenerator()) {
+      // As long as the generator ref is in scope, the task may get
+      // re-executed. Therefore, we make the generator ref one of the
+      // reconstructable IDs. Once the generator ref (and all other returns)
+      // has gone out of scope, the task metadata may be erased.
+      const auto generator_id = spec.ReturnId(0);
+      inserted.first->second.reconstructable_return_ids.insert(generator_id);
+    }
   }
 
   RecordTaskStatusEvent(spec.AttemptNumber(),
@@ -440,6 +449,7 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto it = object_ref_streams_.find(generator_id);
   if (it == object_ref_streams_.end()) {
     return;
@@ -717,6 +727,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   TaskSpecification spec;
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;
+  ObjectID generator_id_to_remove;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -759,8 +770,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
 
     // Release the lineage for any non-plasma return objects.
-    // TODO(sang): Remove this logic once streaming generator is the default.
     for (const auto &direct_return_id : direct_return_ids) {
+      if (spec.IsStreamingGenerator() && direct_return_id == spec.ReturnId(0)) {
+        // The first return ID for a generator task is the generator ref. This
+        // is a special ref that contains the actual return refs, so as long as
+        // the generator ref is in scope, the task may be re-executed.
+        // Therefore, we do not erase it from the reconstructable return IDs.
+        continue;
+      }
       RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
                      << direct_return_id << ", now has "
                      << it->second.reconstructable_return_ids.size()
@@ -800,9 +817,18 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
       }
     } else {
+      if (it->second.spec.ReturnsDynamic()) {
+        generator_id_to_remove = it->second.spec.ReturnId(0);
+      }
+      RAY_LOG(DEBUG) << "Erase task " << it->first;
       submissible_tasks_.erase(it);
     }
   }
+
+  if (!generator_id_to_remove.IsNil()) {
+    DelObjectRefStream(generator_id_to_remove);
+  }
+
 
   // If it is a streaming generator, mark the end of stream since the task is finished.
   // We handle this logic here because the lock shouldn't be held while calling
@@ -935,6 +961,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   bool first_execution = false;
   const auto store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
+  ObjectID generator_id_to_remove;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -957,6 +984,12 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
                : *ray_error_info));
     }
+
+    if (it->second.spec.ReturnsDynamic()) {
+      generator_id_to_remove = it->second.spec.ReturnId(0);
+    }
+
+    RAY_LOG(DEBUG) << "Erase task " << it->first;
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -971,13 +1004,17 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       }
       last_log_time_ms_ = current_time_ms();
       if (status != nullptr) {
-        RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
+        RAY_LOG(DEBUG) << "Task failed: " << *status << ": " << spec.DebugString();
       } else {
-        RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
+        RAY_LOG(DEBUG) << "Task failed: " << spec.DebugString();
       }
       RAY_LOG(DEBUG) << "Runtime env for task " << spec.TaskId() << " is "
                      << spec.RuntimeEnvDebugString();
     }
+  }
+
+  if (!generator_id_to_remove.IsNil()) {
+    DelObjectRefStream(generator_id_to_remove);
   }
 
   // The worker failed to execute the task, so it cannot be borrowing any
@@ -1102,51 +1139,61 @@ void TaskManager::RemoveFinishedTaskReferences(
 
 int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *released_objects) {
-  absl::MutexLock lock(&mu_);
-  const int64_t total_lineage_footprint_bytes_prev(total_lineage_footprint_bytes_);
+  int64_t num_lineage_bytes_removed = 0;
+  ObjectID generator_id_to_remove;
+  {
+    absl::MutexLock lock(&mu_);
+    const int64_t total_lineage_footprint_bytes_prev(total_lineage_footprint_bytes_);
 
-  const TaskID &task_id = object_id.TaskId();
-  auto it = submissible_tasks_.find(task_id);
-  if (it == submissible_tasks_.end()) {
-    RAY_LOG(DEBUG) << "No lineage for object " << object_id;
-    return 0;
-  }
+    const TaskID &task_id = object_id.TaskId();
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      RAY_LOG(DEBUG) << "No lineage for object " << object_id;
+      return 0;
+    }
 
-  RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
-  for (const auto &plasma_id : it->second.reconstructable_return_ids) {
-    RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
-  }
-  it->second.reconstructable_return_ids.erase(object_id);
-  RAY_LOG(DEBUG) << "Task " << task_id << " now has "
-                 << it->second.reconstructable_return_ids.size()
-                 << " plasma returns in scope";
+    RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
+    for (const auto &plasma_id : it->second.reconstructable_return_ids) {
+      RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
+    }
+    it->second.reconstructable_return_ids.erase(object_id);
+    RAY_LOG(DEBUG) << "Task " << task_id << " now has "
+                   << it->second.reconstructable_return_ids.size()
+                   << " plasma returns in scope";
 
-  if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
-    // If the task can no longer be retried, decrement the lineage ref count
-    // for each of the task's args.
-    for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
-      if (it->second.spec.ArgByRef(i)) {
-        released_objects->push_back(it->second.spec.ArgId(i));
-      } else {
-        const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
-        for (const auto &inlined_ref : inlined_refs) {
-          released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+    if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
+      // If the task can no longer be retried, decrement the lineage ref count
+      // for each of the task's args.
+      for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
+        if (it->second.spec.ArgByRef(i)) {
+          released_objects->push_back(it->second.spec.ArgId(i));
+        } else {
+          const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
+          for (const auto &inlined_ref : inlined_refs) {
+            released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+          }
         }
       }
+
+      if (it->second.spec.ReturnsDynamic()) {
+        generator_id_to_remove = it->second.spec.ReturnId(0);
+      }
+
+      total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
+      // The task has finished and none of the return IDs are in scope anymore,
+      // so it is safe to remove the task spec.
+      RAY_LOG(DEBUG) << "Erase task " << it->first;
+      submissible_tasks_.erase(it);
     }
 
-    if (!it->second.spec.ReturnsDynamic()) {
-      auto generator_id = it->second.spec.ReturnId(0);
-      DelObjectRefStream(generator_id);
-    }
-
-    total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
-    // The task has finished and none of the return IDs are in scope anymore,
-    // so it is safe to remove the task spec.
-    submissible_tasks_.erase(it);
+    num_lineage_bytes_removed = total_lineage_footprint_bytes_prev - total_lineage_footprint_bytes_;
   }
 
-  return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
+  if (!generator_id_to_remove.IsNil()) {
+    DelObjectRefStream(generator_id_to_remove);
+  }
+
+  return num_lineage_bytes_removed;
 }
 
 bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
