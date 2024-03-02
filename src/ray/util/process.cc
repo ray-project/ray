@@ -371,6 +371,7 @@ Process::Process(const char *argv[],
     if (!ec) {
       this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
     }
+    return this->GetId();
   });
 #else
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
