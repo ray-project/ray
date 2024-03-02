@@ -201,6 +201,7 @@ int main(int argc, char *argv[]) {
   auto enable_subreaper = [&]() {
 #ifdef __linux__
     if (ray::SetThisProcessAsSubreaper()) {
+      ray::KnownChildrenTracker::instance().Enable();
       ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
       auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
       runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },

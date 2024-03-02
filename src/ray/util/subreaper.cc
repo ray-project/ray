@@ -68,7 +68,7 @@ void SigchldHandlerReapZombieAndRemoveKnownChildren(
       RAY_LOG(INFO) << "Child process " << pid << " exited from signal "
                     << WTERMSIG(status);
     }
-    KnownChildrenTracker::instance().removeKnownChild(pid);
+    KnownChildrenTracker::instance().RemoveKnownChild(pid);
   }
 }
 
@@ -102,7 +102,7 @@ void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service)
 // later due to this, we can use pidfd.
 void KillUnknownChildren() {
   auto to_kill =
-      KnownChildrenTracker::instance().listUnknownChildren([]() -> std::vector<pid_t> {
+      KnownChildrenTracker::instance().ListUnknownChildren([]() -> std::vector<pid_t> {
         auto child_procs = GetAllProcsWithPpid(GetPID());
         if (!child_procs) {
           RAY_LOG(FATAL) << "Killing leaked procs not supported on this platform. Only "
@@ -121,19 +121,29 @@ void KillUnknownChildren() {
   }
 }
 
-void KnownChildrenTracker::addKnownChild(std::function<pid_t()> create_child_fn) {
+void KnownChildrenTracker::AddKnownChild(std::function<pid_t()> create_child_fn) {
+  if (!enabled_) {
+    create_child_fn();
+    return;
+  }
   absl::MutexLock lock(&m_);
   pid_t pid = create_child_fn();
   children_.insert(pid);
 }
 
-void KnownChildrenTracker::removeKnownChild(pid_t pid) {
+void KnownChildrenTracker::RemoveKnownChild(pid_t pid) {
+  if (!enabled_) {
+    return;
+  }
   absl::MutexLock lock(&m_);
   children_.erase(pid);
 }
 
-std::vector<pid_t> KnownChildrenTracker::listUnknownChildren(
+std::vector<pid_t> KnownChildrenTracker::ListUnknownChildren(
     std::function<std::vector<pid_t>()> list_pids_fn) {
+  if (!enabled_) {
+    return list_pids_fn();
+  }
   absl::MutexLock lock(&m_);
   std::vector<pid_t> pids = list_pids_fn();
   std::vector<pid_t> result;

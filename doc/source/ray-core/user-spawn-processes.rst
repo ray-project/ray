@@ -1,11 +1,18 @@
 Lifetimes of a User-Spawn Process
 =================================
 
-To avoid leaking user-spawned processes, Ray provides a flag to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch).
+To avoid leaking user-spawned processes, Ray provides mechanisms to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch).
 
-On Linux if the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` is set to ``true`` (default ``false``), Ray kills a user-spawned process when the parent Ray worker process exits, for example when actor is killed. This is recursive, that the grandchildren processes from a user-spawn process are killed as well.
+We have 2 environment variables to handle subprocess killing on core worker exit:
+
+- ``RAY_kill_child_processes_on_worker_exit`` (default ``true``): Only works on Linux. If true, core worker kills all subprocesses on exit. This won't work if the core worker crashed or was killed by a signal. If a process is created as a daemon, e.g. double forked, it will not be killed by this mechanism.
+
+- ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` (default ``false``): Only works on Linux greater than or equal to 3.4. If true, Raylet kills any subprocesses that were spawned by the core worker after the core worker exits. This works even if the core worker crashed or was killed by a signal. Even if a process is created as a daemon, e.g. double forked, it will still be killed by this mechanism. The killing happens within 10 seconds after the core worker death.
+
+Both killings happen recursively, meaning if the core worker spawns user process A, then user process A spawns user process B, on core worker exit (or crash) both A and B are killed.
 
 On non-Linux platforms, user-spawned process is not controlled by Ray. The user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run.
+
 
 .. contents::
   :local:
@@ -20,6 +27,10 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
   import ray
   import psutil
   import subprocess
+  import time
+  import os
+
+  ray.init(_system_config={"kill_child_processes_on_worker_exit_with_raylet_subreaper":True})
 
   @ray.remote
   class MyActor:
@@ -28,35 +39,39 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
 
     def start(self):
       # Start a user process
-      process = subprocess.Popen(["python", "-c", "import time; while True: print('Hello, world!'); time.sleep(1)"])
+      process = subprocess.Popen(["/bin/bash", "-c", "sleep 10000"])
       return process.pid
+
+    def suicide(self):
+      import signal
+      os.kill(os.getpid(), signal.SIGKILL)
+
 
   actor = MyActor.remote()
 
   pid = ray.get(actor.start.remote())
-  # The user process is running
-  assert psutil.pid_exists(pid)
+  assert psutil.pid_exists(pid)  # the subprocess running
 
-  ray.kill(actor)
-  time.sleep(1)
-  # The user process is killed when the actor is killed
+  actor.suicide.remote()  # sigkill'ed, core worker's subprocess killing no longer works
+  time.sleep(11)  # raylet kills orphans every 10s
   assert not psutil.pid_exists(pid)
 
 
 Enabling the feature
 -------------------------
 
-To enable the feature, set the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` to ``true`` **when starting the Ray cluster**, If a Ray cluster is already running, you need to restart the Ray cluster to apply the change. Setting ``env_var`` in a runtime environment will NOT work.
+To enable the subreaper feature, set the environment variable ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` to ``true`` **when starting the Ray cluster**, If a Ray cluster is already running, you need to restart the Ray cluster to apply the change. Setting ``env_var`` in a runtime environment will NOT work.
 
 .. code-block:: bash
 
   RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper=true ray start --head
 
+Another way is to enable it during ``ray.init()`` by adding a ``_system_config`` like this:
 
-Platform support
--------------------------
+.. code-block::
 
-The feature is supported on Linux 3.4 or newer. On other platforms, including Linux<3.4 and MacOS and Windows, the flag is ignored, and the user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run, as if the flag is always disabled.
+  ray.init(_system_config={"kill_child_processes_on_worker_exit_with_raylet_subreaper":True})
+
 
 ⚠️ Caution: Core worker needs to reap zombies
 ----------------------------------------------

@@ -74,8 +74,9 @@ void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service)
 void KillUnknownChildren();
 
 // Thread-safe tracker for owned children. Provides transactional interfaces for creating
-// children and listing children. Only works in Linux. In non-Linux platforms: call the
-// callback and do nothing.
+// children and listing children. Only works in Linux.
+// To avoid useless tracking, it should be enabled by calling `Enable` before use. If not
+// enabled, it's not tracking anything and is a no-op for each method.
 class KnownChildrenTracker {
  public:
   static KnownChildrenTracker &instance() {
@@ -83,22 +84,34 @@ class KnownChildrenTracker {
     return instance;
   }
 
+  // Used in initialization to enable the tracker. NOT thread safe.
+  void Enable() { enabled_ = true; }
+
   // Caller may create a child process within `create_child_fn`.
-  void addKnownChild(std::function<pid_t()> create_child_fn);
+  // if enabled_, adds the child pid to the known `children_`.
+  // if !enabled_, simply calls `create_child_fn` and does nothing.
+  void AddKnownChild(std::function<pid_t()> create_child_fn);
 
   // If the child is not owned, this is a no-op.
-  void removeKnownChild(pid_t pid);
+  // If enabled_, removes the child pid from the known `children_`.
+  // If !enabled_, does nothing.
+  void RemoveKnownChild(pid_t pid);
 
   // Caller may list all processes within `list_all_fn`.
   // Returns the subset of fn-returned pids that are NOT in the known `children_`.
   // Thread safe.
-  std::vector<pid_t> listUnknownChildren(
+  // If enabled_, in a transactional manner, lists the children pids and returns the
+  // pids that are not in the known `children_`.
+  // If !enabled_, simply calls `list_all_fn` and returns all of the results.
+  std::vector<pid_t> ListUnknownChildren(
       std::function<std::vector<pid_t>()> list_pids_fn);
 
  private:
   KnownChildrenTracker() = default;
   ~KnownChildrenTracker() = default;
   RAY_DISALLOW_COPY_AND_ASSIGN(KnownChildrenTracker);
+
+  bool enabled_ = false;
   absl::Mutex m_;
   absl::flat_hash_set<pid_t> children_ ABSL_GUARDED_BY(m_);
 };
