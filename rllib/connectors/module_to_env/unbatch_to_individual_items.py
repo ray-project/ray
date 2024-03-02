@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Any, List, Optional
 
 import tree  # pip install dm_tree
@@ -33,15 +34,15 @@ class UnBatchToIndividualItems(ConnectorV2):
         elif isinstance(memorized_map_structure, list):
             for column, column_data in data.copy().items():
                 column_data = unbatch(column_data)
-                new_column_data = {}
+                new_column_data = defaultdict(list)
                 for i, eps_id in enumerate(memorized_map_structure):
                     # Keys are always tuples to resemble multi-agent keys, which
                     # have the structure (eps_id, agent_id, module_id).
                     key = (eps_id,)
-                    if key not in new_column_data:
-                        new_column_data[key] = []
+                    #if key not in new_column_data:
+                    #    new_column_data[key] = []
                     new_column_data[key].append(column_data[i])
-                data[column] = new_column_data
+                data[column] = dict(new_column_data)
         # Multi-agent case: Memorized structure is dict mapping module_ids to lists of
         # (eps_id, agent_id)-tuples, such that the original individual-items-based form
         # can be constructed.
@@ -53,7 +54,7 @@ class UnBatchToIndividualItems(ConnectorV2):
                     )
                 for column, column_data in module_data.items():
                     column_data = unbatch(column_data)
-                    new_column_data = {}
+                    new_column_data = defaultdict(list)
                     for i, (eps_id, agent_id) in enumerate(
                         memorized_map_structure[module_id]
                     ):
@@ -65,9 +66,7 @@ class UnBatchToIndividualItems(ConnectorV2):
                         if episodes[0].agent_episodes[agent_id].is_done:
                             continue
 
-                        if key not in new_column_data:
-                            new_column_data[key] = []
                         new_column_data[key].append(column_data[i])
-                    module_data[column] = new_column_data
+                    module_data[column] = dict(new_column_data)
 
         return data
