@@ -530,6 +530,8 @@ class SchedulingNode:
 
         available_resources_dict = self.get_available_resources(resource_request_source)
 
+        available_resources_dict = self.get_available_resources(resource_request_source)
+
         # Check if there's enough resources to schedule the request.
         if not _fits(available_resources_dict, dict(request.resources_bundle)):
             return False

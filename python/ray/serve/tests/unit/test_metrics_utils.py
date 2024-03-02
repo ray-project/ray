@@ -1,16 +1,17 @@
+import asyncio
 import sys
-import time
-from unittest.mock import patch
 
 import pytest
 
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import async_wait_for_condition
+from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.test_utils import MockTimer
+from ray.serve._private.test_utils import MockAsyncTimer
 
 
 class TestMetricsPusher:
-    def test_no_tasks(self):
+    @pytest.mark.asyncio
+    async def test_no_tasks(self):
         """Test that a metrics pusher can be started with zero tasks.
 
         After a task is registered, it should work.
@@ -21,159 +22,119 @@ class TestMetricsPusher:
             nonlocal val
             val += 1
 
-        MetricsPusher.NO_TASKS_REGISTERED_INTERVAL_S = 0.01
-        metrics_pusher = MetricsPusher()
+        metrics_pusher = MetricsPusher(get_or_create_event_loop())
         metrics_pusher.start()
-        assert len(metrics_pusher.tasks) == 0
-        assert metrics_pusher.pusher_thread.is_alive()
+        assert len(metrics_pusher._tasks) == 0
 
         metrics_pusher.register_or_update_task("inc", inc, 0.01)
 
-        wait_for_condition(lambda: val > 0, timeout=10)
+        async_wait_for_condition(lambda: val > 0, timeout=10)
 
-    def test_basic(self):
-        start = 0
-        timer = MockTimer(start)
+    @pytest.mark.asyncio
+    async def test_basic(self):
+        timer = MockAsyncTimer(0)
+        state = {"val": 0}
 
-        with patch("time.time", new=timer.time), patch(
-            "time.sleep", new=timer.realistic_sleep
-        ):
-            counter = {"val": 0}
-            result = {}
-            expected_result = 20
+        def task(s):
+            s["val"] += 1
 
-            def task(c, res):
-                timer.realistic_sleep(0.001)
-                c["val"] += 1
-                # At 10 seconds, this task should have been called 20 times
-                if timer.time() >= 10 and "val" not in res:
-                    res["val"] = c["val"]
+        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher.start()
 
-            metrics_pusher = MetricsPusher()
-            metrics_pusher.register_or_update_task(
-                "basic_task", lambda: task(counter, result), 0.5
+        metrics_pusher.register_or_update_task("basic", lambda: task(state), 0.5)
+        for i in range(20):
+            await async_wait_for_condition(
+                lambda: timer.num_sleepers() == 1, retry_interval_ms=1
+            )
+            timer.advance(0.5)
+            await asyncio.sleep(0)
+            assert state["val"] == i + 1
+
+        await metrics_pusher.graceful_shutdown()
+
+    @pytest.mark.asyncio
+    async def test_multiple_tasks(self):
+        timer = MockAsyncTimer(0)
+
+        state = {"A": 0, "B": 0, "C": 0}
+
+        def task(key, s):
+            s[key] += 1
+
+        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher.start()
+
+        # Each task interval is different, and they don't divide each other.
+        metrics_pusher.register_or_update_task("A", lambda: task("A", state), 0.2)
+        metrics_pusher.register_or_update_task("B", lambda: task("B", state), 0.3)
+        metrics_pusher.register_or_update_task("C", lambda: task("C", state), 0.5)
+
+        times = sorted(
+            [(0, None, None)]
+            + [(0.2 * (i + 1), "A", i + 2) for i in range(15)]
+            + [(0.3 * (i + 1), "B", i + 2) for i in range(10)]
+            + [(0.5 * (i + 1), "C", i + 2) for i in range(6)]
+        )
+        advances = [(j[0] - i[0], j[1], j[2]) for i, j in zip(times[:-1], times[1:])]
+
+        for t, key, expected in advances:
+            await async_wait_for_condition(
+                lambda: timer.num_sleepers() == 3, retry_interval_ms=1, timeout=1
+            )
+            timer.advance(t + 0.001)
+            await async_wait_for_condition(
+                lambda: state[key] == expected, retry_interval_ms=1, timeout=1
             )
 
-            metrics_pusher.start()
-            # This busy wait loop should run for at most a few hundred milliseconds
-            # The test should finish by then, and if the test fails this prevents
-            # an infinite loop
-            for _ in range(10000000):
-                if "val" in result:
-                    assert result["val"] == expected_result
-                    break
+        # At 7 seconds, tasks A, B, C should have executed 16, 11, and 7
+        # times respectively.
+        assert state["A"] == 16
+        assert state["B"] == 11
+        assert state["C"] == 7
+        await metrics_pusher.graceful_shutdown()
 
-            assert result["val"] == expected_result
-
-    def test_multiple_tasks(self):
-        start = 0
-        timer = MockTimer(start)
-
-        with patch("time.time", new=timer.time), patch(
-            "time.sleep", new=timer.realistic_sleep
-        ):
-            counter = {"A": 0, "B": 0, "C": 0}
-            result = {}
-            expected_results = {"A": 35, "B": 14, "C": 10}
-
-            def task(key, c, res):
-                time.sleep(0.001)
-                c[key] += 1
-                # Check for how many times this task has been called
-                # At 7 seconds, tasks A, B, C should have executed 35, 14, and 10
-                # times respectively.
-                if timer.time() >= 7 and key not in res:
-                    res[key] = c[key]
-
-            metrics_pusher = MetricsPusher()
-            # Each task interval is different, and they don't divide each other.
-            metrics_pusher.register_or_update_task(
-                "increment_A", lambda: task("A", counter, result), 0.2
-            )
-            metrics_pusher.register_or_update_task(
-                "increment_B", lambda: task("B", counter, result), 0.5
-            )
-            metrics_pusher.register_or_update_task(
-                "increment_C", lambda: task("C", counter, result), 0.7
-            )
-            metrics_pusher.start()
-
-            # Check there are three results set and all are expected.
-            def check_results():
-                for key in result.keys():
-                    assert result[key] == expected_results[key]
-                assert len(result) == 3
-                return True
-
-            wait_for_condition(check_results, timeout=20)
-
-    def test_update_task(self):
+    @pytest.mark.asyncio
+    async def test_update_task(self):
         _start = {"A": 0}
-        timer = MockTimer(_start["A"])
+        timer = MockAsyncTimer(_start["A"])
+        state = {"A": 0, "B": 0}
 
-        with patch("time.time", new=timer.time), patch(
-            "time.sleep", new=timer.realistic_sleep
-        ):
-            counter = {"A": 0, "B": 0}
-            result = {}
+        def f(s):
+            s["A"] += 1
 
-            # Task that:
-            # - increments c["A"] on each iteration
-            # - writes to res["B"] when time has reached 10
-            def task(c, res):
-                c["A"] += 1
-                if timer.time() >= 10 and "A" not in res:
-                    res["A"] = c["A"]
+        # Start metrics pusher and register task() with interval 1s.
+        # After (fake) 10s, the task should have executed 10 times
+        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher.start()
 
-                time.sleep(0.001)
-
-            # Start metrics pusher and register task() with interval 1s.
-            # After (fake) 10s, the task should have executed 10 times
-            metrics_pusher = MetricsPusher()
-            metrics_pusher.register_or_update_task(
-                "my_task", lambda: task(counter, result), 1
+        # Give the metrics pusher thread opportunity to execute task
+        # The only thing that should be moving the timer forward is
+        # the metrics pusher thread. So if the timer has reached 11,
+        # the task should have at least executed 10 times.
+        metrics_pusher.register_or_update_task("my_task", lambda: f(state), 1)
+        for i in range(20):
+            await async_wait_for_condition(
+                lambda: timer.num_sleepers() == 1, retry_interval_ms=1
             )
-            metrics_pusher.start()
+            timer.advance(1)
+            await asyncio.sleep(0)
+            assert state["A"] == i + 1
 
-            # Give the metrics pusher thread opportunity to execute task
-            # The only thing that should be moving the timer forward is
-            # the metrics pusher thread. So if the timer has reached 11,
-            # the task should have at least executed 10 times.
-            while timer.time() < 11:
-                time.sleep(0.001)
-            assert result["A"] == 10
+        def new_f(s):
+            s["B"] += 1
 
-            # New task that:
-            # - increments c["B"] on each iteration
-            # - writes to res["B"] when 450 seconds have passed since first executed
-            def new_task(c, res, start):
-                if "B" not in start:
-                    start["B"] = timer.time()
-
-                c["B"] += 1
-                if timer.time() >= start["B"] + 450 and "B" not in res:
-                    res["B"] = c["B"]
-
-                time.sleep(0.001)
-
-            _start = {}
-            # Re-register new_task() with interval 50s. After (fake)
-            # 500s, the task should have executed 10 times.
-            metrics_pusher.register_or_update_task(
-                "my_task", lambda: new_task(counter, result, _start), 50
+        # Re-register new_f() with interval 50s.
+        metrics_pusher.register_or_update_task("my_task", lambda: new_f(state), 50)
+        for i in range(20):
+            await async_wait_for_condition(
+                lambda: timer.num_sleepers() == 1, retry_interval_ms=1, timeout=1
             )
+            timer.advance(50)
 
-            # Wait for the metrics pusher thread to execute the new task
-            # at least once, and fetch the time of first execution.
-            while "B" not in _start:
-                time.sleep(0.001)
+            await asyncio.sleep(0)
+            assert state["B"] == i + 1
 
-            # When the timer has advanced at least 500 past the time of
-            # first execution, the new task should have at least
-            # executed 10 times.
-            while timer.time() < _start["B"] + 500:
-                time.sleep(0.001)
-            assert result["B"] == 10
+        await metrics_pusher.graceful_shutdown()
 
 
 class TestInMemoryMetricsStore:

@@ -287,7 +287,9 @@ def _split_block(
     b: ObjectRef[Block], left_size: int
 ) -> (ObjectRef[Block], ObjectRef[Block]):
     split_single_block = cached_remote_fn(_split_single_block)
-    left, right = split_single_block.options(num_returns=2).remote(b, left_size)
+    left, right = split_single_block.options(num_cpus=0, num_returns=2).remote(
+        b, left_size
+    )
     return left, right
 
 
