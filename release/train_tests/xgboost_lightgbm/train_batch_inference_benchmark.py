@@ -13,7 +13,7 @@ from ray.train.lightgbm import LightGBMTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train import RunConfig, ScalingConfig
 
-_TRAINING_TIME_THRESHOLD = 1000
+_TRAINING_TIME_THRESHOLD = 600
 _PREDICTION_TIME_THRESHOLD = 450
 
 _EXPERIMENT_PARAMS = {
@@ -28,12 +28,12 @@ _EXPERIMENT_PARAMS = {
     "10G": {
         "data": "s3://air-example-data-2/10G-xgboost-data.parquet/",
         "num_workers": 10,
-        "cpus_per_worker": 12,
+        "cpus_per_worker": 16,
     },
     "100G": {
         "data": "s3://air-example-data-2/100G-xgboost-data.parquet/",
         "num_workers": 10,
-        "cpus_per_worker": 12,
+        "cpus_per_worker": 16,
     },
 }
 
@@ -90,6 +90,7 @@ def train(
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
+            trainer_resources={"CPU": 0},
         ),
         label_column="labels",
         datasets={"train": ds},
@@ -138,32 +139,33 @@ def main(args):
         experiment_params["cpus_per_worker"],
     )
 
-    print("Running xgboost training benchmark...")
+    print(f"Running {framework} training benchmark...")
     training_start = time.perf_counter()
     result = train(framework, data_path, num_workers, cpus_per_worker)
     training_time = time.perf_counter() - training_start
 
-    print("Running xgboost prediction benchmark...")
+    print(f"Running {framework} prediction benchmark...")
     prediction_start = time.perf_counter()
     predict(framework, result, data_path)
     prediction_time = time.perf_counter() - prediction_start
 
-    result = {"training_time": training_time, "prediction_time": prediction_time}
-    print("Results:", result)
+    times = {"training_time": training_time, "prediction_time": prediction_time}
+    print("Training result:\n", result)
+    print("Training/prediction times:", times)
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
     with open(test_output_json, "wt") as f:
-        json.dump(result, f)
+        json.dump(times, f)
 
     if not args.disable_check:
         if training_time > _TRAINING_TIME_THRESHOLD:
             raise RuntimeError(
-                f"Training on XGBoost is taking {training_time} seconds, "
+                f"Training is taking {training_time} seconds, "
                 f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
             )
 
         if prediction_time > _PREDICTION_TIME_THRESHOLD:
             raise RuntimeError(
-                f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
+                f"Batch prediction is taking {prediction_time} seconds, "
                 f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
             )
 
