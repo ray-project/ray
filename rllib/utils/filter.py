@@ -151,7 +151,7 @@ class RunningStat:
             self.std_array / (self.num_pushes - 1)
             if self.num_pushes > 1
             else np.square(self.mean_array)
-        )
+        ).astype(np.float32)
 
     @property
     def std(self):
@@ -312,10 +312,8 @@ class MeanStdFilter(Filter):
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        # TODO: Remove these safe-guards if not needed anymore.
         self.running_stats = tree.map_structure(
-            lambda rs: rs.copy(),
-            other.running_stats if hasattr(other, "running_stats") else other.rs,
+            lambda rs: rs.copy(), other.running_stats
         )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 

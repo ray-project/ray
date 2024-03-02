@@ -64,8 +64,8 @@ class AddLastObservationToBatch(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         as_learner_connector: bool = False,
         **kwargs,
@@ -95,7 +95,6 @@ class AddLastObservationToBatch(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-
         for sa_episode in self.single_agent_episode_iterator(episodes):
             if self._as_learner_connector:
                 prev_n_o = []

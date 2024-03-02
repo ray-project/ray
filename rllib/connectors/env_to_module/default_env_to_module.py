@@ -31,14 +31,12 @@ class DefaultEnvToModule(ConnectorV2):
     pipeline already take care of populating these fields (obs and state in).
     """
 
-    @property
     @override(ConnectorV2)
-    def observation_space(self):
+    def recompute_observation_space_from_input_spaces(self):
         return self._map_space_if_necessary(self.input_observation_space)
 
-    @property
     @override(ConnectorV2)
-    def action_space(self):
+    def recompute_action_space_from_input_spaces(self):
         return self._map_space_if_necessary(self.input_action_space)
 
     def __init__(
@@ -50,11 +48,11 @@ class DefaultEnvToModule(ConnectorV2):
         modules=None,
         agent_to_module_mapping_fn=None,
     ):
-        super().__init__(input_observation_space, input_action_space)
-
         self._multi_agent = multi_agent
         self._modules = modules
         self._agent_to_module_mapping_fn = agent_to_module_mapping_fn
+
+        super().__init__(input_observation_space, input_action_space)
 
     @override(ConnectorV2)
     def __call__(
@@ -229,7 +227,7 @@ class DefaultEnvToModule(ConnectorV2):
             return space
 
         # Analyze input observation space to check, whether the user has already taken
-        # care of the agent to module mapping.
+        # care of the agent-to-module mapping.
         if set(self._modules) == set(space.spaces.keys()):
             return space
 
