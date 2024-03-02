@@ -291,12 +291,13 @@ class SingleAgentEnvRunner(EnvRunner):
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
-            # already clipped) to be sent to the environment) and might not be
-            # identical to the actions produced by the RLModule/distribution, which are
-            # the ones stored permanently in the episode objects.
+            # already unsquashed/clipped) to be sent to the environment) and might not
+            # be identical to the actions produced by the RLModule/distribution, which
+            # are the ones stored permanently in the episode objects.
             actions = to_env.pop(SampleBatch.ACTIONS)
+            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
             # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            obs, rewards, terminateds, truncateds, infos = self.env.step(actions_for_env)
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
@@ -484,12 +485,13 @@ class SingleAgentEnvRunner(EnvRunner):
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
-            # already clipped) to be sent to the environment) and might not be
-            # identical to the actions produced by the RLModule/distribution, which are
-            # the ones stored permanently in the episode objects.
+            # already unsquashed/clipped) to be sent to the environment) and might not
+            # be identical to the actions produced by the RLModule/distribution, which
+            # are the ones stored permanently in the episode objects.
             actions = to_env.pop(SampleBatch.ACTIONS)
+            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
             # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            obs, rewards, terminateds, truncateds, infos = self.env.step(actions_for_env)
             obs, actions = unbatch(obs), unbatch(actions)
 
             # Add render data if needed.

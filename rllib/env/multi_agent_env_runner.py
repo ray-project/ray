@@ -275,14 +275,17 @@ class MultiAgentEnvRunner(EnvRunner):
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
-            # already clipped) to be sent to the environment) and might not be
-            # identical to the actions produced by the RLModule/distribution, which are
-            # the ones stored permanently in the episode objects.
-            actions = to_env.pop(SampleBatch.ACTIONS, None)
-
+            # already unsquashed/clipped) to be sent to the environment) and might not
+            # be identical to the actions produced by the RLModule/distribution, which
+            # are the ones stored permanently in the episode objects.
+            actions = to_env.pop(SampleBatch.ACTIONS)
+            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            # Step the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions[0])
+            obs, rewards, terminateds, truncateds, infos = self.env.step(
+                actions_for_env[0]
+            )
 
             # TODO (sven, simon): We have to record these steps somewhere.
             # TODO: Refactor into multiagent-episode sth. like `get_agent_steps()`.
@@ -479,9 +482,19 @@ class MultiAgentEnvRunner(EnvRunner):
                     shared_data=_shared_data,
                 )
 
-            # Step the environment.
+            # Extract the (vectorized) actions (to be sent to the env) from the
+            # module/connector output. Note that these actions are fully ready (e.g.
+            # already unsquashed/clipped) to be sent to the environment) and might not
+            # be identical to the actions produced by the RLModule/distribution, which
+            # are the ones stored permanently in the episode objects.
             actions = to_env.pop(SampleBatch.ACTIONS)
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions[0])
+            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            # Step the environment.
+            # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
+            #  Support vectorized multi-agent envs.
+            obs, rewards, terminateds, truncateds, infos = self.env.step(
+                actions_for_env[0]
+            )
 
             # Add render data if needed.
             if with_render_data:

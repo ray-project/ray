@@ -1,3 +1,4 @@
+import copy
 from typing import Any, List, Optional
 
 import gymnasium as gym
@@ -74,22 +75,27 @@ class NormalizeAndClipActions(ConnectorV2):
         environment's action space and thus don't lead to an error.
         """
 
-        def _unsquash_or_clip(action, env_vector_idx, agent_id, module_id):
+        def _unsquash_or_clip(action_for_env, env_vector_idx, agent_id, module_id):
             if agent_id is not None:
                 struct = self._action_space_struct[agent_id]
             else:
                 struct = self._action_space_struct
 
             if self.normalize_actions:
-                return unsquash_action(action, struct)
+                return unsquash_action(action_for_env, struct)
             else:
-                return clip_action(action, struct)
+                return clip_action(action_for_env, struct)
 
-        # Normalize or clip actions.
+        # Normalize or clip this new actions_for_env column, leaving the originally
+        # computed/sampled actions intact.
         if self.normalize_actions or self.clip_actions:
+            # Copy actions into separate column, just to go to the env.
+            data[SampleBatch.ACTIONS_FOR_ENV] = (
+                copy.deepcopy(data[SampleBatch.ACTIONS])
+            )
             self.foreach_batch_item_change_in_place(
                 batch=data,
-                column=SampleBatch.ACTIONS,
+                column=SampleBatch.ACTIONS_FOR_ENV,
                 func=_unsquash_or_clip,
             )
 

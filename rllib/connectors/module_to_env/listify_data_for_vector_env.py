@@ -55,7 +55,7 @@ class ListifyDataForVectorEnv(ConnectorV2):
                 ]
                 # Batch actions for (single-agent) gym.vector.Env.
                 # All other columns, leave listify'ed.
-                if column == SampleBatch.ACTIONS:
+                if column in [SampleBatch.ACTIONS_FOR_ENV, SampleBatch.ACTIONS]:
                     data[column] = batch(data[column])
 
         return data
