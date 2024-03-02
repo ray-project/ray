@@ -823,3 +823,16 @@ def is_autoscaler_v2(fetch_from_server: bool = False) -> bool:
     )
 
     return cached_is_autoscaler_v2
+
+
+def is_head_node(node_state: NodeState) -> bool:
+    """
+    Check if the node is a head node from the node state.
+
+    Args:
+        node_state: the node state
+    Returns:
+        is_head: True if the node is a head node, False otherwise.
+    """
+    # TODO: we should include this bit of information in the future.
+    return "node:__internal_head__" in dict(node_state.total_resources)

@@ -2,6 +2,7 @@ from typing import Dict, List
 from ray._private.utils import binary_to_hex
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.autoscaler.v2.utils import is_head_node
 from ray.core.generated.autoscaler_pb2 import (
     GetClusterResourceStateReply,
     NodeStatus,
@@ -40,7 +41,7 @@ class ReadOnlyProvider(ICloudInstanceProvider):
 
             # TODO: we should add a field to the proto to indicate if the node is head
             # or not.
-            is_head = "node:__internal_head__" in dict(gcs_node_state.total_resources)
+            is_head = is_head_node(gcs_node_state)
 
             cloud_instances[cloud_instance_id] = CloudInstance(
                 cloud_instance_id=cloud_instance_id,

@@ -1461,7 +1461,6 @@ class Reconciler:
         }
 
         extra_cloud_instances: Dict[str, CloudInstance] = {}
-        logger.info(f"non_terminated_cloud_instances={non_terminated_cloud_instances}")
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
                 continue

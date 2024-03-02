@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from ray.autoscaler.v2.utils import is_head_node
 
 import yaml
 from ray._private.utils import binary_to_hex
@@ -364,8 +365,12 @@ class AutoscalingConfig:
         provider_config = self._configs.get("provider", {})
         return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
 
-    def get_idle_timeout_s(self) -> float:
-        return self.get_config("idle_timeout_minutes", 0) * 60
+    def get_idle_timeout_s(self) -> Optional[float]:
+        """
+        Returns the idle timeout in seconds if present in config, otherwise None.
+        """
+        idle_timeout_s = self.get_config("idle_timeout_minutes", None)
+        return idle_timeout_s * 60 if idle_timeout_s is not None else None
 
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
@@ -457,15 +462,25 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         # Format each node type's config from the running nodes.
         available_node_types = {}
 
+        head_node_type = None
         for node_state in ray_cluster_resource_state.node_states:
             node_type = format_readonly_node_type(binary_to_hex(node_state.node_id))
+            if is_head_node(node_state):
+                head_node_type = node_type
+
             available_node_types[node_type] = {
                 "resources": dict(node_state.total_resources),
                 "min_workers": 0,
-                "max_workers": 1,
+                "max_workers": 0 if is_head_node(node_state) else 1,
             }
+        if available_node_types:
+            self._configs["available_node_types"].update(available_node_types)
+            self._configs["max_workers"] = len(available_node_types)
+            assert head_node_type, "Head node type should be found."
+            self._configs["head_node_type"] = head_node_type
 
-        self._configs["available_node_types"].update(available_node_types)
+        # Don't idle terminated nodes in read-only mode.
+        self._configs.pop("idle_timeout_minutes", None)
 
         return AutoscalingConfig(
             self._configs, skip_content_hash=True, skip_prepare=True

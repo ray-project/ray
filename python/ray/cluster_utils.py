@@ -114,6 +114,7 @@ class AutoscalingCluster:
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
         if self._autoscaler_v2:
+            # Set the necessary environment variables for autoscaler v2.
             env.update(
                 {
                     "RAY_enable_autoscaler_v2": "1",
