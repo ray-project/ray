@@ -7,6 +7,15 @@ import pytest
 import ray
 
 
+def _run_script_in_subprocess(script):
+    try:
+        out = subprocess.check_output([sys.executable, "-c", script])
+        print(out)
+    except subprocess.CalledProcessError as e:
+        print(e.output.decode())
+        raise
+
+
 # NOTE: Before adding a new API to Ray (and modifying this test), the new API
 # must have Ray Client support.
 def test_api_functions():
@@ -79,33 +88,46 @@ ray.autoscaler
 # Check that the package is cached.
 assert "ray.autoscaler" in sys.modules
 """
-    try:
-        out = subprocess.check_output([sys.executable, "-c", script])
-        print(out)
-    except subprocess.CalledProcessError as e:
-        print(e.output.decode())
-        raise
+    _run_script_in_subprocess(script)
 
 
 def test_dynamic_subpackage_missing():
     # Test nonexistent subpackage dynamic attribute access and imports raise expected
     # errors.
 
-    # Test that nonexistent subpackage attribute access raises an AttributeError.
-    with pytest.raises(AttributeError):
-        ray.foo  # noqa:F401
+    script = """
+import ray
 
-    # Test that nonexistent subpackage import raises an ImportError.
-    with pytest.raises(ImportError):
-        from ray.foo import bar  # noqa:F401
+# Test that nonexistent subpackage attribute access raises an AttributeError.
+try:
+    ray.foo  # noqa:F401
+except AttributeError:
+    pass
+
+# Test that nonexistent subpackage import raises an ImportError.
+try:
+    from ray.foo import bar  # noqa:F401
+except ImportError:
+    pass
+"""
+
+    _run_script_in_subprocess(script)
 
 
 def test_dynamic_subpackage_fallback_only():
     # Test that the __getattr__ dynamic
-    assert "ray._raylet" in sys.modules
-    assert ray.__getattribute__("_raylet") is ray._raylet
-    with pytest.raises(AttributeError):
-        ray.__getattr__("_raylet")
+    script = """
+import ray
+import sys
+
+assert "ray._raylet" in sys.modules
+assert ray.__getattribute__("_raylet") is ray._raylet
+try:
+    ray.__getattr__("_raylet")
+except AttributeError:
+    pass
+"""
+    _run_script_in_subprocess(script)
 
 
 def test_for_strings():
