@@ -19,12 +19,78 @@ from ray.autoscaler.v2.schema import (
     ResourceUsage,
     Stats,
 )
-from ray.autoscaler.v2.utils import ClusterStatusFormatter, ClusterStatusParser
+from ray.autoscaler.v2.utils import (
+    ClusterStatusFormatter,
+    ClusterStatusParser,
+    ResourceRequestUtil,
+)
 from ray.core.generated.autoscaler_pb2 import GetClusterStatusReply
 
 
 def _gen_cluster_status_reply(data: Dict):
     return ParseDict(data, GetClusterStatusReply())
+
+
+class TestResourceRequestUtil:
+    @staticmethod
+    def test_combine_requests_with_affinity():
+
+        AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+        ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+
+        rqs = [
+            ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "1", "1")]),  # 1
+            ResourceRequestUtil.make({"CPU": 1, "GPU": 1}, [(AFFINITY, "1", "1")]),  # 1
+            ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "2", "2")]),  # 2
+            ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "2", "2")]),  # 2
+            ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "2", "2")]),  # 3
+            ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "2", "2")]),  # 4
+            ResourceRequestUtil.make({"CPU": 1}),  # 5
+        ]
+
+        rq_result = ResourceRequestUtil.combine_requests_with_affinity(rqs)
+        assert len(rq_result) == 5
+        actual = ResourceRequestUtil.to_dict_list(rq_result)
+        expected = [
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 2, "GPU": 1},  # Combined
+                    [
+                        (AFFINITY, "1", "1"),
+                    ],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 2},  # Combined
+                    [
+                        (AFFINITY, "2", "2"),
+                    ],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
+                    [(ANTI_AFFINITY, "2", "2")],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
+                    [(ANTI_AFFINITY, "2", "2")],
+                )
+            ),
+            ResourceRequestUtil.to_dict(
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
+                )
+            ),
+        ]
+
+        actual_str_serialized = [str(x) for x in actual]
+        expected_str_serialized = [str(x) for x in expected]
+
+        assert sorted(actual_str_serialized) == sorted(expected_str_serialized)
 
 
 def test_cluster_status_parser_cluster_resource_state():

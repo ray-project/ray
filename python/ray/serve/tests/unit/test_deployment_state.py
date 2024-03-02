@@ -27,6 +27,7 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     ReplicaSchedulingRequest,
+    SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
@@ -3375,6 +3376,9 @@ class TestTargetCapacity:
         deployment_state, _, _ = mock_deployment_state
 
         b_info_1, _ = deployment_info(num_replicas=2)
+        deployment_state._deployment_scheduler.on_deployment_created(
+            deployment_state._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         self.update_target_capacity(
             deployment_state,
@@ -3383,7 +3387,9 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = deployment_state.update()
+        deployment_state_update_result = deployment_state.update(
+            allow_active_compaction=False
+        )
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3395,13 +3401,13 @@ class TestTargetCapacity:
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update()
+        deployment_state.update(allow_active_compaction=False)
         check_counts(
             deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1, None)]
         )
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        deployment_state.update()
+        deployment_state.update(allow_active_compaction=False)
         check_counts(
             deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1, None)]
         )
@@ -3419,6 +3425,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=2, version=code_version)
+        deployment_state._deployment_scheduler.on_deployment_created(
+            deployment_state._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Initially deploy with no target_capacity set.
         self.update_target_capacity(
@@ -3428,7 +3437,9 @@ class TestTargetCapacity:
             target_capacity_direction=None,
         )
 
-        deployment_state_update_result = deployment_state.update()
+        deployment_state_update_result = deployment_state.update(
+            allow_active_compaction=False
+        )
         deployment_state._deployment_scheduler.schedule(
             {deployment_state._id: deployment_state_update_result.upscale}, {}
         )
@@ -3440,13 +3451,13 @@ class TestTargetCapacity:
         for replica in deployment_state._replicas.get():
             replica._actor.set_ready()
 
-        deployment_state.update()
+        deployment_state.update(allow_active_compaction=False)
         check_counts(
             deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2, None)]
         )
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        deployment_state.update()
+        deployment_state.update(allow_active_compaction=False)
         check_counts(
             deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2, None)]
         )
@@ -3460,7 +3471,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state.update()
+        deployment_state.update(allow_active_compaction=False)
         check_counts(
             deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2, None)]
         )
@@ -3474,7 +3485,7 @@ class TestTargetCapacity:
             target_capacity_direction=None,
         )
 
-        deployment_state.update()
+        deployment_state.update(allow_active_compaction=False)
         check_counts(
             deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2, None)]
         )
@@ -3489,6 +3500,9 @@ class TestTargetCapacity:
         ds, _, _ = mock_deployment_state
 
         b_info_1, _ = deployment_info(num_replicas=100)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         self.update_target_capacity(
             ds,
@@ -3497,7 +3511,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3514,6 +3528,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity 100.
         self.update_target_capacity(
@@ -3523,7 +3540,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3533,7 +3550,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=10, by_state=[(ReplicaState.RUNNING, 10, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3545,7 +3562,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.DOWN,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         replicas_to_stop = ds._deployment_scheduler.schedule(
             {}, {ds._id: deployment_state_update_result.downscale}
         )[ds._id]
@@ -3568,7 +3585,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3580,7 +3597,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.DOWN,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         replicas_to_stop = ds._deployment_scheduler.schedule(
             {}, {ds._id: deployment_state_update_result.downscale}
         )[ds._id]
@@ -3603,7 +3620,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
 
         # Reduce target_capacity to 0, all replicas should be stopped.
@@ -3614,7 +3631,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.DOWN,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         replicas_to_stop = ds._deployment_scheduler.schedule(
             {}, {ds._id: deployment_state_update_result.downscale}
         )[ds._id]
@@ -3630,7 +3647,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=0)
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3645,6 +3662,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity set to 0, should have no replicas start up.
         self.update_target_capacity(
@@ -3654,7 +3674,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=0)
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3666,7 +3686,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3680,7 +3700,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3692,7 +3712,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3713,7 +3733,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3725,7 +3745,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3746,7 +3766,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=10, by_state=[(ReplicaState.RUNNING, 10, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3760,6 +3780,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=10, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity set to 50, should have 5 replicas start up.
         self.update_target_capacity(
@@ -3769,7 +3792,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3779,7 +3802,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3791,7 +3814,7 @@ class TestTargetCapacity:
             target_capacity_direction=None,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3812,7 +3835,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=10, by_state=[(ReplicaState.RUNNING, 10, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3829,6 +3852,9 @@ class TestTargetCapacity:
         # Set num_replicas to 0.
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=0, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity of 50.
         self.update_target_capacity(
@@ -3838,7 +3864,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3848,11 +3874,11 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=0)
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=0)
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3864,7 +3890,7 @@ class TestTargetCapacity:
             target_capacity_direction=None,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
         check_counts(ds, total=0)
@@ -3876,7 +3902,7 @@ class TestTargetCapacity:
             target_capacity=0,
             target_capacity_direction=TargetCapacityDirection.UP,
         )
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
         check_counts(ds, total=0)
@@ -3888,7 +3914,7 @@ class TestTargetCapacity:
             target_capacity=50,
             target_capacity_direction=TargetCapacityDirection.UP,
         )
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         assert not deployment_state_update_result.upscale
         assert not deployment_state_update_result.downscale
         check_counts(ds, total=0)
@@ -3915,7 +3941,7 @@ class TestTargetCapacity:
         )
 
         ds._target_state.num_replicas = 1
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
 
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
@@ -3930,7 +3956,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3946,6 +3972,9 @@ class TestTargetCapacity:
 
         code_version = "arbitrary_version"
         b_info_1, _ = deployment_info(num_replicas=2, version=code_version)
+        ds._deployment_scheduler.on_deployment_created(
+            ds._id, SpreadDeploymentSchedulingPolicy()
+        )
 
         # Start with target_capacity set to 0, should have 0 replica start up
         # regardless of the autoscaling decision.
@@ -3956,7 +3985,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=0)
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3966,7 +3995,7 @@ class TestTargetCapacity:
             target_capacity=1,
             target_capacity_direction=TargetCapacityDirection.UP,
         )
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -3982,7 +4011,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -3995,7 +4024,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -4007,7 +4036,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -4031,7 +4060,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -4044,7 +4073,7 @@ class TestTargetCapacity:
             target_capacity_direction=None,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -4060,7 +4089,7 @@ class TestTargetCapacity:
             == DeploymentStatusTrigger.UPSCALE_COMPLETED
         )
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -4073,7 +4102,7 @@ class TestTargetCapacity:
             target_capacity_direction=TargetCapacityDirection.UP,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         replicas_to_stop = ds._deployment_scheduler.schedule(
             {}, {ds._id: deployment_state_update_result.downscale}
         )[ds._id]
@@ -4098,7 +4127,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
@@ -4110,7 +4139,7 @@ class TestTargetCapacity:
             target_capacity_direction=None,
         )
 
-        deployment_state_update_result = ds.update()
+        deployment_state_update_result = ds.update(allow_active_compaction=False)
         ds._deployment_scheduler.schedule(
             {ds._id: deployment_state_update_result.upscale}, {}
         )
@@ -4133,7 +4162,7 @@ class TestTargetCapacity:
         for replica in ds._replicas.get():
             replica._actor.set_ready()
 
-        ds.update()
+        ds.update(allow_active_compaction=False)
         check_counts(ds, total=6, by_state=[(ReplicaState.RUNNING, 6, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
