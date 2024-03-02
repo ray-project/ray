@@ -25,7 +25,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Logical resource usage for each node of the cluster. Each resource has some quantity that is `in either <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L188>`_ USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
      - `Location`, `ObjectState`, `InstanceId`
-     - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
+     - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, MMAP_DISK, MMAP_SHM, and WORKER_HEAP). Definitions are as follows: SPILLED = Objects that have spilled to disk or a remote Storage solution (eg: AWS S3); MMAP_DISK = Objects stored on a memory-mapped page on disk; MMAP_SHM: Objects store on a memory-mapped page in Shared Memory; WORKER_HEAP: Objects, usually smaller, stored in the memory of the Ray Worker process itself.
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
