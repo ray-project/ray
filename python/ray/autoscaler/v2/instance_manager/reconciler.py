@@ -375,7 +375,7 @@ class Reconciler:
                 non_terminated_cloud_instances=non_terminated_cloud_instances,
             )
 
-        Reconciler._fill_autoscaler_state(
+        Reconciler._fill_autoscaling_state(
             instance_manager=instance_manager, autoscaling_state=autoscaling_state
         )
 
@@ -1332,7 +1332,7 @@ class Reconciler:
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
-    def _fill_autoscaler_state(
+    def _fill_autoscaling_state(
         instance_manager: InstanceManager,
         autoscaling_state: AutoscalingState,
     ) -> None:
