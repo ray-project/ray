@@ -58,6 +58,9 @@ def test_non_ray_modules():
 def test_dynamic_subpackage_import():
     # Test that subpackages are dynamically imported and properly cached.
     script = """
+import sys
+import ray
+
 # ray.data
 assert "ray.data" not in sys.modules
 ray.data
