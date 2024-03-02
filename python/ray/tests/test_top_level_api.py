@@ -1,4 +1,5 @@
 from inspect import getmembers, isfunction, ismodule
+import subprocess
 import sys
 
 import pytest
@@ -56,24 +57,31 @@ def test_non_ray_modules():
 
 def test_dynamic_subpackage_import():
     # Test that subpackages are dynamically imported and properly cached.
+    script = """
+# ray.data
+assert "ray.data" not in sys.modules
+ray.data
+# Check that the package is cached.
+assert "ray.data" in sys.modules
 
-    # ray.data
-    assert "ray.data" not in sys.modules
-    ray.data
-    # Check that the package is cached.
-    assert "ray.data" in sys.modules
+# ray.workflow
+assert "ray.workflow" not in sys.modules
+ray.workflow
+# Check that the package is cached.
+assert "ray.workflow" in sys.modules
 
-    # ray.workflow
-    assert "ray.workflow" not in sys.modules
-    ray.workflow
-    # Check that the package is cached.
-    assert "ray.workflow" in sys.modules
-
-    # ray.data
-    assert "ray.autoscaler" not in sys.modules
-    ray.autoscaler
-    # Check that the package is cached.
-    assert "ray.autoscaler" in sys.modules
+# ray.data
+assert "ray.autoscaler" not in sys.modules
+ray.autoscaler
+# Check that the package is cached.
+assert "ray.autoscaler" in sys.modules
+"""
+    try:
+        out = subprocess.check_output([sys.executable, "-c", script])
+        print(out)
+    except subprocess.CalledProcessError as e:
+        print(e.output.decode())
+        raise
 
 
 def test_dynamic_subpackage_missing():
