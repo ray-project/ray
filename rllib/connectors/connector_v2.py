@@ -170,9 +170,28 @@ class ConnectorV2(abc.ABC):
             rl_module: The RLModule object that the connector connects to or from.
             data: The input data to be transformed by this connector. Transformations
                 might either be done in-place or a new structure may be returned.
+                Note that the information in `data` will eventually either become the
+                forward batch for the RLModule (env-to-module and learner connectors)
+                or the input to the `env.step()` call (module-to-env connectors). In
+                the former case (`data` is a forward batch for RLModule), the
+                information in `data` will be discarded after the RLModule forward pass.
+                Any transformation of information (e.g. observation preprocessing) that
+                you have only done inside `data` will be lost, unless you have written
+                it back into the corresponding `episodes` during the connector pass.
             episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,
                 each corresponding to one slot in the vector env. Note that episodes
-                should always be considered read-only and not be altered.
+                can be read from (e.g. to place information into `data`), but also
+                written to. You should only write back (changed, transformed)
+                information into the episodes, if you want these changes to be
+                "permanent". For example if you sample from an environment, pick up
+                observations from the episodes and place them into `data`, then
+                transform these observations, and would like to make these
+                transformations permanent (note that `data` gets discarded after the
+                RLModule forward pass), then you have to write the transformed
+                observations back into the episode to make sure you do not have to
+                perform the same transformation again on the learner (or replay buffer)
+                side. The Learner will hence work on the already changed episodes (and
+                compile the train batch using the Learner connector).
             explore: Whether `explore` is currently on. Per convention, if True, the
                 RLModule's `forward_exploration` method should be called, if False, the
                 EnvRunner should call `forward_inference` instead.
@@ -230,14 +249,23 @@ class ConnectorV2(abc.ABC):
                         f"length as the list of episodes ({len(episodes)}), but has "
                         f"length {len(zip_with_batch_column)}!"
                     )
-                for episode, (eps_id_tuple, data) in zip(
-                    episodes,
-                    zip_with_batch_column.items(),
-                ):
-                    assert episode.id_ == eps_id_tuple[0]
-                    d = data[list_indices[eps_id_tuple]]
-                    list_indices[eps_id_tuple] += 1
-                    yield episode, d
+                # Simple case: Items are stored in lists directly under the column (str)
+                # key.
+                if isinstance(zip_with_batch_column, list):
+                    for episode, data in zip(episodes, zip_with_batch_column):
+                        yield episode, data
+                # Normal single-agent case: Items are stored in dicts under the column
+                # (str) key. These dicts map (eps_id,)-tuples to lists of individual
+                # items.
+                else:
+                    for episode, (eps_id_tuple, data) in zip(
+                        episodes,
+                        zip_with_batch_column.items(),
+                    ):
+                        assert episode.id_ == eps_id_tuple[0]
+                        d = data[list_indices[eps_id_tuple]]
+                        list_indices[eps_id_tuple] += 1
+                        yield episode, d
             else:
                 for episode in episodes:
                     yield episode
@@ -281,7 +309,7 @@ class ConnectorV2(abc.ABC):
 
         If `single_agent_episode` is provided and contains `agent_id` and `module_id`
         information, will store `item_to_add` in a list under a
-        `([env vector index], [AgentID],[ModuleID])` key within `column`. In all other
+        `([eps id], [AgentID],[ModuleID])` key within `column`. In all other
         cases, will store the item in a list directly under `column`.
 
         .. testcode::
@@ -304,27 +332,28 @@ class ConnectorV2(abc.ABC):
             })
 
             # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `([env vector index],)`:
+            # under the keys: `column` -> `(eps_id,)`:
             batch = {}
             episode = SingleAgentEpisode(
+                id_="SA-EPS0",
                 observations=[0, 1, 2, 3],
                 actions=[1, 2, 3],
                 rewards=[1.0, 2.0, 3.0],
-                env_vector_idx=1,
             )
             ConnectorV2.add_batch_item(batch, "test_col", 5, episode)
             ConnectorV2.add_batch_item(batch, "test_col", 6, episode)
             ConnectorV2.add_batch_item(batch, "test_col_2", -10, episode)
             check(batch, {
-                "test_col": {(1,): [5, 6]},
-                "test_col_2": {(1,): [-10]},
+                "test_col": {("SA-EPS0",): [5, 6]},
+                "test_col_2": {("SA-EPS0",): [-10]},
             })
 
             # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([env vector index], [agent_id], [module_id])`:
+            # `column` -> `([eps_id], [agent_id], [module_id])`:
             batch = {}
             ma_episode = MultiAgentEpisode(
+                id_="MA-EPS1",
                 observations=[
                     {"ag0": 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
                 ],
@@ -332,7 +361,6 @@ class ConnectorV2(abc.ABC):
                 rewards=[{"ag0": -0.1, "ag1": -0.2}],
                 # ag0 maps to mod0, ag1 maps to mod1, etc..
                 agent_to_module_mapping_fn=lambda aid, eps: f"mod{aid[2:]}",
-                env_vector_idx=0,  # <- vector index of this multi-agent episode
             )
             ConnectorV2.add_batch_item(
                 batch,
@@ -355,8 +383,8 @@ class ConnectorV2(abc.ABC):
             check(
                 batch,
                 {
-                    "test_col": {(0, "ag0", "mod0"): [5, 6]},  # 0=env_vector_idx
-                    "test_col_2": {(0, "ag1", "mod1"): [10]},  # 0=env_vector_idx
+                    "test_col": {("MA-EPS1", "ag0", "mod0"): [5, 6]},
+                    "test_col_2": {("MA-EPS1", "ag1", "mod1"): [10]},
                 },
             )
 
@@ -368,7 +396,7 @@ class ConnectorV2(abc.ABC):
             single_agent_episode: An optional SingleAgentEpisode. If provided and its
                 `agent_id` and `module_id` properties are not None, will create a
                 further sub dictionary under `column`, mapping from
-                `([env_vector_idx], [agent_id], [module_id])` to a list of
+                `([eps id], [agent_id], [module_id])` to a list of
                 data items (to which `item_to_add` will be appended in this call).
                 If not provided, will append `item_to_add` to a list directly under
                 `column`.
@@ -450,7 +478,65 @@ class ConnectorV2(abc.ABC):
                 ],
             )
 
-            TODO single agent case and multi agent case
+            # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
+            # under the keys: `column` -> `(eps_id,)`:
+            batch = {}
+            episode = SingleAgentEpisode(
+                id_="SA-EPS0",
+                observations=[0, 1, 2, 3],
+                actions=[1, 2, 3],
+                rewards=[1.0, 2.0, 3.0],
+            )
+            ConnectorV2.add_n_batch_items(
+                batch=batch,
+                column="test_col",
+                items_to_add=[5, 6, 7],
+                num_items=3,
+                single_agent_episode=episode,
+            )
+            check(batch, {
+                "test_col": {("SA-EPS0",): [5, 6, 7]},
+            })
+
+            # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
+            # `module_id` information) -> Store data in a list under the keys:
+            # `column` -> `([eps_id], [agent_id], [module_id])`:
+            batch = {}
+            ma_episode = MultiAgentEpisode(
+                id_="MA-EPS1",
+                observations=[
+                    {"ag0": 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
+                ],
+                actions=[{"ag0": 0, "ag1": 1}],
+                rewards=[{"ag0": -0.1, "ag1": -0.2}],
+                # ag0 maps to mod0, ag1 maps to mod1, etc..
+                agent_to_module_mapping_fn=lambda aid, eps: f"mod{aid[2:]}",
+            )
+            ConnectorV2.add_batch_item(
+                batch,
+                "test_col",
+                item_to_add=5,
+                single_agent_episode=ma_episode.agent_episodes["ag0"],
+            )
+            ConnectorV2.add_batch_item(
+                batch,
+                "test_col",
+                item_to_add=6,
+                single_agent_episode=ma_episode.agent_episodes["ag0"],
+            )
+            ConnectorV2.add_batch_item(
+                batch,
+                "test_col_2",
+                item_to_add=10,
+                single_agent_episode=ma_episode.agent_episodes["ag1"],
+            )
+            check(
+                batch,
+                {
+                    "test_col": {("MA-EPS1", "ag0", "mod0"): [5, 6]},
+                    "test_col_2": {("MA-EPS1", "ag1", "mod1"): [10]},
+                },
+            )
 
         Args:
             batch: The batch to store n `items_to_add` in.
@@ -499,12 +585,12 @@ class ConnectorV2(abc.ABC):
         )
 
     # @staticmethod
-    # def get_batch_item(batch, column, env_vector_idx, agent_id, module_id):
+    # def get_batch_item(batch, column, episode_id, agent_id, module_id):
     #    if isinstance(batch[column], list):
     #        assert agent_id is None and module_id is None
-    #        return batch[column][(env_vector_idx,)]
+    #        return batch[column][(episode_id,)]
     #    else:
-    #        return batch[column][(env_vector_idx, agent_id, module_id)]
+    #        return batch[column][(episode_id, agent_id, module_id)]
 
     @staticmethod
     def foreach_batch_item_change_in_place(
