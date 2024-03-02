@@ -1893,9 +1893,16 @@ class AlgorithmConfig(_Config):
                 action space as inputs and returning a learner ConnectorV2 (might be
                 a pipeline) object.
             add_default_connectors_to_learner_pipeline: If True (default), RLlib's
-                EnvRunners will automatically add the default Learner ConnectorV2
-                pieces to the LearnerPipeline. These automatically perform
-                TODO (sven) complete list of things this automation does
+                Learners will automatically add the default Learner ConnectorV2
+                pieces to the LearnerPipeline. These automatically perform:
+                a) adding observations from episodes to the train batch, if this has not
+                already been done by a user-provided connector piece
+                b) if RLModule is stateful, add a time rank to the train batch, zero-pad
+                the data, and add the correct state inputs, if this has not already been
+                done by a user-provided connector piece.
+                c) add all other information (actions, rewards, terminateds, etc..) to
+                the train batch, if this has not already been done by a user-provided
+                connector piece.
                 Only if you know exactly what you are doing, you
                 should set this setting to False.
                 Note that this setting is only relevant if the new API stack is used

@@ -133,6 +133,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
+            # If Learner connector, get all episodes (for train batch).
+            # If EnvToModule, get only those ongoing episodes that just had their
+            # agent step (b/c those are the ones we need to compute actions for next).
             agents_that_stepped_only=not self._as_learner_connector,
         ):
             if self._as_learner_connector:

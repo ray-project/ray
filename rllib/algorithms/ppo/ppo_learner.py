@@ -61,10 +61,12 @@ class PPOLearner(Learner):
         minibatch_size=None,
         num_iters=1,
     ):
-        # Call the train data preprocessor.
+        # First perform GAE computation on the entirety of the given train data (all
+        # episodes).
         if self.config.uses_new_env_runners:
             batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
-
+        # Now that GAE (advantages and value targets) have been added to the train
+        # batch, we can proceed normally (calling super method) with the update step.
         return super()._update_from_batch_or_episodes(
             batch=batch,
             episodes=episodes,
@@ -78,6 +80,19 @@ class PPOLearner(Learner):
         *,
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
+        """Computes GAE advantages (and value targets) given a list of episodes.
+
+        Note that the episodes may be SingleAgent- or MultiAgentEpisodes and may be
+        episode chunks (not starting from reset or ending prematurely).
+
+        The GAE computation here is performed in a very efficient way via elongating
+        all given episodes by 1 artificial timestep (last obs, actions, states, etc..
+        repeated, last reward=0.0, etc..), then creating a forward batch from this data
+        using the connector, pushing the resulting batch through the value function,
+        thereby extracting the bootstrap values (at the artificially added time steos)
+        and all other value predictions (all other timesteps) and then reducing the
+        batch and episode lengths again accordingly.
+        """
         if not episodes:
             raise ValueError(
                 "`PPOLearner._compute_gae_from_episodes()` must have the `episodes` "
