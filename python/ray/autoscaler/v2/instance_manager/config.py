@@ -5,10 +5,15 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from ray.autoscaler.v2.utils import is_head_node
 
 import yaml
+from ray._private.utils import binary_to_hex
+from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
 
 from ray._private.ray_constants import env_integer
+from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
@@ -17,6 +22,7 @@ from ray.autoscaler._private.constants import (
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
+    format_readonly_node_type,
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
@@ -35,6 +41,7 @@ class Provider(Enum):
     GCP = 4
     KUBERAY = 5
     LOCAL = 6
+    READ_ONLY = 7
 
 
 class IConfigReader(ABC):
@@ -147,18 +154,28 @@ class AutoscalingConfig:
     """
 
     def __init__(
-        self, configs: Dict[str, Any], skip_content_hash: bool = False
+        self,
+        configs: Dict[str, Any],
+        skip_content_hash: bool = False,
+        skip_prepare=False,
     ) -> None:
         """
         Args:
             configs : The raw configs dict.
             skip_content_hash :
                 Whether to skip file mounts/ray command hash calculation.
+            skip_prepare:
+                Whether to skip the config preparation and validation.
         """
         self._sync_continuously = False
-        self.update_configs(configs, skip_content_hash)
+        self.update_configs(configs, skip_content_hash, skip_prepare)
 
-    def update_configs(self, configs: Dict[str, Any], skip_content_hash: bool) -> None:
+    def update_configs(
+        self, configs: Dict[str, Any], skip_content_hash: bool, skip_prepare
+    ) -> None:
+        if skip_prepare:
+            self._configs = configs
+            return
         self._configs = prepare_config(configs)
         validate_config(self._configs)
         if skip_content_hash:
@@ -370,8 +387,12 @@ class AutoscalingConfig:
         provider_config = self._configs.get("provider", {})
         return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
 
-    def get_idle_timeout_s(self) -> float:
-        return self.get_config("idle_timeout_minutes", 0) * 60
+    def get_idle_timeout_s(self) -> Optional[float]:
+        """
+        Returns the idle timeout in seconds if present in config, otherwise None.
+        """
+        idle_timeout_s = self.get_config("idle_timeout_minutes", None)
+        return idle_timeout_s * 60 if idle_timeout_s is not None else None
 
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
@@ -408,6 +429,8 @@ class AutoscalingConfig:
             return Provider.ALIYUN
         elif provider_str == "kuberay":
             return Provider.KUBERAY
+        elif provider_str == "readonly":
+            return Provider.READ_ONLY
         else:
             return Provider.UNKNOWN
 
@@ -452,3 +475,43 @@ class FileConfigReader(IConfigReader):
 
     def read_from_source(self):
         self._cached_config = self._read()
+
+
+class ReadOnlyProviderConfigReader(IConfigReader):
+    """A class that reads cluster config from a read-only provider."""
+
+    def __init__(self, gcs_address: str):
+        self._configs = BASE_READONLY_CONFIG
+        self._gcs_client = GcsClient(address=gcs_address)
+
+    def get_autoscaling_config(self) -> AutoscalingConfig:
+        return AutoscalingConfig(
+            self._configs, skip_content_hash=True, skip_prepare=True
+        )
+
+    def read_from_source(self):
+        # Update the config with node types from GCS.
+        ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
+
+        # Format each node type's config from the running nodes.
+        available_node_types = {}
+
+        head_node_type = None
+        for node_state in ray_cluster_resource_state.node_states:
+            node_type = format_readonly_node_type(binary_to_hex(node_state.node_id))
+            if is_head_node(node_state):
+                head_node_type = node_type
+
+            available_node_types[node_type] = {
+                "resources": dict(node_state.total_resources),
+                "min_workers": 0,
+                "max_workers": 0 if is_head_node(node_state) else 1,
+            }
+        if available_node_types:
+            self._configs["available_node_types"].update(available_node_types)
+            self._configs["max_workers"] = len(available_node_types)
+            assert head_node_type, "Head node type should be found."
+            self._configs["head_node_type"] = head_node_type
+
+        # Don't idle terminated nodes in read-only mode.
+        self._configs.pop("idle_timeout_minutes", None)
