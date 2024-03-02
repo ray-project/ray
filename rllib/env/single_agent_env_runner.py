@@ -297,7 +297,9 @@ class SingleAgentEnvRunner(EnvRunner):
             actions = to_env.pop(SampleBatch.ACTIONS)
             actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
             # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions_for_env)
+            obs, rewards, terminateds, truncateds, infos = self.env.step(
+                actions_for_env
+            )
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
@@ -491,7 +493,9 @@ class SingleAgentEnvRunner(EnvRunner):
             actions = to_env.pop(SampleBatch.ACTIONS)
             actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
             # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions_for_env)
+            obs, rewards, terminateds, truncateds, infos = self.env.step(
+                actions_for_env
+            )
             obs, actions = unbatch(obs), unbatch(actions)
 
             # Add render data if needed.
