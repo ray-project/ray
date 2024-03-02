@@ -43,7 +43,7 @@ class ListifyDataForVectorEnv(ConnectorV2):
                 assert len(episodes) == 1
                 new_column_data = [{}]
 
-                for key, value in sorted(data[column].items()):
+                for key, value in data[column].items():
                     assert len(value) == 1
                     eps_id, agent_id, module_id = key
                     new_column_data[0][agent_id] = value[0]
@@ -51,7 +51,7 @@ class ListifyDataForVectorEnv(ConnectorV2):
             # Single-agent case: Create simple lists under each column.
             else:
                 data[column] = [
-                    d for key in sorted(data[column].keys()) for d in data[column][key]
+                    d for key in data[column].keys() for d in data[column][key]
                 ]
                 # Batch actions for (single-agent) gym.vector.Env.
                 # All other columns, leave listify'ed.
