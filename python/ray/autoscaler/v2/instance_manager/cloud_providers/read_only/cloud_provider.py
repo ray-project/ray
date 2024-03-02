@@ -1,7 +1,8 @@
 from typing import Dict, List
-from python.ray._private.utils import binary_to_hex
-from python.ray.autoscaler._private.util import format_readonly_node_type
-from python.ray.core.generated.autoscaler_pb2 import (
+from ray._private.utils import binary_to_hex
+from ray.autoscaler._private.util import format_readonly_node_type
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.core.generated.autoscaler_pb2 import (
     GetClusterResourceStateReply,
     NodeStatus,
 )
@@ -23,11 +24,7 @@ class ReadOnlyProvider(ICloudInstanceProvider):
         self._gcs_client = GcsClient(address=self._gcs_address)
 
     def get_non_terminated(self) -> Dict[str, CloudInstance]:
-        str_reply = self._gcs_client.get_cluster_resource_state()
-        reply = GetClusterResourceStateReply()
-        reply.ParseFromString(str_reply)
-        cluster_resource_state = reply.cluster_resource_state
-
+        cluster_resource_state = get_cluster_resource_state(self._gcs_client)
         cloud_instances = {}
         for gcs_node_state in cluster_resource_state.node_states:
             if gcs_node_state.status == NodeStatus.DEAD:
@@ -52,6 +49,7 @@ class ReadOnlyProvider(ICloudInstanceProvider):
                     binary_to_hex(gcs_node_state.node_id)
                 ),
                 is_running=True,
+                request_id="",
             )
 
         return cloud_instances

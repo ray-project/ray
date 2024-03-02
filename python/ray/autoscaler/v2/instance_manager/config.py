@@ -7,9 +7,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from python.ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
+from ray._private.utils import binary_to_hex
+from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
 
 from ray._private.ray_constants import env_integer
+from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
@@ -18,6 +21,7 @@ from ray.autoscaler._private.constants import (
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
+    format_readonly_node_type,
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
@@ -127,18 +131,28 @@ class AutoscalingConfig:
     """
 
     def __init__(
-        self, configs: Dict[str, Any], skip_content_hash: bool = False
+        self,
+        configs: Dict[str, Any],
+        skip_content_hash: bool = False,
+        skip_prepare=False,
     ) -> None:
         """
         Args:
             configs : The raw configs dict.
             skip_content_hash :
                 Whether to skip file mounts/ray command hash calculation.
+            skip_prepare:
+                Whether to skip the config preparation and validation.
         """
         self._sync_continuously = False
-        self.update_configs(configs, skip_content_hash)
+        self.update_configs(configs, skip_content_hash, skip_prepare)
 
-    def update_configs(self, configs: Dict[str, Any], skip_content_hash: bool) -> None:
+    def update_configs(
+        self, configs: Dict[str, Any], skip_content_hash: bool, skip_prepare
+    ) -> None:
+        if skip_prepare:
+            self._configs = configs
+            return
         self._configs = prepare_config(configs)
         validate_config(self._configs)
         if skip_content_hash:
@@ -388,7 +402,7 @@ class AutoscalingConfig:
             return Provider.ALIYUN
         elif provider_str == "kuberay":
             return Provider.KUBERAY
-        elif provider_str == "read_only":
+        elif provider_str == "readonly":
             return Provider.READ_ONLY
         else:
             return Provider.UNKNOWN
@@ -432,10 +446,27 @@ class FileConfigReader(IConfigReader):
 class ReadOnlyProviderConfigReader(IConfigReader):
     """A class that reads cluster config from a read-only provider."""
 
-    def __init__(self, gcs_client: GcsClient):
+    def __init__(self, gcs_address: str):
         self._configs = BASE_READONLY_CONFIG
-        self._gcs_client = gcs_client
+        self._gcs_client = GcsClient(address=gcs_address)
 
     def get_autoscaling_config(self) -> AutoscalingConfig:
         # Update the config with node types from GCS.
-        return AutoscalingConfig({})
+        ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
+
+        # Format each node type's config from the running nodes.
+        available_node_types = {}
+
+        for node_state in ray_cluster_resource_state.node_states:
+            node_type = format_readonly_node_type(binary_to_hex(node_state.node_id))
+            available_node_types[node_type] = {
+                "resources": dict(node_state.total_resources),
+                "min_workers": 0,
+                "max_workers": 1,
+            }
+
+        self._configs["available_node_types"].update(available_node_types)
+
+        return AutoscalingConfig(
+            self._configs, skip_content_hash=True, skip_prepare=True
+        )

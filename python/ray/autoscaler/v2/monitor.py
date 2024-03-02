@@ -20,7 +20,11 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-from ray.autoscaler.v2.instance_manager.config import FileConfigReader, IConfigReader
+from ray.autoscaler.v2.instance_manager.config import (
+    FileConfigReader,
+    IConfigReader,
+    ReadOnlyProviderConfigReader,
+)
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
@@ -265,13 +269,13 @@ if __name__ == "__main__":
     logger.info(f"Ray commit: {ray.__commit__}")
     logger.info(f"AutoscalerMonitor started with command: {sys.argv}")
 
-    bootstrap_address = args.gcs_address
-    if bootstrap_address is None:
+    gcs_address = args.gcs_address
+    if gcs_address is None:
         raise ValueError("--gcs-address must be set!")
 
     if not args.autoscaling_config:
         logger.info("No autoscaling config provided: use read only node provider.")
-        config_reader = ReadOnlyProviderConfigReader()
+        config_reader = ReadOnlyProviderConfigReader(gcs_address)
     else:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
         config_reader = FileConfigReader(
@@ -279,7 +283,7 @@ if __name__ == "__main__":
         )
 
     monitor = AutoscalerMonitor(
-        bootstrap_address,
+        gcs_address,
         config_reader,
         log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,

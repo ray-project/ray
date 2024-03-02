@@ -112,6 +112,7 @@ class Reconciler:
             cloud_provider_errors=cloud_provider_errors,
             ray_install_errors=ray_install_errors,
             ray_stop_errors=ray_stop_errors,
+            autoscaling_config=autoscaling_config,
         )
 
         Reconciler._step_next(
@@ -141,6 +142,7 @@ class Reconciler:
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
         ray_stop_errors: List[RayStopError],
+        autoscaling_config: AutoscalingConfig,
     ):
         """
         Reconcile the instance states of the instance manager from external states like
@@ -209,7 +211,9 @@ class Reconciler:
             instance_manager, non_terminated_cloud_instances
         )
 
-        Reconciler._handle_ray_status_transition(instance_manager, ray_nodes)
+        Reconciler._handle_ray_status_transition(
+            instance_manager, ray_nodes, autoscaling_config
+        )
 
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
@@ -626,7 +630,9 @@ class Reconciler:
 
     @staticmethod
     def _handle_ray_status_transition(
-        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+        instance_manager: InstanceManager,
+        ray_nodes: List[NodeState],
+        autoscaling_config: AutoscalingConfig,
     ):
         """
         Handle the ray status transition for the instance manager.
@@ -650,12 +656,16 @@ class Reconciler:
             if n.instance_id:
                 ray_nodes_by_cloud_instance_id[n.instance_id] = n
             else:
-                # This should only happen to a ray node that's not managed by us.
-                logger.warning(
-                    f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
-                    "This only happens to a ray node that's not managed by autoscaler. "
-                    "If not, please file a bug at https://github.com/ray-project/ray"
-                )
+                if autoscaling_config.provider == Provider.READ_ONLY:
+                    # We will use the node id as the cloud instance id for read-only provider.
+                    ray_nodes_by_cloud_instance_id[binary_to_hex(n.node_id)] = n
+                else:
+                    # This should only happen to a ray node that's not managed by us.
+                    logger.warning(
+                        f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
+                        "This only happens to a ray node that's not managed by autoscaler. "
+                        "If not, please file a bug at https://github.com/ray-project/ray"
+                    )
 
         for cloud_instance_id, ray_node in ray_nodes_by_cloud_instance_id.items():
             assert cloud_instance_id in im_instances_by_cloud_instance_id, (
@@ -1451,6 +1461,7 @@ class Reconciler:
         }
 
         extra_cloud_instances: Dict[str, CloudInstance] = {}
+        logger.info(f"non_terminated_cloud_instances={non_terminated_cloud_instances}")
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
                 continue
