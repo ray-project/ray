@@ -39,8 +39,6 @@ class UnBatchToIndividualItems(ConnectorV2):
                     # Keys are always tuples to resemble multi-agent keys, which
                     # have the structure (eps_id, agent_id, module_id).
                     key = (eps_id,)
-                    #if key not in new_column_data:
-                    #    new_column_data[key] = []
                     new_column_data[key].append(column_data[i])
                 data[column] = dict(new_column_data)
         # Multi-agent case: Memorized structure is dict mapping module_ids to lists of
