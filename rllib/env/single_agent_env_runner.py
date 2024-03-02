@@ -74,6 +74,10 @@ class SingleAgentEnvRunner(EnvRunner):
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
+        # Global counter for environment steps from all workers. This is
+        # needed for schedulers used by `RLModule`s.
+        self.global_num_env_steps_sampled = 0
+
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
@@ -127,31 +131,36 @@ class SingleAgentEnvRunner(EnvRunner):
         *,
         num_timesteps: int = None,
         num_episodes: int = None,
-        explore: bool = True,
+        explore: bool = None,
         random_actions: bool = False,
         with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
         Args:
-            num_timesteps: int. Number of timesteps to sample during rollout.
-                Note, only one of `num_timetseps` or `num_episodes` may be provided.
-            num_episodes: int. Number of episodes to sample during rollout.
-                Note, only one parameter, `num_timetseps` or `num_episodes`
-                    can be provided.
-            explore: boolean. If in exploration or inference mode. Exploration
-                mode might for some algorithms provide extza model outputs that
-                are redundant in inference mode.
-            random_actions: boolean. If actions should be sampled from the action
-                space. In default mode (i.e. `False`) we sample actions frokm the
-                policy.
-            with_render_data: If render data from the environment should be collected.
-                This is only available when sampling episodes, i.e. `num_episodes` is
-                not `None`.
+            num_timesteps: The number of timesteps to sample during this call.
+                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+            num_episodes: The number of episodes to sample during this call.
+                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+            explore: If True, will use the RLModule's `forward_exploration()`
+                method to compute actions. If False, will use the RLModule's
+                `forward_inference()` method. If None (default), will use the `explore`
+                boolean setting from `self.config` passed into this EnvRunner's
+                constructor. You can change this setting in your config via
+                `config.exploration(explore=True|False)`.
+            random_actions: If True, actions will be sampled randomly (from the action
+                space of the environment). If False (default), actions or action
+                distribution parameters are computed by the RLModule.
+            with_render_data: If True, will call `render()` on the environment and
+                collect returned images.
+
         Returns:
-            `Lists of `MultiAgentEpisode` instances, carrying the collected sample data.
+            A list of `SingleAgentEpisode` instances, carrying the sampled data.
         """
         assert not (num_timesteps is not None and num_episodes is not None)
+
+        if explore is None:
+            explore = self.config.explore
 
         # If no execution details are provided, use the config to try to infer the
         # desired timesteps/episodes to sample.
@@ -204,7 +213,7 @@ class SingleAgentEnvRunner(EnvRunner):
     def _sample_timesteps(
         self,
         num_timesteps: int,
-        explore: bool = True,
+        explore: bool,
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
@@ -265,7 +274,9 @@ class SingleAgentEnvRunner(EnvRunner):
                 self._cached_to_module = None
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(
+                        to_module, t=self.global_num_env_steps_sampled + ts
+                    )
                 else:
                     to_env = self.module.forward_inference(to_module)
 
@@ -397,7 +408,7 @@ class SingleAgentEnvRunner(EnvRunner):
     def _sample_episodes(
         self,
         num_episodes: int,
-        explore: bool = True,
+        explore: bool,
         random_actions: bool = False,
         with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
@@ -439,6 +450,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Loop over episodes.
         eps = 0
+        ts = 0
         while eps < num_episodes:
             # Act randomly.
             if random_actions:
@@ -454,7 +466,9 @@ class SingleAgentEnvRunner(EnvRunner):
                 )
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(
+                        to_module, t=self.global_num_env_steps_sampled + ts
+                    )
                 else:
                     to_env = self.module.forward_inference(to_module)
 
@@ -536,6 +550,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+            ts += self.num_envs
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 

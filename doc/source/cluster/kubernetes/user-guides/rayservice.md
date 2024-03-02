@@ -267,20 +267,6 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 # [Expected output]: 8
 ```
 
-### Other possible scenarios that trigger a new RayCluster preparation
-
-> Note: The following behavior is for KubeRay v0.6.2 or newer.
-For older versions, see [kuberay#1293](https://github.com/ray-project/kuberay/pull/1293) for more details.
-
-KubeRay also triggers a new RayCluster preparation if it considers a RayCluster unhealthy.
-In the RayService, KubeRay can mark a RayCluster as unhealthy in two possible scenarios.
-
-* Case 1: The KubeRay operator can't connect to the dashboard agent on the head Pod for more than the duration defined by the `deploymentUnhealthySecondThreshold` parameter. Both the default value and values in sample YAML files of `deploymentUnhealthySecondThreshold` are 300 seconds.
-
-* Case 2: The KubeRay operator marks a RayCluster as unhealthy if the status of a serve application is `DEPLOY_FAILED` or `UNHEALTHY` for a duration exceeding the `serviceUnhealthySecondThreshold` parameter. Both the default value and values in sample YAML files of `serviceUnhealthySecondThreshold` are 900 seconds.
-
-After KubeRay marks a RayCluster as unhealthy, it initiates the creation of a new RayCluster. Once the new RayCluster is ready, KubeRay redirects network traffic to it, and subsequently deletes the old RayCluster.
-
 ## Step 9: Clean up the Kubernetes cluster
 
 ```sh
