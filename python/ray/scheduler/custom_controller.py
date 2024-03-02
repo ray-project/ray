@@ -77,7 +77,7 @@ class Controller():
             task_status = get_task(user_task.spec[USER_TASK_ID])
             if task_status == None:
                 return
-            # print(task_status)
+            print(task_status)
             # The task_status is retrieved from the Ray API, and the end/start time may sometimes not be updated yet even though the state is FINISHED.
             if task_status[STATE] == RUNNING and task_status[START_TIME] != None:
                 user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
@@ -95,7 +95,7 @@ class Controller():
 
     def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_name):
 
-        @ray.remote(num_cpus=0.5)
+        @ray.remote(num_cpus=0.3)
         def bind_label():
             def download_s3_folder(bucket_name, s3_folder='', local_dir=None):
                 """
@@ -147,11 +147,11 @@ class Controller():
                     # try to simulate a huge file transfer by repeating
                     repeat_times = 9
                     while repeat_times > 0:
-                        os.system(f"rsync --mkpath -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
+                        os.system(f"rsync --mkpath -r -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
                         # remove the file
                         os.system(f"rm {label}")
                         repeat_times -= 1
-                    os.system(f"rsync --mkpath -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
+                    os.system(f"rsync --mkpath -r -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
                     ray.get_runtime_context().set_label({label: label})
             return FINISHED
 
