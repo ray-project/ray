@@ -7,7 +7,6 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeType
 
 
