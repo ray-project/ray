@@ -521,6 +521,7 @@ def make_multi_agent(
             obs, infos = {}, {}
             for i, env in enumerate(self.envs):
                 obs[i], infos[i] = env.reset(seed=seed, options=options)
+
             return obs, infos
 
         @override(MultiAgentEnv)
