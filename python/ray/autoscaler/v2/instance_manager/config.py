@@ -494,7 +494,7 @@ class KubeRayConfigReader(IConfigReader):
         self._cached_config = self._read()
 
     def _read(self) -> AutoscalingConfig:
-        return AutoscalingConfig(self._config_producer(), skip_update=True)
+        return AutoscalingConfig(self._config_producer(), skip_prepare=True)
 
     def get_autoscaling_config(self) -> AutoscalingConfig:
         """
