@@ -32,7 +32,7 @@ class OpRuntimeMetrics:
 
     # === Inputs-related metrics ===
 
-    # Number of received input blocks.
+    # Number of input blocks received by operator.
     num_inputs_received: int = 0
     # Total size in bytes of received input blocks.
     bytes_inputs_received: int = 0
@@ -43,7 +43,7 @@ class OpRuntimeMetrics:
     num_task_inputs_processed: int = field(default=0, metadata={"map_only": True})
     # Total size in bytes of processed input blocks.
     bytes_task_inputs_processed: int = field(default=0, metadata={"map_only": True})
-    # Size in bytes of input blocks passed to submitted tasks.
+    # Total size in bytes of input blocks passed to submitted tasks.
     bytes_inputs_of_submitted_tasks: int = field(default=0, metadata={"map_only": True})
 
     # === Outputs-related metrics ===
@@ -92,7 +92,6 @@ class OpRuntimeMetrics:
     obj_store_mem_internal_inqueue: int = field(
         default=0, metadata={"export_metric": True}
     )
-    # TODO: outqueue metrics not showing on dashboard
     # Number of blocks in the operator's internal output queue.
     obj_store_mem_internal_outqueue_blocks: int = field(
         default=0, metadata={"export_metric": True}

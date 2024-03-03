@@ -201,6 +201,36 @@ class _StatsActor:
             description="Rows outputted by dataset operators",
             tag_keys=op_tags_keys,
         )
+
+        # Metrics from OpRuntimeMetrics
+        self.num_inputs_received = Gauge(
+            "data_num_inputs_received",
+            description="Number of input blocks received by operator.",
+            tag_keys=op_tags_keys,
+        )
+        self.bytes_inputs_received = Gauge(
+            "data_bytes_inputs_received",
+            description="Total size in bytes of input blocks received by operator.",
+            tag_keys=op_tags_keys,
+        )
+        self.num_task_inputs_processed = Gauge(
+            "data_num_task_inputs_processed",
+            description="Number of input blocks processed by tasks.",
+            tag_keys=op_tags_keys,
+        )
+        self.bytes_task_inputs_processed = Gauge(
+            "data_bytes_task_inputs_processed",
+            description="Total size in bytes of processed input blocks.",
+            tag_keys=op_tags_keys,
+        )
+        self.bytes_inputs_of_submitted_tasks = Gauge(
+            "data_bytes_inputs_of_submitted_tasks",
+            description=(
+                "Total size in bytes of input blocks passed to submitted tasks."
+            ),
+            tag_keys=op_tags_keys,
+        )
+
         self.block_generation_time = Gauge(
             "data_block_generation_seconds",
             description="Time spent generating blocks.",
@@ -305,6 +335,20 @@ class _StatsActor:
             self.rows_outputted.set(stats.get("rows_task_outputs_generated", 0), tags)
             self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
+            self.num_inputs_received.set(stats.get("num_inputs_received", 0), tags)
+            self.bytes_inputs_received.set(stats.get("bytes_inputs_received", 0), tags)
+            self.num_task_inputs_processed.set(
+                stats.get("num_task_inputs_processed", 0),
+                tags,
+            )
+            self.bytes_task_inputs_processed.set(
+                stats.get("bytes_task_inputs_processed", 0),
+                tags,
+            )
+            self.bytes_inputs_of_submitted_tasks.set(
+                stats.get("bytes_inputs_of_submitted_tasks", 0),
+                tags,
+            )
             self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
             self.obj_store_mem_internal_inqueue_blocks.set(
                 stats.get("obj_store_mem_internal_inqueue_blocks", 0), tags
@@ -344,6 +388,13 @@ class _StatsActor:
             self.rows_outputted.set(0, tags)
             self.cpu_usage.set(0, tags)
             self.gpu_usage.set(0, tags)
+
+            self.num_inputs_received.set(0, tags)
+            self.bytes_inputs_received.set(0, tags)
+            self.num_task_inputs_processed.set(0, tags)
+            self.bytes_task_inputs_processed.set(0, tags)
+            self.bytes_inputs_of_submitted_tasks.set(0, tags)
+
             self.block_generation_time.set(0, tags)
             self.obj_store_mem_internal_inqueue_blocks.set(0, tags)
             self.obj_store_mem_internal_inqueue.set(0, tags)

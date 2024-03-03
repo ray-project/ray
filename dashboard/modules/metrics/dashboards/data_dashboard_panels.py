@@ -119,6 +119,61 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    # Inputs-related metrics
+    Panel(
+        id=17,
+        title="Input Blocks Received by Operator",
+        description="Number of input blocks received by operator.",
+        unit="blocks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_inputs_received{{{global_filters}}}) by (dataset, operator)",
+                legend="Blocks Received: {{dataset}}, {{operator}}",
+            )
+        ],
+    ),
+    Panel(
+        id=19,
+        title="Input Blocks Processed by Tasks",
+        description="Number of input blocks processed by tasks.",
+        unit="blocks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_task_inputs_processed{{{global_filters}}}) by (dataset, operator)",
+                legend="Blocks Processed: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=20,
+        title="Input Bytes Processed by Tasks",
+        description="Total size in bytes of processed input blocks.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_bytes_task_inputs_processed{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Processed: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=21,
+        title="Input Bytes Submitted to Tasks",
+        description="Total size in bytes of input blocks passed to submitted tasks.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_bytes_inputs_of_submitted_tasks{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Submitted: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
     Panel(
         id=8,
         title="Block Generation Time",

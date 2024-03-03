@@ -208,6 +208,19 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Rows Outputted",
         pathParams: "orgId=1&theme=light&panelId=11",
       },
+      // Inputs-related metrics
+      {
+        title: "Input Blocks Processed by Tasks",
+        pathParams: "orgId=1&theme=light&panelId=17",
+      },
+      {
+        title: "Input Bytes Processed by Tasks",
+        pathParams: "orgId=1&theme=light&panelId=18",
+      },
+      {
+        title: "Input Bytes Submitted to Tasks",
+        pathParams: "orgId=1&theme=light&panelId=19",
+      },
       {
         title: "Block Generation Time",
         pathParams: "orgId=1&theme=light&panelId=8",
