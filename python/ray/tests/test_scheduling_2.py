@@ -653,7 +653,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
 @pytest.mark.skipif(os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
-@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+@pytest.mark.parametrize("autoscaler_v2", [True, False], ids=["v2", "v1"])
 def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
     from ray.cluster_utils import AutoscalingCluster
@@ -724,6 +724,7 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     # Wait for 20s for the cluster to be up
     wait_for_condition(check_backlog_info, 20)
     cluster.shutdown()
+    ray.shutdown()
 
 
 def test_data_locality_spilled_objects(
