@@ -379,14 +379,19 @@ def usage_stats_prompt_enabled():
     return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
 
 
-def _generate_cluster_metadata():
-    """Return a dictionary of cluster metadata."""
+def _generate_cluster_metadata(*, ray_init_cluster: bool):
+    """Return a dictionary of cluster metadata.
+
+    Params:
+        ray_init_cluster: Whether the cluster is started by ray.init()
+    """
     ray_version, python_version = ray._private.utils.compute_version_info()
     # These two metadata is necessary although usage report is not enabled
     # to check version compatibility.
     metadata = {
         "ray_version": ray_version,
         "python_version": python_version,
+        "ray_init_cluster": ray_init_cluster,
     }
     # Additional metadata is recorded only when usage stats are enabled.
     if usage_stats_enabled():
@@ -492,30 +497,19 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def set_usage_stats_ray_init_cluster() -> None:
-    """Set the env var to tell UsageStatsHead that
-    the current cluster is created by ray.init
-    """
-    os.environ[usage_constant.USAGE_STATS_RAY_INIT_CLUSTER_ENV_VAR] = "1"
-
-
-def is_usage_stats_ray_init_cluster() -> bool:
-    """Return whether the cluster is started by ray.init"""
-    return os.getenv(usage_constant.USAGE_STATS_RAY_INIT_CLUSTER_ENV_VAR, "0") == "1"
-
-
-def put_cluster_metadata(gcs_client) -> None:
+def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
 
     Params:
         gcs_client: The GCS client to perform KV operation PUT.
+        ray_init_cluster: Whether the cluster is started by ray.init()
 
     Raises:
         gRPC exceptions if PUT fails.
     """
-    metadata = _generate_cluster_metadata()
+    metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
     gcs_client.internal_kv_put(
         usage_constant.CLUSTER_METADATA_KEY,
         json.dumps(metadata).encode(),
@@ -795,6 +789,15 @@ def get_cluster_metadata(gcs_client) -> dict:
             namespace=ray_constants.KV_NAMESPACE_CLUSTER,
         ).decode("utf-8")
     )
+
+
+def is_ray_init_cluster(gcs_address: str) -> bool:
+    """Return whether the cluster is started by ray.init()"""
+
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+
+    cluster_metadata = get_cluster_metadata(gcs_client)
+    return cluster_metadata["ray_init_cluster"]
 
 
 def generate_disabled_report_data() -> UsageStatsToReport:

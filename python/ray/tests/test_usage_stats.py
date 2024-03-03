@@ -685,7 +685,7 @@ def test_usage_lib_cluster_metadata_generation(
         """
         Test metadata stored is equivalent to `_generate_cluster_metadata`.
         """
-        meta = ray_usage_lib._generate_cluster_metadata()
+        meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=False)
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
@@ -700,7 +700,8 @@ def test_usage_lib_cluster_metadata_generation(
         Make sure put & get works properly.
         """
         cluster_metadata = ray_usage_lib.put_cluster_metadata(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+            ray_init_cluster=False,
         )
         assert cluster_metadata == ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
@@ -838,10 +839,11 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(
     """
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
-        meta = ray_usage_lib._generate_cluster_metadata()
+        meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=False)
         assert "ray_version" in meta
         assert "python_version" in meta
-        assert len(meta) == 2
+        assert "ray_init_cluster" in meta
+        assert len(meta) == 3
 
 
 def test_usage_lib_get_total_num_running_jobs_to_report(

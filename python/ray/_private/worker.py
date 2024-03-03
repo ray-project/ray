@@ -1605,7 +1605,6 @@ def init(
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
 
-        usage_lib.set_usage_stats_ray_init_cluster()
         if usage_lib.is_nightly_wheel():
             usage_lib.show_usage_stats_prompt(cli=False)
         else:
@@ -1646,10 +1645,11 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
+            ray_params=ray_params,
             head=True,
             shutdown_at_exit=False,
             spawn_reaper=True,
-            ray_params=ray_params,
+            ray_init_cluster=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.

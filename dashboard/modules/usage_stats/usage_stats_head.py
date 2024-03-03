@@ -160,6 +160,11 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         assert not self.usage_stats_enabled
 
         try:
+            if ray_usage_lib.is_ray_init_cluster(
+                self._dashboard_head.gcs_client.address
+            ):
+                return
+
             data = ray_usage_lib.generate_disabled_report_data()
             self.client.report_usage_data(ray_usage_lib._usage_stats_report_url(), data)
         except Exception as e:
@@ -184,8 +189,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         )
         if not self.usage_stats_enabled:
             logger.info("Usage reporting is disabled.")
-            if not ray_usage_lib.is_usage_stats_ray_init_cluster():
-                await self._report_disabled_usage_async()
+            await self._report_disabled_usage_async()
             return
         else:
             logger.info("Usage reporting is enabled.")
