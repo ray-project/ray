@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # starting with fffff*00000 for the head node, fffff*00001, etc. for workers.
 FAKE_HEAD_NODE_ID = "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
 FAKE_HEAD_NODE_TYPE = "ray.head.default"
+
 FAKE_DOCKER_DEFAULT_GCS_PORT = 16379
 FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT = 18076
 FAKE_DOCKER_DEFAULT_CLIENT_PORT = 10002

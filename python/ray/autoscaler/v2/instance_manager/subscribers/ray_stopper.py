@@ -113,13 +113,12 @@ class RayStopper(InstanceUpdatedSubscriber):
                 # from the stuck instance reconcilation configs.
                 deadline_timestamp_ms=0,
             )
-            logger.info(
-                f"Draining ray on {ray_node_id}(success={accepted}): {reason_str}"
-            )
+            logger.info(f"Drained ray on {ray_node_id}(success={accepted})")
             if not accepted:
                 error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
         except Exception:
             logger.exception("Error draining ray.")
+            error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
 
     @staticmethod
     def _stop_ray_node(
@@ -138,11 +137,12 @@ class RayStopper(InstanceUpdatedSubscriber):
         try:
             drained = gcs_client.drain_nodes(node_ids=[hex_to_binary(ray_node_id)])
             success = len(drained) > 0
-            logger.info(
-                f"Stopping ray on {ray_node_id}(instance={instance_id}): success={success})"
-            )
             if not success:
                 if not success:
                     error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
+            logger.info(
+                f"Stopping ray on {ray_node_id}(instance={instance_id}): {success}"
+            )
         except Exception:
             logger.exception("Error stopping ray.")
+            error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
