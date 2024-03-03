@@ -244,6 +244,7 @@ class InstanceManager:
         )
 
         # Apply the status specific updates.
+        logger.info(InstanceUtil.get_log_str_for_update(instance, update))
         InstanceManager._apply_update(instance, update)
         return instance
 
@@ -259,6 +260,7 @@ class InstanceManager:
         Returns:
             The updated instance.
         """
+        logger.info(InstanceUtil.get_log_str_for_update(instance, update))
         assert InstanceUtil.set_status(instance, update.new_instance_status), (
             "Invalid status transition from "
             f"{Instance.InstanceStatus.Name(instance.status)} to "
