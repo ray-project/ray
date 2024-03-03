@@ -460,13 +460,6 @@ class Reconciler:
             if not update_event:
                 continue
 
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(update_event),
-                )
-            )
             updates[instance.instance_id] = update_event
 
         # Update the instance manager for the events.
@@ -512,6 +505,10 @@ class Reconciler:
                 cloud_instance_id=unassigned_cloud_instance.cloud_instance_id,
                 node_kind=unassigned_cloud_instance.node_kind,
                 instance_type=unassigned_cloud_instance.node_type,
+                details=(
+                    "allocated unassigned cloud instance "
+                    f"{unassigned_cloud_instance.cloud_instance_id}"
+                ),
             )
 
         # If there's a launch error, transition to ALLOCATION_FAILED.
@@ -520,7 +517,7 @@ class Reconciler:
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
-                details=str(launch_error),
+                details=f"launch failed with {str(launch_error)}",
             )
         # No update.
         return None
@@ -575,15 +572,8 @@ class Reconciler:
             updates[instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance_id,
                 new_instance_status=IMInstance.RAY_RUNNING,
-                details="Failed to stop/drain ray.",
+                details="failed to stop/drain ray",
                 ray_node_id=instance.node_id,
-            )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance_id]),
-                )
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -613,7 +603,7 @@ class Reconciler:
                 updates[instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_INSTALL_FAILED,
-                    details=install_error.details,
+                    details=f"failed to install ray with errors: {install_error.details}",
                 )
                 logger.debug(
                     "Updating {}({}) with {}".format(
@@ -661,15 +651,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATED,
-                details=f"Cloud instance {cloud_instance_id} is terminated.",
-            )
-
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details=f"cloud instance {cloud_instance_id} no longer found",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -715,14 +697,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATION_FAILED,
-                details=str(failure),
-            )
-            logger.debug(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details=f"termination failed: {str(failure)}",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -818,17 +793,11 @@ class Reconciler:
                 updates[im_instance.instance_id] = IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=reconciled_im_status,
-                    details="Reconciled from ray node status "
-                    f"{NodeStatus.Name(ray_node.status)} "
-                    f"for ray node {binary_to_hex(ray_node.node_id)}",
+                    details=(
+                        f"ray node {binary_to_hex(ray_node.node_id)} is "
+                        f"{NodeStatus.Name(ray_node.status)}"
+                    ),
                     ray_node_id=binary_to_hex(ray_node.node_id),
-                )
-                logger.debug(
-                    "Updating {}({}) with {}.".format(
-                        im_instance.instance_id,
-                        IMInstance.InstanceStatus.Name(im_instance.status),
-                        message_to_dict(updates[im_instance.instance_id]),
-                    )
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -917,13 +886,10 @@ class Reconciler:
                     new_instance_status=IMInstance.REQUESTED,
                     launch_request_id=launch_request_id,
                     instance_type=instance_type,
-                )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance.instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance.instance_id]),
-                    )
+                    details=(
+                        f"requested to launch {instance_type} with request id "
+                        f"{launch_request_id}"
+                    ),
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1275,11 +1241,7 @@ class Reconciler:
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_STOP_REQUESTED,
                     termination_request=terminate_request,
-                )
-                logger.info(
-                    "Stopping ray on {} with {}".format(
-                        instance_id, message_to_dict(updates[instance_id])
-                    )
+                    details=f"draining ray: {terminate_request.details}",
                 )
             else:
                 # If we would just terminate the cloud instance.
@@ -1290,12 +1252,10 @@ class Reconciler:
                     instance_id=instance_id,
                     new_instance_status=IMInstance.TERMINATING,
                     cloud_instance_id=instance.cloud_instance_id,
-                )
-                logger.info(
-                    "Terminating {} with {}".format(
-                        instance_id,
-                        message_to_dict(updates[instance_id]),
-                    )
+                    details=(
+                        "terminating cloud instance without draining ray -"
+                        f"{terminate_request.details}"
+                    ),
                 )
 
         # Add new instances.
@@ -1307,12 +1267,10 @@ class Reconciler:
                     new_instance_status=IMInstance.QUEUED,
                     instance_type=launch_request.instance_type,
                     upsert=True,
-                )
-
-                logger.info(
-                    "Queueing new instance {} of type {}".format(
-                        instance_id, launch_request.instance_type
-                    )
+                    details=(
+                        f"queuing new instance of {launch_request.instance_type} "
+                        "from scheduler"
+                    ),
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1342,14 +1300,12 @@ class Reconciler:
                 continue
 
             # Terminate the instance.
-            logger.info(
-                f"Terminating instance {instance.instance_id} with status "
-                f"{IMInstance.InstanceStatus.Name(instance.status)}"
-            )
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATING,
                 cloud_instance_id=instance.cloud_instance_id,
+                details="terminating instance from "
+                f"{IMInstance.InstanceStatus.Name(instance.status)}",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1396,13 +1352,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.RAY_INSTALLING,
-            )
-            logger.info(
-                "Updating {}({}) with {}".format(
-                    instance.instance_id,
-                    IMInstance.InstanceStatus.Name(instance.status),
-                    message_to_dict(updates[instance.instance_id]),
-                )
+                details="installing ray",
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -1533,7 +1483,7 @@ class Reconciler:
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
                 details=(
-                    "Failed to allocate cloud instance after "
+                    "failed to allocate cloud instance after "
                     f"{len(all_request_times_ns)} attempts > "
                     f"max_num_retry_request_to_allocate={max_num_retry_request_to_allocate}"  # noqa
                 ),
@@ -1575,7 +1525,7 @@ class Reconciler:
         return IMInstanceUpdateEvent(
             instance_id=instance.instance_id,
             new_instance_status=new_status,
-            details=f"Timeout={timeout_s}s at status "
+            details=f"timeout={timeout_s}s at status "
             f"{IMInstance.InstanceStatus.Name(instance.status)}",
             **update_kwargs,
         )

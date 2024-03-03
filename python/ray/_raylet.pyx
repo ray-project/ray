@@ -2878,6 +2878,19 @@ cdef class GcsClient:
         return serialized_reply
 
     @_auto_reconnect
+    def report_autoscaling_state(
+        self,
+        serialzied_state: c_string,
+        timeout_s=None
+    ):
+        """Report autoscaling state to GCS"""
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+        with nogil:
+            check_status(self.inner.get().ReportAutoscalingState(
+                timeout_ms, serialzied_state))
+
+    @_auto_reconnect
     def drain_node(
             self,
             node_id: c_string,

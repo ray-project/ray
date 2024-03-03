@@ -365,6 +365,7 @@ class SchedulingNode:
         Args:
             node_config: The node config.
             status: The status of the node.
+            node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
         """
         return SchedulingNode(
@@ -575,6 +576,7 @@ class SchedulingNode:
     def __repr__(self) -> str:
         return (
             "SchedulingNode(node_type={node_type}, "
+            "node_kind={node_kind}, "
             "instance_id={instance_id},"
             "ray_node_id={ray_node_id},"
             "idle_duration_ms={idle_duration_ms},"
@@ -590,6 +592,7 @@ class SchedulingNode:
             "{sched_requests_for_cluster_resources_constraint})"
         ).format(
             node_type=self.node_type,
+            node_kind=self.node_kind,
             instance_id=self.im_instance_id,
             ray_node_id=self.ray_node_id,
             idle_duration_ms=self.idle_duration_ms,
@@ -822,7 +825,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             ]
 
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
-        logger.info(
+        logger.debug(
             "Scheduling for request: resource_request={}, gang_resource_request={}, "
             "cluster_constraint={}".format(
                 ResourceRequestUtil.to_dict_list(request.resource_requests),
@@ -1063,13 +1066,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         ], "Other termination causes don't have to select nodes for termination."
 
         for node in terminated_nodes:
-            logger.info(
-                "Terminating node {}(ray={}) due to {}.".format(
-                    node.im_instance_id,
-                    node.ray_node_id,
-                    TerminationRequest.Cause.Name(cause),
-                )
-            )
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
                 id=str(uuid.uuid4()),
@@ -1077,6 +1073,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ray_node_id=node.ray_node_id,
                 cause=cause,
                 instance_type=node.node_type,
+                details=(
+                    f"Terminating node due to {TerminationRequest.Cause.Name(cause)}: "
+                    f"max_num_nodes={max_num_nodes}, "
+                    f"max_num_nodes_per_type={max_num_nodes_per_type}"
+                ),
             )
             if cause == TerminationRequest.Cause.MAX_NUM_NODES:
                 node.termination_request.max_num_nodes = max_num_nodes
@@ -1543,17 +1544,13 @@ class ResourceDemandScheduler(IResourceScheduler):
             ):
                 # The node type config has been updated, and the node's launch config
                 # hash is outdated.
-                logger.info(
-                    "Terminating instance={}(ray={}) for outdated node config".format(
-                        node.im_instance_id, node.ray_node_id
-                    )
-                )
                 node.status = SchedulingNodeStatus.TO_TERMINATE
                 node.termination_request = TerminationRequest(
                     id=str(time.time_ns()),
                     instance_id=node.im_instance_id,
                     ray_node_id=node.ray_node_id,
                     cause=TerminationRequest.Cause.OUTDATED,
+                    details=f"node from {node.node_type} has outdated config",
                 )
 
         ctx.update(nodes)
@@ -1602,14 +1599,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                 continue
 
             # The node is idle for too long, terminate it.
-            logger.info(
-                "Terminating instance={}(ray={}) since it's idle for {} secs.".format(  # noqa
-                    node.im_instance_id,
-                    node.ray_node_id,
-                    node.idle_duration_ms / s_to_ms,
-                )
-            )
-
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
                 id=str(uuid.uuid4()),
@@ -1617,6 +1606,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ray_node_id=node.ray_node_id,
                 cause=TerminationRequest.Cause.IDLE,
                 idle_duration_ms=node.idle_duration_ms,
+                details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
+                f"timeout={idle_timeout_s} secs",
             )
 
         ctx.update(nodes)
