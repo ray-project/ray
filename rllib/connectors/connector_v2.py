@@ -446,6 +446,7 @@ class ConnectorV2(abc.ABC):
 
             import numpy as np
             from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 

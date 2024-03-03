@@ -7,6 +7,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
@@ -26,51 +27,117 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
     .. testcode::
 
-        import gymnasium as gym
-        import numpy as np
-
         from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
+        from ray.rllib.core.models.base import STATE_IN, STATE_OUT
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
-        # Create two dummy SingleAgentEpisodes, each containing 2 observations,
-        # 1 action and 1 reward (both are length=1).
-        obs_space = gym.spaces.Box(-1.0, 1.0, (2,), np.float32)
-        act_space = gym.spaces.Discrete(2)
+        # Create a simple dummy class, pretending to be an RLModule with
+        # `get_initial_state` overridden:
+        class MyStateModule:
+            def is_stateful(self):
+                return True
 
-        episodes = [SingleAgentEpisode(
-            observation_space=obs_space,
-            observations=[obs_space.sample(), obs_space.sample()],
-            actions=[act_space.sample()],
-            rewards=[1.0],
-            len_lookback_buffer=0,
-        ) for _ in range(2)]
-        eps_1_last_obs = episodes[0].get_observations(-1)
-        eps_2_last_obs = episodes[1].get_observations(-1)
-        print(f"1st Episode's last obs is {eps_1_last_obs}")
-        print(f"2nd Episode's last obs is {eps_2_last_obs}")
+            def get_initial_state(self):
+                return 0.0
 
-        # Create an instance of this class, providing the obs- and action spaces.
-        connector = AddObservationsFromEpisodesToBatch(obs_space, act_space)
 
-        # Call the connector with the two created episodes.
-        # Note that this particular connector works without an RLModule, so we
-        # simplify here for the sake of this example.
+        # Create an empty episode. The connector should use the RLModule's initial state
+        # to populate STATE_IN for the next forward pass.
+        episode = SingleAgentEpisode()
+
+        rl_module = MyStateModule()
+        rl_module_init_state = rl_module.get_initial_state()
+
+        # Create an instance of this class (as a env-to-module connector).
+        connector = AddStatesFromEpisodesToBatch(as_learner_connector=False)
+
+        # Call the connector.
         output_data = connector(
-            rl_module=None,
+            rl_module=rl_module,
             data={},
-            episodes=episodes,
-            explore=True,
+            episodes=[episode],
             shared_data={},
         )
-        # The output data should now contain the last observations of both episodes.
-        check(output_data, {"obs": [eps_1_last_obs, eps_2_last_obs]})
+        # The output data's STATE_IN key should now contain the RLModule's initial state
+        # plus the one state out found in the episode in a "per-episode organized"
+        # fashion.
+        check(
+            output_data[STATE_IN],
+            {
+                (episode.id_,): [rl_module_init_state],
+            },
+        )
+
+        # Create a SingleAgentEpisodes containing 5 observations,
+        # 4 actions and 4 rewards, and 4 STATE_OUTs.
+        # The same connector should now use the episode-stored last STATE_OUT as
+        # STATE_IN for the next forward pass.
+        episode = SingleAgentEpisode(
+            observations=[0, 1, 2, 3, 4],
+            actions=[1, 2, 3, 4],
+            rewards=[1.0, 2.0, 3.0, 4.0],
+            # STATE_OUT in episode will show up under STATE_IN in the batch.
+            extra_model_outputs={
+                STATE_OUT: [-4.0, -3.0, -2.0, -1.0],
+            },
+            len_lookback_buffer = 0,
+        )
+
+        # Call the connector.
+        output_data = connector(
+            rl_module=rl_module,
+            data={},
+            episodes=[episode],
+            shared_data={},
+        )
+        # The output data's STATE_IN key should now contain the episode's last
+        # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
+        # fashion.
+        check(
+            output_data[STATE_IN],
+            {
+                # Expect the episode's last STATE_OUT.
+                (episode.id_,): [-1.0],
+            },
+        )
+
+        # Create a new connector as a learner connector with a RNN seq len of 2 (for
+        # testing purposes only). Passing the same data through this learner connector,
+        # we expect the STATE_IN data to contain a) the initial module state and then
+        # every 2nd STATE_OUT stored in the episode.
+        connector = AddStatesFromEpisodesToBatch(
+            as_learner_connector=True,
+            max_seq_len=2,
+        )
+
+        # Call the connector.
+        output_data = connector(
+            rl_module=rl_module,
+            data={},
+            episodes=[episode.finalize()],
+            shared_data={},
+        )
+        # The output data's STATE_IN key should now contain the episode's last
+        # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
+        # fashion.
+        check(
+            output_data[STATE_IN],
+            {
+                # Expect initial module state + every 2nd STATE_OUT from episode, but
+                # not the very last one (just like the very last observation, this data
+                # is NOT passed through the forward_train, b/c there is nothing to learn
+                # at that timestep, unless we need to compute e.g. bootstrap value
+                # predictions).
+                (episode.id_,): [rl_module_init_state, -3.0],
+            },
+        )
     """
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         max_seq_len: Optional[int] = None,
         as_learner_connector: bool = False,
@@ -147,7 +214,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if sa_episode.module_id is not None:
                     sa_module = rl_module[sa_episode.module_id]
                 else:
-                    sa_module = rl_module[DEFAULT_POLICY_ID]
+                    sa_module = (
+                        rl_module[DEFAULT_POLICY_ID]
+                        if isinstance(rl_module, MultiAgentRLModule)
+                        else rl_module
+                    )
 
                 if self.max_seq_len is None:
                     raise ValueError(
@@ -222,7 +293,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     sa_module = rl_module[sa_episode.module_id]
 
                 # Episode just started -> Get initial state from our RLModule.
-                if len(sa_episode) == 0:
+                if sa_episode.t_started == 0 and len(sa_episode) == 0:
                     state = sa_module.get_initial_state()
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:

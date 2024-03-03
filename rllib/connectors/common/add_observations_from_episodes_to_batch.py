@@ -33,7 +33,6 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         act_space = gym.spaces.Discrete(2)
 
         episodes = [SingleAgentEpisode(
-            observation_space=obs_space,
             observations=[obs_space.sample(), obs_space.sample()],
             actions=[act_space.sample()],
             rewards=[1.0],
@@ -44,8 +43,8 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         print(f"1st Episode's last obs is {eps_1_last_obs}")
         print(f"2nd Episode's last obs is {eps_2_last_obs}")
 
-        # Create an instance of this class, providing the obs- and action spaces.
-        connector = AddObservationsFromEpisodesToBatch(obs_space, act_space)
+        # Create an instance of this class.
+        connector = AddObservationsFromEpisodesToBatch()
 
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
