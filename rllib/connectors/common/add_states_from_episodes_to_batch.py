@@ -19,6 +19,18 @@ from ray.rllib.utils.typing import EpisodeType
 class AddStatesFromEpisodesToBatch(ConnectorV2):
     """Gets last STATE_OUT from running episode and adds it as STATE_IN to the batch.
 
+    If the RLModule is stateful, the episodes' STATE_OUTS will be extracted
+    and restructured under a new STATE_IN key.
+    As a Learner connector, the resulting STATE_IN batch has the shape (B', ...).
+    Here, B' is the sum of splits we have to do over the given episodes, such that each
+    chunk is at most `max_seq_len` long (T-axis).
+    As a EnvToModule connector, the resulting STATE_IN batch simply consists of n
+    states coming from n vectorized environments/episodes.
+
+    Also, all other data (observations, rewards, etc.. if applicable) will be properly
+    reshaped into (B, T=max_seq_len (learner) or 1 (env-to-module), ...) and will be
+    zero-padded, if necessary.
+
     - Operates on a list of Episode objects.
     - Gets the most recent STATE_OUT from all the given episodes and adds them under
     the STATE_IN key to the batch under construction.
@@ -229,6 +241,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         "keys in it via `config.training(model={'max_seq_len': x})`."
                     )
 
+                # look_back_state.shape=([state-dim],)
                 look_back_state = (
                     # Episode has a (reset) beginning -> Prepend initial
                     # state.
@@ -243,16 +256,19 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         neg_indices_left_of_zero=True,
                     )
                 )
+                # state_outs.shape=(T,[state-dim])  T=episode len
                 state_outs = sa_episode.get_extra_model_outputs(key=STATE_OUT)
                 self.add_n_batch_items(
                     batch=data,
                     column=STATE_IN,
+                    # items_to_add.shape=(B,[state-dim])  # B=episode len // max_seq_len
                     items_to_add=unbatch(
                         tree.map_structure(
-                            # [::max_seq_len]: only keep every Tth state in value.
-                            # [:-1]: Shift state outs by one (ignore very last state
-                            # out, but therefore add the lookback/init state at the
-                            # beginning).
+                            # Explanation:
+                            # [::max_seq_len]: only keep every Tth state.
+                            # [:-1]: Shift state outs by one, ignore very last
+                            # STATE_OUT (but therefore add the lookback/init state at
+                            # the beginning).
                             lambda i, o: np.concatenate([[i], o[:-1]])[
                                 :: self.max_seq_len
                             ],

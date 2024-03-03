@@ -142,10 +142,10 @@ class AgentToModuleMapping(ConnectorV2):
         # Store in shared data, which module IDs map to which episode/agent, such
         # that the module-to-env pipeline can map the data back to agents.
         memorized_map_structure = defaultdict(list)
-        for column, column_data in data.items():
+        for column, agent_data in data.items():
             if rl_module is not None and column in rl_module:
                 continue
-            for eps_id, agent_id, module_id in column_data.keys():
+            for eps_id, agent_id, module_id in agent_data.keys():
                 memorized_map_structure[module_id].append((eps_id, agent_id))
             # TODO (sven): We should check that all columns have the same struct.
             break
@@ -168,9 +168,7 @@ class AgentToModuleMapping(ConnectorV2):
                 agent_id,
                 module_id,
             ), values_batch_or_list in agent_data.items():
-                if not isinstance(values_batch_or_list, list):
-                    assert False
-                    values_batch_or_list = unbatch(values_batch_or_list)
+                assert isinstance(values_batch_or_list, list)
                 for value in values_batch_or_list:
                     if module_id not in data_by_module:
                         data_by_module[module_id] = {column: []}
@@ -201,8 +199,8 @@ class AgentToModuleMapping(ConnectorV2):
             # single-agent space.
             if all(s == one_space for s in space.spaces.values()):
                 ret_space[module_id] = one_space
-            # Otherwise, we have to match the policy ID with all possible
-            # agent IDs and find the agent ID that matches.
+            # Otherwise, we have to compare the ModuleID with all possible
+            # AgentIDs and find the agent ID that matches.
             else:
                 match_aid = None
                 for aid in space.spaces.keys():

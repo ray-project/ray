@@ -58,8 +58,6 @@ class GetActions(ConnectorV2):
             action_dist = action_dist_class.from_logits(
                 data[SampleBatch.ACTION_DIST_INPUTS],
             )
-            # TODO (sven): Should this not already be taken care of by RLModule's
-            #  `get_...action_dist_cls()` methods?
             if not explore:
                 action_dist = action_dist.to_deterministic()
 

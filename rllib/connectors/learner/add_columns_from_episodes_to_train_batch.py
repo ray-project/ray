@@ -23,12 +23,9 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
     respective keys.
     - All data inside the episodes' `extra_model_outs` property, e.g. action logp and
     action probs under the respective keys.
-    - States: If the RLModule is stateful, the episodes' STATE_OUTS will be extracted
-    and restructured under a new STATE_IN key in such a way that the resulting STATE_IN
-    batch has the shape (B', ...). Here, B' is the sum of splits we have to do over
-    the given episodes, such that each chunk is at most `max_seq_len` long (T-axis).
-    Also, all other data will be properly reshaped into (B, T=max_seq_len, ...) and
-    will be zero-padded, if necessary.
+    - Internal states: These will NOT be added to the batch by this connector piece
+    as this functionality is handled by a different default connector piece:
+    `AddStatesFromEpisodesToBatch`.
 
     If the user wants to customize their own data under the given keys (e.g. obs,
     actions, ...), they can extract from the episodes or recompute from `data`
