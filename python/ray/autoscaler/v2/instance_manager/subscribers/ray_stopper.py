@@ -110,14 +110,14 @@ class RayStopper(InstanceUpdatedSubscriber):
                 reason=reason,
                 reason_message=reason_str,
                 # TODO: we could probably add a deadline here that's derived
-                # from the stuck instance reconcilation configs.
+                # from the stuck instance reconciliation configs.
                 deadline_timestamp_ms=0,
             )
             logger.info(f"Drained ray on {ray_node_id}(success={accepted})")
             if not accepted:
                 error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
         except Exception:
-            logger.exception("Error draining ray.")
+            logger.exception(f"Error draining ray on {ray_node_id}")
             error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
 
     @staticmethod
@@ -144,5 +144,5 @@ class RayStopper(InstanceUpdatedSubscriber):
                 f"Stopping ray on {ray_node_id}(instance={instance_id}): {success}"
             )
         except Exception:
-            logger.exception("Error stopping ray.")
+            logger.exception("Error stopping ray on")
             error_queue.put_nowait(RayStopError(im_instance_id=instance_id))

@@ -115,14 +115,13 @@ class Autoscaler:
         config: AutoscalingConfig,
     ):
         """
-        Initialize the instance manager, and its dependencies:
+        Initialize the instance manager, and its dependencies.
         """
 
         instance_storage = InstanceStorage(
             cluster_id=session_name,
             storage=InMemoryStorage(),
         )
-
         subscribers: List[InstanceUpdatedSubscriber] = []
         subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
         subscribers.append(
