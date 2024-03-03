@@ -43,22 +43,11 @@ class MockMetricsAgentClient : public rpc::MetricsAgentClient {
  public:
   MockMetricsAgentClient() {}
 
-  void ReportMetrics(
-      const rpc::ReportMetricsRequest &request,
-      const rpc::ClientCallback<rpc::ReportMetricsReply> &callback) override {
-    reportMetricsRequests_.push_back(request);
-    callback(Status::OK(), {});
-  }
-
   void ReportOCMetrics(
       const rpc::ReportOCMetricsRequest &request,
       const rpc::ClientCallback<rpc::ReportOCMetricsReply> &callback) override {
     reportOCMetricsRequests_.push_back(request);
     callback(Status::OK(), {});
-  }
-
-  const std::vector<rpc::ReportMetricsRequest> &CollectedReportMetricsRequests() const {
-    return reportMetricsRequests_;
   }
 
   const std::vector<rpc::ReportOCMetricsRequest> &CollectedReportOCMetricsRequests()
@@ -67,7 +56,6 @@ class MockMetricsAgentClient : public rpc::MetricsAgentClient {
   }
 
  private:
-  std::vector<rpc::ReportMetricsRequest> reportMetricsRequests_;
   std::vector<rpc::ReportOCMetricsRequest> reportOCMetricsRequests_;
 };
 
@@ -177,7 +165,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     });
 
     ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 1);
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
   }
 
   {
@@ -200,7 +187,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     ocProtoExporter.ExportViewData({{view_descriptor, view_data}});
 
     ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 2);
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
   }
 }
 
@@ -263,8 +249,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
         {view_descriptor, view_data},
     });
 
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
-
     auto requests = mockClient->CollectedReportOCMetricsRequests();
 
     RAY_LOG(INFO) << "Request payload: " << requests[0].DebugString();
@@ -302,8 +286,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     ocProtoExporter.ExportViewData({{view_descriptor, view_data},
                                     {view_descriptor, view_data},
                                     {view_descriptor, view_data}});
-
-    ASSERT_THAT(mockClient->CollectedReportMetricsRequests().size(), 0);
 
     auto requests = mockClient->CollectedReportOCMetricsRequests();
 

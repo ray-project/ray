@@ -874,21 +874,6 @@ message NodeResourceUsage {
   string json = 1;
 }
 
-message MetricPoint {
-  // Name of the metric.
-  string metric_name = 1;
-  // Timestamp when metric is exported.
-  int64 timestamp = 2;
-  // Value of the metric point.
-  double value = 3;
-  // Tags of the metric.
-  map<string, string> tags = 4;
-  // [Optional] Description of the metric.
-  string description = 5;
-  // [Optional] Unit of the metric.
-  string units = 6;
-}
-
 // Type of a worker exit.
 enum WorkerExitType {
   // Worker exits due to system level failures (i.e. worker crash).
