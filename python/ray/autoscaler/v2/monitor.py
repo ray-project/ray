@@ -1,4 +1,8 @@
-"""Autoscaler monitoring loop daemon."""
+"""Autoscaler monitoring loop daemon.
+
+See autoscaler._private/monitor.py for the legacy implementation. All the legacy flags
+are supported here, but the new implementation uses the new autoscaler v2.
+"""
 
 import argparse
 import logging

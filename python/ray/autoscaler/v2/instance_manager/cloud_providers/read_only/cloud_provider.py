@@ -18,6 +18,14 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 
 
 class ReadOnlyProvider(ICloudInstanceProvider):
+    """
+    A read only provider that use the ray node states from the GCS as the
+    cloud instances.
+
+    This is used for laptop mode / manual cluster setup modes, in order to
+    provide status reporting in the same way for users.
+    """
+
     def __init__(self, provider_config: dict):
         self._provider_config = provider_config
         self._gcs_address = provider_config["gcs_address"]
@@ -47,7 +55,7 @@ class ReadOnlyProvider(ICloudInstanceProvider):
                 cloud_instance_id=cloud_instance_id,
                 node_kind=NodeKind.HEAD if is_head else NodeKind.WORKER,
                 node_type=format_readonly_node_type(
-                    binary_to_hex(gcs_node_state.node_id)
+                    binary_to_hex(gcs_node_state.node_id)  # Legacy behavior.
                 ),
                 is_running=True,
                 request_id="",

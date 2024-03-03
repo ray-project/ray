@@ -478,7 +478,10 @@ class FileConfigReader(IConfigReader):
 
 
 class ReadOnlyProviderConfigReader(IConfigReader):
-    """A class that reads cluster config from a read-only provider."""
+    """A class that reads cluster config for a read-only provider.
+
+    This is used for laptop mode / manual cluster setup modes, in order to
+    provide status reporting in the same way for users."""
 
     def __init__(self, gcs_address: str):
         self._configs = BASE_READONLY_CONFIG
