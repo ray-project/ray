@@ -3,7 +3,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
-from typing import DefaultDict, List, Optional
+from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -17,7 +17,7 @@ from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, ModelWeights
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
@@ -73,6 +73,10 @@ class SingleAgentEnvRunner(EnvRunner):
         )
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
+
+        # Global counter for environment steps from all workers. This is
+        # needed for schedulers used by `RLModule`s.
+        self.global_num_env_steps_sampled = 0
 
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
@@ -270,7 +274,9 @@ class SingleAgentEnvRunner(EnvRunner):
                 self._cached_to_module = None
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(
+                        to_module, t=self.global_num_env_steps_sampled + ts
+                    )
                 else:
                     to_env = self.module.forward_inference(to_module)
 
@@ -444,6 +450,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Loop over episodes.
         eps = 0
+        ts = 0
         while eps < num_episodes:
             # Act randomly.
             if random_actions:
@@ -459,7 +466,9 @@ class SingleAgentEnvRunner(EnvRunner):
                 )
                 # Explore or not.
                 if explore:
-                    to_env = self.module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(
+                        to_module, t=self.global_num_env_steps_sampled + ts
+                    )
                 else:
                     to_env = self.module.forward_inference(to_module)
 
@@ -541,6 +550,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+            ts += self.num_envs
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
@@ -579,30 +589,33 @@ class SingleAgentEnvRunner(EnvRunner):
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
-    def set_weights(self, weights, global_vars=None, weights_seq_no: int = 0):
-        """Writes the weights of our (single-agent) RLModule."""
+    def set_weights(
+        self,
+        weights: ModelWeights,
+        global_vars: Optional[Dict] = None,
+        weights_seq_no: int = 0,
+    ) -> None:
+        """Writes the weights of our (single-agent) RLModule.
 
-        if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
-            weights = weights[DEFAULT_POLICY_ID]
-        weights = self._convert_to_tensor(weights)
-        self.module.set_state(weights)
+        Args:
+            weigths: A dictionary mapping `ModuleID`s to the new weigths to
+                be used in the `MultiAgentRLModule` stored in this instance.
+            global_vars: An optional global vars dictionary to set this
+                worker to. If None, do not update the global_vars.
+            weights_seq_no: If needed, a sequence number for the weights version
+                can be passed into this method. If not None, will store this seq no
+                (in self.weights_seq_no) and in future calls - if the seq no did not
+                change wrt. the last call - will ignore the call to save on performance.
 
-        # Check, if an update happened since the last call. See
-        # `Algorithm._evaluate_async_with_env_runner`.
-        # if self._weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-        #     # In case of a `StateDict` we have to extract the `
-        #     # default_policy`.
-        #     # TODO (sven): Handle this probably in `RLModule` as the latter
-        #     #  does not need a 'StateDict' in its `set_state()` method
-        #     #  as the `keras.Model.base_layer` has weights as `List[TensorType]`.
-        #     self._weights_seq_no = weights_seq_no
-        #     if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
-        #         weights = weights[DEFAULT_POLICY_ID]
-        #     weights = self._convert_to_tensor(weights)
-        #     self.module.set_state(weights)
-        # # Otherwise ignore.
-        # else:
-        #     pass
+        """
+
+        # Only update the weigths, if this is the first synchronization or
+        # if the weights of this `EnvRunner` lacks behind the actual ones.
+        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+            if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
+                weights = weights[DEFAULT_POLICY_ID]
+            weights = self._convert_to_tensor(weights)
+            self.module.set_state(weights)
 
     def get_weights(self, modules=None):
         """Returns the weights of our (single-agent) RLModule."""

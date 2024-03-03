@@ -39,6 +39,8 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
 
     @override(ConnectorV2)
     def recompute_observation_space_from_input_spaces(self):
+        if self.input_action_space is None:
+            return None
         if self._multi_agent:
             ret = {}
             for agent_id, obs_space in self.input_observation_space.spaces.items():

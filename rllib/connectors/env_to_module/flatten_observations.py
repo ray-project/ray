@@ -99,6 +99,7 @@ class FlattenObservations(ConnectorV2):
 
 
     """
+
     @override(ConnectorV2)
     def recompute_observation_space_from_input_spaces(self):
         self._input_obs_base_struct = get_base_struct_from_space(

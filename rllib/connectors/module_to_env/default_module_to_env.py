@@ -88,7 +88,6 @@ class DefaultModuleToEnv(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
 
         # If our RLModule is stateful, remove the T=1 axis from all model outputs

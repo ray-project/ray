@@ -75,7 +75,6 @@ class _FrameStackingConnector(ConnectorV2):
     ) -> Any:
         # Learner connector pipeline. Episodes have been finalized/numpy'ized.
         if self._as_learner_connector:
-
             for sa_episode in self.single_agent_episode_iterator(episodes):
 
                 def _map_fn(s):

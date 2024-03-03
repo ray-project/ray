@@ -35,7 +35,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of
@@ -85,21 +85,19 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(PPORLModule)
-    def _compute_values(self, batch):
-        values = {}
-        for module_id, sa_batch in batch.policy_batches.items():
-            infos = sa_batch.pop(SampleBatch.INFOS, None)
-            sa_batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), sa_batch)
-            if infos is not None:
-                sa_batch[SampleBatch.INFOS] = infos
+    def _compute_values(self, batch, device=None):
+        infos = batch.pop(SampleBatch.INFOS, None)
+        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
+        if infos is not None:
+            batch[SampleBatch.INFOS] = infos
 
-            module = self[module_id].unwrapped()
-
-            # Shared encoder.
-            encoder_outs = module.encoder(sa_batch)
-            # Value head.
-            vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-            # Squeeze out last dimension (single node value head).
-            values[module_id] = tf.squeeze(vf_out, -1)
-
-        return values
+        # Separate vf-encoder.
+        if hasattr(self.encoder, "critic_encoder"):
+            encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
+        # Shared encoder.
+        else:
+            encoder_outs = self.encoder(batch)[ENCODER_OUT][CRITIC]
+        # Value head.
+        vf_out = self.vf(encoder_outs)
+        # Squeeze out last dimension (single node value head).
+        return tf.squeeze(vf_out, -1)

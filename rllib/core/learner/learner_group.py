@@ -56,17 +56,6 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
     return backend_config
 
 
-def _default_should_module_be_updated_fn(
-    module_id: ModuleID,
-    batch: MultiAgentBatch,
-) -> bool:
-    """Default implemntation for `LearnerGroup.should_module_be_updated_fn()`.
-
-    It assumes that all modules are to be updated by default.
-    """
-    return True
-
-
 @PublicAPI(stability="alpha")
 class LearnerGroup:
     """Coordinator of n (possibly remote) Learner workers.
@@ -130,10 +119,6 @@ class LearnerGroup:
         # ray train.
         self._is_shut_down = False
 
-        # The callable to use to figure out whether a (single-agent) sub-module is
-        # trainable (via its ModuleID and the train batch) or not.
-        self._should_module_be_updated_fn = _default_should_module_be_updated_fn
-
         # How many timesteps had to be dropped due to a full input queue?
         self._ts_dropped = 0
 
@@ -145,19 +130,26 @@ class LearnerGroup:
         # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
+
+            # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
+            #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+            #  to issues with placement group fragmentation. See
+            #  https://github.com/ray-project/ray/issues/35409 for more details.
+            num_cpus_per_worker = (
+                self.config.num_cpus_per_learner_worker
+                if not self.config.num_gpus_per_learner_worker
+                else 0
+            )
+            num_gpus_per_worker = self.config.num_gpus_per_learner_worker
+            resources_per_worker = {
+                "CPU": num_cpus_per_worker,
+                "GPU": num_gpus_per_worker,
+            }
+
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=self.config.num_learner_workers,
-                # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
-                #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
-                #  to issues with placement group fragmentation. See
-                #  https://github.com/ray-project/ray/issues/35409 for more details.
-                num_cpus_per_worker=(
-                    self.config.num_cpus_per_learner_worker
-                    if not self.config.num_gpus_per_learner_worker
-                    else 0
-                ),
-                num_gpus_per_worker=self.config.num_gpus_per_learner_worker,
+                resources_per_worker=resources_per_worker,
                 max_retries=0,
             )
             backend_executor.start(
@@ -327,7 +319,6 @@ class LearnerGroup:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
             if batch_shard is not None:
@@ -482,7 +473,7 @@ class LearnerGroup:
 
         Args:
             reduce_fn: See `update()` documentation for more details.
-            **kwargs: Keyword arguments to pass to each Learner.
+            \*\*kwargs: Keyword arguments to pass to each Learner.
 
         Returns:
             A list of dictionaries of results from the updates from each worker.
@@ -602,10 +593,7 @@ class LearnerGroup:
             )
             learner_state = self._get_results(results)[0]
 
-        return {
-            "learner_state": learner_state,
-            "should_module_be_updated_fn": self.should_module_be_updated_fn,
-        }
+        return {"learner_state": learner_state}
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of this LearnerGroup.
@@ -621,16 +609,14 @@ class LearnerGroup:
                 self._learner.set_state(learner_state)
             else:
                 self._worker_manager.foreach_actor(lambda w: w.set_state(learner_state))
-        if state.get("should_module_be_updated_fn"):
-            self.set_should_module_be_updated_fn(state["should_module_be_updated_fn"])
 
     def foreach_learner(
         self, func: Callable[[Learner, Optional[Any]], T], **kwargs
     ) -> List[T]:
-        """Calls the given function on each Learner L with the args: (L, **kwargs).
+        """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
-            func: The function to call on each Learner L with (L, **kwargs).
+            func: The function to call on each Learner L with (L, \*\*kwargs).
 
         Returns:
             A list of size len(Learners) with the return values of all calls to `func`.
@@ -737,7 +723,6 @@ class LearnerGroup:
         modules_to_load: Optional[Set[str]] = None,
         rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
-
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
         `load_module_state` can be used 3 ways:

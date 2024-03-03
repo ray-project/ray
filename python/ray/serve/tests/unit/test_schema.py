@@ -201,14 +201,17 @@ class TestDeploymentSchema:
 
         return {"name": "deep"}
 
-    def test_valid_deployment_schema(self):
+    @pytest.mark.parametrize("use_max_concurrent_queries", [True, False])
+    @pytest.mark.parametrize("use_max_ongoing_requests", [True, False])
+    def test_valid_deployment_schema(
+        self, use_max_concurrent_queries, use_max_ongoing_requests
+    ):
         # Ensure a valid DeploymentSchema can be generated
 
         deployment_schema = {
             "name": "shallow",
             "num_replicas": 2,
             "route_prefix": "/shallow",
-            "max_concurrent_queries": 32,
             "max_queued_requests": 12,
             "user_config": {"threshold": 0.2, "pattern": "rainbow"},
             "autoscaling_config": None,
@@ -230,6 +233,11 @@ class TestDeploymentSchema:
             },
         }
 
+        if use_max_concurrent_queries:
+            deployment_schema["max_concurrent_queries"] = 32
+        if use_max_ongoing_requests:
+            deployment_schema["max_ongoing_requests"] = 32
+
         DeploymentSchema.parse_obj(deployment_schema)
 
     def test_gt_zero_deployment_schema(self):
@@ -241,6 +249,7 @@ class TestDeploymentSchema:
         gt_zero_fields = [
             "num_replicas",
             "max_concurrent_queries",
+            "max_ongoing_requests",
             "health_check_period_s",
             "health_check_timeout_s",
         ]
@@ -417,7 +426,7 @@ class TestServeApplicationSchema:
                     "name": "shallow",
                     "num_replicas": 2,
                     "route_prefix": "/shallow",
-                    "max_concurrent_queries": 32,
+                    "max_ongoing_requests": 32,
                     "user_config": None,
                     "autoscaling_config": None,
                     "graceful_shutdown_wait_loop_s": 17,
@@ -771,7 +780,9 @@ def test_deployment_to_schema_to_deployment():
         pass
 
     deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
+    deployment = deployment.options(
+        func_or_class="ray.serve.tests.test_schema.global_f"
+    )
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
@@ -797,7 +808,9 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
         pass
 
     deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
+    deployment = deployment.options(
+        func_or_class="ray.serve.tests.test_schema.global_f"
+    )
 
     # Serve will set num_cpus to 1 if it's not set.
     assert len(deployment.ray_actor_options) == 1
@@ -833,9 +846,10 @@ def test_serve_instance_details_is_json_serializable():
                             "name": "deployment1",
                             "autoscaling_config": {
                                 # Byte object will cause json serializable error
-                                "serialized_policy_def": serialized_policy_def
+                                "_serialized_policy_def": serialized_policy_def
                             },
                         },
+                        "target_num_replicas": 0,
                         "replicas": [],
                     }
                 },
@@ -867,6 +881,7 @@ def test_serve_instance_details_is_json_serializable():
                                 "name": "deployment1",
                                 "autoscaling_config": {},
                             },
+                            "target_num_replicas": 0,
                             "replicas": [],
                         }
                     },
@@ -880,7 +895,7 @@ def test_serve_instance_details_is_json_serializable():
     application = details["applications"]["app1"]
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
-    assert "serialized_policy_def" not in autoscaling_config
+    assert "_serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":

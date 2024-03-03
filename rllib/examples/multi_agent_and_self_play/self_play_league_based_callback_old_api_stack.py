@@ -99,7 +99,6 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
 
                 # Update our mapping function accordingly.
                 def policy_mapping_fn(agent_id, episode, worker=None, **kwargs):
-
                     # Pick, whether this is ...
                     type_ = np.random.choice([1, 2])
 

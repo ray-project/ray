@@ -34,7 +34,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of
@@ -90,7 +90,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         if infos is not None:
             batch[SampleBatch.INFOS] = infos
 
-        # Separate vfencoder.
+        # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
             encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
         # Shared encoder.

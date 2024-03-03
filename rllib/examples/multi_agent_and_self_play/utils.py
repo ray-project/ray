@@ -1,5 +1,6 @@
 import sys
 
+
 def ask_user_for_action(time_step):
     """Asks the user for a valid action on the command line and returns it.
 
@@ -20,4 +21,3 @@ def ask_user_for_action(time_step):
         except ValueError:
             continue
     return choice
-

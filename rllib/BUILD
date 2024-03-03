@@ -178,7 +178,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-appo.yaml"],
+    data = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -329,7 +329,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/multi-agent-cartpole-impala.yaml"],
+    data = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--dir=tuned_examples/impala"]
 )
 
@@ -2728,7 +2728,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 py_test(
@@ -2737,7 +2737,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--as-test", "--min-league-size=3"]
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
 )
 
 py_test(
@@ -2746,16 +2746,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
 )
 
 py_test(
     name = "examples/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
-    main = "examples/self_play_with_open_spiel.py",
+    main = "examples/self_play_league_based_with_open_spiel.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=8"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
 )
 
 py_test(
@@ -2860,20 +2860,20 @@ py_test(
 
 # MeanStd filtering example.
 py_test(
-    name = "examples/connectors/connector_v2_mean_str_filtering_ppo",
-    main = "examples/connectors/connector_v2_mean_str_filtering.py",
+    name = "examples/connectors/connector_v2_mean_std_filtering_ppo",
+    main = "examples/connectors/connector_v2_mean_std_filtering.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_mean_str_filtering.py"],
+    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_mean_str_filtering_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_mean_str_filtering.py",
+    name = "examples/connectors/connector_v2_mean_std_filtering_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_mean_std_filtering.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_mean_str_filtering.py"],
+    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
 )
 

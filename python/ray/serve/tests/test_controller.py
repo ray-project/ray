@@ -88,10 +88,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "policy": policy,
+        "_policy": policy,
     }
     if policy is None:
-        autoscaling_config.pop("policy")
+        autoscaling_config.pop("_policy")
 
     @serve.deployment(autoscaling_config=autoscaling_config)
     def autoscaling_app():
@@ -111,11 +111,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-    policy_path = "ray.serve.autoscaling_policy:default_autoscaling_policy"
-    if policy == default_autoscaling_policy:
-        policy_path = (
-            "ray.serve.autoscaling_policy.replica_queue_length_autoscaling_policy"
-        )
 
     expected_json = json.dumps(
         {
@@ -162,6 +157,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "deployment_config": {
                                 "name": "autoscaling_app",
                                 "max_concurrent_queries": 100,
+                                "max_ongoing_requests": 100,
                                 "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
@@ -176,7 +172,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "downscale_smoothing_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
-                                    "policy": policy_path,
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
@@ -187,6 +182,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "num_cpus": 1.0,
                                 },
                             },
+                            "target_num_replicas": 1,
                             "replicas": [
                                 {
                                     "node_id": node_id,
@@ -214,7 +210,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     application = details["applications"]["default"]
     deployment = application["deployments"]["autoscaling_app"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
-    assert "serialized_policy_def" not in autoscaling_config
+    assert "_serialized_policy_def" not in autoscaling_config
 
 
 if __name__ == "__main__":

@@ -53,7 +53,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 return torch.sum(data_[batch["loss_mask"]]) / num_valid
 
         else:
-
             possibly_masked_mean = torch.mean
 
         action_dist_class_train = (

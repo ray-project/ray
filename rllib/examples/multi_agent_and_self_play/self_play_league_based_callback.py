@@ -111,7 +111,6 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
 
                 # Update our mapping function accordingly.
                 def agent_to_module_mapping_fn(agent_id, episode, **kwargs):
-
                     # Pick, whether this is ...
                     type_ = np.random.choice([1, 2])
 

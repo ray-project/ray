@@ -29,6 +29,7 @@ from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
 from ray.rllib.examples.multi_agent_and_self_play import (
+    ask_user_for_action,
     SelfPlayCallback,
     SelfPlayCallbackOldAPIStack,
 )
@@ -89,7 +90,6 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
-
     args = parser.parse_args()
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))

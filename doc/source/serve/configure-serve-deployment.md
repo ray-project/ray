@@ -15,7 +15,7 @@ You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_
 - `name` - Name uniquely identifying this deployment within the application. If not provided, the name of the class or function is used.
 - `num_replicas` - Number of replicas to run that handle requests to this deployment. Defaults to 1.
 - `ray_actor_options` - Options to pass to the Ray Actor decorator, such as resource requirements. Valid options are: `accelerator_type`, `memory`, `num_cpus`, `num_gpus`, `object_store_memory`, `resources`, and `runtime_env` For more details - [Resource management in Serve](serve-cpus-gpus)
-- `max_concurrent_queries` - Maximum number of queries that are sent to a replica of this deployment without receiving a response. Defaults to 100. This may be an important parameter to configure for [performance tuning](serve-perf-tuning).
+- `max_ongoing_requests` (replaces the deprecated `max_concurrent_queries`) - Maximum number of queries that are sent to a replica of this deployment without receiving a response. Defaults to 100. This may be an important parameter to configure for [performance tuning](serve-perf-tuning).
 - `autoscaling_config` - Parameters to configure autoscaling behavior. If this is set, you can't set `num_replicas`. For more details on configurable parameters for autoscaling, see [Ray Serve Autoscaling](serve-autoscaling). 
 - `user_config` -  Config to pass to the reconfigure method of the deployment. This can be updated dynamically without restarting the replicas of the deployment. The user_config must be fully JSON-serializable. For more details, see [Serve User Config](serve-user-config). 
 - `health_check_period_s` - Duration between health check calls for the replica. Defaults to 10s. The health check is by default a no-op Actor call to the replica, but you can define your own health check using the "check_health" method in your deployment that raises an exception when unhealthy.
@@ -63,7 +63,7 @@ applications:
   deployments:
   - name: Translator
     num_replicas: 2
-    max_concurrent_queries: 100
+    max_ongoing_requests: 100
     graceful_shutdown_wait_loop_s: 2.0
     graceful_shutdown_timeout_s: 20.0
     health_check_period_s: 10.0

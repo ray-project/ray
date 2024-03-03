@@ -1,5 +1,3 @@
-import functools
-
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
@@ -27,9 +25,7 @@ if __name__ == "__main__":
     if args.num_agents > 0:
         register_env(
             "env",
-            lambda _: MultiAgentPendulum(
-                config={"num_agents": args.num_agents}
-            ),
+            lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
         )
 
     config = (
@@ -80,22 +76,21 @@ if __name__ == "__main__":
                 {
                     "fcnet_activation": "relu",
                     "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                    "fcnet_bias_initializer": (
-                        functools.partial(torch.nn.init.constant_, val=0.0)
-                    ),
+                    "fcnet_bias_initializer": torch.nn.init.constant_,
+                    "fcnet_bias_initializer_config": {"val": 0.0},
                 },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {})
+                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
             ),
         )
-        .evaluation(
-            evaluation_num_workers=1,
-            evaluation_parallel_to_training=True,
-            enable_async_evaluation=True,
-            evaluation_interval=1,
-            evaluation_duration=10,
-            evaluation_duration_unit="episodes",
-            evaluation_config={"explore": False},
-        )
+        # .evaluation(
+        #    evaluation_num_workers=1,
+        #    evaluation_parallel_to_training=True,
+        #    enable_async_evaluation=True,
+        #    evaluation_interval=1,
+        #    evaluation_duration=10,
+        #    evaluation_duration_unit="episodes",
+        #    evaluation_config={"explore": False},
+        # )
     )
 
     # Add a simple multi-agent setup.

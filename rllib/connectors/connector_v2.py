@@ -567,10 +567,7 @@ class ConnectorV2(abc.ABC):
     def input_action_space(self, value):
         self._input_action_space = value
         if value is not None:
-            self._action_space = (
-                self.recompute_action_space_from_input_spaces()
-            )
+            self._action_space = self.recompute_action_space_from_input_spaces()
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
-

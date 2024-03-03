@@ -1,9 +1,6 @@
-import re
-
 import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.deprecation import Deprecated
 
 

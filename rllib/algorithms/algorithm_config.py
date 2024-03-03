@@ -447,6 +447,7 @@ class AlgorithmConfig(_Config):
         self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
+        self.custom_async_evaluation_function = None
         self.always_attach_evaluation_results = False
         self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
@@ -890,7 +891,6 @@ class AlgorithmConfig(_Config):
         return pipeline
 
     def build_module_to_env_connector(self, env):
-
         from ray.rllib.connectors.module_to_env import (
             DefaultModuleToEnv,
             ModuleToEnvPipeline,
@@ -1913,6 +1913,7 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_workers: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
+        custom_async_evaluation_function: Optional[Callable] = NotProvided,
         always_attach_evaluation_results: Optional[bool] = NotProvided,
         enable_async_evaluation: Optional[bool] = NotProvided,
         # Deprecated args.
@@ -1982,6 +1983,19 @@ class AlgorithmConfig(_Config):
                 metrics: dict. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
+            custom_async_evaluation_function: In case the new `EnvRunner API` is used
+                and `enable_async_evaluation=True` customize the asynchronous evaluation
+                method. This must be a function of signature (algo: Algorithm,
+                eval_workers: WorkerSet, weights_ref: ObjectRef, weights_seq_no: int)
+                -> metrics: dict. See the `Algorithm._evaluate_async_with_env_runner()`
+                method to see the default implementation. The Algorithm guarantees all
+                eval workers have the latest module and connector states before this
+                function is called. Weights reference and weights sequence number are
+                passed over to avoid synching the weights too often. `weights_ref` is
+                a reference to the modules' weights in object store and `weigths_seq_no`
+                is the sequence number that identifies the last weights update, i.e.
+                if this number is identical to the one in stored by the workers, the
+                workers do not update weights again.
             always_attach_evaluation_results: Make sure the latest available evaluation
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
@@ -2036,6 +2050,8 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
+        if custom_async_evaluation_function is not NotProvided:
+            self.custom_async_evaluation_function = custom_async_evaluation_function
         if always_attach_evaluation_results is not NotProvided:
             self.always_attach_evaluation_results = always_attach_evaluation_results
         if enable_async_evaluation is not NotProvided:
@@ -2300,7 +2316,7 @@ class AlgorithmConfig(_Config):
 
         if policy_mapping_fn is not NotProvided:
             # Create `policy_mapping_fn` from a config dict.
-            # Helpful is users would like to specify custom callable classes in
+            # Helpful if users would like to specify custom callable classes in
             # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
@@ -3654,12 +3670,24 @@ class AlgorithmConfig(_Config):
                 "object to fix this problem."
             )
 
-        # If async evaluation is enabled, custom_eval_functions are not allowed.
-        if self.enable_async_evaluation and self.custom_evaluation_function:
-            raise ValueError(
-                "`config.custom_evaluation_function` not supported in combination "
-                "with `enable_async_evaluation=True` config setting!"
-            )
+        # If async evaluation is enabled, custom_eval_functions are not allowed iff
+        # the old `RolloutWorker`is used.
+        if self.custom_evaluation_function:
+            # Uses new `EnvRunner API`.
+            if self.uses_new_env_runners:
+                # If we can potentially use a custom asynchronous evaluation function,
+                # validate it.
+                self._validate_custom_async_evaluation_function(
+                    self.custom_evaluation_function
+                )
+            # Uses old `RolloutWorker`.
+            else:
+                if self.enable_async_evaluation:
+                    raise ValueError(
+                        "`config.custom_evaluation_function` not supported in "
+                        "combination with `enable_async_evaluation=True` config "
+                        "setting!"
+                    )
 
         # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
         # None.
@@ -3917,6 +3945,54 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+    def _validate_custom_async_evaluation_function(self, func: Callable):
+        """Checks if the custom async evaluation function conforms to standards.
+
+        First, it is checked, if the passed in element is indeed a function.
+        Then it is checked, if the signature contains the required number of
+        arguments, i.e. `algorithm`, `eval_workers`, `weights_ref`, and
+        `weights_seq_no`.
+        Finally, the source code of the element is checked for the usage of
+        `foreach_worker_async`.
+
+        All of these checks are only intended to guide the user when passing
+        in a custom function to evaluate asynchronously.
+
+        Args:
+            func: A callable passed into the configuration argument
+                `custom_async_evaluation_function`.
+
+        Raises:
+            `ValueError` if the callable is not a function, does not contain
+                three arguments and does not make use of
+                `eval_workers.foreach_worker_async`.
+        """
+
+        # Import the inspect module.
+        from inspect import getsourcelines, isfunction, signature
+
+        # Check, if we have indeed a function.
+        if not isfunction(func):
+            raise ValueError("`custom_async_evaluation_function` must be a function.")
+        # Check, if the signature is correct, i.e. three arguments:
+        #   eval_workers, weights_ref, weights_seq_no
+        func_signature = signature(func)
+        if len(func_signature.parameters) != 4:
+            raise ValueError(
+                "`custom_async_eval_function` expects a callable with four "
+                "arguments, namely `algorithm`, `eval_workers`, `weights_ref`, "
+                f"and `weights_seq_no`, but received signature {func_signature}."
+            )
+        # Check, if `foreach_worker_async` is indeed used inside of the
+        # custom evaluation routine.
+        lines, _ = getsourcelines(func)
+        if not any(["foreach_worker_async" in line for line in lines[0]]):
+            raise ValueError(
+                "`custom_async_evaluation_func` expects a callable that "
+                "evaluates asynchronous, i.e. it uses "
+                "`eval_workers.foreach_worker_async()`"
+            )
 
     @staticmethod
     def _serialize_dict(config):

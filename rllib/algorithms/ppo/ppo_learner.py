@@ -58,7 +58,6 @@ class PPOLearner(Learner):
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
-
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
 
         if not episodes:
