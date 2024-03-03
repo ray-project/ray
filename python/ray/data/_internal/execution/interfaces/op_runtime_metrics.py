@@ -59,9 +59,9 @@ class OpRuntimeMetrics:
         default=0, metadata={"map_only": True, "export_metric": True}
     )
 
-    # Number of output blocks that are already taken by the downstream.
+    # Number of output blocks that are already taken by downstream operators.
     num_outputs_taken: int = 0
-    # Size in bytes of output blocks that are already taken by the downstream.
+    # Size in bytes of output blocks that are already taken by downstream operators.
     bytes_outputs_taken: int = 0
 
     # Number of generated output blocks that are from finished tasks.
