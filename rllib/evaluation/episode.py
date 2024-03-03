@@ -7,7 +7,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.utils.annotations import Deprecated, OldAPIStack
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import (

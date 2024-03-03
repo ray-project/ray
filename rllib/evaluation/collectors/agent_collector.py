@@ -21,7 +21,6 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 

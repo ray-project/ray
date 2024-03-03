@@ -9,9 +9,9 @@ from ray.rllib.connectors.connector import (
     ConnectorPipeline,
 )
 from ray.rllib.connectors.registry import get_connector, register_connector
-from ray.rllib.utils.typing import ActionConnectorDataType
-from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.typing import ActionConnectorDataType
+from ray.util.timer import _Timer
 
 
 logger = logging.getLogger(__name__)

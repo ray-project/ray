@@ -190,7 +190,7 @@ def pad_batch_to_sequences_of_same_size(
         )
 
 
-@DeveloperAPI
+@OldAPIStack
 def add_time_dimension(
     padded_inputs: TensorType,
     *,
@@ -452,7 +452,7 @@ def chop_into_sequences(
     return feature_sequences, initial_states, seq_lens
 
 
-@DeveloperAPI
+@OldAPIStack
 def timeslice_along_seq_lens_with_overlap(
     sample_batch: SampleBatchType,
     seq_lens: Optional[List[int]] = None,
@@ -601,7 +601,7 @@ def timeslice_along_seq_lens_with_overlap(
     return timeslices
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_fold_unfold_fns(b_dim: int, t_dim: int, framework: str):
     """Produces two functions to fold/unfold any Tensors in a struct.
 

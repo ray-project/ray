@@ -3,7 +3,7 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Un
 
 import gymnasium as gym
 import ray
-from ray.rllib.utils.annotations import Deprecated, OldAPIStack
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
