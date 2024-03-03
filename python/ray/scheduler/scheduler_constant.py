@@ -77,4 +77,4 @@ PENDING_TASKS = "pending_tasks"
 FINISHED_TASKS = "finished_tasks"
 PENDING_TASKS_COUNT = "pending_tasks_count"
 
-MAX_PENDING_TASK= 2
+MAX_PENDING_TASK= 5
