@@ -288,12 +288,12 @@ def kubectl_exec(
     kubectl_exec_command = (
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
-    out = (
-        subprocess.run(kubectl_exec_command, stdout=subprocess.PIPE)
-        .stdout.decode()
-        .strip()
-    )
-    # Print for debugging convenience.
+    try:
+        out = subprocess.check_output(kubectl_exec_command).decode().strip()
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error running command {kubectl_exec_command}.")
+        logger.error(f"Output: {e.output.decode()}")
+        raise e from None
     print(out)
     return out
 

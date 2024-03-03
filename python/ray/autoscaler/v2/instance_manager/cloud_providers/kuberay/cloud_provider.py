@@ -126,8 +126,10 @@ class KubeRayProvider(ICloudInstanceProvider):
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         if request_id in self._requests:
             # This request is already processed.
+            logger.warning(f"Request {request_id} is already processed for: {ids}")
             return
         self._requests.add(request_id)
+        logger.info("Terminating worker pods: {}".format(ids))
 
         scale_request = self._initialize_scale_request(
             to_launch={}, to_delete_instances=ids
@@ -150,7 +152,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         try:
             self._submit_scale_request(scale_request)
         except Exception as e:
-            logger.exception(f"Error terminating nodes: {e}")
+            logger.exception(f"Error terminating nodes: {scale_request}")
             self._add_terminate_errors(ids, request_id, details=str(e), e=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
@@ -180,7 +182,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         try:
             self._submit_scale_request(scale_request)
         except Exception as e:
-            logger.exception(f"Error launching nodes: {e}")
+            logger.exception(f"Error launching nodes: {scale_request}")
             self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
@@ -226,11 +228,11 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         # Calculate the desired number of workers by type.
         num_workers_dict = defaultdict(int)
-        for instance_id, instance in cur_instances.items():
-            if instance.node_kind == NodeKind.HEAD:
+        for _, cur_instance in cur_instances.items():
+            if cur_instance.node_kind == NodeKind.HEAD:
                 # Only track workers.
                 continue
-            num_workers_dict[instance.node_type] += 1
+            num_workers_dict[cur_instance.node_type] += 1
 
         # Add to launch nodes.
         for node_type, count in to_launch.items():
@@ -251,7 +253,9 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             num_workers_dict[to_delete_instance.node_type] -= 1
             assert num_workers_dict[to_delete_instance.node_type] >= 0
-            to_delete_instances_by_type[instance.node_type].append(instance)
+            to_delete_instances_by_type[to_delete_instance.node_type].append(
+                to_delete_instance
+            )
 
         scale_request = KubeRayProvider.ScaleRequest(
             desired_num_workers=num_workers_dict,
@@ -326,6 +330,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             # No patch required.
             return
 
+        logger.info(f"Patched: {patch_payload}")
         self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
     def _add_launch_errors(
