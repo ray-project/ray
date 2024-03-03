@@ -2816,6 +2816,44 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
+# MeanStd filtering example.
+py_test(
+    name = "examples/connectors/connector_v2_mean_std_filtering_ppo",
+    main = "examples/connectors/connector_v2_mean_std_filtering.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_mean_std_filtering_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_mean_std_filtering.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
+)
+
+# Mixin heuristic actions (into evaluation/inference-only track).
+py_test(
+    name = "examples/connectors/connector_v2_mixin_heuristic_actions_ppo",
+    main = "examples/connectors/connector_v2_mixin_heuristic_actions.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mixin_heuristic_actions.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=500.0", "--framework=torch", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/connectors/connector_v2_mixin_heuristic_actions_multi_agent_ppo",
+    main = "examples/connectors/connector_v2_mixin_heuristic_actions.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mixin_heuristic_actions.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=1000.0", "--framework=torch", "--algo=PPO"]
+)
+
 # Nested observation spaces (flattening).
 py_test(
     name = "examples/connectors/connector_v2_nested_observation_spaces_ppo",
@@ -2852,25 +2890,6 @@ py_test(
     size = "large",
     srcs = ["examples/connectors/connector_v2_prev_actions_prev_rewards.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
-)
-
-# MeanStd filtering example.
-py_test(
-    name = "examples/connectors/connector_v2_mean_std_filtering_ppo",
-    main = "examples/connectors/connector_v2_mean_std_filtering.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2"]
-)
-
-py_test(
-    name = "examples/connectors/connector_v2_mean_std_filtering_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_mean_std_filtering.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
 )
 
 # ----------------------
