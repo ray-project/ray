@@ -44,7 +44,7 @@ AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
 PULL_POLICY = os.environ.get("PULL_POLICY", "IfNotPresent")
 # Set to enable autoscaler v2
-AUTOSCALER_V2 = os.environ.get("AUTOSCALER_V2", "True")
+AUTOSCALER_V2 = os.environ.get("AUTOSCALER_V2", "False")
 logger.info(f"Using image `{RAY_IMAGE}` for Ray containers.")
 logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
