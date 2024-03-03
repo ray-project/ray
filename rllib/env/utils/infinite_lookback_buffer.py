@@ -465,7 +465,6 @@ class InfiniteLookbackBuffer:
                     one_hot_discrete=one_hot_discrete,
                 )
             else:
-                print(data_to_use, idx)
                 raise e
 
         # Convert discrete/multi-discrete components to one-hot vectors, if required.

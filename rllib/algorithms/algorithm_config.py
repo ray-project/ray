@@ -1002,9 +1002,6 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is None and (env is not None or spaces is not None):
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
 
-        # config = self.copy()
-        # if env is not None:
-
         # Construct the actual LearnerGroup.
         learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)
 
