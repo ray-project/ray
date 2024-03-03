@@ -400,7 +400,9 @@ def ray_get(
             if the CLI is failed to query the data.
     """  # noqa: E501
     if not id:
-        raise click.UsageError(f"Missing argument 'ID'. Do you mean 'ray list {resource}'?")
+        raise click.UsageError(
+            f"Missing argument 'ID'. Do you mean 'ray list {resource}'?"
+        )
 
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
