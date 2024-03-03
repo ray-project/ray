@@ -25,6 +25,7 @@ OBJECT_KEY="object_key"
 
 AWS_ACCESS_KEY_ID=""
 AWS_SECRET_ACCESS_KEY=''
+MAX_BANDWIDTH_HPC=800000
 
 # status constant
 ASSIGN_NODE = "assign_node"
@@ -76,4 +77,4 @@ PENDING_TASKS = "pending_tasks"
 FINISHED_TASKS = "finished_tasks"
 PENDING_TASKS_COUNT = "pending_tasks_count"
 
-MAX_PENDING_TASK= 5
+MAX_PENDING_TASK= 2

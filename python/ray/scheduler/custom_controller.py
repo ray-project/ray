@@ -4,6 +4,7 @@ from custom_resource import Task
 import time
 import ray
 import boto3
+from boto3.s3.transfer import TransferConfig
 from pprint import pprint
 from ray.util.scheduling_strategies import (
     In,
@@ -97,7 +98,7 @@ class Controller():
 
         @ray.remote(num_cpus=0.3)
         def bind_label():
-            def download_s3_folder(bucket_name, s3_folder='', local_dir=None):
+            def download_s3_folder(bucket_name, s3_folder='', local_dir=None,node_type=1):
                 """
                 Download the contents of a folder directory
                 Args:
@@ -105,10 +106,11 @@ class Controller():
                     s3_folder: the folder path in the s3 bucket
                     local_dir: a relative or absolute directory path in the local file system
                 """
-        #         s3=boto3.resource('s3',aws_access_key_id="AKIATHLAXGTZLQXAEE4D",aws_secret_access_key='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'
-        # )
 
-                s3=boto3.resource('s3',aws_access_key_id=AWS_ACCESS_KEY_ID,aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+                bandwidth = {0: None, 1: MAX_BANDWIDTH_HPC, 2: None}
+                band_width=bandwidth[node_type]
+                config=TransferConfig( max_bandwidth=band_width)
+                s3=boto3.resource('s3')
                 bucket = s3.Bucket(bucket_name)
                 for obj in bucket.objects.filter(Prefix=s3_folder):
                     
@@ -125,7 +127,7 @@ class Controller():
                         
                     if obj.key[-1] == '/':
                         continue
-                    bucket.download_file(obj.key, target)
+                    bucket.download_file(obj.key, target,config)
 	        #TODO: how to guarantee transfer data finished 
             #TODO: set home address
             # os.system("ls")
@@ -140,7 +142,9 @@ class Controller():
             else:
                 # node_ip=self.get_node_ip(data_id)
                 if s3==True:
-                    download_s3_folder(str(bucket_name),str(object_name),str(label))
+                    
+                    node_type=os.getenv('LOCAL_NODE_TYPE')
+                    download_s3_folder(str(bucket_name),str(object_name),str(label),node_type)
 
                 else:
                     # os.system("rsync --mkpath -a -P {} {}".format(NODE_USER_NAME + "@" + DATA_IP+":"+label,label))
