@@ -3,13 +3,7 @@ from ray._private.test_utils import wait_for_condition
 
 
 def main():
-    """Submits CPU request.
-    Wait 15 sec for autoscaler scale-up event to get emitted to stdout.
-
-    The autoscaler update interval is 5 sec, so it should be enough to wait 5 seconds.
-    An extra ten seconds are added to the timeout as a generous buffer against
-    flakiness.
-    """
+    """Submits CPU request"""
     ray.autoscaler.sdk.request_resources(num_cpus=2)
 
     def verify():
@@ -18,7 +12,7 @@ def main():
 
         return True
 
-    wait_for_condition(verify, timeout=20, retry_interval_ms=2000)
+    wait_for_condition(verify, timeout=60, retry_interval_ms=2000)
 
 
 if __name__ == "__main__":

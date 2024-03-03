@@ -55,6 +55,9 @@ logger.info(f"Using autoscaler v2: {AUTOSCALER_V2}")
 EXAMPLE_CLUSTER_PATH = (
     "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
 )
+EXAMPLE_CLUSTER_PATH_V2 = (
+    "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-v2-template.yaml"
+)
 
 HEAD_SERVICE = "raycluster-autoscaler-head-svc"
 HEAD_POD_PREFIX = "raycluster-autoscaler-head"
@@ -83,8 +86,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         - Fill in Ray image, autoscaler image, and image pull policies from env
           variables.
         """
-        with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
-            ray_cr_config_str = ray_cr_config_file.read()
+        if AUTOSCALER_V2 == "True":
+            with open(EXAMPLE_CLUSTER_PATH_V2) as ray_cr_config_file:
+                ray_cr_config_str = ray_cr_config_file.read()
+        else:
+            with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
+                ray_cr_config_str = ray_cr_config_file.read()
 
         for k8s_object in yaml.safe_load_all(ray_cr_config_str):
             if k8s_object["kind"] in ["RayCluster", "RayJob", "RayService"]:
@@ -138,20 +145,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             "idleTimeoutSeconds": 10,
         }
         config["spec"]["autoscalerOptions"] = autoscaler_options
-
-        # Autoscaler V2 options
-        if AUTOSCALER_V2 == "True":
-            containers = config["spec"]["headGroupSpec"]["template"]["spec"][
-                "containers"
-            ]
-            for container in containers:
-                if container["name"] == "ray-head":
-                    container["env"] = [
-                        {
-                            "name": "RAY_enable_autoscaler_v2",
-                            "value": "1",
-                        }
-                    ]
 
         return config
 

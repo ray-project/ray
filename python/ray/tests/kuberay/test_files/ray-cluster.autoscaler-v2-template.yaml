@@ -1,8 +1,6 @@
-# `ray-cluster.autoscaler-template.yaml` is a template for the RayCluster CR and
-# is used by the function `_get_ray_cr_config` in `test_autoscaling_e2e.py`.
-# [Note]
-# (1) The VM test runner only has 4 CPUs, so we lower the CPU requests.
-# (2) `test_autoscaling_e2e.py` assumes that each Ray Pod has 1 logical CPU.
+# This is a copy from the `ray-cluster.autoscaler-template.yaml` with modifications needed
+# to make kuberary work with Ray's Autoscaler V2.
+# See more at `ray-cluster.autoscaler-template.yaml` for the non autoscaler-v2 definition.
 apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
@@ -50,6 +48,10 @@ spec:
             requests:
               cpu: "500m"
               memory: "2G"
+	        env:
+            - name: RAY_enable_autoscaler_v2 # Pass env var for the autoscaler v2.
+              value: "1"
+        restartPolicy: Never # No restart to avoid reuse of pod for different ray nodes.
   workerGroupSpecs:
   - replicas: 1
     minReplicas: 1
@@ -73,3 +75,4 @@ spec:
             requests:
               cpu: "500m"
               memory: "1G"
+        restartPolicy: Never # Never restart a pod to avoid pod reuse
