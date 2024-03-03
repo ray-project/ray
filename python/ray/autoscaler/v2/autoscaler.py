@@ -76,7 +76,6 @@ class Autoscaler:
             cloud_provider=self._cloud_provider,
             gcs_client=self._gcs_client,
         )
-        self._event_logger = event_logger
         self._scheduler = ResourceDemandScheduler(self._event_logger)
 
     def _init_cloud_provider(
