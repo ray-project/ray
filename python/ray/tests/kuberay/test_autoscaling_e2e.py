@@ -51,10 +51,10 @@ logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 logger.info(f"Using autoscaler v2: {AUTOSCALER_V2}")
 
 # Path to example config inside the rayci container.
-EXAMPLE_CLUSTER_PATH = "/data/home/rickyx/ray-2/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
-# EXAMPLE_CLUSTER_PATH = (
-#     "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
-# )
+# EXAMPLE_CLUSTER_PATH = "/data/home/rickyx/ray-2/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
+EXAMPLE_CLUSTER_PATH = (
+    "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
+)
 
 HEAD_SERVICE = "raycluster-autoscaler-head-svc"
 HEAD_POD_PREFIX = "raycluster-autoscaler-head"
