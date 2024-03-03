@@ -127,7 +127,7 @@ class Controller():
                         
                     if obj.key[-1] == '/':
                         continue
-                    bucket.download_file(obj.key, target,config)
+                    bucket.download_file(obj.key, target,Config=config)
 	        #TODO: how to guarantee transfer data finished 
             #TODO: set home address
             # os.system("ls")
