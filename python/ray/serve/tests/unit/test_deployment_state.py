@@ -41,7 +41,11 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
-from ray.serve._private.test_utils import MockKVStore, MockTimer
+from ray.serve._private.test_utils import (
+    MockClusterNodeInfoCache,
+    MockKVStore,
+    MockTimer,
+)
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
@@ -311,24 +315,6 @@ def deployment_version(code_version) -> DeploymentVersion:
     return DeploymentVersion(code_version, DeploymentConfig(), {})
 
 
-class MockClusterNodeInfoCache:
-    def __init__(self):
-        self.alive_node_ids = set()
-        self.draining_nodes = dict()
-
-    def get_alive_node_ids(self):
-        return self.alive_node_ids
-
-    def get_draining_nodes(self):
-        return self.draining_nodes
-
-    def get_active_node_ids(self):
-        return self.alive_node_ids - set(self.draining_nodes)
-
-    def get_node_az(self, node_id):
-        return None
-
-
 @pytest.fixture
 def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
     timer = MockTimer()
@@ -381,6 +367,7 @@ def mock_deployment_state_manager(
     ):
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node-id")
 
         def create_deployment_state_manager(
             actor_names=None, placement_group_names=None
@@ -2963,9 +2950,8 @@ def test_exponential_backoff(mock_deployment_state_manager):
 
 def test_recover_state_from_replica_names(mock_deployment_state_manager):
     """Test recover deployment state."""
-    create_dsm, _, cluster_node_info_cache = mock_deployment_state_manager
+    create_dsm, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
-    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # Deploy deployment with version "1" and one replica
     info1, v1 = deployment_info(version="1")
@@ -3015,7 +3001,6 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     """
     create_dsm, _, cluster_node_info_cache = mock_deployment_state_manager
     dsm = create_dsm()
-    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # Step 1: Create some deployment info with actors in running state
     info1, v1 = deployment_info(version="1")
@@ -3040,7 +3025,6 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     # controller crashed! A new deployment state manager should be
     # created, and it should call _recover_from_checkpoint
     new_dsm = create_dsm([ReplicaName.prefix + mocked_replica.replica_tag])
-    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # New deployment state should be created and one replica should
     # be RECOVERING with last-checkpointed target version "2"
@@ -3144,7 +3128,6 @@ def test_shutdown(mock_deployment_state_manager):
     """
     create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
     dsm = create_dsm()
-    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     grace_period_s = 10
     b_info_1, _ = deployment_info(
@@ -3234,7 +3217,8 @@ def test_get_active_node_ids(mock_deployment_state_manager):
 
     create_dsm, _, cluster_node_info_cache = mock_deployment_state_manager
     dsm = create_dsm()
-    cluster_node_info_cache.alive_node_ids = set(node_ids)
+    cluster_node_info_cache.add_node("node1")
+    cluster_node_info_cache.add_node("node2")
 
     # Deploy deployment with version "1" and 3 replicas
     info1, v1 = deployment_info(version="1", num_replicas=3)
@@ -3287,7 +3271,8 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
 
     create_dsm, _, cluster_node_info_cache = mock_deployment_state_manager
     dsm = create_dsm()
-    cluster_node_info_cache.alive_node_ids = set(node_ids)
+    cluster_node_info_cache.add_node("node1")
+    cluster_node_info_cache.add_node("node2")
 
     # Deploy deployment with version "1" and 3 replicas
     info1, v1 = deployment_info(version="1", num_replicas=3)
@@ -4179,7 +4164,8 @@ class TestStopReplicasOnDrainingNodes:
         """
 
         create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
-        cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
+        cluster_node_info_cache.add_node("node-1")
+        cluster_node_info_cache.add_node("node-2")
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4268,7 +4254,8 @@ class TestStopReplicasOnDrainingNodes:
         """
 
         create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
-        cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
+        cluster_node_info_cache.add_node("node-1")
+        cluster_node_info_cache.add_node("node-2")
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4347,12 +4334,10 @@ class TestStopReplicasOnDrainingNodes:
         """
 
         create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
-        cluster_node_info_cache.alive_node_ids = {
-            "node-1",
-            "node-2",
-            "node-3",
-            "node-4",
-        }
+        cluster_node_info_cache.add_node("node-1")
+        cluster_node_info_cache.add_node("node-2")
+        cluster_node_info_cache.add_node("node-3")
+        cluster_node_info_cache.add_node("node-4")
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4462,7 +4447,8 @@ class TestStopReplicasOnDrainingNodes:
         """Replicas pending migration should be stopped if unhealthy."""
 
         create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
-        cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
+        cluster_node_info_cache.add_node("node-1")
+        cluster_node_info_cache.add_node("node-2")
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4533,7 +4519,8 @@ class TestStopReplicasOnDrainingNodes:
         """When a node gets drained, replicas in STARTING state should be stopped."""
 
         create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
-        cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
+        cluster_node_info_cache.add_node("node-1")
+        cluster_node_info_cache.add_node("node-2")
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 
@@ -4601,7 +4588,8 @@ class TestStopReplicasOnDrainingNodes:
         """Test that pending migration replicas of old versions are updated."""
 
         create_dsm, timer, cluster_node_info_cache = mock_deployment_state_manager
-        cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
+        cluster_node_info_cache.add_node("node-1")
+        cluster_node_info_cache.add_node("node-2")
         dsm: DeploymentStateManager = create_dsm()
         timer.reset(0)
 

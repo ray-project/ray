@@ -2758,6 +2758,7 @@ class DeploymentStateManager:
             return None
         else:
             status_info = statuses[0]
+            deployment_state = self._deployment_states[id]
             return DeploymentDetails(
                 name=id.name,
                 status=status_info.status,
@@ -2766,7 +2767,8 @@ class DeploymentStateManager:
                 deployment_config=_deployment_info_to_schema(
                     id.name, self.get_deployment(id)
                 ),
-                replicas=self._deployment_states[id].list_replica_details(),
+                target_num_replicas=deployment_state._target_state.target_num_replicas,
+                replicas=deployment_state.list_replica_details(),
             )
 
     def get_deployment_statuses(
