@@ -24,12 +24,12 @@ class ConnectorV2(abc.ABC):
     A and B, both instances of subclasses of ConnectorV2 and each one performing a
     particular transformation on their input data. The resulting connector pipeline
     (A->B) itself also abides to this very ConnectorV2 API and could thus be part of yet
-    another, higher-level connector pipeline.
+    another, higher-level connector pipeline, e.g. (A->B)->C->D.
 
     Any ConnectorV2 instance (individual pieces or several connector pieces in a
-    pipeline) is a callable and you should override their `__call__()` method.
+    pipeline) is a callable and users should override the `__call__()` method.
     When called, they take the outputs of a previous connector piece (or an empty dict
-    if there are no previous pieces) as well as all the data collected thus far in the
+    if there are no previous pieces) and all the data collected thus far in the
     ongoing episode(s) (only applies to connectors used in EnvRunners) or retrieved
     from a replay buffer or from an environment sampling step (only applies to
     connectors used in Learner pipelines). From this input data, a ConnectorV2 then
@@ -445,6 +445,7 @@ class ConnectorV2(abc.ABC):
         .. testcode::
 
             import numpy as np
+
             from ray.rllib.connectors.connector_v2 import ConnectorV2
             from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -606,27 +607,41 @@ class ConnectorV2(abc.ABC):
                 f"given batch. Found columns {list(batch.keys())}."
             )
 
-        for key, d0_list in data_to_process[0].items():
-            # Multi-agent case: There is a dict mapping from a
-            # (eps id, AgentID, ModuleID)-tuples to lists of individual data items.
-            if len(key) == 3:
-                eps_id, agent_id, module_id = key
-            # Single-agent case: There is a dict mapping from a (eps_id,)-tuple
-            # to lists of individual data items.
-            # AgentID and ModuleID are both None.
-            else:
-                eps_id = key[0]
-                agent_id = module_id = None
-            other_lists = [d[key] for d in data_to_process[1:]]
-            for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
+        # Simple case: Data items are stored in a list directly under the column
+        # name(s).
+        if isinstance(data_to_process[0], list):
+            for list_pos, data_tuple in enumerate(zip(*data_to_process)):
                 results = func(
                     data_tuple[0] if isinstance(column, str) else data_tuple,
-                    eps_id,
-                    agent_id,
-                    module_id,
+                    None,  # episode_id
+                    None,  # agent_id
+                    None,  # module_id
                 )
                 for col_slot, result in enumerate(force_list(results)):
-                    data_to_process[col_slot][key][list_pos] = result
+                    data_to_process[col_slot][list_pos] = result
+        # Single-agent/multi-agent cases.
+        else:
+            for key, d0_list in data_to_process[0].items():
+                # Multi-agent case: There is a dict mapping from a
+                # (eps id, AgentID, ModuleID)-tuples to lists of individual data items.
+                if len(key) == 3:
+                    eps_id, agent_id, module_id = key
+                # Single-agent case: There is a dict mapping from a (eps_id,)-tuple
+                # to lists of individual data items.
+                # AgentID and ModuleID are both None.
+                else:
+                    eps_id = key[0]
+                    agent_id = module_id = None
+                other_lists = [d[key] for d in data_to_process[1:]]
+                for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
+                    results = func(
+                        data_tuple[0] if isinstance(column, str) else data_tuple,
+                        eps_id,
+                        agent_id,
+                        module_id,
+                    )
+                    for col_slot, result in enumerate(force_list(results)):
+                        data_to_process[col_slot][key][list_pos] = result
 
     @staticmethod
     def switch_batch_from_column_to_module_ids(

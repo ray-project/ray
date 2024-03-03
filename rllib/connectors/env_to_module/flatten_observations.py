@@ -94,10 +94,8 @@ class FlattenObservations(ConnectorV2):
         check(
             output_data["obs"][1],
             #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
-            np.array([ 10.0, 1.0, 0.0,  1.0,  1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+            np.array([10.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
         )
-
-
     """
 
     @override(ConnectorV2)
