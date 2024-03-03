@@ -11,13 +11,13 @@ from ray.rllib.connectors.connector import (
 from ray.rllib.connectors.registry import get_connector, register_connector
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI
-from ray.util.timer import _Timer
+from ray.rllib.utils.annotations import OldAPIStack
 
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
         super().__init__(ctx, connectors)

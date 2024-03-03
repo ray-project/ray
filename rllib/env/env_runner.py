@@ -2,7 +2,7 @@ import abc
 from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 
 if TYPE_CHECKING:
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 tf1, _, _ = try_import_tf()
 
 
-@ExperimentalAPI
+@OldAPIStack
 class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     """Base class for distributed RL-style data collection from an environment.
 

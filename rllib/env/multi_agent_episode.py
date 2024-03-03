@@ -23,10 +23,12 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.error import MultiAgentEnvError
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
+from ray.util.annotations import PublicAPI
 
 
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
+@PublicAPI(stability="alpha")
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
 
