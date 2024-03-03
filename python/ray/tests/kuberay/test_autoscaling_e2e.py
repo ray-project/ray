@@ -34,6 +34,7 @@ from ray.tests.kuberay.scripts import (
 )
 
 logger = logging.getLogger(__name__)
+logger.info = print
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.

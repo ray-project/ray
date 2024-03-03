@@ -27,7 +27,8 @@ def main():
     # Wait for scale-down to happen.
     def verify():
         cluster_resources = ray.cluster_resources()
-        assert cluster_resources.get("CPU", 0) == 0, cluster_resources
+        # From head node
+        assert cluster_resources.get("CPU", 0) == 1, cluster_resources
         assert cluster_resources.get("GPU", 0) == 0, cluster_resources
 
         return True
