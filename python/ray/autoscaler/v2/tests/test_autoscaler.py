@@ -208,6 +208,19 @@ def test_basic_scaling(make_autoscaler):
         cluster_state = get_cluster_status(gcs_address)
         assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 6
         assert len(autoscaling_state.infeasible_gang_resource_requests) == 1
+
+        return True
+
+    wait_for_condition(verify, retry_interval_ms=2000)
+
+    # Test report autoscaling state
+    def verify():
+        autoscaling_state = autoscaler.update_autoscaling_state()
+        assert len(autoscaling_state.infeasible_gang_resource_requests) == 1
+        # For now, we just track that it's called ok.
+        autoscaler._gcs_client.report_autoscaling_state(
+            autoscaling_state.SerializeToString()
+        )
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)

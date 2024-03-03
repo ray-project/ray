@@ -561,6 +561,28 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::ReportAutoscalingState(int64_t timeout_ms,
+                                               const std::string &serialized_state) {
+  rpc::autoscaler::ReportAutoscalingStateRequest request;
+  rpc::autoscaler::ReportAutoscalingStateReply reply;
+  rpc::autoscaler::AutoscalingState state;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  if (!state.ParseFromString(serialized_state)) {
+    return Status::IOError("Failed to parse ReportAutoscalingState");
+  }
+  request.mutable_autoscaling_state()->CopyFrom(state);
+  grpc::Status status =
+      autoscaler_stub_->ReportAutoscalingState(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::DrainNode(const std::string &node_id,
                                   int32_t reason,
                                   const std::string &reason_message,
