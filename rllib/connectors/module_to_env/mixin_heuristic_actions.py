@@ -75,9 +75,8 @@ class MixinHeuristicActions(ConnectorV2):
             # Compute heuristic logits.
             heuristic_logits = self.compute_heuristic_actions(obs)
             # Mixin heuristics with RLModule computed action logits.
-            return (
-                heuristic_logits * self.mixin_weight
-                + rl_module_logits * (1.0 - self.mixin_weight)
+            return heuristic_logits * self.mixin_weight + rl_module_logits * (
+                1.0 - self.mixin_weight
             )
 
         self.foreach_batch_item_change_in_place(

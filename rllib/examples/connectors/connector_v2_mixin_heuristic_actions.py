@@ -1,7 +1,7 @@
 import numpy as np
 
 from ray.rllib.connectors.module_to_env.mixin_heuristic_actions import (
-    MixinHeuristicActions
+    MixinHeuristicActions,
 )
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
