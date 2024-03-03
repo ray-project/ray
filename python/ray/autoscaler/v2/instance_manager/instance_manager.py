@@ -243,7 +243,6 @@ class InstanceManager:
             details=update.details,
         )
 
-        logger.info(InstanceUtil.get_log_str_for_update(instance, update))
         # Apply the status specific updates.
         logger.info(InstanceUtil.get_log_str_for_update(instance, update))
         InstanceManager._apply_update(instance, update)

@@ -484,23 +484,3 @@ class InstanceUtil:
             # All nodes reachable from 'start'
             visited = set()
             cls._reachable_from[status] = dfs(valid_transitions, status, visited)
-
-    @staticmethod
-    def get_log_str_for_update(instance: Instance, update: InstanceUpdateEvent) -> str:
-        """Returns a log string for the given instance update."""
-        if update.upsert:
-            return (
-                f"New instance "
-                f"{Instance.InstanceStatus.Name(update.new_instance_status)} (id="
-                f"{instance.instance_id}, type={instance.instance_type}, "
-                f"cloud_instance_id={instance.cloud_instance_id}, "
-                f"ray_id={instance.node_id}): {update.details}"
-            )
-        return (
-            f"Update instance "
-            f"{Instance.InstanceStatus.Name(instance.status)}->"
-            f"{Instance.InstanceStatus.Name(update.new_instance_status)} (id="
-            f"{instance.instance_id}, type={instance.instance_type}, "
-            f"cloud_instance_id={instance.cloud_instance_id}, "
-            f"ray_id={instance.node_id}): {update.details}"
-        )

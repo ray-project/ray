@@ -64,10 +64,10 @@ class Autoscaler:
         self._gcs_client = gcs_client
         self._cloud_provider = None
         self._instance_manager = None
-        self._event_logger = event_logger
-        self._metrics_reporter = metrics_reporter
         self._ray_stop_errors_queue = Queue()
         self._ray_install_errors_queue = Queue()
+        self._event_logger = event_logger
+        self._metrics_reporter = metrics_reporter
 
         self._init_cloud_provider(config, config_reader)
         self._init_instance_manager(
