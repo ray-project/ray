@@ -17,7 +17,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
-    _skip_validating_runtime_env_uris,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -153,15 +152,6 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema["runtime_env"] = env
 
         # By default, runtime_envs with local URIs should be rejected.
-        with pytest.raises(ValueError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
-        # Inside the context, runtime_envs with local URIs should not be rejected.
-        with _skip_validating_runtime_env_uris():
-            schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-            assert schema.runtime_env == env
-
-        # Check that the validation state is reset outside of the context manager.
         with pytest.raises(ValueError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
@@ -494,15 +484,6 @@ class TestServeApplicationSchema:
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
         # By default, runtime_envs with local URIs should be rejected.
-        with pytest.raises(ValueError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
-
-        # Inside the context, runtime_envs with local URIs should not be rejected.
-        with _skip_validating_runtime_env_uris():
-            schema = ServeApplicationSchema.parse_obj(serve_application_schema)
-            assert schema.runtime_env == env
-
-        # Check that the validation was reset after the above call.
         with pytest.raises(ValueError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
