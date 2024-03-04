@@ -222,12 +222,6 @@ You can run this file with `rllib train file <path-to-file> -t yaml`:
 :language: python
 ```
 
-and this one with `rllib train file <path-to-file> -t json`:
-
-```{literalinclude} ../../../rllib/tuned_examples/simple_q/cartpole-simpleq-test.json
-:language: python
-```
-
 Currently, `yaml` is the default type and many of the tuned examples in the RLlib
 repository use it.
 So, if you're running a YAML file with `rllib train file`, you don't need to specify
