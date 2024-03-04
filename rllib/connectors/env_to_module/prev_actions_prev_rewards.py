@@ -21,7 +21,7 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
     case) or a dict mapping (AgentID, ModuleID)-tuples to lists of data items to be
     flattened (multi-agent case).
     - Converts Columns.OBS data into a dict (or creates a sub-dict if obs are
-    already a dict), and adds Columns.PREV_REWARDS and Columns.PREV_ACTIONS
+    already a dict), and adds "prev_rewards" and "prev_actions"
     to this dict. The original observations are stored under the self.ORIG_OBS_KEY in
     that dict.
     - If your RLModule does not handle dict inputs, you will have to plug in an
@@ -36,6 +36,8 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
     """
 
     ORIG_OBS_KEY = "_orig_obs"
+    PREV_ACTIONS_KEY = "prev_actions"
+    PREV_REWARDS_KEY = "prev_rewards"
 
     @override(ConnectorV2)
     def recompute_observation_space_from_input_spaces(self):
@@ -142,9 +144,9 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
 
             new_obs.append(
                 {
-                    "_obs": orig_obs,
-                    Columns.PREV_ACTIONS: prev_n_actions,
-                    Columns.PREV_REWARDS: prev_n_rewards,
+                    self.ORIG_OBS_KEY: orig_obs,
+                    self.PREV_ACTIONS_KEY: prev_n_actions,
+                    self.PREV_REWARDS_KEY: prev_n_rewards,
                 }
             )
 
@@ -163,10 +165,10 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
             {
                 self.ORIG_OBS_KEY: obs_space,
                 # Currently only works for Discrete action spaces.
-                Columns.PREV_ACTIONS: Box(
+                self.PREV_ACTIONS_KEY: Box(
                     0.0, 1.0, (act_space.n * self.n_prev_actions,), np.float32
                 ),
-                Columns.PREV_REWARDS: Box(
+                self.PREV_REWARDS_KEY: Box(
                     float("-inf"),
                     float("inf"),
                     (self.n_prev_rewards,),
