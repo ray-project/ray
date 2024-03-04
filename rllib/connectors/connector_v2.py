@@ -9,7 +9,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
-from ray.rllib.utils.spaces.space_utils import BatchedNdArray, unbatch
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 

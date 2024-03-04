@@ -14,6 +14,7 @@ class BatchedNdArray(np.ndarray):
     concatenate n already batched items (each one possibly with a different batch
     dim, but definitely with some batch dim).
     """
+
     def __new__(cls, input_array):
         # Use __new__ to create a new instance of our subclass.
         obj = np.asarray(input_array).view(cls)
@@ -305,8 +306,8 @@ def batch(
         for i, value in enumerate(flattened_item):
             flat[i].append(value)
         if individual_items_already_have_batch_dim == "auto":
-            individual_items_already_have_batch_dim = (
-                isinstance(flat[0][0], BatchedNdArray)
+            individual_items_already_have_batch_dim = isinstance(
+                flat[0][0], BatchedNdArray
             )
 
     # Unflatten everything into the correct, batched output structure.
