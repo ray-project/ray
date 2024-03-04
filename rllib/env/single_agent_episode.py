@@ -11,8 +11,10 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, ModuleID
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SingleAgentEpisode:
     """A class representing RL environment episodes for individual agents.
 

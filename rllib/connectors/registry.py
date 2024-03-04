@@ -1,14 +1,14 @@
 """Registry of connector names for global access."""
 from typing import Any
 
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.connectors.connector import Connector, ConnectorContext
 
 
 ALL_CONNECTORS = dict()
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def register_connector(name: str, cls: Connector):
     """Register a connector for use with RLlib.
 
@@ -28,7 +28,7 @@ def register_connector(name: str, cls: Connector):
     ALL_CONNECTORS[name] = cls
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def get_connector(name: str, ctx: ConnectorContext, params: Any = None) -> Connector:
     # TODO(jungong) : switch the order of parameters man!!
     """Get a connector by its name and serialized config.
