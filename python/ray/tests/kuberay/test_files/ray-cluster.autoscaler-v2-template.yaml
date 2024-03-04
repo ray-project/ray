@@ -48,7 +48,7 @@ spec:
             requests:
               cpu: "500m"
               memory: "2G"
-	        env:
+          env:
             - name: RAY_enable_autoscaler_v2 # Pass env var for the autoscaler v2.
               value: "1"
         restartPolicy: Never # No restart to avoid reuse of pod for different ray nodes.
