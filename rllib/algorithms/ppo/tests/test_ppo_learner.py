@@ -13,6 +13,7 @@ from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.registry import register_env
@@ -29,9 +30,9 @@ FAKE_BATCH = {
         dtype=np.float32,
     ),
     Columns.ACTIONS: np.array([0, 1, 1]),
-    #Columns.PREV_ACTIONS: np.array([0, 1, 1]),
+    # Columns.PREV_ACTIONS: np.array([0, 1, 1]),
     Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    #Columns.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+    # Columns.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
     Columns.TERMINATEDS: np.array([False, False, True]),
     Columns.TRUNCATEDS: np.array([False, False, False]),
     Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
@@ -40,7 +41,7 @@ FAKE_BATCH = {
     ),
     Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     Columns.EPS_ID: np.array([0, 0, 0]),
-    #Columns.AGENT_INDEX: np.array([0, 0, 0]),
+    # Columns.AGENT_INDEX: np.array([0, 0, 0]),
 }
 
 
@@ -77,7 +78,7 @@ class TestPPO(unittest.TestCase):
             algo = config.build()
             policy = algo.get_policy()
 
-            train_batch = FAKE_BATCH.copy()
+            train_batch = SampleBatch(FAKE_BATCH)
             train_batch = compute_gae_for_sample_batch(policy, train_batch)
 
             # convert to proper tensors with tree.map_structure
