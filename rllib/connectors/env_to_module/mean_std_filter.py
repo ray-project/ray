@@ -112,9 +112,9 @@ class MeanStdFilter(ConnectorV2):
         if self._filters is None:
             self._init_new_filters()
 
-        # This connector acts as a classic postprocessor. We process and then replace
+        # This connector acts as a classic preprocessor. We process and then replace
         # observations inside the episodes directly. Thus, all following connectors
-        # will only see and operate the already normalized data (w/o having access
+        # will only see and operate on the already normalized data (w/o having access
         # anymore to the original observations).
         for sa_episode in self.single_agent_episode_iterator(episodes):
             sa_obs = sa_episode.get_observations(indices=-1)
@@ -127,13 +127,12 @@ class MeanStdFilter(ConnectorV2):
                 # TODO (sven): This is kind of a hack.
                 #  We set the Episode's observation space to ours so that we can safely
                 #  set the last obs to the new value (without causing a space mismatch
-                #  error). However, this would NOT work if our
-                #  space were to be more more restrictive than the env's original space
-                #  b/c then the adding of the original env observation would fail.
+                #  error).
                 sa_episode.observation_space = self.observation_space
 
-        # Leave the `input_` as is. RLlib's default connector will automatically
-        # populate the OBS column therein from the episodes' (transformed) observations.
+        # Leave `data` as is. RLlib's default connector will automatically
+        # populate the OBS column therein from the episodes' now transformed
+        # observations.
         return data
 
     def get_state(self) -> Any:
@@ -212,6 +211,7 @@ class MeanStdFilter(ConnectorV2):
         if not self._multi_agent:
             filter_shape = {None: filter_shape}
 
+        del self._filters
         self._filters = {
             agent_id: _MeanStdFilter(
                 agent_filter_shape,

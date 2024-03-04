@@ -36,7 +36,7 @@ def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
     orig_truncateds = []
     for episode in episodes:
         # Make sure the episode is already in numpy format.
-        assert episode.is_finalized
+        assert episode.is_finalized, episode
         orig_truncateds.append(episode.is_truncated)
 
         # Add timestep.
@@ -47,7 +47,7 @@ def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
         episode.infos.append(episode.infos[-1])
         episode.actions.append(episode.actions[-1])
         episode.rewards.append(0.0)
-        for v in list(episode.extra_model_outputs.values()):
+        for v in episode.extra_model_outputs.values():
             v.append(v[-1])
         # Artificially make this episode truncated for the upcoming GAE
         # computations.
