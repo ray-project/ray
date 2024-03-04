@@ -1,3 +1,4 @@
+from collections import deque
 import math
 from typing import Any, List, Optional
 
@@ -12,7 +13,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import batch
+from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 
 
@@ -199,16 +200,25 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # Also, let module-to-env pipeline know that we had added a single timestep
         # time rank to the data (to remove it again).
         if not self._as_learner_connector:
-            data = tree.map_structure(lambda s: np.expand_dims(s, axis=0), data)
+            data = tree.map_structure(
+                # Expand on axis 0 (the to-be-time-dim) if item has not been batched'
+                # yet, otherwise axis=1 (the time-dim).
+                lambda s: np.expand_dims(
+                    s, axis=(1 if isinstance(s, BatchedNdArray) else 0)
+                ),
+                data,
+            )
             shared_data["_added_single_ts_time_rank"] = True
         else:
             # Before adding STATE_IN to the `data`, zero-pad existing data and batch
             # into max_seq_len chunks.
             for column, column_data in data.copy().items():
                 for key, item_list in column_data.items():
-                    column_data[key] = split_and_zero_pad_list(
-                        item_list, T=self.max_seq_len
-                    )
+                    if column != SampleBatch.INFOS:
+                        column_data[key] = split_and_zero_pad_list(
+                            item_list, T=self.max_seq_len
+                        )
+                    else:
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -323,7 +333,10 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
 
 def split_and_zero_pad_list(item_list, T: int):
-    zero_element = tree.map_structure(lambda s: np.zeros_like(s), item_list[0])
+    zero_element = tree.map_structure(
+        lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
+        item_list[0],
+    )
 
     # The replacement list (to be returned) for `items_list`.
     # Items list contains n individual items.
@@ -335,18 +348,34 @@ def split_and_zero_pad_list(item_list, T: int):
     current_time_row = []
     current_t = 0
 
-    for item in item_list:
-        current_time_row.append(item)
-        current_t += 1
+    item_list = deque(item_list)
+    while len(item_list) > 0:
+        item = item_list.popleft()
+        if isinstance(item, BatchedNdArray):
+            t = T - current_t
+            current_time_row.append(item[:t])
+            if len(item) <= t:
+                current_t += len(item)
+            else:
+                current_t += t
+                item_list.appendleft(item[t:])
+        else:
+            current_time_row.append(item)
+            current_t += 1
 
         if current_t == T:
-            ret.append(batch(current_time_row))
+            ret.append(batch(
+                current_time_row,
+                individual_items_already_have_batch_dim="auto",
+            ))
             current_time_row = []
             current_t = 0
 
     if current_t > 0 and current_t < T:
         current_time_row.extend([zero_element] * (T - current_t))
-        ret.append(batch(current_time_row))
+        ret.append(
+            batch(current_time_row, individual_items_already_have_batch_dim="auto")
+        )
 
     return ret
 

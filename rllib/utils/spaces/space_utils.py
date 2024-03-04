@@ -292,29 +292,20 @@ def batch(
         simple list of primitive items, e.g. a list of floats, a np.array of floats
         will be returned.
     """
-    flat = item = None
-
     if not list_of_structs:
         raise ValueError("Input `list_of_structs` does not contain any items.")
 
-    for item in list_of_structs:
-        flattened_item = tree.flatten(item)
-        # Create the main list, in which each slot represents one leaf in the (nested)
-        # struct. Each slot holds a list of batch values.
-        if flat is None:
-            flat = [[] for _ in range(len(flattened_item))]
-        for i, value in enumerate(flattened_item):
-            flat[i].append(value)
-        if individual_items_already_have_batch_dim == "auto":
-            individual_items_already_have_batch_dim = isinstance(
-                flat[0][0], BatchedNdArray
-            )
+    if individual_items_already_have_batch_dim == "auto":
+        flat = tree.flatten(list_of_structs[0])
+        individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
 
-    # Unflatten everything into the correct, batched output structure.
-    out = tree.unflatten_as(item, flat)
     np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
-    out = tree.map_structure_up_to(item, lambda s: np_func(s, axis=0), out)
-    return out
+    try:
+        ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
+    except Exception as e:
+        print(e)
+        return None
+    return ret
 
 
 @DeveloperAPI
