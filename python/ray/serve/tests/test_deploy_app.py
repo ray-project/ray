@@ -811,7 +811,7 @@ def test_update_autoscaling_config(client: ServeControllerClient):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "target_num_ongoing_requests_per_replica": 1,
+                    "target_ongoing_requests": 1,
                     "min_replicas": 1,
                     "max_replicas": 10,
                     "metrics_interval_s": 15,
@@ -1275,6 +1275,7 @@ def test_num_replicas_auto(client: ServeControllerClient):
     assert deployment_config["max_ongoing_requests"] == 5
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
         "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
