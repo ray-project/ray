@@ -29,11 +29,10 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
-    DeveloperAPI,
+    is_overridden,
+    OldAPIStack,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    is_overridden,
-    ExperimentalAPI,
     override,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
@@ -60,7 +59,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class EagerTFPolicyV2(Policy):
     """A TF-eager / TF2 based tensorflow policy.
 
@@ -149,7 +148,6 @@ class EagerTFPolicyV2(Policy):
         # traced function after that.
         self._re_trace_counter = 0
 
-    @DeveloperAPI
     @staticmethod
     def enable_eager_execution_if_necessary():
         # If this class runs as a @ray.remote actor, eager mode may not
@@ -157,7 +155,6 @@ class EagerTFPolicyV2(Policy):
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
 
-    @ExperimentalAPI
     @override(Policy)
     def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
         assert self.config.get(
@@ -189,7 +186,6 @@ class EagerTFPolicyV2(Policy):
         else:
             return input_dict
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def validate_spaces(
         self,
@@ -199,7 +195,6 @@ class EagerTFPolicyV2(Policy):
     ):
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     @override(Policy)
     def loss(
@@ -233,7 +228,6 @@ class EagerTFPolicyV2(Policy):
         else:
             raise NotImplementedError
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Stats function. Returns a dict of statistics.
@@ -246,7 +240,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def grad_stats_fn(
         self, train_batch: SampleBatch, grads: ModelGradients
@@ -261,7 +254,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def make_model(self) -> ModelV2:
         """Build underlying model for this Policy.
@@ -281,7 +273,6 @@ class EagerTFPolicyV2(Policy):
             framework=self.framework,
         )
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def compute_gradients_fn(
         self, policy: Policy, optimizer: LocalOptimizer, loss: TensorType
@@ -302,7 +293,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
@@ -321,7 +311,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_sampler_fn(
         self,
@@ -346,7 +335,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None, None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_distribution_fn(
         self,
@@ -370,7 +358,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def get_batch_divisibility_req(self) -> int:
         """Get batch divisibility request.
@@ -381,7 +368,6 @@ class EagerTFPolicyV2(Policy):
         # By default, any sized batch is ok, so simply return 1.
         return 1
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
         """Extra values to fetch and return from compute_actions().
@@ -392,7 +378,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
         """Extra stats to be reported after gradient computation.
