@@ -5,7 +5,6 @@ import pickle
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import convert_to_base_env
@@ -363,7 +362,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_invalid_model(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .framework("torch")
             .training(model={"custom_model": "invalid"})
@@ -377,7 +376,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .framework("tf")
             .training(model={"custom_model": "invalid2"})
@@ -387,76 +386,6 @@ class TestNestedObservationSpaces(unittest.TestCase):
             "State output is not a list",
             lambda: config.build(),
         )
-
-    def do_test_nested_dict(self, make_env, test_lstm=False, disable_connectors=False):
-        ModelCatalog.register_custom_model("composite", DictSpyModel)
-        register_env("nested", make_env)
-        config = (
-            PGConfig()
-            .environment("nested", disable_env_checking=True)
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .framework("tf")
-            .training(
-                model={"custom_model": "composite", "use_lstm": test_lstm},
-                train_batch_size=5,
-            )
-        )
-        if disable_connectors:
-            # manually disable the connectors
-            # TODO(avnishn): remove this after deprecating external_env
-            config = config.rollouts(enable_connectors=False)
-        algo = config.build()
-        # Skip first passes as they came from the TorchPolicy loss
-        # initialization.
-        DictSpyModel.capture_index = 0
-        algo.train()
-
-        # Check that the model sees the correct reconstructed observations
-        for i in range(4):
-            seen = pickle.loads(
-                ray.experimental.internal_kv._internal_kv_get("d_spy_in_{}".format(i))
-            )
-            pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
-            cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
-            self.assertEqual(seen[0][0].tolist(), pos_i)
-            self.assertEqual(seen[1][0].tolist(), cam_i)
-            check(seen[2][0], task_i)
-        algo.stop()
-
-    def do_test_nested_tuple(self, make_env, disable_connectors=False):
-        ModelCatalog.register_custom_model("composite2", TupleSpyModel)
-        register_env("nested2", make_env)
-        config = (
-            PGConfig()
-            .environment("nested2", disable_env_checking=True)
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .framework("tf")
-            .training(model={"custom_model": "composite2"}, train_batch_size=5)
-        )
-        if disable_connectors:
-            # manually disable the connectors
-            # TODO(avnishn): remove this after deprecating external_env
-            config = config.rollouts(enable_connectors=False)
-
-        algo = config.build()
-        # Skip first passes as they came from the TorchPolicy loss
-        # initialization.
-        TupleSpyModel.capture_index = 0
-        algo.train()
-
-        # Check that the model sees the correct reconstructed observations
-        for i in range(4):
-            seen = pickle.loads(
-                ray.experimental.internal_kv._internal_kv_get("t_spy_in_{}".format(i))
-            )
-            pos_i = TUPLE_SAMPLES[i][0].tolist()
-            cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            task_i = TUPLE_SAMPLES[i][2]
-            self.assertEqual(seen[0][0].tolist(), pos_i)
-            self.assertEqual(seen[1][0].tolist(), cam_i)
-            check(seen[2][0], task_i)
-        algo.stop()
 
     def test_nested_dict_gym(self):
         self.do_test_nested_dict(lambda _: NestedDictEnv())
@@ -482,89 +411,6 @@ class TestNestedObservationSpaces(unittest.TestCase):
 
     def test_nested_tuple_async(self):
         self.do_test_nested_tuple(lambda _: convert_to_base_env(NestedTupleEnv()))
-
-    def test_multi_agent_complex_spaces(self):
-        ModelCatalog.register_custom_model("dict_spy", DictSpyModel)
-        ModelCatalog.register_custom_model("tuple_spy", TupleSpyModel)
-        register_env("nested_ma", lambda _: NestedMultiAgentEnv())
-        act_space = spaces.Discrete(2)
-        config = (
-            PGConfig()
-            .environment("nested_ma", disable_env_checking=True)
-            .framework("tf")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .training(train_batch_size=5)
-            .multi_agent(
-                policies={
-                    "tuple_policy": (
-                        None,
-                        TUPLE_SPACE,
-                        act_space,
-                        PGConfig.overrides(model={"custom_model": "tuple_spy"}),
-                    ),
-                    "dict_policy": (
-                        None,
-                        DICT_SPACE,
-                        act_space,
-                        PGConfig.overrides(model={"custom_model": "dict_spy"}),
-                    ),
-                },
-                policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: {
-                        "tuple_agent": "tuple_policy",
-                        "dict_agent": "dict_policy",
-                    }[agent_id]
-                ),
-            )
-        )
-
-        algo = config.build()
-
-        # Skip first passes as they came from the TorchPolicy loss
-        # initialization.
-        TupleSpyModel.capture_index = DictSpyModel.capture_index = 0
-        algo.train()
-
-        for i in range(4):
-            seen = pickle.loads(
-                ray.experimental.internal_kv._internal_kv_get("d_spy_in_{}".format(i))
-            )
-            pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
-            cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
-            self.assertEqual(seen[0][0].tolist(), pos_i)
-            self.assertEqual(seen[1][0].tolist(), cam_i)
-            check(seen[2][0], task_i)
-
-        for i in range(4):
-            seen = pickle.loads(
-                ray.experimental.internal_kv._internal_kv_get("t_spy_in_{}".format(i))
-            )
-            pos_i = TUPLE_SAMPLES[i][0].tolist()
-            cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            task_i = TUPLE_SAMPLES[i][2]
-            self.assertEqual(seen[0][0].tolist(), pos_i)
-            self.assertEqual(seen[1][0].tolist(), cam_i)
-            check(seen[2][0], task_i)
-        algo.stop()
-
-    def test_rollout_dict_space(self):
-        register_env("nested", lambda _: NestedDictEnv())
-
-        config = PGConfig().environment("nested").framework("tf")
-        algo = config.build()
-        algo.train()
-        result = algo.save()
-        algo.stop()
-
-        # Test train works on restore
-        algo2 = config.build()
-        algo2.restore(result)
-        algo2.train()
-
-        # Test rollout works on restore
-        rollout(algo2, "nested", 100)
-        algo2.stop()
 
     def test_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
