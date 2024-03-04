@@ -126,10 +126,10 @@ curl -sfL "${OSS_WHEEL_URL_PREFIX}${CPP_WHEEL_FILE}" -o "${BUILD_TMP}/oss-whl/${
 
 aws s3 cp "${S3_TEMP}/${WHEEL_FILE}" "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}"
 
-readonly ANYSCALE_DATAPLANE_LAYER="s3://runtime-release-test-artifacts/dataplane/20231121/dataplane.tar.gz"
+readonly ANYSCALE_DATAPLANE_LAYER="s3://runtime-release-test-artifacts/dataplane/20240304/dataplane.tar.gz"
 aws s3 cp "${ANYSCALE_DATAPLANE_LAYER}" "${BUILD_TMP}/dataplane.tar.gz"
 DATAPLANE_TGZ_GOT="$(sha256sum "${BUILD_TMP}/dataplane.tar.gz" | cut -d' ' -f1)"
-DATAPLANE_TGZ_WANT="abeba8bf3e5f44990934153fca4eca3ffcfc461f59b4aea9b0b5714246ec17b3"
+DATAPLANE_TGZ_WANT="473c887efcee08bda1201f6dcd7b8fb72b15217b047e174f649e81c9b9ec6852"
 if [[ "${DATAPLANE_TGZ_GOT}" != "${DATAPLANE_TGZ_WANT}" ]]; then
     echo "Dataplane tarball sha256 digest:" \
         "got ${DATAPLANE_TGZ_GOT}, want ${DATAPLANE_TGZ_WANT}" >/dev/stderr
