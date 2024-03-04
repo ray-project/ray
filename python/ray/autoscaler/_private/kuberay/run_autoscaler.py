@@ -12,7 +12,6 @@ from ray._private.utils import try_to_create_directory
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.v2.instance_manager.config import KubeRayConfigReader
-from ray.autoscaler.v2.monitor import AutoscalerMonitor as MonitorV2
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 from ray.experimental.internal_kv import _initialize_internal_kv
 
@@ -67,6 +66,8 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
     # Init GCS client
     _initialize_internal_kv(GcsClient(ray_address))
     if is_autoscaler_v2(fetch_from_server=True):
+        from ray.autoscaler.v2.monitor import AutoscalerMonitor as MonitorV2
+
         MonitorV2(
             gcs_address=ray_address,
             config_reader=KubeRayConfigReader(autoscaling_config_producer),
