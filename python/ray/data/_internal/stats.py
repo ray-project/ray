@@ -245,7 +245,10 @@ class _StatsActor:
         )
         self.rows_task_outputs_generated = Gauge(
             "data_rows_task_outputs_generated",
-            description="Number of rows of generated output blocks that are from finished tasks.",
+            description=(
+                "Number of rows of generated output "
+                "blocks that are from finished tasks."
+            ),
             tag_keys=op_tags_keys,
         )
         self.num_outputs_taken = Gauge(
@@ -280,11 +283,33 @@ class _StatsActor:
             tag_keys=op_tags_keys,
         )
 
-        self.block_generation_time = Gauge(
-            "data_block_generation_seconds",
-            description="Time spent generating blocks.",
+        # Task-related metrics
+        self.num_tasks_submitted = Gauge(
+            "data_num_tasks_submitted",
+            description="Number of tasks submitted by operator.",
             tag_keys=op_tags_keys,
         )
+        self.num_tasks_running = Gauge(
+            "data_num_tasks_running",
+            description="Number of tasks running for operator.",
+            tag_keys=op_tags_keys,
+        )
+        self.num_tasks_have_outputs = Gauge(
+            "data_num_tasks_have_outputs",
+            description="Number of tasks that have at least one output block.",
+            tag_keys=op_tags_keys,
+        )
+        self.num_tasks_finished = Gauge(
+            "data_num_tasks_finished",
+            description="Number of finished tasks.",
+            tag_keys=op_tags_keys,
+        )
+        self.num_tasks_failed = Gauge(
+            "data_num_tasks_failed",
+            description="Number of failed tasks.",
+            tag_keys=op_tags_keys,
+        )
+
         self.obj_store_mem_internal_inqueue_blocks = Gauge(
             "data_obj_store_mem_internal_inqueue_blocks",
             description="Number of blocks in operator's internal input queue",
@@ -303,6 +328,32 @@ class _StatsActor:
         self.obj_store_mem_internal_outqueue = Gauge(
             "data_obj_store_mem_internal_outqueue",
             description="Total byte size of blocks in operator's internal output queue",
+            tag_keys=op_tags_keys,
+        )
+        self.obj_store_mem_pending_task_inputs = Gauge(
+            "data_obj_store_mem_pending_task_inputs",
+            description="Size in bytes of input blocks used by pending tasks.",
+            tag_keys=op_tags_keys,
+        )
+        self.obj_store_mem_freed = Gauge(
+            "data_obj_store_mem_freed",
+            description="Freed memory size in object store.",
+            tag_keys=op_tags_keys,
+        )
+        self.obj_store_mem_spilled = Gauge(
+            "data_obj_store_mem_spilled",
+            description="Spilled memory size in object store.",
+            tag_keys=op_tags_keys,
+        )
+
+        self.block_generation_time = Gauge(
+            "data_block_generation_seconds",
+            description="Time spent generating blocks.",
+            tag_keys=op_tags_keys,
+        )
+        self.task_submission_backpressure_time = Gauge(
+            "data_task_submission_backpressure_time",
+            description="Time spent in task submission backpressure",
             tag_keys=op_tags_keys,
         )
 
@@ -429,7 +480,27 @@ class _StatsActor:
                 tags,
             )
 
-            self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
+            self.num_tasks_submitted.set(
+                stats.get("num_tasks_submitted", 0),
+                tags,
+            )
+            self.num_tasks_running.set(
+                stats.get("num_tasks_running", 0),
+                tags,
+            )
+            self.num_tasks_have_outputs.set(
+                stats.get("num_tasks_have_outputs", 0),
+                tags,
+            )
+            self.num_tasks_finished.set(
+                stats.get("num_tasks_finished", 0),
+                tags,
+            )
+            self.num_tasks_failed.set(
+                stats.get("num_tasks_failed", 0),
+                tags,
+            )
+
             self.obj_store_mem_internal_inqueue_blocks.set(
                 stats.get("obj_store_mem_internal_inqueue_blocks", 0), tags
             )
@@ -441,6 +512,16 @@ class _StatsActor:
             )
             self.obj_store_mem_internal_outqueue.set(
                 stats.get("obj_store_mem_internal_outqueue", 0), tags
+            )
+            self.obj_store_mem_pending_task_inputs.set(
+                stats.get("obj_store_mem_pending_task_inputs", 0), tags
+            )
+            self.obj_store_mem_freed.set(stats.get("obj_store_mem_freed", 0), tags)
+            self.obj_store_mem_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
+
+            self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
+            self.task_submission_backpressure_time.set(
+                stats.get("task_submission_backpressure_time", 0), tags
             )
 
         # This update is called from a dataset's executor,
@@ -483,11 +564,22 @@ class _StatsActor:
             self.num_outputs_of_finished_tasks.set(0, tags)
             self.bytes_outputs_of_finished_tasks.set(0, tags)
 
-            self.block_generation_time.set(0, tags)
+            self.num_tasks_submitted.set(0, tags)
+            self.num_tasks_running.set(0, tags)
+            self.num_tasks_have_outputs.set(0, tags)
+            self.num_tasks_finished.set(0, tags)
+            self.num_tasks_failed.set(0, tags)
+
             self.obj_store_mem_internal_inqueue_blocks.set(0, tags)
             self.obj_store_mem_internal_inqueue.set(0, tags)
             self.obj_store_mem_internal_outqueue_blocks.set(0, tags)
             self.obj_store_mem_internal_outqueue.set(0, tags)
+            self.obj_store_mem_pending_task_inputs.set(0, tags)
+            self.obj_store_mem_freed.set(0, tags)
+            self.obj_store_mem_spilled.set(0, tags)
+
+            self.block_generation_time.set(0, tags)
+            self.task_submission_backpressure_time.set(0, tags)
 
     def clear_iteration_metrics(self, dataset_tag: str):
         tags = self._create_tags(dataset_tag)

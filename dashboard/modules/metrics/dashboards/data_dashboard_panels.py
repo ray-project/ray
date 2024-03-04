@@ -131,6 +131,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Blocks Received: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=19,
@@ -273,20 +275,76 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=8,
-        title="Block Generation Time",
-        description="Time spent generating blocks.",
-        unit="seconds",
+        id=29,
+        title="Submitted Tasks",
+        description="Number of submitted tasks.",
+        unit="tasks",
         targets=[
             Target(
-                expr="sum(ray_data_block_generation_seconds{{{global_filters}}}) by (dataset, operator)",
-                legend="Block Generation Time: {{dataset}}, {{operator}}",
+                expr="sum(ray_data_num_tasks_submitted{{{global_filters}}}) by (dataset, operator)",
+                legend="Submitted Tasks: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
         stack=False,
     ),
-    # Input queue metrics
+    Panel(
+        id=30,
+        title="Running Tasks",
+        description="Number of running tasks.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_running{{{global_filters}}}) by (dataset, operator)",
+                legend="Running Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=31,
+        title="Tasks with output blocks",
+        description="Number of tasks that have at least one output block.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_have_outputs{{{global_filters}}}) by (dataset, operator)",
+                legend="Tasks with output blocks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=32,
+        title="Finished Tasks",
+        description="Number of finished tasks.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_finished{{{global_filters}}}) by (dataset, operator)",
+                legend="Finished Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=33,
+        title="Failed Tasks",
+        description="Number of failed tasks.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_failed{{{global_filters}}}) by (dataset, operator)",
+                legend="Failed Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    # Object store memory metrics
     Panel(
         id=13,
         title="Operator Internal Inqueue Size (Blocks)",
@@ -338,6 +396,76 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_obj_store_mem_internal_outqueue{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=34,
+        title="Size of Blocks used in Pending Tasks (Bytes)",
+        description="Size in bytes of input blocks used by pending tasks.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_pending_task_inputs{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=35,
+        title="Freed Memory in Object Store (Bytes)",
+        description="Freed memory size in object store.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_freed{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=36,
+        title="Spilled Memory in Object Store (Bytes)",
+        description="Spilled memory size in object store.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_spilled{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=8,
+        title="Block Generation Time",
+        description="Time spent generating blocks.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_block_generation_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="Block Generation Time: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=37,
+        title="Task Submission Backpressure Time",
+        description="Time spent in task submission backpressure.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_task_submission_backpressure_time{{{global_filters}}}) by (dataset, operator)",
+                legend="Backpressure Time: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,

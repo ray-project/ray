@@ -254,8 +254,24 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=28",
       },
       {
-        title: "Block Generation Time",
-        pathParams: "orgId=1&theme=light&panelId=8",
+        title: "Submitted Tasks",
+        pathParams: "orgId=1&theme=light&panelId=29",
+      },
+      {
+        title: "Running Tasks",
+        pathParams: "orgId=1&theme=light&panelId=30",
+      },
+      {
+        title: "Tasks with output blocks",
+        pathParams: "orgId=1&theme=light&panelId=31",
+      },
+      {
+        title: "Finished Tasks",
+        pathParams: "orgId=1&theme=light&panelId=32",
+      },
+      {
+        title: "Failed Tasks",
+        pathParams: "orgId=1&theme=light&panelId=33",
       },
       {
         title: "Operator Internal Inqueue Size (Blocks)",
@@ -272,6 +288,26 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
       {
         title: "Operator Internal Outqueue Size (Bytes)",
         pathParams: "orgId=1&theme=light&panelId=16",
+      },
+      {
+        title: "Size of Blocks used in Pending Tasks (Bytes)",
+        pathParams: "orgId=1&theme=light&panelId=34",
+      },
+      {
+        title: "Freed Memory in Object Store (Bytes)",
+        pathParams: "orgId=1&theme=light&panelId=35",
+      },
+      {
+        title: "Spilled Memory in Object Store (Bytes)",
+        pathParams: "orgId=1&theme=light&panelId=36",
+      },
+      {
+        title: "Block Generation Time",
+        pathParams: "orgId=1&theme=light&panelId=8",
+      },
+      {
+        title: "Task Submission Backpressure Time",
+        pathParams: "orgId=1&theme=light&panelId=37",
       },
       {
         title: "Iteration Initialization Time",
