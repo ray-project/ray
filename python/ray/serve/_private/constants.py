@@ -320,3 +320,8 @@ METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
 RAY_SERVE_ENABLE_TASK_EVENTS = (
     os.environ.get("RAY_SERVE_ENABLE_TASK_EVENTS", "0") == "1"
 )
+
+# Use compact instead of spread scheduling strategy
+RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
+)
