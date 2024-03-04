@@ -83,13 +83,10 @@ class _ExperimentCheckpointManager:
         *,
         storage: Optional[StorageContext],
         checkpoint_period: Union[int, float, str],
-        sync_every_n_trial_checkpoints: Optional[int] = None,
     ):
         self._storage = storage
 
-        # Last save + sync time
         self._last_save_time = 0.0
-        self._last_sync_time = 0.0
 
         # Dynamic checkpointing period
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
@@ -98,22 +95,11 @@ class _ExperimentCheckpointManager:
         else:
             self._checkpoint_period = float(checkpoint_period)
 
-        # Upload triggered by trial checkpoints
-        self._sync_every_n_trial_checkpoints = sync_every_n_trial_checkpoints
-        self._trial_num_checkpoints_since_last_sync: Dict[Trial, int] = Counter()
-
         self._slow_sync_threshold = float(
             os.environ.get(
                 "TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "30"
             )
         )
-
-        self._excessive_sync_threshold = float(
-            os.environ.get(
-                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "5"
-            )
-        )
-        self._should_force_cloud_sync = False
 
     @property
     def auto_checkpoint_enabled(self):
@@ -131,43 +117,27 @@ class _ExperimentCheckpointManager:
                 f"{self._checkpoint_period:.2f} seconds."
             )
 
-    def on_trial_checkpoint(self, trial: Trial):
-        if not self._sync_every_n_trial_checkpoints:
-            return
-
-        self._trial_num_checkpoints_since_last_sync[trial] += 1
-
-        if (
-            self._trial_num_checkpoints_since_last_sync[trial]
-            >= self._sync_every_n_trial_checkpoints
-        ):
-            self._should_force_cloud_sync = True
-
-    def checkpoint(
+    def sync_up_experiment_state(
         self,
         save_fn: Callable[[], None],
         force: bool = False,
-        wait: bool = False,
     ):
-        """Saves execution state to the local experiment directory.
+        """Saves execution state to the experiment directory on the storage path.
+        This includes an experiment checkpoint file that contains trial statuses
+        and the searcher state.
+
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
 
-        Also, automatically saves the search algorithm to the local
-        checkpoint dir.
-
         Args:
-            save_fn: Function to call to actually save data. Should expect
-                one string argument specifying the directory to save to.
+            save_fn: Function to call to actually save data to the driver
+                staging path. The files in the driver staging path will be
+                uploaded to the storage path.
             force: Forces a checkpoint despite checkpoint_period.
-            wait: Wait until sync to cloud has finished.
-
         """
         driver_staging_path = self._storage.experiment_driver_staging_path
-        # TODO(justinvyu): [local_dir] Probably want to disable this num_to_keep force
-        force = force or self._should_force_cloud_sync
 
-        now = time.time()
+        now = time.monotonic()
         if now - self._last_save_time < self._checkpoint_period and not force:
             return
 
@@ -193,96 +163,22 @@ class _ExperimentCheckpointManager:
         # Adjust dynamic checkpointing
         self._update_auto_checkpoint_time(time_taken=checkpoint_time_taken)
 
+        if checkpoint_time_taken > self._slow_sync_threshold:
+            logger.warning(
+                "Checkpointing the experiment state (which holds a global view "
+                "of trial statuses and is used to restore the experiment) took"
+                f"{checkpoint_time_taken:.2f} seconds, which may be a bottleneck.\n"
+                "This could be due to a large number of trials, "
+                "large logfiles from lots of reported metrics, or throttling from the "
+                "remote storage if uploading too frequently.\n"
+                "You can increase the number of seconds between experiment syncs "
+                "by setting the environment variable TUNE_GLOBAL_CHECKPOINT_S. "
+                "For example, TUNE_GLOBAL_CHECKPOINT_S=60 will checkpoint trial "
+                "states every 60 seconds."
+            )
+
         # Finish
-        self._last_save_time = time.time()
-
-    def sync_up(self, force: bool = False, wait: bool = False) -> bool:
-        syncer = self._storage.syncer
-
-        if not syncer:
-            return False
-
-        # Always exclude checkpoints in the new persistence path.
-        # TODO(justinvyu, krfricke): Ideally, this excludes all trial directories.
-        # But for now, this is needed to upload driver artifacts that live in the
-        # trial directory.
-        exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
-        experiment_local_path = self._storage.experiment_driver_staging_path
-        experiment_fs_path = self._storage.experiment_fs_path
-
-        if force:
-            # Wait until previous sync command finished
-            try:
-                syncer.wait()
-            except TimeoutError as e:
-                logger.warning(
-                    "The previous sync of the experiment directory to the cloud "
-                    f"timed out with the error: {str(e)}\nSyncing will be retried. "
-                    + _EXPERIMENT_SYNC_TIMEOUT_MESSAGE
-                )
-            except Exception as e:
-                logger.warning(
-                    "The previous sync of the experiment directory to the cloud "
-                    f"failed with the error: {str(e)}\nSyncing will be retried."
-                )
-            synced = syncer.sync_up(
-                local_dir=experiment_local_path,
-                remote_dir=experiment_fs_path,
-                exclude=exclude,
-            )
-        else:
-            synced = syncer.sync_up_if_needed(
-                local_dir=experiment_local_path,
-                remote_dir=experiment_fs_path,
-                exclude=exclude,
-            )
-
-        start_time = time.monotonic()
-        if wait:
-            try:
-                syncer.wait()
-            except Exception as e:
-                raise RuntimeError(
-                    "Uploading the experiment directory from the driver "
-                    f"(local path: {experiment_local_path}) to the the cloud "
-                    f"(remote path: {experiment_fs_path}) failed. "
-                    "Please check the error message above."
-                ) from e
-
-        now = time.monotonic()
-        sync_time_taken = now - start_time
-
-        if sync_time_taken > self._slow_sync_threshold:
-            logger.warning(
-                "Syncing the experiment checkpoint to cloud took a "
-                f"{sync_time_taken:.2f} seconds. This can be due to a large number "
-                f"of trials, large logfiles, or throttling from the "
-                f"remote storage provider for too frequent syncs.\n"
-                f"If you set `CheckpointConfig.num_to_keep` to a low number, this can "
-                f"trigger frequent syncing. Try increasing the `num_to_keep`. "
-            )
-
-        if not synced:
-            return False
-
-        self._should_force_cloud_sync = False
-        self._trial_num_checkpoints_since_last_sync.clear()
-
-        if now - self._last_sync_time < self._excessive_sync_threshold:
-            logger.warning(
-                "Experiment checkpoint syncing has been triggered multiple "
-                f"times in the last {self._excessive_sync_threshold} seconds. "
-                "A sync will be triggered whenever a trial has checkpointed "
-                "more than `num_to_keep` times since last sync or if "
-                f"{syncer.sync_period} seconds have passed since last "
-                "sync. If you have set `num_to_keep` in your `CheckpointConfig`, "
-                "consider increasing the checkpoint frequency or keeping more "
-                "checkpoints. You can supress this warning by changing the "
-                "`TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S` "
-                "environment variable."
-            )
-        self._last_sync_time = now
-        return True
+        self._last_save_time = time.monotonic()
 
     def sync_down_experiment_state(self) -> None:
         fs = self._storage.storage_filesystem

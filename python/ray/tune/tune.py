@@ -1011,7 +1011,7 @@ def run(
     tune_taken = time.time() - tune_start
 
     try:
-        runner.checkpoint(force=True, wait=True)
+        runner.checkpoint(force=True)
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 

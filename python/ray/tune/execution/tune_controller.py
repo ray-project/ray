@@ -106,9 +106,9 @@ class TuneController:
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
         # Resources <-> Trial
-        self._resources_to_pending_trials: Dict[
-            ResourceRequest, Set[Trial]
-        ] = defaultdict(set)
+        self._resources_to_pending_trials: Dict[ResourceRequest, Set[Trial]] = (
+            defaultdict(set)
+        )
 
         # Keep track of actor states
         self._pending_trials: Set[Trial] = set()
@@ -320,9 +320,7 @@ class TuneController:
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
-            storage=self._storage,
-            checkpoint_period=self._checkpoint_period,
-            sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
+            storage=self._storage, checkpoint_period=self._checkpoint_period
         )
 
     @classmethod
@@ -362,36 +360,10 @@ class TuneController:
         self._search_alg.save_to_dir(driver_staging_path, session_str=self._session_str)
         self._callbacks.save_to_dir(driver_staging_path, session_str=self._session_str)
 
-    def checkpoint(self, force: bool = False, wait: bool = False):
-        """Saves execution state to the local experiment path.
-
-        Overwrites the current session checkpoint, which starts when self
-        is instantiated. Throttle depends on self._checkpoint_period.
-
-        Also automatically saves the search algorithm to the local
-        checkpoint dir.
-
-        Args:
-            force: Forces a checkpoint despite checkpoint_period.
-            wait: Wait until syncing to cloud has finished.
-
-        """
-        with warn_if_slow(
-            "experiment_checkpoint",
-            message="Checkpointing the experiment state took "
-            "{duration:.3f} s, which may be a performance "
-            "bottleneck. Please ensure the "
-            "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
-            "something significantly higher than this duration "
-            "to ensure compute time is mostly spent on the main "
-            "training loop.",
-            # No backlog warning if forced checkpoint as we wait
-            # for previous sync to finish.
-            disable=self._checkpoint_manager.auto_checkpoint_enabled or force or wait,
-        ):
-            self._checkpoint_manager.checkpoint(
-                save_fn=self.save_to_dir, force=force, wait=wait
-            )
+    def checkpoint(self, force: bool = False):
+        self._checkpoint_manager.sync_up_experiment_state(
+            save_fn=self.save_to_dir, force=force
+        )
 
     def _requeue_restored_trials(
         self, trials: List[Trial], resume_config: ResumeConfig
@@ -1808,7 +1780,6 @@ class TuneController:
 
                 trial.on_checkpoint(checkpoint_value)
 
-                self._checkpoint_manager.on_trial_checkpoint(trial)
                 self._mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
