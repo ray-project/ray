@@ -103,7 +103,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         pass
 
     def stop(self) -> None:
-        """Releases all resources used by this EnvRunner."""
+        """Releases all resources used by this EnvRunner.
+
+        For example, when using a gym.Env in this EnvRunner, you should make sure
+        that its `close()` method is called.
+        """
         pass
 
     def __del__(self) -> None:

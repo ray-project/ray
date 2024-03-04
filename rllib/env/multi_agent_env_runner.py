@@ -671,8 +671,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
     @override(EnvRunner)
     def stop(self):
-        """Closes this `EnvRunner` by running necessary closing operations."""
-
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
 
