@@ -343,11 +343,11 @@ class RLModule(abc.ABC):
         config: The config for the RLModule.
 
     Abstract Methods:
-        :py:meth:`~forward_train`: Forward pass during training.
+        :py:meth:`~_forward_train`: Forward pass during training.
 
-        :py:meth:`~forward_exploration`: Forward pass during training for exploration.
+        :py:meth:`~_forward_exploration`: Forward pass during training for exploration.
 
-        :py:meth:`~forward_inference`: Forward pass during inference.
+        :py:meth:`~_forward_inference`: Forward pass during inference.
 
 
     Note:
