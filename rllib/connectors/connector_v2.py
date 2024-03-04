@@ -3,12 +3,13 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import gymnasium as gym
+import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
-from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray, unbatch
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -575,14 +576,22 @@ class ConnectorV2(abc.ABC):
                 )
             return
 
-        # Process a batched (possibly complex) struct by splitting it up into a list
-        # first and then calling this method again on the resulting list.
-        items_as_list = unbatch(items_to_add)
-        ConnectorV2.add_n_batch_items(
+        # Process a batched (possibly complex) struct.
+        # We could just unbatch the item (split it into a list) and then add each
+        # individual item to our `batch`. However, this comes with a heavy performance
+        # penalty. Instead, we tag the thus added array(s) here as "_has_batch_dim=True"
+        # and then know that when batching the entire list under the respective
+        # (eps_id, agent_id, module_id)-tuple key, we need to concatenate, not stack
+        # the items in there.
+        def _tag(s):
+            return BatchedNdArray(s)
+
+        ConnectorV2.add_batch_item(
             batch=batch,
             column=column,
-            items_to_add=items_as_list,
-            num_items=num_items,
+            # Convert given input into BatchedNdArray(s) such that the `batch` utility
+            # knows that it'll have to concat, not stack.
+            item_to_add=tree.map_structure(_tag, items_to_add),
             single_agent_episode=single_agent_episode,
         )
 

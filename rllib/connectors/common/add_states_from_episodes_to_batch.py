@@ -12,7 +12,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import batch, unbatch
+from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
@@ -262,19 +262,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     batch=data,
                     column=STATE_IN,
                     # items_to_add.shape=(B,[state-dim])  # B=episode len // max_seq_len
-                    items_to_add=unbatch(
-                        tree.map_structure(
-                            # Explanation:
-                            # [::max_seq_len]: only keep every Tth state.
-                            # [:-1]: Shift state outs by one, ignore very last
-                            # STATE_OUT (but therefore add the lookback/init state at
-                            # the beginning).
-                            lambda i, o: np.concatenate([[i], o[:-1]])[
-                                :: self.max_seq_len
-                            ],
-                            look_back_state,
-                            state_outs,
-                        )
+                    items_to_add=tree.map_structure(
+                        # Explanation:
+                        # [::max_seq_len]: only keep every Tth state.
+                        # [:-1]: Shift state outs by one, ignore very last
+                        # STATE_OUT (but therefore add the lookback/init state at
+                        # the beginning).
+                        lambda i, o: np.concatenate([[i], o[:-1]])[:: self.max_seq_len],
+                        look_back_state,
+                        state_outs,
                     ),
                     num_items=int(math.ceil(len(sa_episode) / self.max_seq_len)),
                     single_agent_episode=sa_episode,
