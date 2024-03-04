@@ -88,7 +88,8 @@ class ClusterNodeInfoCache(ABC):
     def get_available_resources_per_node(self) -> Dict[str, Union[float, Dict]]:
         """Get available resources per node.
 
-        Returns a map from (node_id -> Dict of resources)"""
+        Returns a map from (node_id -> Dict of resources).
+        """
 
         return self._cached_available_resources_per_node
 

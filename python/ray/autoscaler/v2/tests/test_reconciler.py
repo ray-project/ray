@@ -1,7 +1,9 @@
-# coding: utf-8
 import os
 import sys
 import time
+
+# coding: utf-8
+from collections import defaultdict
 
 import pytest
 
@@ -1213,6 +1215,122 @@ class TestReconciler:
             assert instances["i-1"].status == Instance.ALLOCATED
         else:
             assert instances["i-1"].status == Instance.RAY_INSTALLING
+
+    @staticmethod
+    @mock.patch("time.time_ns")
+    def test_autoscaler_state(mock_time_ns, setup):
+        instance_manager, instance_storage, _ = setup
+        mock_time_ns.return_value = 5
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.ALLOCATED,
+                instance_type="type-1",
+                cloud_instance_id="c-1",
+                launch_request_id="l1",
+                status_times=[
+                    (Instance.QUEUED, 0),
+                    (Instance.REQUESTED, 1),
+                    (Instance.ALLOCATED, 2),
+                ],
+            ),
+            # requested instance
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-2",
+                launch_request_id="l2",
+                status_times=[(Instance.QUEUED, 0), (Instance.REQUESTED, 1)],
+            ),
+            # queued instance
+            create_instance(
+                "i-3",
+                status=Instance.QUEUED,
+                instance_type="type-3",
+                launch_request_id="l3",
+                status_times=[
+                    (Instance.QUEUED, 0),
+                ],
+            ),
+            # allocation failed
+            create_instance(
+                "i-4",
+                status=Instance.ALLOCATION_FAILED,
+                instance_type="type-4",
+                launch_request_id="l4",
+                status_times=[
+                    (Instance.QUEUED, 0),
+                    (Instance.REQUESTED, 1),
+                    (Instance.ALLOCATION_FAILED, 2),
+                ],
+            ),
+            # ray installing
+            create_instance(
+                "i-5",
+                status=Instance.RAY_INSTALLING,
+                instance_type="type-5",
+                launch_request_id="l5",
+                cloud_instance_id="c-5",
+                status_times=[
+                    (Instance.QUEUED, 0),
+                    (Instance.REQUESTED, 1),
+                    (Instance.ALLOCATED, 2),
+                    (Instance.RAY_INSTALLING, 3),
+                ],
+            ),
+        ]
+
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", "", True, NodeKind.WORKER),
+            "c-5": CloudInstance("c-5", "type-5", "", True, NodeKind.WORKER),
+        }
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        mock_scheduler = MagicMock()
+        mock_scheduler.schedule.return_value = SchedulingReply(
+            to_launch=[],
+            to_terminate=[],
+            infeasible_gang_resource_requests=[
+                GangResourceRequest(
+                    requests=[ResourceRequest(resources_bundle={"CPU": 1})]
+                )
+            ],
+            infeasible_resource_requests=[ResourceRequest(resources_bundle={"CPU": 1})],
+        )
+
+        autoscaling_state = Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=mock_scheduler,
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(
+                cluster_resource_state_version=1,
+            ),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "max_concurrent_launches": 0,  # don't launch anything.
+                }
+            ),
+        )
+
+        assert autoscaling_state.last_seen_cluster_resource_state_version == 1
+        assert len(autoscaling_state.infeasible_gang_resource_requests) == 1
+        assert len(autoscaling_state.infeasible_resource_requests) == 1
+        assert len(autoscaling_state.pending_instances) == 2
+        pending_instances = {i.instance_id for i in autoscaling_state.pending_instances}
+        assert pending_instances == {"i-1", "i-5"}
+        pending_instance_requests = defaultdict(int)
+        for r in autoscaling_state.pending_instance_requests:
+            pending_instance_requests[r.ray_node_type_name] += r.count
+        failed_instance_requests = defaultdict(int)
+        for r in autoscaling_state.failed_instance_requests:
+            failed_instance_requests[r.ray_node_type_name] += r.count
+        assert pending_instance_requests == {"type-2": 1, "type-3": 1}
+        assert failed_instance_requests == {"type-4": 1}
 
     @staticmethod
     def test_extra_cloud_instances(setup):

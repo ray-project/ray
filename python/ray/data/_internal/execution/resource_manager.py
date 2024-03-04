@@ -36,8 +36,14 @@ class ResourceManager:
     GLOBAL_LIMITS_UPDATE_INTERVAL_S = 10
 
     # The fraction of the object store capacity that will be used as the default object
-    # store memory limit for the streaming executor.
+    # store memory limit for the streaming executor,
+    # when `ReservationOpResourceAllocator` is enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.5
+
+    # The fraction of the object store capacity that will be used as the default object
+    # store memory limit for the streaming executor,
+    # when `ReservationOpResourceAllocator` is not enabled.
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = 0.25
 
     # Memory accounting is accurate only for these operators.
     # We'll enable memory reservation if a dataset only contains these operators.
@@ -161,12 +167,16 @@ class ResourceManager:
         default_limits = self._options.resource_limits
         exclude = self._options.exclude_resources
         cluster = ray.cluster_resources()
+        default_mem_fraction = (
+            self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
+            if self.op_resource_allocator_enabled()
+            else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION
+        )
         cluster_resources = ExecutionResources(
             cpu=cluster.get("CPU", 0.0),
             gpu=cluster.get("GPU", 0.0),
             object_store_memory=round(
-                self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
-                * cluster.get("object_store_memory", 0.0)
+                default_mem_fraction * cluster.get("object_store_memory", 0.0)
             ),
         )
         self._global_limits = default_limits.min(cluster_resources).subtract(exclude)

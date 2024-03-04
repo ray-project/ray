@@ -43,8 +43,10 @@ def test_autoscaling_config_validation():
         # max_replicas must be positive
         AutoscalingConfig(max_replicas=0)
 
+    # target_ongoing_requests must be nonnegative
     with pytest.raises(ValidationError):
-        # max_replicas must be nonnegative
+        AutoscalingConfig(target_ongoing_requests=-1)
+    with pytest.raises(ValidationError):
         AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
 
     # max_replicas must be greater than or equal to min_replicas
@@ -403,6 +405,25 @@ class TestReplicaConfig:
         assert config.deployment_def() == "Check this out!"
         assert config.init_args == tuple()
         assert config.init_kwargs == dict()
+
+
+class TestAutoscalingConfig:
+    def test_target_ongoing_requests(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_target_ongoing_requests() == 1
+
+        autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+        autoscaling_config = AutoscalingConfig(
+            target_num_ongoing_requests_per_replica=7
+        )
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+        autoscaling_config = AutoscalingConfig(
+            target_ongoing_requests=7, target_num_ongoing_requests_per_replica=70
+        )
+        assert autoscaling_config.get_target_ongoing_requests() == 7
 
 
 def test_config_schemas_forward_compatible():
