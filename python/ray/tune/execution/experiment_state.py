@@ -1,7 +1,6 @@
-from collections import Counter
 import fnmatch
 from pathlib import Path
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Optional, Union
 import logging
 import os
 import time
@@ -15,7 +14,6 @@ from ray.train._internal.storage import (
     _list_at_fs_path,
     _upload_to_fs_path,
 )
-from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 
 logger = logging.getLogger(__name__)
@@ -26,12 +24,6 @@ _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
     "reason behind the hanging sync operation, or increase the "
     "`sync_timeout` in `SyncConfig`."
 )
-
-_DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
-
-
-def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
-    return bool(_find_newest_experiment_checkpoint(experiment_dir=experiment_dir))
 
 
 def _find_newest_experiment_checkpoint(

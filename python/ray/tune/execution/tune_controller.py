@@ -24,7 +24,6 @@ from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
-    _experiment_checkpoint_exists,
     _find_newest_experiment_checkpoint,
 )
 from ray.tune.experiment.trial import (
@@ -59,7 +58,7 @@ from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 
@@ -106,9 +105,9 @@ class TuneController:
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
         # Resources <-> Trial
-        self._resources_to_pending_trials: Dict[ResourceRequest, Set[Trial]] = (
-            defaultdict(set)
-        )
+        self._resources_to_pending_trials: Dict[
+            ResourceRequest, Set[Trial]
+        ] = defaultdict(set)
 
         # Keep track of actor states
         self._pending_trials: Set[Trial] = set()
@@ -297,11 +296,6 @@ class TuneController:
         """Calls ``on_experiment_end`` method in callbacks."""
         self._callbacks.on_experiment_end(trials=self._trials)
 
-    @Deprecated("Use `TrialRunner.experiment_state_path` instead.")
-    @property
-    def checkpoint_file(self) -> str:
-        return self.experiment_state_path
-
     @property
     def experiment_state_file_name(self) -> str:
         return self.CKPT_FILE_TMPL.format(self._session_str)
@@ -322,13 +316,6 @@ class TuneController:
         return _ExperimentCheckpointManager(
             storage=self._storage, checkpoint_period=self._checkpoint_period
         )
-
-    @classmethod
-    def checkpoint_exists(cls, directory: str) -> bool:
-        if not os.path.exists(directory):
-            return False
-
-        return _experiment_checkpoint_exists(directory)
 
     def save_to_dir(self):
         """Save TuneController state to the local staging experiment directory.
