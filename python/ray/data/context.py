@@ -72,8 +72,6 @@ DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
 
-DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = False
-
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -183,9 +181,6 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_log: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
-        log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
-            Core code stack frames when logging to stdout. The full stack trace is
-            always written to the Ray Data log file.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
         use_ray_tqdm: Whether to enable distributed tqdm.
@@ -231,9 +226,6 @@ class DataContext:
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
-    log_internal_stack_trace_to_stdout: bool = (
-        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
-    )
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
     execution_options: "ExecutionOptions" = field(
         default_factory=_execution_options_factory
