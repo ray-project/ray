@@ -24,7 +24,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         # Encoder forward pass.
         encoder_outs = self.encoder(batch)
         if Columns.STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Pi head.
         output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
@@ -48,8 +48,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -67,8 +67,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         # Shared encoder.
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head.
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])

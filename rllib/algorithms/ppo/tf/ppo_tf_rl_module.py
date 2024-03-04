@@ -5,7 +5,7 @@ import tree  # pip install dm_tree
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC
-from ray.rllib.core.models.tf.encoder import ENCODER_OUT, STATE_OUT
+from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.utils.annotations import override
@@ -49,8 +49,8 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
@@ -68,8 +68,8 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         # Shared encoder.
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head.
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])

@@ -29,9 +29,9 @@ FAKE_BATCH = {
         dtype=np.float32,
     ),
     Columns.ACTIONS: np.array([0, 1, 1]),
-    Columns.PREV_ACTIONS: np.array([0, 1, 1]),
+    #Columns.PREV_ACTIONS: np.array([0, 1, 1]),
     Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    Columns.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+    #Columns.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
     Columns.TERMINATEDS: np.array([False, False, True]),
     Columns.TRUNCATEDS: np.array([False, False, False]),
     Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
@@ -40,7 +40,7 @@ FAKE_BATCH = {
     ),
     Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     Columns.EPS_ID: np.array([0, 0, 0]),
-    Columns.AGENT_INDEX: np.array([0, 0, 0]),
+    #Columns.AGENT_INDEX: np.array([0, 0, 0]),
 }
 
 

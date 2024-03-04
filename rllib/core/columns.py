@@ -26,8 +26,9 @@ class Columns:
     # of a reached time limit).
     TRUNCATEDS = "truncateds"
 
-    STATE_IN = "state_in"
-    STATE_OUT = "state_out"
+    # Next observation: Only used by algorithms that need to look at TD-data for
+    # training, such as off-policy/DQN algos.
+    NEXT_OBS = "new_obs"
 
     # Uniquely identifies an episode
     EPS_ID = "eps_id"
@@ -41,6 +42,8 @@ class Columns:
     T = "t"
 
     # Common extra RLModule output keys.
+    STATE_IN = "state_in"
+    STATE_OUT = "state_out"
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"

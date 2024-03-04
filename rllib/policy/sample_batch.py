@@ -127,6 +127,7 @@ class SampleBatch(dict):
     VF_PREDS = Columns.VF_PREDS
     VALUES_BOOTSTRAPPED = Columns.VALUES_BOOTSTRAPPED
     EPS_ID = Columns.EPS_ID
+    NEXT_OBS = Columns.NEXT_OBS
 
     # Action distribution object.
     ACTION_DIST = "action_dist"
@@ -134,8 +135,6 @@ class SampleBatch(dict):
     PREV_ACTIONS = "prev_actions"
     # Reward received before SampleBatch.REWARDS.
     PREV_REWARDS = "prev_rewards"
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
     ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
     AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
     # Uniquely identifies a sample batch. This is important to distinguish RNN
