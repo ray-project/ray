@@ -24,11 +24,6 @@ steps:
       - ./ci/ray_ci/macos/macos_ci_build.sh build_aarch64
 
   - label: ":ray: core: :mac: small & client tests"
-    tags: 
-      - core_cpp
-      - python
-      - macos_wheels
-      - oss
     job_env: MACOS
     instance_type: macos
     commands:

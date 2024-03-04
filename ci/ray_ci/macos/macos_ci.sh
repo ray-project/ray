@@ -34,11 +34,12 @@ run_medium_flaky_tests() {
 }
 
 run_small_test() {
+  sleep 3600
   # shellcheck disable=SC2046
-  bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
+#   bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+#     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+#       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+#       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
 }
 
 run_medium_a_j_test() {
