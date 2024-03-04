@@ -14,6 +14,7 @@ def main():
         cluster_resources = ray.cluster_resources()
 
         cluster_status = get_cluster_status(gcs_address)
+        print(cluster_status)
         print(ClusterStatusFormatter.format(cluster_status, verbose=True))
         assert cluster_resources.get("CPU", 0) == 2, cluster_resources
 

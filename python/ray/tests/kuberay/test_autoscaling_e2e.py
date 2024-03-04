@@ -271,14 +271,17 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
-        kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
-            script_name="scale_up.py",
-            pod=head_pod,
-            container="ray-head",
-            namespace="default",
-        )
-        # Check that stdout autoscaler logging is working.
-        logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
+        try:
+            kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
+                script_name="scale_up.py",
+                pod=head_pod,
+                container="ray-head",
+                namespace="default",
+            )
+        finally:
+            # Check that stdout autoscaler logging is working.
+            logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
+            print(logs)
         assert "Adding 1 node(s) of type small-group." in logs
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
