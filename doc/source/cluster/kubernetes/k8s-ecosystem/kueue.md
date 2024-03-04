@@ -137,7 +137,7 @@ kubectl create -f ray-job.kueue-toy-sample.yaml
 
 Each RayJob custom resource requests 2 CPUs and 4G of memory in total.
 However, the ClusterQueue only has 3 CPUs and 6G of memory in total.
-Therefore, the second RayJob custom resource remains pending, and no Pods from the pending RayJob are created, even though the remaining resources are sufficient for a Pod.
+Therefore, the second RayJob custom resource remains pending, and KubeRay doesn't create Pods from the pending RayJob, even though the remaining resources are sufficient for a Pod.
 You can also inspect the `ClusterQueue` to see available and used quotas:
 
 ```bash
