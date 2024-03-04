@@ -13,12 +13,13 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ModelWeights
+from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class MultiAgentEnvRunner(EnvRunner):
     """The genetic environment runner for the multi-agent case."""
 
