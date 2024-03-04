@@ -10,10 +10,9 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
-from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -217,9 +216,9 @@ class AddPolicyCallback(DefaultCallbacks):
         algorithm.add_policy(
             policy_id="test_policy",
             policy_cls=(
-                PGTorchPolicy
+                PPOTorchPolicy
                 if algorithm.config.framework_str == "torch"
-                else PGTF2Policy
+                else PPOTF2Policy
             ),
             observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
             action_space=gym.spaces.Discrete(2),
@@ -372,7 +371,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_fatal(self):
         # Test the case where all workers fail (w/o recovery).
-        self._do_test_fault_fatal(PGConfig().training(optimizer={}))
+        self._do_test_fault_fatal(PPOConfig().training(optimizer={}))
 
     def test_async_samples(self):
         self._do_test_fault_ignore(
@@ -420,7 +419,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_recreate_eval_workers_parallel_to_training_w_actor_manager(self):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_workers=1,
@@ -440,7 +439,7 @@ class TestWorkerFailures(unittest.TestCase):
         # different `policy_mapping_fn` in eval- vs train workers, but we chose
         # to recover.
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .multi_agent(
                 policies={"main", "p0", "p1"},
@@ -476,7 +475,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -530,7 +529,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -625,7 +624,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -639,7 +638,7 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
+                evaluation_config=PPOConfig.overrides(
                     env_config={
                         "evaluation": True,
                         "p_terminated": 0.0,
