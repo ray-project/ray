@@ -1,6 +1,9 @@
 import logging
 from queue import Queue
 from typing import List, Optional
+from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (
+    ReadOnlyProvider,
+)
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
@@ -8,7 +11,11 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider i
     KubeRayProvider,
 )
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
+from ray.autoscaler.v2.instance_manager.config import (
+    AutoscalingConfig,
+    IConfigReader,
+    Provider,
+)
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceManager,
     InstanceUpdatedSubscriber,
@@ -93,17 +100,21 @@ class Autoscaler:
                 config.get_config("cluster_name"),
                 provider_config,
             )
-            return
+        elif config.provider == Provider.READ_ONLY:
+            provider_config["gcs_address"] = self._gcs_client.address
+            self._cloud_provider = ReadOnlyProvider(
+                provider_config=provider_config,
+            )
+        else:
+            node_provider_v1 = _get_node_provider(
+                provider_config,
+                config.get_config("cluster_name"),
+            )
 
-        node_provider_v1 = _get_node_provider(
-            provider_config,
-            config.get_config("cluster_name"),
-        )
-
-        self._cloud_provider = NodeProviderAdapter(
-            v1_provider=node_provider_v1,
-            config_reader=config_reader,
-        )
+            self._cloud_provider = NodeProviderAdapter(
+                v1_provider=node_provider_v1,
+                config_reader=config_reader,
+            )
 
     def _init_instance_manager(
         self,

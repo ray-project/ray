@@ -34,6 +34,7 @@ from ray.tests.kuberay.scripts import (
 )
 
 logger = logging.getLogger(__name__)
+logger.info = print
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
@@ -42,14 +43,20 @@ RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:nightly-py38")
 AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
 PULL_POLICY = os.environ.get("PULL_POLICY", "IfNotPresent")
+# Set to enable autoscaler v2
+AUTOSCALER_V2 = os.environ.get("AUTOSCALER_V2", "False")
 logger.info(f"Using image `{RAY_IMAGE}` for Ray containers.")
 logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
+logger.info(f"Using autoscaler v2: {AUTOSCALER_V2}")
 
 # Path to example config inside the rayci container.
-# EXAMPLE_CLUSTER_PATH = "/data/home/rickyx/ray/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
+# EXAMPLE_CLUSTER_PATH = "/data/home/rickyx/ray-2/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
 EXAMPLE_CLUSTER_PATH = (
     "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
+)
+EXAMPLE_CLUSTER_PATH_V2 = (
+    "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-v2-template.yaml"
 )
 
 HEAD_SERVICE = "raycluster-autoscaler-head-svc"
@@ -79,8 +86,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         - Fill in Ray image, autoscaler image, and image pull policies from env
           variables.
         """
-        with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
-            ray_cr_config_str = ray_cr_config_file.read()
+        if AUTOSCALER_V2 == "True":
+            with open(EXAMPLE_CLUSTER_PATH_V2) as ray_cr_config_file:
+                ray_cr_config_str = ray_cr_config_file.read()
+        else:
+            with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
+                ray_cr_config_str = ray_cr_config_file.read()
 
         for k8s_object in yaml.safe_load_all(ray_cr_config_str):
             if k8s_object["kind"] in ["RayCluster", "RayJob", "RayService"]:
@@ -260,14 +271,17 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
-        kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
-            script_name="scale_up.py",
-            pod=head_pod,
-            container="ray-head",
-            namespace="default",
-        )
-        # Check that stdout autoscaler logging is working.
-        logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
+        try:
+            kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
+                script_name="scale_up.py",
+                pod=head_pod,
+                container="ray-head",
+                namespace="default",
+            )
+        finally:
+            # Check that stdout autoscaler logging is working.
+            logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
+            print(logs)
         assert "Adding 1 node(s) of type small-group." in logs
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
@@ -365,6 +379,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         logger.info("Confirming Ray pods are gone.")
         wait_for_pods(goal_num_pods=0, namespace=RAY_CLUSTER_NAMESPACE)
+
+        raise RuntimeError("Test complete.")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,6 @@
 import logging
 from collections import defaultdict
-import functools
 from typing import Dict, List, Optional, Tuple
-
 
 from ray._private.event.event_logger import EventLoggerAdapter
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
@@ -14,7 +12,6 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRequest
-import logging
 
 logger = logging.getLogger(__name__)
 
