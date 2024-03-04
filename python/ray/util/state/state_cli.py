@@ -400,7 +400,7 @@ def ray_get(
             if the CLI is failed to query the data.
     """  # noqa: E501
     if not id:
-        raise click.UsageError(
+        raise click.BadParameter(
             f"Missing argument 'ID'. Do you mean 'ray list {resource}'?"
         )
 
