@@ -1,0 +1,426 @@
+# --------------------------
+# A2C
+# --------------------------
+- name: rllib_learning_tests_a2c_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=tf
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
+- name: rllib_learning_tests_a2c_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
+# --------------------------
+# A3C
+# --------------------------
+- name: rllib_learning_tests_a3c_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=tf
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 32cpus_gce.yaml
+
+
+# --------------------------
+# APEX-DQN
+# --------------------------
+- name: rllib_learning_tests_apex_dqn_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_24cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=tf
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_24cpus_gce.yaml
+
+- name: rllib_learning_tests_apex_dqn_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_24cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_24cpus_gce.yaml
+
+
+# --------------------------
+# DDPG
+# --------------------------
+- name: rllib_learning_tests_ddpg_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  stable: false
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=tf
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
+- name: rllib_learning_tests_ddpg_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  stable: false
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
+
+# --------------------------
+# ES
+# --------------------------
+- name: rllib_learning_tests_es_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=es --framework=tf
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_64cpus_gce.yaml
+
+- name: rllib_learning_tests_es_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=es --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_64cpus_gce.yaml
+
+
+# --------------------------
+# SlateQ
+# --------------------------
+- name: rllib_learning_tests_slateq_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=tf
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
+- name: rllib_learning_tests_slateq_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
+
+# --------------------------
+# TD3
+# --------------------------
+- name: rllib_learning_tests_td3_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=tf
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
+- name: rllib_learning_tests_td3_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+  stable: false
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_16cpus_gce.yaml
