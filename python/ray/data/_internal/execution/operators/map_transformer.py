@@ -47,7 +47,6 @@ class MapTransformFn:
         self._output_type = output_type
         self._target_max_block_size = None
         self._is_udf = is_udf
-        self._udf_time = 0
 
     @abstractmethod
     def __call__(
@@ -67,19 +66,6 @@ class MapTransformFn:
 
     def set_target_max_block_size(self, target_max_block_size: int):
         self._target_max_block_size = target_max_block_size
-
-    def _udf_timed_iter(
-        self, input: Iterable[MapTransformFnData]
-    ) -> Iterable[MapTransformFnData]:
-        while True:
-            try:
-                start = time.perf_counter()
-                output = next(input)
-                if self._is_udf:
-                    self._udf_time += time.perf_counter() - start
-                yield output
-            except StopIteration:
-                break
 
 
 class MapTransformer:
@@ -106,6 +92,7 @@ class MapTransformer:
         self.set_transform_fns(transform_fns)
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._target_max_block_size = None
+        self._udf_time = 0
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
         """Set the transform functions."""
@@ -138,6 +125,18 @@ class MapTransformer:
         """
         self._init_fn()
 
+    def _udf_timed_iter(
+        self, input: Iterable[MapTransformFnData]
+    ) -> Iterable[MapTransformFnData]:
+        while True:
+            try:
+                start = time.perf_counter()
+                output = next(input)
+                self._udf_time += time.perf_counter() - start
+                yield output
+            except StopIteration:
+                break
+
     def apply_transform(
         self,
         input_blocks: Iterable[Block],
@@ -154,6 +153,8 @@ class MapTransformer:
         # Apply the transform functions sequentially to the input iterable.
         for transform_fn in self._transform_fns:
             iter = transform_fn(iter, ctx)
+            if transform_fn._is_udf:
+                iter = self._udf_timed_iter(iter)
         return iter
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
@@ -180,7 +181,7 @@ class MapTransformer:
         return transformer
 
     def udf_time(self) -> float:
-        return sum(t._udf_time for t in self._transform_fns)
+        return self._udf_time
 
 
 def create_map_transformer_from_block_fn(
@@ -212,7 +213,7 @@ class RowMapTransformFn(MapTransformFn):
         )
 
     def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
-        yield from self._udf_timed_iter(self._row_fn(input, ctx))
+        yield from self._row_fn(input, ctx)
 
     def __repr__(self) -> str:
         return f"RowMapTransformFn({self._row_fn})"
@@ -232,7 +233,7 @@ class BatchMapTransformFn(MapTransformFn):
     def __call__(
         self, input: Iterable[DataBatch], ctx: TaskContext
     ) -> Iterable[DataBatch]:
-        yield from self._udf_timed_iter(self._batch_fn(input, ctx))
+        yield from self._batch_fn(input, ctx)
 
     def __repr__(self) -> str:
         return f"BatchMapTransformFn({self._batch_fn})"
