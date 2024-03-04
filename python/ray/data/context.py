@@ -1,6 +1,6 @@
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray._private.ray_constants import env_integer
@@ -124,12 +124,23 @@ DEFAULT_BATCH_SIZE = 1024
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
 
+def _execution_options_factory() -> "ExecutionOptions":
+    # Lazily import to avoid circular dependencies.
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+
+    return ExecutionOptions()
+
+
 @DeveloperAPI
 @dataclass
 class DataContext:
     """Global settings for Ray Data.
 
     Configure this class to enable advanced features and tune performance.
+
+    .. warning::
+        Apply changes before creating a :class:`~ray.data.Dataset`. Changes made after
+        won't take effect.
 
     .. note::
         This object is automatically propagated to workers. You can access it
@@ -186,9 +197,9 @@ class DataContext:
             Ray Data warns you. For now, this only applies to shuffle ops because most
             other ops are unlikely to use as much driver memory.
         actor_task_retry_on_errors: The application-level errors that actor task should
-            retry. This follows same format as `retry_exceptions` in Ray
-            Core. Default to `False` to not retry on any errors. Set to `True` to retry
-            all errors, or set to a list of errors to retry.
+            retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
+            Ray Core. Default to `False` to not retry on any errors. Set to `True` to
+            retry all errors, or set to a list of errors to retry.
         enable_op_resource_reservation: Whether to reserve resources for each operator.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
@@ -224,7 +235,9 @@ class DataContext:
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
-    execution_options: Optional["ExecutionOptions"] = None
+    execution_options: "ExecutionOptions" = field(
+        default_factory=_execution_options_factory
+    )
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
     enable_get_object_locations_for_metrics: bool = (
@@ -241,11 +254,6 @@ class DataContext:
 
     def __post_init__(self):
         """Private constructor (use get_current() instead)."""
-        from ray.data._internal.execution.interfaces import ExecutionOptions
-
-        if self.execution_options is None:
-            self.execution_options = ExecutionOptions()
-
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
