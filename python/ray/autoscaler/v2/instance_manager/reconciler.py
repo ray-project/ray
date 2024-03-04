@@ -29,8 +29,11 @@ from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
+    FailedInstanceRequest,
     NodeState,
     NodeStatus,
+    PendingInstance,
+    PendingInstanceRequest,
 )
 from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
@@ -200,6 +203,9 @@ class Reconciler:
         ray_stop_errors = ray_stop_errors or []
 
         autoscaling_state = AutoscalingState()
+        autoscaling_state.last_seen_cluster_resource_state_version = (
+            ray_cluster_resource_state.cluster_resource_state_version
+        )
         Reconciler._sync_from(
             instance_manager=instance_manager,
             ray_nodes=ray_cluster_resource_state.node_states,
@@ -368,6 +374,10 @@ class Reconciler:
                 instance_manager=instance_manager,
                 non_terminated_cloud_instances=non_terminated_cloud_instances,
             )
+
+        Reconciler._fill_autoscaling_state(
+            instance_manager=instance_manager, autoscaling_state=autoscaling_state
+        )
 
     #######################################################
     # Utility methods for reconciling instance states.
@@ -1320,6 +1330,97 @@ class Reconciler:
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
+    def _fill_autoscaling_state(
+        instance_manager: InstanceManager,
+        autoscaling_state: AutoscalingState,
+    ) -> None:
+
+        # Use the IM instance version for the autoscaler_state_version
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        autoscaling_state.autoscaler_state_version = version
+
+        # Group instances by status
+        instances_by_status = defaultdict(list)
+        for instance in instances:
+            instances_by_status[instance.status].append(instance)
+
+        # Pending instance requests
+        instances_by_launch_request = defaultdict(list)
+        queued_instances = []
+        for instance in (
+            instances_by_status[IMInstance.REQUESTED]
+            + instances_by_status[IMInstance.QUEUED]
+        ):
+            if instance.launch_request_id:
+                instances_by_launch_request[instance.launch_request_id].append(instance)
+            else:
+                queued_instances.append(instance)
+
+        for _, instances in instances_by_launch_request.items():
+            num_instances_by_type = defaultdict(int)
+            for instance in instances:
+                num_instances_by_type[instance.instance_type] += 1
+
+            # All instances with same request id should have the same
+            # request time.
+            request_update = InstanceUtil.get_last_status_transition(
+                instances[0], IMInstance.REQUESTED
+            )
+            request_time_ns = request_update.timestamp_ns if request_update else 0
+
+            for instance_type, count in num_instances_by_type.items():
+                autoscaling_state.pending_instance_requests.append(
+                    PendingInstanceRequest(
+                        ray_node_type_name=instance_type,
+                        count=int(count),
+                        request_ts=int(request_time_ns // 1e9),
+                    )
+                )
+
+        # Pending instances
+        for instance in (
+            instances_by_status[IMInstance.ALLOCATED]
+            + instances_by_status[IMInstance.RAY_INSTALLING]
+        ):
+
+            status_history = sorted(
+                instance.status_history, key=lambda x: x.timestamp_ns, reverse=True
+            )
+            autoscaling_state.pending_instances.append(
+                PendingInstance(
+                    instance_id=instance.instance_id,
+                    ray_node_type_name=instance.instance_type,
+                    details=status_history[0].details,
+                )
+            )
+
+        # Failed instance requests
+        for instance in instances_by_status[IMInstance.ALLOCATION_FAILED]:
+            request_status_update = InstanceUtil.get_last_status_transition(
+                instance, IMInstance.REQUESTED
+            )
+            failed_status_update = InstanceUtil.get_last_status_transition(
+                instance, IMInstance.ALLOCATION_FAILED
+            )
+            failed_time = (
+                failed_status_update.timestamp_ns if failed_status_update else 0
+            )
+            request_time = (
+                request_status_update.timestamp_ns if request_status_update else 0
+            )
+            autoscaling_state.failed_instance_requests.append(
+                FailedInstanceRequest(
+                    ray_node_type_name=instance.instance_type,
+                    start_ts=int(request_time // 1e9),
+                    failed_ts=int(
+                        failed_time // 1e9,
+                    ),
+                    reason=failed_status_update.details,
+                    count=1,
+                )
+            )
 
     @staticmethod
     def _handle_stuck_requested_instance(
