@@ -11,6 +11,7 @@ from ray._private.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
+    NonNegativeInt,
     PositiveInt,
     StrictInt,
     root_validator,
@@ -954,6 +955,13 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "The set of deployment config options that are currently applied to this "
             "deployment. These options may come from the user's code, config file "
             "options, or Serve default values."
+        )
+    )
+    target_num_replicas: NonNegativeInt = Field(
+        description=(
+            "The current target number of replicas for this deployment. This can "
+            "change over time for autoscaling deployments, but will remain a constant "
+            "number for other deployments."
         )
     )
     replicas: List[ReplicaDetails] = Field(

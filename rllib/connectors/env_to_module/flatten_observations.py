@@ -94,20 +94,12 @@ class FlattenObservations(ConnectorV2):
         check(
             output_data["obs"][1],
             #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
-            np.array([ 10.0, 1.0, 0.0,  1.0,  1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+            np.array([10.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
         )
-
-
     """
 
-    @property
-    def observation_space(self):
-        if self.input_observation_space is None:
-            return None
-        # TODO (sven): We should handle this differently. We probably need another
-        #  API method for ConnectorV2 in case the `input_observation_space` is changed
-        #  after construction (for example, when the connector piece is inserted into
-        #  some pipeline).
+    @override(ConnectorV2)
+    def recompute_observation_space_from_input_spaces(self):
         self._input_obs_base_struct = get_base_struct_from_space(
             self.input_observation_space
         )
@@ -139,8 +131,8 @@ class FlattenObservations(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         multi_agent: bool = False,
         **kwargs,
@@ -152,10 +144,10 @@ class FlattenObservations(ConnectorV2):
                 in which case, the top-level of the Dict space (where agent IDs are
                 mapped to individual agents' observation spaces) is left as-is.
         """
-        super().__init__(input_observation_space, input_action_space, **kwargs)
-
+        self._input_obs_base_struct = None
         self._multi_agent = multi_agent
-        self.observation_space
+
+        super().__init__(input_observation_space, input_action_space, **kwargs)
 
     @override(ConnectorV2)
     def __call__(
@@ -181,8 +173,10 @@ class FlattenObservations(ConnectorV2):
         # allowing us to not worry about multi- or single-agent setups and returning
         # the new version of each item we are iterating over.
         self.foreach_batch_item_change_in_place(
+            batch=data,
+            column=SampleBatch.OBS,
             func=(
-                lambda item, agent_id, module_id: flatten_inputs_to_1d_tensor(
+                lambda item, eps_id, agent_id, module_id: flatten_inputs_to_1d_tensor(
                     item,
                     # In the multi-agent case, we need to use the specific agent's space
                     # struct, not the multi-agent observation space dict.
@@ -195,7 +189,5 @@ class FlattenObservations(ConnectorV2):
                     batch_axis=False,
                 )
             ),
-            batch=data,
-            column=SampleBatch.OBS,
         )
         return data
