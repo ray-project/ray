@@ -713,7 +713,7 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
         )
         return trainable_with_params
 
-    exp_name = "restore_with_params"
+    exp_name = f"restore_with_params-{use_function_trainable=}"
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
@@ -943,11 +943,13 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_ty
     else:
         raise ValueError(f"Invalid trainable type: {trainable_type}")
 
+    exp_name = f"{trainable_type=}"
+
     tuner = Tuner(
         trainable,
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
-            name="exp_name",
+            name=exp_name,
             storage_path=str(tmp_path),
             checkpoint_config=checkpoint_config,
         ),
@@ -966,7 +968,7 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_ty
 
     fail_marker.unlink()
     tuner = Tuner.restore(
-        str(tmp_path / "exp_name"), trainable=trainable, resume_errored=True
+        str(tmp_path / exp_name), trainable=trainable, resume_errored=True
     )
     results = tuner.fit()
 
