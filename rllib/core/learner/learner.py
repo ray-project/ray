@@ -40,7 +40,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,

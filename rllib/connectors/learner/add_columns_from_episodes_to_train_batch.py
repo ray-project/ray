@@ -3,7 +3,6 @@ from typing import Any, List, Optional
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
@@ -124,14 +123,14 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
         # Extra model outputs (except for STATE_OUT, which will be handled by another
         # default connector piece). Also, like with all the fields above, skip
         # those that the user already seemed to have populated via custom connector
-        # pieces. 
+        # pieces.
         skip_columns = set(data.keys()) | {STATE_IN, STATE_OUT}
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
             agents_that_stepped_only=False,
         ):
             for column in sa_episode.extra_model_outputs.keys():
-               if column not in skip_columns:
+                if column not in skip_columns:
                     self.add_n_batch_items(
                         data,
                         column,
