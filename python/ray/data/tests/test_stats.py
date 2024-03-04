@@ -192,7 +192,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 * Extra metrics: {STANDARD_EXTRA_METRICS}
 
 Operator N split(N, equal=False): \n"""
@@ -233,7 +233,7 @@ def test_large_args_scheduling_strategy(
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -245,12 +245,12 @@ def test_large_args_scheduling_strategy(
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(LARGE_ARGS_EXTRA_METRICS, verbose_stats_logs)}"
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
     assert canonicalize(stats) == expected_stats
 
@@ -289,12 +289,12 @@ def test_dataset_stats_basic(
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
                 f"* Operator throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
-                f"    * Optimal single node throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
-                f"    * Optimal single node throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
             )
 
         ds = ds.map(dummy_map_batches).materialize()
@@ -312,12 +312,12 @@ def test_dataset_stats_basic(
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
                 f"* Operator throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
-                f"    * Optimal single node throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
-                f"    * Optimal single node throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
             )
 
     for batch in ds.iter_batches():
@@ -335,7 +335,7 @@ def test_dataset_stats_basic(
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -347,7 +347,7 @@ def test_dataset_stats_basic(
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Dataset iterator time breakdown:\n"
         f"* Total time overall: T\n"
@@ -361,7 +361,7 @@ def test_dataset_stats_basic(
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
 
@@ -386,7 +386,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"\n"
         f"Dataset iterator time breakdown:\n"
         f"* Total time overall: T\n"
@@ -404,7 +404,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
 
@@ -633,7 +633,7 @@ Operator N Repartition: executed in T
 
 Dataset throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
@@ -689,11 +689,11 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
 
@@ -715,7 +715,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
             f"    * Ray Data throughput: N rows/s\n"
-            f"    * Optimal single node throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
             f"Operator N Split: {EXECUTION_STRING}\n"
             f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -727,7 +727,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
             f"    * Ray Data throughput: N rows/s\n"
-            f"    * Optimal single node throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
             f"Operator N Map(<lambda>): {EXECUTION_STRING}\n"
             f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -739,11 +739,11 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
             f"    * Ray Data throughput: N rows/s\n"
-            f"    * Optimal single node throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
             f"Dataset throughput:\n"
             f"    * Ray Data throughput: N rows/s\n"
-            f"    * Optimal single node throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
         )
 
 
@@ -919,7 +919,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 
 Dataset iterator time breakdown:
 * Total time overall: T
@@ -933,7 +933,7 @@ Dataset iterator time breakdown:
 
 Dataset throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
@@ -955,11 +955,11 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 
 Dataset throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
@@ -981,7 +981,7 @@ Dataset throughput:
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 
 Operator N Write: {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
@@ -993,11 +993,11 @@ Operator N Write: {EXECUTION_STRING}
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 
 Dataset throughput:
     * Ray Data throughput: N rows/s
-    * Optimal single node throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
@@ -1065,7 +1065,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(MEM_SPILLED_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Cluster memory:\n"
         f"* Spilled to disk: M\n"
@@ -1076,7 +1076,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"    * Optimal single node throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
     assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
