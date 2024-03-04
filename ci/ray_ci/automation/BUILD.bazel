@@ -78,10 +78,14 @@ py_binary(
 py_library(
     name = "docker_tags_lib",
     srcs = ["docker_tags_lib.py"],
+    data = [
+        "@crane_linux_x86_64//:file",
+    ],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [
         ci_require("requests"),
         "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
     ],
 )
 

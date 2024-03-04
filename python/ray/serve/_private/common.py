@@ -578,7 +578,7 @@ class RunningReplicaInfo:
     node_id: Optional[str]
     availability_zone: Optional[str]
     actor_handle: ActorHandle
-    max_concurrent_queries: int
+    max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
 
@@ -596,7 +596,7 @@ class RunningReplicaInfo:
                     self.replica_tag,
                     self.node_id if self.node_id else "",
                     str(self.actor_handle._actor_id),
-                    str(self.max_concurrent_queries),
+                    str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                 ]

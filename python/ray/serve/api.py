@@ -256,6 +256,7 @@ def deployment(
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+    max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
@@ -303,7 +304,9 @@ def deployment(
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
-        max_concurrent_queries: Maximum number of queries that are sent to a
+        max_concurrent_queries: [DEPRECATED] Maximum number of queries that are sent to
+            a replica of this deployment without receiving a response. Defaults to 100.
+        max_ongoing_requests: Maximum number of requests that are sent to a
             replica of this deployment without receiving a response. Defaults to 100.
         max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
@@ -328,16 +331,21 @@ def deployment(
         `Deployment`
     """
 
+    max_ongoing_requests = (
+        max_ongoing_requests
+        if max_ongoing_requests is not DEFAULT.VALUE
+        else max_concurrent_queries
+    )
+    if num_replicas == "auto":
+        num_replicas = None
+        max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
+            max_ongoing_requests, autoscaling_config
+        )
+
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
     # only the function args/kwargs.
     # Create list of all user-configured options from keyword args
-    if num_replicas == "auto":
-        num_replicas = None
-        max_concurrent_queries, autoscaling_config = handle_num_replicas_auto(
-            max_concurrent_queries, autoscaling_config
-        )
-
     user_configured_option_names = [
         option
         for option, value in locals().items()
@@ -370,13 +378,20 @@ def deployment(
             "deprecated. To specify a route prefix for an application, pass it into "
             "`serve.run` instead."
         )
+
+    if max_concurrent_queries is not DEFAULT.VALUE:
+        logger.warning(
+            "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
+            "been deprecated and replaced by `max_ongoing_requests`."
+        )
+
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
-        max_concurrent_queries=max_concurrent_queries,
+        max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
