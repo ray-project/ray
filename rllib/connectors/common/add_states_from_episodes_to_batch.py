@@ -40,7 +40,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
     .. testcode::
 
         from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
-        from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+        from ray.rllib.core.columns import Columns
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
@@ -75,7 +75,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # plus the one state out found in the episode in a "per-episode organized"
         # fashion.
         check(
-            output_data[STATE_IN],
+            output_data[Columns.STATE_IN],
             {
                 (episode.id_,): [rl_module_init_state],
             },
@@ -91,7 +91,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             rewards=[1.0, 2.0, 3.0, 4.0],
             # STATE_OUT in episode will show up under STATE_IN in the batch.
             extra_model_outputs={
-                STATE_OUT: [-4.0, -3.0, -2.0, -1.0],
+                Columns.STATE_OUT: [-4.0, -3.0, -2.0, -1.0],
             },
             len_lookback_buffer = 0,
         )
@@ -107,7 +107,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
         # fashion.
         check(
-            output_data[STATE_IN],
+            output_data[Columns.STATE_IN],
             {
                 # Expect the episode's last STATE_OUT.
                 (episode.id_,): [-1.0],
@@ -134,7 +134,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
         # fashion.
         check(
-            output_data[STATE_IN],
+            output_data[Columns.STATE_IN],
             {
                 # Expect initial module state + every 2nd STATE_OUT from episode, but
                 # not the very last one (just like the very last observation, this data
