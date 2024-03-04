@@ -673,6 +673,7 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
         },
         autoscaler_v2=autoscaler_v2,
         max_workers=20,  # default 8
+        upscaling_speed=5,  # greater upscaling speed
     )
 
     cluster.start()
