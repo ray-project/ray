@@ -35,6 +35,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
+    SampleBatch,
 )
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -1233,39 +1234,6 @@ class Learner:
         )
 
     @OverrideToImplementCustomLogic
-    def _preprocess_train_data(
-        self,
-        *,
-        batch: Optional[MultiAgentBatch] = None,
-        episodes: Optional[List[EpisodeType]] = None,
-    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
-        """Allows custom preprocessing of batch/episode data before the actual update.
-
-        The higher level order, in which this method is called from within
-        `Learner.update(batch, episodes)` is:
-        * batch, episodes = self._preprocess_train_data(batch, episodes)
-        * batch = self._learner_connector(batch, episodes)
-        * results = self._update(batch)
-
-        The default implementation does not do any processing and is a mere pass
-        through. However, specific algorithms should override this method to implement
-        their specific training data preprocessing needs. It is possible to perform
-        preliminary RLModule forward passes (besides the main "forward_train()" call
-        during `self._update`) in this method and custom algorithms might also want to
-        use this Learner's `self._learner_connector` to prepare the data
-        (batch/episodes) for such extra forward calls.
-
-        Args:
-            batch: An optional batch of training data to preprocess.
-            episodes: An optional list of episodes objects to preprocess.
-
-        Returns:
-            A tuple consisting of the processed `batch` and the processed list of
-            `episodes`.
-        """
-        return batch, episodes
-
-    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _update(
         self,
@@ -1371,20 +1339,10 @@ class Learner:
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         self._check_is_built()
 
-        # If a (multi-agent) batch is provided, check, whether our RLModule
-        # contains all ModuleIDs found in this batch. If not, throw an error.
-        if batch is not None:
-            if isinstance(batch, ray.ObjectRef):
-                batch = ray.get(batch)
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains module ids that are not in the learner: "
-                    f"{unknown_module_ids}"
-                )
-
+        # Resolve batch/episodes being ray object refs (instead of
+        # actual batch/episodes objects).
+        if isinstance(batch, ray.ObjectRef):
+            batch = ray.get(batch)
         if (
             isinstance(episodes, ray.ObjectRef)
             or (isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef))
@@ -1392,20 +1350,27 @@ class Learner:
             episodes = ray.get(episodes)
             episodes = tree.flatten(episodes)
 
-        if num_iters < 1:
-            # We must do at least one pass on the batch for training.
-            raise ValueError("`num_iters` must be >= 1")
-
         # Call the learner connector.
-        if self._learner_connector is not None:
-            # Call the train data preprocessor.
-            batch, episodes = self._preprocess_train_data(
-                batch=batch, episodes=episodes
-            )
+        if self._learner_connector is not None and episodes is not None:
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch,
                 episodes=episodes,
+                shared_data={},
+            )
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {mid: SampleBatch(v) for mid, v in batch.items()},
+                env_steps=sum(len(e) for e in episodes),
+            )
+
+        # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+        # found in this batch. If not, throw an error.
+        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
+        if len(unknown_module_ids) > 0:
+            raise ValueError(
+                "Batch contains module ids that are not in the learner: "
+                f"{unknown_module_ids}"
             )
 
         # Filter out those RLModules from the final train batch that should not be
@@ -1441,11 +1406,9 @@ class Learner:
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
-            (
-                fwd_out,
-                loss_per_module,
-                metrics_per_module,
-            ) = self._update(nested_tensor_minibatch)
+            (fwd_out, loss_per_module, metrics_per_module) = self._update(
+                nested_tensor_minibatch
+            )
 
             result = self.compile_results(
                 batch=tensor_minibatch,

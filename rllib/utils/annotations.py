@@ -125,6 +125,8 @@ def OldAPIStack(obj):
     stack instead.
     """
     # No effect yet.
+
+    _mark_annotated(obj)
     return obj
 
 

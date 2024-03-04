@@ -14,7 +14,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, WEIGHTS_SEQ_NO
@@ -22,11 +22,12 @@ from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType, ModelWeights
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class SingleAgentEnvRunner(EnvRunner):
     """The generic environment runner for the single agent case."""
 
@@ -123,6 +124,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._episodes: List[Optional[SingleAgentEpisode]] = [
             None for _ in range(self.num_envs)
         ]
+        self._shared_data = None
 
         self._done_episodes_for_metrics: List[SingleAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[List] = defaultdict(list)
@@ -134,31 +136,36 @@ class SingleAgentEnvRunner(EnvRunner):
         *,
         num_timesteps: int = None,
         num_episodes: int = None,
-        explore: bool = True,
+        explore: bool = None,
         random_actions: bool = False,
         with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
         Args:
-            num_timesteps: int. Number of timesteps to sample during rollout.
-                Note, only one of `num_timetseps` or `num_episodes` may be provided.
-            num_episodes: int. Number of episodes to sample during rollout.
-                Note, only one parameter, `num_timetseps` or `num_episodes`
-                    can be provided.
-            explore: boolean. If in exploration or inference mode. Exploration
-                mode might for some algorithms provide extza model outputs that
-                are redundant in inference mode.
-            random_actions: boolean. If actions should be sampled from the action
-                space. In default mode (i.e. `False`) we sample actions frokm the
-                policy.
-            with_render_data: If render data from the environment should be collected.
-                This is only available when sampling episodes, i.e. `num_episodes` is
-                not `None`.
+            num_timesteps: The number of timesteps to sample during this call.
+                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+            num_episodes: The number of episodes to sample during this call.
+                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+            explore: If True, will use the RLModule's `forward_exploration()`
+                method to compute actions. If False, will use the RLModule's
+                `forward_inference()` method. If None (default), will use the `explore`
+                boolean setting from `self.config` passed into this EnvRunner's
+                constructor. You can change this setting in your config via
+                `config.exploration(explore=True|False)`.
+            random_actions: If True, actions will be sampled randomly (from the action
+                space of the environment). If False (default), actions or action
+                distribution parameters are computed by the RLModule.
+            with_render_data: If True, will call `render()` on the environment and
+                collect returned images.
+
         Returns:
-            `Lists of `MultiAgentEpisode` instances, carrying the collected sample data.
+            A list of `SingleAgentEpisode` instances, carrying the sampled data.
         """
         assert not (num_timesteps is not None and num_episodes is not None)
+
+        if explore is None:
+            explore = self.config.explore
 
         # If no execution details are provided, use the config to try to infer the
         # desired timesteps/episodes to sample.
@@ -211,7 +218,7 @@ class SingleAgentEnvRunner(EnvRunner):
     def _sample_timesteps(
         self,
         num_timesteps: int,
-        explore: bool = True,
+        explore: bool,
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
@@ -224,13 +231,9 @@ class SingleAgentEnvRunner(EnvRunner):
             # Create n new episodes and make the `on_episode_created` callbacks.
             self._episodes = []
             for env_index in range(self.num_envs):
-                self._episodes.append(
-                    SingleAgentEpisode(
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
-                    )
-                )
+                self._episodes.append(self._new_episode())
                 self._make_on_episode_callback("on_episode_created", env_index)
+            self._shared_data = {}
 
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
@@ -264,13 +267,16 @@ class SingleAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
+                # Env-to-module connector.
                 to_module = self._cached_to_module or self._env_to_module(
                     rl_module=self.module,
                     episodes=self._episodes,
                     explore=explore,
+                    shared_data=self._shared_data,
                 )
                 self._cached_to_module = None
-                # Explore or not.
+
+                # RLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
                         to_module, t=self.global_num_env_steps_sampled
@@ -278,23 +284,26 @@ class SingleAgentEnvRunner(EnvRunner):
                 else:
                     to_env = self.module.forward_inference(to_module)
 
+                # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
                     episodes=self._episodes,
                     explore=explore,
+                    shared_data=self._shared_data,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
-            # already clipped) to be sent to the environment) and might not be
-            # identical to the actions produced by the RLModule/distribution, which are
-            # the ones stored permanently in the episode objects.
-            actions = to_env.pop(
-                SampleBatch.ACTIONS_FOR_ENV, to_env.get(SampleBatch.ACTIONS)
+            # already unsquashed/clipped) to be sent to the environment) and might not
+            # be identical to the actions produced by the RLModule/distribution, which
+            # are the ones stored permanently in the episode objects.
+            actions = to_env.pop(SampleBatch.ACTIONS)
+            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            # Step the environment.
+            obs, rewards, terminateds, truncateds, infos = self.env.step(
+                actions_for_env
             )
-
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
@@ -304,7 +313,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 #  certain env parameter during different episodes (for example for
                 #  benchmarking).
-                extra_model_output = tree.map_structure(lambda s: s[env_index], to_env)
+                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
 
                 # In inference, we have only the action logits.
                 if terminateds[env_index] or truncateds[env_index]:
@@ -333,6 +342,7 @@ class SingleAgentEnvRunner(EnvRunner):
                             episodes=[self._episodes[env_index]],
                             explore=explore,
                             rl_module=self.module,
+                            shared_data=self._shared_data,
                         )
                     # Make the `on_episode_step` callback (before finalizing the
                     # episode object).
@@ -373,6 +383,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 rl_module=self.module,
                 episodes=self._episodes,
                 explore=explore,
+                shared_data=self._shared_data,
             )
 
         # Return done episodes ...
@@ -407,7 +418,7 @@ class SingleAgentEnvRunner(EnvRunner):
     def _sample_episodes(
         self,
         num_episodes: int,
-        explore: bool = True,
+        explore: bool,
         random_actions: bool = False,
         with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
@@ -426,13 +437,9 @@ class SingleAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
         episodes = []
         for env_index in range(self.num_envs):
-            episodes.append(
-                SingleAgentEpisode(
-                    observation_space=self.env.single_observation_space,
-                    action_space=self.env.single_action_space,
-                )
-            )
+            episodes.append(self._new_episode())
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
+        _shared_data = {}
 
         # Initialize image rendering if needed.
         render_images = [None] * self.num_envs
@@ -458,12 +465,15 @@ class SingleAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
+                # Env-to-module connector.
                 to_module = self._env_to_module(
                     rl_module=self.module,
                     episodes=episodes,
                     explore=explore,
+                    shared_data=_shared_data,
                 )
-                # Explore or not.
+
+                # RLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
                         to_module, t=self.global_num_env_steps_sampled
@@ -471,28 +481,34 @@ class SingleAgentEnvRunner(EnvRunner):
                 else:
                     to_env = self.module.forward_inference(to_module)
 
+                # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
                     episodes=episodes,
                     explore=explore,
+                    shared_data=_shared_data,
                 )
 
-            # Step the environment.
+            # Extract the (vectorized) actions (to be sent to the env) from the
+            # module/connector output. Note that these actions are fully ready (e.g.
+            # already unsquashed/clipped) to be sent to the environment) and might not
+            # be identical to the actions produced by the RLModule/distribution, which
+            # are the ones stored permanently in the episode objects.
             actions = to_env.pop(SampleBatch.ACTIONS)
-
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            # Step the environment.
+            obs, rewards, terminateds, truncateds, infos = self.env.step(
+                actions_for_env
+            )
+            obs, actions = unbatch(obs), unbatch(actions)
 
             # Add render data if needed.
             if with_render_data:
                 render_images = [e.render() for e in self.env.envs]
 
             for env_index in range(self.num_envs):
-                # Extract info and state for vector sub_env.
-                # info = {k: v[i] for k, v in infos.items()}
-                # The last entry in self.observations[i] is already the reset
-                # obs of the new episode.
-                extra_model_output = tree.map_structure(lambda s: s[env_index], to_env)
+                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
 
                 if terminateds[env_index] or truncateds[env_index]:
                     eps += 1
@@ -654,6 +670,12 @@ class SingleAgentEnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
+
+    def _new_episode(self):
+        return SingleAgentEpisode(
+            observation_space=self.env.single_observation_space,
+            action_space=self.env.single_action_space,
+        )
 
     def _make_on_episode_callback(self, which: str, idx: int, episodes=None):
         episodes = episodes if episodes is not None else self._episodes

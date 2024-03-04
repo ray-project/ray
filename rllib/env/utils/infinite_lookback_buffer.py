@@ -85,7 +85,7 @@ class InfiniteLookbackBuffer:
         indices: Optional[Union[int, slice, List[int]]] = None,
         *,
         neg_indices_left_of_zero: bool = False,
-        fill: Optional[float] = None,
+        fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         _ignore_last_ts: bool = False,
         _add_last_ts_value: Optional[Any] = None,
@@ -104,7 +104,7 @@ class InfiniteLookbackBuffer:
                 into the lookback buffer.
             neg_indices_left_of_zero: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
-                buffer. For example, an buffer with data [4, 5, 6,  7, 8, 9],
+                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
                 respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
                 `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.

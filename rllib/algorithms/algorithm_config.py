@@ -344,6 +344,8 @@ class AlgorithmConfig(_Config):
         self.enable_connectors = True
         self._env_to_module_connector = None
         self._module_to_env_connector = None
+        self.add_default_connectors_to_env_to_module_pipeline = True
+        self.add_default_connectors_to_module_to_env_pipeline = True
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -395,6 +397,7 @@ class AlgorithmConfig(_Config):
             pass
 
         self._learner_connector = None
+        self.add_default_connectors_to_learner_pipeline = True
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -851,8 +854,12 @@ class AlgorithmConfig(_Config):
 
     def build_env_to_module_connector(self, env):
         from ray.rllib.connectors.env_to_module import (
+            AddObservationsFromEpisodesToBatch,
+            AddStatesFromEpisodesToBatch,
+            AgentToModuleMapping,
+            BatchIndividualItems,
             EnvToModulePipeline,
-            DefaultEnvToModule,
+            NumpyToTensor,
         )
 
         custom_connectors = []
@@ -863,14 +870,19 @@ class AlgorithmConfig(_Config):
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
-            if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, EnvToModulePipeline
-            ):
+            # ConnectorV2 (piece or pipeline).
+            if isinstance(val_, ConnectorV2):
                 custom_connectors = [val_]
+            # Sequence of individual ConnectorV2 pieces.
             elif isinstance(val_, (list, tuple)):
                 custom_connectors = list(val_)
+            # Unsupported return value.
             else:
-                return val_
+                raise ValueError(
+                    "`AlgorithmConfig.rollouts(env_to_module_connector=..)` must return"
+                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = EnvToModulePipeline(
             connectors=custom_connectors,
@@ -879,21 +891,37 @@ class AlgorithmConfig(_Config):
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
         )
-        pipeline.append(
-            DefaultEnvToModule(
-                input_observation_space=pipeline.observation_space,
-                input_action_space=pipeline.action_space,
-                multi_agent=self.is_multi_agent(),
-                modules=set(self.policies),
-                agent_to_module_mapping_fn=self.policy_mapping_fn,
-            )
-        )
+
+        if self.add_default_connectors_to_env_to_module_pipeline:
+            # Append OBS handling.
+            pipeline.append(AddObservationsFromEpisodesToBatch())
+            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            pipeline.append(AddStatesFromEpisodesToBatch())
+            # If multi-agent -> Map from AgentID-based data to ModuleID based data.
+            if self.is_multi_agent():
+                pipeline.append(
+                    AgentToModuleMapping(
+                        modules=set(self.policies),
+                        agent_to_module_mapping_fn=self.policy_mapping_fn,
+                    )
+                )
+            # Batch all data.
+            pipeline.append(BatchIndividualItems())
+            # Convert to Tensors.
+            pipeline.append(NumpyToTensor())
+
         return pipeline
 
     def build_module_to_env_connector(self, env):
         from ray.rllib.connectors.module_to_env import (
-            DefaultModuleToEnv,
+            GetActions,
+            ListifyDataForVectorEnv,
+            ModuleToAgentUnmapping,
             ModuleToEnvPipeline,
+            NormalizeAndClipActions,
+            RemoveSingleTsTimeRankFromBatch,
+            TensorToNumpy,
+            UnBatchToIndividualItems,
         )
 
         custom_connectors = []
@@ -904,14 +932,19 @@ class AlgorithmConfig(_Config):
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
-            if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, ModuleToEnvPipeline
-            ):
+            # ConnectorV2 (piece or pipeline).
+            if isinstance(val_, ConnectorV2):
                 custom_connectors = [val_]
+            # Sequence of individual ConnectorV2 pieces.
             elif isinstance(val_, (list, tuple)):
                 custom_connectors = list(val_)
+            # Unsupported return value.
             else:
-                return val_
+                raise ValueError(
+                    "`AlgorithmConfig.rollouts(module_to_env_connector=..)` must return"
+                    " a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = ModuleToEnvPipeline(
             connectors=custom_connectors,
@@ -920,19 +953,49 @@ class AlgorithmConfig(_Config):
             ),
             input_action_space=getattr(env, "single_action_space", env.action_space),
         )
-        pipeline.append(
-            DefaultModuleToEnv(
-                input_observation_space=pipeline.observation_space,
-                input_action_space=pipeline.action_space,
-                normalize_actions=self.normalize_actions,
-                clip_actions=self.clip_actions,
+
+        if self.add_default_connectors_to_module_to_env_pipeline:
+            # Prepend: Anything that has to do with plain data processing (not
+            # particularly with the actions).
+
+            # Remove extra time-rank, if applicable.
+            pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
+
+            # If multi-agent -> Map from ModuleID-based data to AgentID based data.
+            if self.is_multi_agent():
+                pipeline.prepend(ModuleToAgentUnmapping())
+
+            # Unbatch all data.
+            pipeline.prepend(UnBatchToIndividualItems())
+
+            # Convert to numpy.
+            pipeline.prepend(TensorToNumpy())
+
+            # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
+            pipeline.prepend(GetActions())
+
+            # Append: Anything that has to do with action sampling.
+            # Unsquash/clip actions based on config and action space.
+            pipeline.append(
+                NormalizeAndClipActions(
+                    normalize_actions=self.normalize_actions,
+                    clip_actions=self.clip_actions,
+                )
             )
-        )
+            # Listify data from ConnectorV2-data format to normal lists that we can
+            # index into by env vector index. These lists contain individual items
+            # for single-agent and multi-agent dicts for multi-agent.
+            pipeline.append(ListifyDataForVectorEnv())
+
         return pipeline
 
     def build_learner_connector(self, input_observation_space, input_action_space):
         from ray.rllib.connectors.learner import (
-            DefaultLearnerConnector,
+            AddColumnsFromEpisodesToTrainBatch,
+            AddObservationsFromEpisodesToBatch,
+            AddStatesFromEpisodesToBatch,
+            AgentToModuleMapping,
+            BatchIndividualItems,
             LearnerConnectorPipeline,
         )
 
@@ -944,26 +1007,48 @@ class AlgorithmConfig(_Config):
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
-            if isinstance(val_, ConnectorV2) and not isinstance(
-                val_, LearnerConnectorPipeline
-            ):
+            # ConnectorV2 (piece or pipeline).
+            if isinstance(val_, ConnectorV2):
                 custom_connectors = [val_]
+            # Sequence of individual ConnectorV2 pieces.
             elif isinstance(val_, (list, tuple)):
                 custom_connectors = list(val_)
+            # Unsupported return value.
             else:
-                return val_
+                raise ValueError(
+                    "`AlgorithmConfig.training(learner_connector=..)` must return "
+                    "a ConnectorV2 object or a list thereof (to be added to a "
+                    f"pipeline)! Your function returned {val_}."
+                )
 
         pipeline = LearnerConnectorPipeline(
             connectors=custom_connectors,
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
         )
-        pipeline.append(
-            DefaultLearnerConnector(
-                input_observation_space=pipeline.observation_space,
-                input_action_space=pipeline.action_space,
+        if self.add_default_connectors_to_learner_pipeline:
+            # Append OBS handling.
+            pipeline.append(
+                AddObservationsFromEpisodesToBatch(as_learner_connector=True)
             )
-        )
+            # Append all other columns handling.
+            pipeline.append(AddColumnsFromEpisodesToTrainBatch())
+            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            pipeline.append(
+                AddStatesFromEpisodesToBatch(
+                    as_learner_connector=True, max_seq_len=self.model.get("max_seq_len")
+                )
+            )
+            # If multi-agent -> Map from AgentID-based data to ModuleID based data.
+            if self.is_multi_agent():
+                pipeline.append(
+                    AgentToModuleMapping(
+                        modules=set(self.policies),
+                        agent_to_module_mapping_fn=self.policy_mapping_fn,
+                    )
+                )
+            # Batch all data.
+            pipeline.append(BatchIndividualItems())
         return pipeline
 
     def build_learner_group(
@@ -1424,6 +1509,8 @@ class AlgorithmConfig(_Config):
         module_to_env_connector: Optional[
             Callable[[EnvType, "RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
+        add_default_connectors_to_env_to_module_pipeline: Optional[bool] = NotProvided,
+        add_default_connectors_to_module_to_env_pipeline: Optional[bool] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
@@ -1475,6 +1562,23 @@ class AlgorithmConfig(_Config):
             module_to_env_connector: A callable taking an Env and an RLModule as input
                 args and returning a module-to-env ConnectorV2 (might be a pipeline)
                 object.
+            add_default_connectors_to_env_to_module_pipeline: If True (default), RLlib's
+                EnvRunners will automatically add the default env-to-module ConnectorV2
+                pieces to the EnvToModulePipeline. These automatically perform adding
+                observations and states (in case of stateful Module(s)), agent-to-module
+                mapping, batching, and conversion to tensor data. Only if you know
+                exactly what you are doing, you should set this setting to False.
+                Note that this setting is only relevant if the new API stack is used
+                (including the new EnvRunner classes).
+            add_default_connectors_to_module_to_env_pipeline: If True (default), RLlib's
+                EnvRunners will automatically add the default module-to-env ConnectorV2
+                pieces to the ModuleToEnvPipeline. These automatically perform removing
+                the additional time-rank (if applicable, in case of stateful
+                Module(s)), module-to-agent unmapping, un-batching (to lists), and
+                conversion from tensor data to numpy. Only if you know exactly what you
+                are doing, you should set this setting to False.
+                Note that this setting is only relevant if the new API stack is used
+                (including the new EnvRunner classes).
             episode_lookback_horizon: The amount of data (in timesteps) to keep from the
                 preceeding episode chunk when a new chunk (for the same episode) is
                 generated to continue sampling at a later time. The larger this value,
@@ -1577,6 +1681,14 @@ class AlgorithmConfig(_Config):
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
             self._module_to_env_connector = module_to_env_connector
+        if add_default_connectors_to_env_to_module_pipeline is not NotProvided:
+            self.add_default_connectors_to_env_to_module_pipeline = (
+                add_default_connectors_to_env_to_module_pipeline
+            )
+        if add_default_connectors_to_module_to_env_pipeline is not NotProvided:
+            self.add_default_connectors_to_module_to_env_pipeline = (
+                add_default_connectors_to_module_to_env_pipeline
+            )
         if episode_lookback_horizon is not NotProvided:
             self.episode_lookback_horizon = episode_lookback_horizon
         if use_worker_filter_stats is not NotProvided:
@@ -1706,6 +1818,7 @@ class AlgorithmConfig(_Config):
         learner_connector: Optional[
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
+        add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         # Deprecated arg.
         _enable_learner_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -1779,6 +1892,21 @@ class AlgorithmConfig(_Config):
             learner_connector: A callable taking an env observation space and an env
                 action space as inputs and returning a learner ConnectorV2 (might be
                 a pipeline) object.
+            add_default_connectors_to_learner_pipeline: If True (default), RLlib's
+                Learners will automatically add the default Learner ConnectorV2
+                pieces to the LearnerPipeline. These automatically perform:
+                a) adding observations from episodes to the train batch, if this has not
+                already been done by a user-provided connector piece
+                b) if RLModule is stateful, add a time rank to the train batch, zero-pad
+                the data, and add the correct state inputs, if this has not already been
+                done by a user-provided connector piece.
+                c) add all other information (actions, rewards, terminateds, etc..) to
+                the train batch, if this has not already been done by a user-provided
+                connector piece.
+                Only if you know exactly what you are doing, you
+                should set this setting to False.
+                Note that this setting is only relevant if the new API stack is used
+                (including the new EnvRunner classes).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1832,6 +1960,10 @@ class AlgorithmConfig(_Config):
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
             self._learner_connector = learner_connector
+        if add_default_connectors_to_learner_pipeline is not NotProvided:
+            self.add_default_connectors_to_learner_pipeline = (
+                add_default_connectors_to_learner_pipeline
+            )
 
         return self
 
@@ -3018,8 +3150,8 @@ class AlgorithmConfig(_Config):
                         # single-agent space.
                         if all(s == one_obs_space for s in env_obs_space.values()):
                             obs_space = one_obs_space
-                        # Otherwise, we have to match the policy ID with all possible
-                        # agent IDs and find the agent ID that matches.
+                        # Otherwise, we have to compare the ModuleID with all possible
+                        # AgentIDs and find the agent ID that matches.
                         elif mapping_fn:
                             for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
@@ -3080,8 +3212,8 @@ class AlgorithmConfig(_Config):
                         # single-agent space.
                         if all(s == one_act_space for s in env_act_space.values()):
                             act_space = one_act_space
-                        # Otherwise, we have to match the policy ID with all possible
-                        # agent IDs and find the agent ID that matches.
+                        # Otherwise, we have to compare the ModuleID with all possible
+                        # AgentIDs and find the agent ID that matches.
                         elif mapping_fn:
                             for aid in env_unwrapped.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
