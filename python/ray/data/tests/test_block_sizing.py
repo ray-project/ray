@@ -146,7 +146,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     # Test AllToAll and Map -> AllToAll Datasets. Check that Map inherits
     # AllToAll's target block size.
     ctx = DataContext.get_current()
-    ctx.min_parallelism = 1
+    ctx.min_num_blocks = 1
     ctx.target_min_block_size = 1
     mem_size = 800_000
     shuffle_fn, kwargs, fusion_supported = shuffle_op
