@@ -36,7 +36,7 @@ from ray.serve.tests.common.remote_uris import (
     TEST_RUNTIME_ENV_PINNED_URI,
 )
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
-from ray.util.state import list_actors, list_tasks
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -537,14 +537,8 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
     config = ServeDeploySchema.parse_obj(config_json)
     client.deploy_apps(config)
 
-    # Wait for deploy_serve_application task to start->config has been checkpointed
     wait_for_condition(
-        lambda: len(
-            list_tasks(
-                filters=[("func_or_class_name", "=", "build_serve_application")],
-            )
-        )
-        > 0
+        lambda: serve.status().applications["default"].status == "DEPLOYING"
     )
     ray.kill(client._controller, no_restart=False)
 
