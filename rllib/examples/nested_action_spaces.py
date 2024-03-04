@@ -3,7 +3,7 @@ import os
 
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
+    AddLastObservationToBatch,
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
@@ -29,11 +29,18 @@ if __name__ == "__main__":
 
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
-        return [
-            AddObservationsFromEpisodesToBatch(),
-            FlattenObservations(multi_agent=args.num_agents > 0),
-            WriteObservationsToEpisodes(),
-        ]
+        obs = (
+            env.single_observation_space
+            if args.num_agents == 0
+            else env.observation_space
+        )
+        act = env.single_action_space if args.num_agents == 0 else env.action_space
+        c1 = AddLastObservationToBatch(obs, act)
+        c2 = FlattenObservations(
+            c1.observation_space, c1.action_space, multi_agent=args.num_agents > 0
+        )
+        c3 = WriteObservationsToEpisodes(c2.observation_space, c2.action_space)
+        return [c1, c2, c3]
 
     # Register our environment with tune.
     if args.num_agents > 0:
@@ -58,7 +65,7 @@ if __name__ == "__main__":
                 "space": Dict(
                     {
                         "a": Tuple(
-                            [Dict({"d": Box(-15.0, 3.0, ()), "e": Discrete(3)})]
+                            [Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(3)})]
                         ),
                         "b": Box(-10.0, 10.0, (2,)),
                         "c": MultiDiscrete([3, 3]),
