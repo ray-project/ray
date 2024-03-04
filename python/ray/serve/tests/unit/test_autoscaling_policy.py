@@ -9,15 +9,22 @@ from ray.serve.config import AutoscalingConfig
 
 
 class TestCalculateDesiredNumReplicas:
-    def test_bounds_checking(self):
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
+    )
+    def test_bounds_checking(
+        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    ):
         num_replicas = 10
         max_replicas = 11
         min_replicas = 9
-        config = AutoscalingConfig(
-            max_replicas=max_replicas,
-            min_replicas=min_replicas,
-            target_num_ongoing_requests_per_replica=100,
-        )
+        config = {"max_replicas": max_replicas, "min_replicas": min_replicas}
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = 100
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = 100
+        config = AutoscalingConfig(**config)
 
         desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config,
@@ -42,12 +49,22 @@ class TestCalculateDesiredNumReplicas:
             assert min_replicas <= desired_num_replicas <= max_replicas
 
     @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
-    def test_scale_up(self, target_requests):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=target_requests,
-        )
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
+    )
+    def test_scale_up(
+        self,
+        target_requests,
+        use_target_ongoing_requests,
+        use_target_num_ongoing_requests_per_replica,
+    ):
+        config = {"min_replicas": 0, "max_replicas": 100}
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = target_requests
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = target_requests
+        config = AutoscalingConfig(**config)
         num_replicas = 10
         num_ongoing_requests = 2 * target_requests * num_replicas
         desired_num_replicas = _calculate_desired_num_replicas(
@@ -58,12 +75,22 @@ class TestCalculateDesiredNumReplicas:
         assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
 
     @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
-    def test_scale_down(self, target_requests):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=target_requests,
-        )
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
+    )
+    def test_scale_down(
+        self,
+        target_requests,
+        use_target_ongoing_requests,
+        use_target_num_ongoing_requests_per_replica,
+    ):
+        config = {"min_replicas": 0, "max_replicas": 100}
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = target_requests
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = target_requests
+        config = AutoscalingConfig(**config)
         num_replicas = 10
         num_ongoing_requests = 0.5 * target_requests * num_replicas
         desired_num_replicas = _calculate_desired_num_replicas(
@@ -73,13 +100,19 @@ class TestCalculateDesiredNumReplicas:
         )
         assert 4 <= desired_num_replicas <= 6  # 10 * 0.5 = 5
 
-    def test_smoothing_factor(self):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=1,
-            smoothing_factor=0.5,
-        )
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True), (False, False)],
+    )
+    def test_smoothing_factor(
+        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    ):
+        config = {"min_replicas": 0, "max_replicas": 100, "smoothing_factor": 0.5}
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = 1
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = 1
+        config = AutoscalingConfig(**config)
         num_replicas = 10
 
         num_ongoing_requests = 4.0 * num_replicas
@@ -98,13 +131,23 @@ class TestCalculateDesiredNumReplicas:
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
-    def test_upscale_smoothing_factor(self):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=1,
-            upscale_smoothing_factor=0.5,
-        )
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True), (False, False)],
+    )
+    def test_upscaling_smoothing_factor(
+        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    ):
+        config = {
+            "min_replicas": 0,
+            "max_replicas": 100,
+            "upscale_smoothing_factor": 0.5,
+        }
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = 1
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = 1
+        config = AutoscalingConfig(**config)
         num_replicas = 10
 
         # Should use upscale smoothing factor of 0.5
@@ -125,13 +168,23 @@ class TestCalculateDesiredNumReplicas:
         )
         assert 1 <= desired_num_replicas <= 4  # 10 + (2.5 - 10) = 2.5
 
-    def test_downscale_smoothing_factor(self):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=1,
-            downscale_smoothing_factor=0.5,
-        )
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True), (False, False)],
+    )
+    def test_downscale_smoothing_factor(
+        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    ):
+        config = {
+            "min_replicas": 0,
+            "max_replicas": 100,
+            "downscale_smoothing_factor": 0.5,
+        }
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = 1
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = 1
+        config = AutoscalingConfig(**config)
         num_replicas = 10
 
         # Should use upscale smoothing factor of 1 (default)
@@ -165,15 +218,28 @@ class TestCalculateDesiredNumReplicas:
             (10, 0.4, 0.1),  # 10 - 0.1 (10 * 0.6) = 9.4 | 10 - (10 * 0.6) = 4
         ],
     )
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True), (False, False)],
+    )
     def test_downscaling_with_fractional_smoothing_factor(
-        self, num_replicas: int, ratio: float, smoothing_factor: float
+        self,
+        num_replicas: int,
+        ratio: float,
+        smoothing_factor: float,
+        use_target_ongoing_requests,
+        use_target_num_ongoing_requests_per_replica,
     ):
-        config = AutoscalingConfig(
-            min_replicas=0,
-            max_replicas=100,
-            target_num_ongoing_requests_per_replica=1,
-            downscale_smoothing_factor=smoothing_factor,
-        )
+        config = {
+            "min_replicas": 0,
+            "max_replicas": 100,
+            "downscale_smoothing_factor": smoothing_factor,
+        }
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = 1
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = 1
+        config = AutoscalingConfig(**config)
         total_num_requests = ratio * num_replicas
         desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config,
@@ -262,7 +328,7 @@ class TestGetDecisionNumReplicas:
         config = AutoscalingConfig(
             min_replicas=0,
             max_replicas=2,
-            target_num_ongoing_requests_per_replica=1,
+            target_ongoing_requests=1,
             upscale_delay_s=30.0,
             downscale_delay_s=600.0,
         )
@@ -382,15 +448,25 @@ class TestGetDecisionNumReplicas:
         )
         assert new_num_replicas == 0
 
-    def test_replicas_delayed_startup(self):
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
+    )
+    def test_replicas_delayed_startup(
+        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    ):
         """Unit test simulating replicas taking time to start up."""
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=200,
-            target_num_ongoing_requests_per_replica=1,
-            upscale_delay_s=0,
-            downscale_delay_s=100000,
-        )
+        config = {
+            "min_replicas": 1,
+            "max_replicas": 200,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 100000,
+        }
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = 1
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = 1
+        config = AutoscalingConfig(**config)
 
         policy_manager = AutoscalingPolicyManager(config)
 
@@ -416,19 +492,32 @@ class TestGetDecisionNumReplicas:
         assert new_num_replicas == 123
 
     @pytest.mark.parametrize("delay_s", [30.0, 0.0])
-    def test_fluctuating_ongoing_requests(self, delay_s):
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
+    )
+    def test_fluctuating_ongoing_requests(
+        self,
+        delay_s,
+        use_target_ongoing_requests,
+        use_target_num_ongoing_requests_per_replica,
+    ):
         """
         Simulates a workload that switches between too many and too few
         ongoing requests.
         """
 
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=10,
-            target_num_ongoing_requests_per_replica=50,
-            upscale_delay_s=delay_s,
-            downscale_delay_s=delay_s,
-        )
+        config = {
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "upscale_delay_s": delay_s,
+            "downscale_delay_s": delay_s,
+        }
+        if use_target_ongoing_requests:
+            config["target_ongoing_requests"] = 50
+        if use_target_num_ongoing_requests_per_replica:
+            config["target_num_ongoing_requests_per_replica"] = 50
+        config = AutoscalingConfig(**config)
 
         policy_manager = AutoscalingPolicyManager(config)
 
@@ -469,7 +558,7 @@ class TestGetDecisionNumReplicas:
         config = AutoscalingConfig(
             min_replicas=1,
             max_replicas=50,
-            target_num_ongoing_requests_per_replica=target_requests,
+            target_ongoing_requests=target_requests,
             upscale_delay_s=0.0,
             downscale_delay_s=0.0,
         )

@@ -24,17 +24,17 @@ deployments:
 
 Instead of setting a fixed number of replicas for a deployment and manually updating it, you can configure a deployment to autoscale based on incoming traffic. The Serve autoscaler reacts to traffic spikes by monitoring queue sizes and making scaling decisions to add or remove replicas. Configure it by setting the [autoscaling_config](../serve/api/doc/ray.serve.config.AutoscalingConfig.rst) field in deployment options. The following is a quick guide on how to configure autoscaling.
 
-* **target_num_ongoing_requests_per_replica** is the average number of ongoing requests per replica that the Serve autoscaler will try to ensure. Set this to a reasonable number (for example, 5) and adjust it based on your request processing length (the longer the requests, the smaller this number should be) as well as your latency objective (the shorter you want your latency to be, the smaller this number should be).
-* **max_concurrent_queries** (not in autoscaling config) is the maximum number of ongoing requests allowed for a replica. Set this to a value ~20-50% greater than `target_num_ongoing_requests_per_replica`. Note this is not part of the autoscaling config since it is relevant to all deployments, but it is important to set it relative to the target value if autoscaling is turned on for your deployment.
+* **target_ongoing_requests** (replaces the deprecated `target_num_ongoing_requests_per_replica`) is the average number of ongoing requests per replica that the Serve autoscaler tries to ensure. Set this to a reasonable number (for example, 5) and adjust it based on your request processing length (the longer the requests, the smaller this number should be) as well as your latency objective (the shorter you want your latency to be, the smaller this number should be).
+* **max_ongoing_requests** (replaces the deprecated `max_concurrent_queries`) is the maximum number of ongoing requests allowed for a replica. Set this to a value ~20-50% greater than `target_ongoing_requests`. Note this parameter is not part of the autoscaling config because it's relevant to all deployments, but it's important to set it relative to the target value if you turn on autoscaling for your deployment.
 * **min_replicas** is the minimum number of replicas for the deployment. Set this to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you need for low traffic.
 * **max_replicas** is the maximum number of replicas for the deployment. Set this to ~20% higher than what you think you need for peak traffic.
 
 An example deployment config with autoscaling configured would be:
 ```yaml
 - name: Model
-  max_concurrent_queries: 14
+  max_ongoing_requests: 14
   autoscaling_config:
-    target_num_ongoing_requests_per_replica: 10
+    target_ongoing_requests: 10
     min_replicas: 0
     max_replicas: 20
 ```
@@ -44,7 +44,7 @@ These guidelines are a great starting point. If you decide to further tune your 
 (resnet-autoscaling-example)=
 ## Basic example
 
-We go through an example of a synchronous workload that runs ResNet50. The application code and its autoscaling configuration are shown below. (Alternatively, see the second tab for specifying the autoscaling config through a YAML file) We set `target_num_ongoing_requests_per_replica = 1` because the ResNet model runs synchronously, and the goal is to keep the latencies low. Note that the deployment starts with 0 replicas.
+This example is a synchronous workload that runs ResNet50. The application code and its autoscaling configuration are below. Alternatively, see the second tab for specifying the autoscaling config through a YAML file. `target_ongoing_requests = 1` because the ResNet model runs synchronously, and the goal is to keep the latencies low. Note that the deployment starts with 0 replicas.
 
 ::::{tab-set}
 
@@ -64,9 +64,9 @@ applications:
     import_path: resnet:app
     deployments:
     - name: Model
-      max_concurrent_queries: 5
+      max_ongoing_requests: 5
       autoscaling_config:
-        target_num_ongoing_requests_per_replica: 1
+        target_ongoing_requests: 1
         min_replicas: 0
         initial_replicas: 0
         max_replicas: 200
@@ -88,7 +88,7 @@ The results of the load test are as follows:
 | P50 Latency | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/resnet50_latency.svg" alt="latency"/> |
 
 Notice the following:
-- Each Locust user constantly sends a single request and waits for a response. As a result, the number of autoscaled replicas closely matches the number of Locust users over time as Serve attempts to satisfy the `target_num_ongoing_requests_per_replica=1` setting.
+- Each Locust user constantly sends a single request and waits for a response. As a result, the number of autoscaled replicas closely matches the number of Locust users over time as Serve attempts to satisfy the `target_ongoing_requests=1` setting.
 - The throughput of the system increases with the number of users and replicas.
 - The latency briefly spikes when traffic increases, but otherwise stays relatively steady. The biggest latency spike happens at the beginning of the test, because the deployment starts with 0 replicas.
 
