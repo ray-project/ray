@@ -128,12 +128,3 @@ py_test(
         ":pypi_lib",
     ],
 )
-
-py_binary(
-    name = "test",
-    srcs = ["test.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    deps = [
-        ":pypi_lib",
-    ],
-)
