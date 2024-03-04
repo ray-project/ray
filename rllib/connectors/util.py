@@ -44,7 +44,7 @@ def __clip_rewards(config: "AlgorithmConfig"):
     return config.clip_rewards or config.is_atari
 
 
-@OldAPIStack(stability="alpha")
+@OldAPIStack
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
     config: "AlgorithmConfig",
@@ -78,7 +78,7 @@ def get_agent_connectors_from_config(
     return AgentConnectorPipeline(ctx, connectors)
 
 
-@OldAPIStack(stability="alpha")
+@OldAPIStack
 def get_action_connectors_from_config(
     ctx: ConnectorContext,
     config: "AlgorithmConfig",
@@ -98,7 +98,7 @@ def get_action_connectors_from_config(
     return ActionConnectorPipeline(ctx, connectors)
 
 
-@OldAPIStack(stability="alpha")
+@OldAPIStack
 def create_connectors_for_policy(policy: "Policy", config: "AlgorithmConfig"):
     """Util to create agent and action connectors for a Policy.
 
@@ -120,7 +120,7 @@ def create_connectors_for_policy(policy: "Policy", config: "AlgorithmConfig"):
     logger.info(policy.action_connectors.__str__(indentation=4))
 
 
-@OldAPIStack(stability="alpha")
+@OldAPIStack
 def restore_connectors_for_policy(
     policy: "Policy", connector_config: Tuple[str, Tuple[Any]]
 ) -> Connector:
