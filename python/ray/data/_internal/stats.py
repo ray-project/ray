@@ -631,6 +631,9 @@ class DatasetStats:
         self.global_bytes_restored: int = 0
         self.dataset_bytes_spilled: int = 0
 
+        # Streaming split coordinator stats (dataset level)
+        self.streaming_split_coordinator_s: Timer = Timer()
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
@@ -677,6 +680,7 @@ class DatasetStats:
             self.iter_user_s,
             self.iter_initialize_s,
             self.iter_total_s,
+            self.streaming_split_coordinator_s,
             self.iter_blocks_local,
             self.iter_blocks_remote,
             self.iter_unknown_location,
@@ -1161,6 +1165,8 @@ class IterStatsSummary:
     initialize_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
+    # Time spent in streaming split coordinator
+    streaming_split_coord_time: Timer
     # Num of blocks that are in local object store
     iter_blocks_local: int
     # Num of blocks that are in remote node and have to fetch locally
@@ -1253,6 +1259,9 @@ class IterStatsSummary:
                 out += "    * Num blocks unknown location: {}\n".format(
                     self.iter_unknown_location
                 )
+            if self.streaming_split_coord_time.get() != 0:
+                out += "Streaming split coordinator overhead time: "
+                out += f"{fmt(self.streaming_split_coord_time.get())}\n"
 
         return out
 
