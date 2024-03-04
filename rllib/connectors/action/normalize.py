@@ -10,10 +10,10 @@ from ray.rllib.utils.spaces.space_utils import (
     unsquash_action,
 )
 from ray.rllib.utils.typing import ActionConnectorDataType
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class NormalizeActionsConnector(ActionConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)

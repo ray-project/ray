@@ -15,6 +15,7 @@ These tests should:
 - Assert how errors from the trainable/Trainer get propagated to the user.
 - Assert how errors from the Tune driver get propagated to the user.
 """
+
 import gc
 import threading
 import time
@@ -198,7 +199,7 @@ def test_driver_error_with_tuner(ray_start_4_cpus, error_on):
         tuner.fit()
 
     # TODO(ml-team): Assert the cause error type once driver error propagation is fixed
-    assert "_TestSpecificError" in str(exc_info.value.__cause__)
+    assert "_TestSpecificError" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("error_on", ["on_trial_result"])

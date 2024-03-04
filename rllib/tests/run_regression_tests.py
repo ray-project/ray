@@ -202,11 +202,6 @@ if __name__ == "__main__":
             checkpoint_at_end=args.checkpoint_freq > 0,
         )
 
-        # QMIX does not support tf yet -> skip.
-        if exp["run"] == "QMIX" and args.framework != "torch":
-            print(f"Skipping framework='{args.framework}' for QMIX.")
-            continue
-
         # Always run with eager-tracing when framework=tf2, if not in local-mode
         # and unless the yaml explicitly tells us to disable eager tracing.
         if (
