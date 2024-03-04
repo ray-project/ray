@@ -731,7 +731,17 @@ class MultiAgentEnvWrapper(BaseEnv):
         if env_id is None:
             env_id = list(range(len(self.envs)))
         for idx in env_id:
-            # Recreate the sub-env.
+            # Try closing down the old (possibly faulty) sub-env, but ignore errors.
+            try:
+                self.envs[idx].close()
+            except Exception as e:
+                if log_once("close_sub_env"):
+                    logger.warning(
+                        "Trying to close old and replaced sub-environment (at vector "
+                        f"index={idx}), but closing resulted in error:\n{e}"
+                    )
+
+            # Try recreating the sub-env.
             logger.warning(f"Trying to restart sub-environment at index {idx}.")
             self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
             logger.warning(f"Sub-environment at index {idx} restarted successfully.")
