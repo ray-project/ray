@@ -3194,7 +3194,7 @@ class Algorithm(Trainable, AlgorithmBase):
         if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
             tf1.enable_eager_execution()
 
-        results = None
+        results = {}
         training_step_results = {}
         episodes_this_iter = []
         # Create a step context ...

@@ -1354,7 +1354,7 @@ class Learner:
         if self._learner_connector is not None and episodes is not None:
             batch = self._learner_connector(
                 rl_module=self.module,
-                data=batch,
+                data=batch or {},
                 episodes=episodes,
                 shared_data={},
             )

@@ -1,10 +1,14 @@
 from typing import Any, Dict, Union
 
+import tree  # pip install dm_tree
+
+import ray
 from ray.rllib.algorithms.impala.impala import (
     ImpalaConfig,
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
@@ -44,16 +48,41 @@ class ImpalaLearner(Learner):
             )
         )
 
+    @override(Learner)
+    def _update_from_batch_or_episodes(
+        self,
+        *,
+        batch=None,
+        episodes=None,
+        reduce_fn=_reduce_mean_results,
+        minibatch_size=None,
+        num_iters=1,
+    ):
+        # First perform GAE computation on the entirety of the given train data (all
+        # episodes).
+        if self.config.uses_new_env_runners:
+            # Resolve batch/episodes being ray object refs (instead of actual
+            # batch/episodes objects).
+            episodes = ray.get(episodes)
+            episodes = tree.flatten(episodes)
+            batch, episodes = self._compute_v_trace_from_episodes(episodes=episodes)
+
+        # Now that GAE (advantages and value targets) have been added to the train
+        # batch, we can proceed normally (calling super method) with the update step.
+        return super()._update_from_batch_or_episodes(
+            batch=batch,
+            episodes=episodes,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
+
     def _compute_v_trace_from_episodes(
         self,
         *,
-        batch,
         episodes,
     ):
-        batch = batch or {}
-        if not episodes:
-            return batch, episodes
-
+        batch = {}
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
 
         # Make all episodes one ts longer in order to just have a single batch
@@ -68,6 +97,12 @@ class ImpalaLearner(Learner):
             rl_module=self.module,
             data={},
             episodes=episodes,
+            shared_data={},
+        )
+        # TODO (sven): Try to not require MultiAgentBatch anymore.
+        batch_for_vf = MultiAgentBatch(
+            {mid: SampleBatch(v) for mid, v in batch_for_vf.items()},
+            env_steps=sum(len(e) for e in episodes),
         )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
@@ -102,6 +137,30 @@ class ImpalaLearner(Learner):
             batch[module_id][SampleBatch.VF_PREDS] = remove_last_ts_from_data(
                 episode_lens_plus_1, module_vf_preds
             )
+
+            # Restructure VF_PREDS and VALUES_BOOTSTRAPPED in a way that the Learner
+            # connector can properly re-batch these new fields.
+            TODO: translate from PPO's GAE code
+            batch_pos = 0
+            for eps in sa_episodes_list:
+                if eps.module_id is not None and eps.module_id != module_id:
+                    continue
+                len_ = len(eps) - 1
+                self._learner_connector.add_n_batch_items(
+                    batch=batch,
+                    column=Postprocessing.ADVANTAGES,
+                    items_to_add=module_advantages[batch_pos : batch_pos + len_],
+                    num_items=len_,
+                    single_agent_episode=eps,
+                )
+                self._learner_connector.add_n_batch_items(
+                    batch=batch,
+                    column=Postprocessing.VALUE_TARGETS,
+                    items_to_add=module_value_targets[batch_pos : batch_pos + len_],
+                    num_items=len_,
+                    single_agent_episode=eps,
+                )
+                batch_pos += len_
 
             # Register agent timesteps for our metrics.
             self.register_metric(
