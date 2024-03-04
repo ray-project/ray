@@ -41,7 +41,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 
 ```sh
 # Step 3.1: Download `ray-service.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.1.0/ray-operator/config/samples/ray-service.sample.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/release-1.1.0/ray-operator/config/samples/ray-service.sample.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray-service.sample.yaml
