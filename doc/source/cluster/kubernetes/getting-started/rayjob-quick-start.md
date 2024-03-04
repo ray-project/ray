@@ -61,11 +61,7 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 ## Step 3: Install a RayJob
 
 ```sh
-# Step 3.1: Download `ray-job.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.sample.yaml
-
-# Step 3.2: Create a RayJob
-kubectl apply -f ray-job.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.0-rc.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -75,8 +71,8 @@ kubectl apply -f ray-job.sample.yaml
 kubectl get rayjob
 
 # [Example output]
-# NAME            AGE
-# rayjob-sample   7s
+# NAME            JOB STATUS   DEPLOYMENT STATUS   START TIME             END TIME   AGE
+# rayjob-sample                Running             2024-03-02T19:09:15Z              96s
 
 # Step 4.2: List all RayCluster custom resources in the `default` namespace.
 kubectl get raycluster
@@ -145,21 +141,19 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 ## Step 6: Delete the RayJob
 
 ```sh
-kubectl delete -f ray-job.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.0-rc.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
 ```sh
-# Step 7.1: Download `ray-job.shutdown.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.shutdown.yaml
-
-# Step 7.2: Create a RayJob
-kubectl apply -f ray-job.shutdown.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.0-rc.0/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster and the submitter 10 seconds after the Ray job finishes.
+Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted 
+because it contains the ray job logs and does not use any cluster resources once completed. In addition, the submitter job will always 
+be cleaned up when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
 
@@ -169,20 +163,19 @@ kubectl get rayjobs.ray.io rayjob-sample-shutdown -o jsonpath='{.status.jobDeplo
 kubectl get rayjobs.ray.io rayjob-sample-shutdown -o jsonpath='{.status.jobStatus}'
 ```
 
-## Step 9: Check if the KubeRay operator deletes the RayCluster and the submitter
+## Step 9: Check if the KubeRay operator deletes the RayCluster
 
 ```sh
-# List the RayCluster custom resources in the `default` namespace. The RayCluster and the submitter Kubernetes 
-# Job associated with the RayJob `rayjob-sample-shutdown` should be deleted.
+# List the RayCluster custom resources in the `default` namespace. The RayCluster
+# associated with the RayJob `rayjob-sample-shutdown` should be deleted.
 kubectl get raycluster
-kubectl get jobs
 ```
 
 ## Step 10: Clean up
 
 ```sh
 # Step 10.1: Delete the RayJob
-kubectl delete -f ray-job.shutdown.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.0-rc.0/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 10.2: Delete the KubeRay operator
 helm uninstall kuberay-operator
