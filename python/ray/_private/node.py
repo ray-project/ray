@@ -62,8 +62,8 @@ class Node:
             head: True if this is the head node, which means it will
                 start additional processes like the Redis servers, monitor
                 processes, and web UI.
-            shutdown_at_exit: If true, spawned processes will be cleaned
-                up if this process exits normally.
+            shutdown_at_exit: If true, spawned processes and spilled external
+                storage will be cleaned up if this process exits normally.
             spawn_reaper: If true, spawns a process that will clean up
                 other spawned processes if this process dies unexpectedly.
             connect_only: If true, connect to the node without starting
@@ -395,6 +395,7 @@ class Node:
         # Register the atexit handler. In this case, we shouldn't call sys.exit
         # as we're already in the exit procedure.
         def atexit_handler(*args):
+            self.destroy_external_storage()
             self.kill_all_processes(check_alive=False, allow_graceful=True)
 
         atexit.register(atexit_handler)
@@ -403,6 +404,7 @@ class Node:
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
         def sigterm_handler(signum, frame):
+            self.destroy_external_storage()
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
