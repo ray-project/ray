@@ -283,7 +283,7 @@ class Syncer(abc.ABC):
         """
         pass
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None):
         """Wait for asynchronous sync command to finish.
 
         You should implement this method if you spawn asynchronous syncing
@@ -466,10 +466,10 @@ class _BackgroundSyncer(Syncer):
     def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
         raise NotImplementedError
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None):
         if self._sync_process:
             try:
-                self._sync_process.wait(timeout=self.sync_timeout)
+                self._sync_process.wait(timeout=timeout or self.sync_timeout)
             except Exception as e:
                 raise e
             finally:

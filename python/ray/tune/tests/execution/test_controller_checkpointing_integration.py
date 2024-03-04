@@ -8,10 +8,8 @@ import pytest
 import sys
 import time
 
-from functools import partial
 
 import ray
-from freezegun import freeze_time
 from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
@@ -628,104 +626,73 @@ def test_checkpoint_force_with_num_to_keep(
         assert sync_up.call_count == 6
 
 
-@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
-@pytest.mark.parametrize(
-    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
-)
-def test_checkpoint_forced_cloud_sync_timeout(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+def test_checkpoint_sync_up_timeout(
+    ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch
 ):
-    """Test that trial runner experiment checkpointing with forced cloud syncing
-    times out correctly when the sync process hangs.
+    """Test that trial runner experiment checkpointing times out correctly.
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testForcedCloudCheckpointSyncTimeout
     """
     storage = mock_storage_context()
+    monkeypatch.setenv("TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "0.25")
 
-    storage.syncer.sync_period = 60
-    storage.syncer.sync_timeout = 0.001
-
-    def _hanging_sync_up_command(*args, **kwargs):
+    def _hanging_upload_to_fs_path(*args, **kwargs):
         time.sleep(200)
 
-    def _sync_up_command(self, local_path: str, uri: str, exclude=None):
-        return _hanging_sync_up_command, {}
+    monkeypatch.setattr(
+        ray.train._internal.storage,
+        "_upload_to_fs_path",
+        _hanging_upload_to_fs_path,
+    )
 
-    with mock.patch.object(storage.syncer, "_sync_up_command") as sync_up_cmd:
-        sync_up_cmd.side_effect = partial(_sync_up_command, storage.syncer)
-        runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
-            storage=storage,
-        )
+    runner = TuneController(
+        resource_manager_factory=lambda: PlacementGroupResourceManager(),
+        storage=storage,
+    )
 
-        # Checkpoint for the first time starts the first sync in the background
-        runner.checkpoint(force=True)
-        assert sync_up_cmd.call_count == 1
-
-        buffer = []
-        logger = logging.getLogger("ray.tune.execution.experiment_state")
+    buffer = []
+    logger = logging.getLogger("ray.tune.execution.experiment_state")
+    with mock.patch.object(logger, "error", lambda x: buffer.append(x)):
         with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
-            # The second checkpoint will log a warning about the previous sync
-            # timing out. Then, it will launch a new sync process in the background.
             runner.checkpoint(force=True)
-        assert any("timed out" in x for x in buffer)
-        assert sync_up_cmd.call_count == 2
+
+    # We should see a log about the timeout
+    assert any("Saving experiment state to storage timed out " in x for x in buffer)
+    # We should also have a warning about the slow upload
+    assert any("may be a bottleneck" in x for x in buffer)
+
+    print("\n", buffer, "\n")
 
 
-@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
-@pytest.mark.parametrize(
-    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
-)
-def test_checkpoint_periodic_cloud_sync_timeout(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
-):
-    """Test that trial runner experiment checkpointing with the default periodic
-    cloud syncing times out and retries correctly when the sync process hangs.
-
-    Legacy test: test_trial_runner_3.py::TrialRunnerTest::
-        testPeriodicCloudCheckpointSyncTimeout
-    """
+def test_checkpoint_sync_up_error(ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch):
+    """Test that trial runner experiment checkpointing handles errors correctly."""
     storage = mock_storage_context()
 
-    storage.syncer.sync_period = 60
-    storage.syncer.sync_timeout = 0.5
+    def _failing_upload_to_fs_path(*args, **kwargs):
+        raise RuntimeError("Upload failing...")
 
-    def _hanging_sync_up_command(*args, **kwargs):
-        time.sleep(200)
+    monkeypatch.setattr(
+        ray.train._internal.storage,
+        "_upload_to_fs_path",
+        _failing_upload_to_fs_path,
+    )
 
-    def _sync_up_command(self, local_path: str, uri: str, exclude=None):
-        return _hanging_sync_up_command, {}
+    runner = TuneController(
+        resource_manager_factory=lambda: PlacementGroupResourceManager(),
+        storage=storage,
+    )
 
-    with mock.patch.object(
-        storage.syncer, "_sync_up_command"
-    ) as sync_up_cmd, freeze_time() as frozen:
-        sync_up_cmd.side_effect = partial(_sync_up_command, storage.syncer)
-        runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
-            storage=storage,
-        )
-
-        runner.checkpoint()
-        assert sync_up_cmd.call_count == 1
-
-        frozen.tick(storage.syncer.sync_period / 2)
-        # Cloud sync has already timed out, but we shouldn't retry until
-        # the next sync_period
-        runner.checkpoint()
-        assert sync_up_cmd.call_count == 1
-
-        frozen.tick(storage.syncer.sync_period / 2)
-        # We've now reached the sync_period - a new sync process should be
-        # started, with the old one timing out
-        buffer = []
-        logger = logging.getLogger("ray.train._internal.syncer")
+    buffer = []
+    logger = logging.getLogger("ray.tune.execution.experiment_state")
+    with mock.patch.object(logger, "exception", lambda x: buffer.append(x)):
         with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
-            runner.checkpoint()
-        assert any(
-            "did not finish running within the timeout" in x for x in buffer
-        ), buffer
-        assert sync_up_cmd.call_count == 2
+            runner.checkpoint(force=True)
+
+    # We should see a log about the timeout
+    assert any("Saving experiment state to storage failed" in x for x in buffer)
+
+    print("\n", buffer, "\n")
 
 
 if __name__ == "__main__":
