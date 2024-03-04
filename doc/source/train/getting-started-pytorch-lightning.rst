@@ -23,7 +23,7 @@ For reference, the final code is as follows:
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
-    def train_func(config):
+    def train_func():
         # Your PyTorch Lightning training code here.
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
