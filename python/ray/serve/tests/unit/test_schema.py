@@ -388,31 +388,43 @@ class TestDeploymentSchema:
         deployment_schema["extra_field"] = None
         DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_user_config_nullable(self):
+        deployment_options = {"name": "test", "user_config": None}
+        DeploymentSchema.parse_obj(deployment_options)
+
+    def test_autoscaling_config_nullable(self):
+        deployment_options = {
+            "name": "test",
+            "autoscaling_config": None,
+            "num_replicas": 5,
+        }
+        DeploymentSchema.parse_obj(deployment_options)
+
+    def test_route_prefix_nullable(self):
+        deployment_options = {"name": "test", "route_prefix": None}
+        DeploymentSchema.parse_obj(deployment_options)
+
     @pytest.mark.parametrize(
-        "option",
-        [
-            "num_replicas",
-            "route_prefix",
-            "autoscaling_config",
-            "user_config",
-        ],
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
     )
-    def test_nullable_options(self, option: str):
-        """Check that nullable options can be set to None."""
-
-        deployment_options = {"name": "test", option: None}
-
-        # One of "num_replicas" or "autoscaling_config" must be provided.
-        if option == "num_replicas":
-            deployment_options["autoscaling_config"] = {
+    def test_num_replicas_nullable(
+        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    ):
+        deployment_options = {
+            "name": "test",
+            "num_replicas": None,
+            "autoscaling_config": {
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests_per_replica": 5,
-            }
-        elif option == "autoscaling_config":
-            deployment_options["num_replicas"] = 5
-
-        # Schema should be created without error.
+            },
+        }
+        if use_target_ongoing_requests:
+            deployment_options["autoscaling_config"]["target_ongoing_requests"] = 5
+        if use_target_num_ongoing_requests_per_replica:
+            deployment_options["autoscaling_config"][
+                "target_num_ongoing_requests_per_replica"
+            ] = 5
         DeploymentSchema.parse_obj(deployment_options)
 
 
