@@ -190,6 +190,13 @@ Begin by wrapping your code in a :ref:`training function <train-overview-trainin
 
 Each distributed training worker executes this function.
 
+You can specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter.
+
+.. note::
+
+    Avoid passing large data objects through `train_loop_config` to reduce the
+    serialization and deserialization overhead. Instead, it's preferred to
+    initialize large objects (e.g. datasets, models) directly in `train_func`.
 
 Ray Train sets up your distributed process group on each worker. You only need to
 make a few changes to your Lightning Trainer definition.

@@ -212,9 +212,17 @@ You can begin by wrapping your code in a :ref:`training function <train-overview
     def train_func(config):
         # Your Transformers training code here.
 
-This function executes on each distributed training worker. Ray Train sets up the distributed
-process group on each worker before entering this function.
+This function executes on each distributed training worker. 
 
+You can specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter.
+
+.. note::
+
+    Avoid passing large data objects through `train_loop_config` to reduce the
+    serialization and deserialization overhead. Instead, it's preferred to
+    initialize large objects (e.g. datasets, models) directly in `train_func`.
+
+Ray Train sets up the distributed process group on each worker before entering this function. 
 Put all the logic into this function, including dataset construction and preprocessing,
 model initialization, transformers trainer definition and more.
 
