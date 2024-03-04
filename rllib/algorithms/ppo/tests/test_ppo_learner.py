@@ -10,39 +10,37 @@ import tree  # pip install dm-tree
 import ray
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
+from ray.rllib.core.columns import Columns
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.tune.registry import register_env
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.tune.registry import register_env
 
-from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
-)
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
-    SampleBatch.OBS: np.array(
+    Columns.OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32,
     ),
-    SampleBatch.NEXT_OBS: np.array(
+    Columns.NEXT_OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32,
     ),
-    SampleBatch.ACTIONS: np.array([0, 1, 1]),
-    SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-    SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    SampleBatch.TERMINATEDS: np.array([False, False, True]),
-    SampleBatch.TRUNCATEDS: np.array([False, False, False]),
-    SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: np.array(
+    Columns.ACTIONS: np.array([0, 1, 1]),
+    Columns.PREV_ACTIONS: np.array([0, 1, 1]),
+    Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+    Columns.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+    Columns.TERMINATEDS: np.array([False, False, True]),
+    Columns.TRUNCATEDS: np.array([False, False, False]),
+    Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+    Columns.ACTION_DIST_INPUTS: np.array(
         [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
     ),
-    SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
-    SampleBatch.EPS_ID: np.array([0, 0, 0]),
-    SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
+    Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+    Columns.EPS_ID: np.array([0, 0, 0]),
+    Columns.AGENT_INDEX: np.array([0, 0, 0]),
 }
 
 
@@ -79,7 +77,7 @@ class TestPPO(unittest.TestCase):
             algo = config.build()
             policy = algo.get_policy()
 
-            train_batch = SampleBatch(FAKE_BATCH)
+            train_batch = FAKE_BATCH.copy()
             train_batch = compute_gae_for_sample_batch(policy, train_batch)
 
             # convert to proper tensors with tree.map_structure

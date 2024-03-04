@@ -6,10 +6,10 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import batch, unbatch
@@ -189,7 +189,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         **kwargs,
     ) -> Any:
         # If not stateful OR STATE_IN already in data, early out.
-        if not rl_module.is_stateful() or STATE_IN in data:
+        if not rl_module.is_stateful() or Columns.STATE_IN in data:
             return data
 
         # Make all inputs (other than STATE_IN) have an additional T-axis.
@@ -251,16 +251,16 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     # continuation chunk) -> Use previous chunk's last
                     # STATE_OUT as initial state.
                     else sa_episode.get_extra_model_outputs(
-                        key=STATE_OUT,
+                        key=Columns.STATE_OUT,
                         indices=-1,
                         neg_indices_left_of_zero=True,
                     )
                 )
                 # state_outs.shape=(T,[state-dim])  T=episode len
-                state_outs = sa_episode.get_extra_model_outputs(key=STATE_OUT)
+                state_outs = sa_episode.get_extra_model_outputs(key=Columns.STATE_OUT)
                 self.add_n_batch_items(
                     batch=data,
-                    column=STATE_IN,
+                    column=Columns.STATE_IN,
                     # items_to_add.shape=(B,[state-dim])  # B=episode len // max_seq_len
                     items_to_add=unbatch(
                         tree.map_structure(
@@ -287,7 +287,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 )
                 self.add_n_batch_items(
                     batch=data,
-                    column=SampleBatch.SEQ_LENS,
+                    column=Columns.SEQ_LENS,
                     items_to_add=seq_lens,
                     num_items=len(seq_lens),
                     single_agent_episode=sa_episode,
@@ -314,11 +314,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = sa_episode.get_extra_model_outputs(
-                        key=STATE_OUT, indices=-1
+                        key=Columns.STATE_OUT, indices=-1
                     )
                 self.add_batch_item(
                     data,
-                    STATE_IN,
+                    Columns.STATE_IN,
                     item_to_add=state,
                     single_agent_episode=sa_episode,
                 )

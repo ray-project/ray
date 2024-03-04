@@ -12,7 +12,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -350,7 +350,7 @@ class TorchPolicyV2(Policy):
                 return item.reshape([b_dim * t_dim] + other_dims)
 
             for k, v in input_dict.items():
-                if k not in (STATE_IN, STATE_OUT):
+                if k not in (Columns.STATE_IN, Columns.STATE_OUT):
                     ret[k] = tree.map_structure(fold_mapping, v)
                 else:
                     # state in already has time dimension.
@@ -1263,7 +1263,7 @@ class TorchPolicyV2(Policy):
                     actions = action_dist.sample()
 
             # Anything but actions and state_out is an extra fetch.
-            state_out = fwd_out.pop(STATE_OUT, {})
+            state_out = fwd_out.pop(Columns.STATE_OUT, {})
             extra_fetches = fwd_out
 
         elif is_overridden(self.action_sampler_fn):

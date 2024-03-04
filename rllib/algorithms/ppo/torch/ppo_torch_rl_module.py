@@ -2,10 +2,10 @@ from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -23,13 +23,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         # Encoder forward pass.
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
+        if Columns.STATE_OUT in encoder_outs:
             output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Pi head.
-        output[SampleBatch.ACTION_DIST_INPUTS] = self.pi(
-            encoder_outs[ENCODER_OUT][ACTOR]
-        )
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
 
         return output
 
@@ -55,11 +53,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         # Value head
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
+        output[Columns.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[Columns.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
@@ -75,20 +73,20 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         # Value head.
         vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
         # Squeeze out last dim (value function node).
-        output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
+        output[Columns.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head.
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[Columns.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
     @override(PPORLModule)
     def _compute_values(self, batch, device=None):
-        infos = batch.pop(SampleBatch.INFOS, None)
+        infos = batch.pop(Columns.INFOS, None)
         batch = convert_to_torch_tensor(batch, device=device)
         if infos is not None:
-            batch[SampleBatch.INFOS] = infos
+            batch[Columns.INFOS] = infos
 
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
