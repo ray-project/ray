@@ -146,8 +146,17 @@ def add_rllib_example_script_args(
         default=0,
         help=(
             "The frequency (in training iterations) with which to create checkpoints. "
-            "Note that if --wandb-key is provided, these checkpoints will "
-            "automatically be uploaded to WandB."
+            "Note that if --wandb-key is provided and --no-tune is NOT set, all "
+            "checkpoints will automatically be uploaded to WandB."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-at-end",
+        action="store_true",
+        help=(
+            "Whether to create a checkpoint at the end of the experiment. "
+            "Note that if --wandb-key is provided and --no-tune is NOT set, all "
+            "checkpoints will automatically be uploaded to WandB."
         ),
     )
 
@@ -1207,6 +1216,15 @@ def run_rllib_example_script_experiment(
         for iter in range(args.stop_iters):
             results = algo.train()
             print(f"R={results['episode_reward_mean']}")
+            # Save a checkpoint?
+            if (
+                (args.checkpoint_at_end and iter == args.stop_iters - 1)
+                or (args.checkpoint_freq > 0 and iter % args.checkpoint_freq == 0)
+            ):
+                print("Saving a checkpoint ...")
+                chkpt = algo.save()
+                print(f"... checkpoint saved in {chkpt.checkpoint.path}")
+
             for key, value in stop.items():
                 if results.get(key, float("-inf")) > value:
                     print(f"Stop criterium ({key}={value}) fulfilled!")
@@ -1236,6 +1254,7 @@ def run_rllib_example_script_experiment(
             callbacks=callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
+                checkpoint_at_end=args.checkpoint_at_end,
             ),
         ),
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
