@@ -148,6 +148,52 @@ class InstanceUtilTest(unittest.TestCase):
             instance, Instance.QUEUED
         ) == [1, 3]
 
+    @patch("time.time_ns")
+    def test_get_last_status_transition(self, mock_time):
+        mock_time.return_value = 1
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
+        assert (
+            InstanceUtil.get_last_status_transition(instance).instance_status
+            == Instance.QUEUED
+        )
+        assert InstanceUtil.get_last_status_transition(instance).timestamp_ns == 1
+
+        mock_time.return_value = 2
+        InstanceUtil.set_status(instance, Instance.REQUESTED)
+        assert (
+            InstanceUtil.get_last_status_transition(instance).instance_status
+            == Instance.REQUESTED
+        )
+        assert InstanceUtil.get_last_status_transition(instance).timestamp_ns == 2
+
+        mock_time.return_value = 3
+        InstanceUtil.set_status(instance, Instance.QUEUED)
+        assert (
+            InstanceUtil.get_last_status_transition(instance).instance_status
+            == Instance.QUEUED
+        )
+        assert InstanceUtil.get_last_status_transition(instance).timestamp_ns == 3
+
+        assert (
+            InstanceUtil.get_last_status_transition(
+                instance, select_instance_status=Instance.REQUESTED
+            ).instance_status
+            == Instance.REQUESTED
+        )
+        assert (
+            InstanceUtil.get_last_status_transition(
+                instance, select_instance_status=Instance.REQUESTED
+            ).timestamp_ns
+            == 2
+        )
+
+        assert (
+            InstanceUtil.get_last_status_transition(
+                instance, select_instance_status=Instance.RAY_RUNNING
+            )
+            is None
+        )
+
     def test_is_cloud_instance_allocated(self):
         all_status = set(Instance.InstanceStatus.values())
         instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)

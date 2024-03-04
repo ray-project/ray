@@ -12,9 +12,11 @@ from ray._private.ray_constants import env_integer
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.util import (
+    hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
     validate_config,
@@ -99,6 +101,10 @@ class NodeTypeConfig:
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
+    # The node config's launch config hash. It's calculated from the auth
+    # config, and the node's config in the `AutoscalingConfig` for the node
+    # type when launching the node. It's used to detect config changes.
+    launch_config_hash: str = ""
 
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
@@ -292,13 +298,18 @@ class AutoscalingConfig:
         if not available_node_types:
             return None
         node_type_configs = {}
+        auth_config = self._configs.get("auth", {})
         for node_type, node_config in available_node_types.items():
+            launch_config_hash = hash_launch_conf(
+                node_config.get("node_config", {}), auth_config
+            )
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
                 max_worker_nodes=node_config.get("max_workers", 0),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
+                launch_config_hash=launch_config_hash,
             )
         return node_type_configs
 
@@ -320,6 +331,13 @@ class AutoscalingConfig:
     def get_max_concurrent_launches(self) -> int:
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
+    def get_idle_timeout_s(self) -> float:
+        return self.get_config("idle_timeout_minutes", 0) * 60
+
+    def disable_launch_config_check(self) -> bool:
+        provider_config = self.get_provider_config()
+        return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
+
     def skip_ray_install(self) -> bool:
         return self.provider == Provider.KUBERAY
 
@@ -334,7 +352,7 @@ class AutoscalingConfig:
         return InstanceReconcileConfig()
 
     def get_provider_config(self) -> Dict[str, Any]:
-        return self.get_config("provider", {})
+        return self._configs.get("provider", {})
 
     @property
     def provider(self) -> Provider:

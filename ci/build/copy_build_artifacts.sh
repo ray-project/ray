@@ -3,6 +3,11 @@
 set -exuo pipefail
 
 ARTIFACT_TYPE=${1:-wheel}
+if [[ "$OSTYPE" == "msys" ]]; then
+  ARTIFACT_MOUNT="/c/artifact-mount"
+else
+  ARTIFACT_MOUNT="/artifact-mount"
+fi
 
 if [[ "$ARTIFACT_TYPE" != "wheel" && "$ARTIFACT_TYPE" != "jar" ]]; then
   echo "Invalid artifact type: $ARTIFACT_TYPE"
@@ -12,22 +17,32 @@ fi
 if [[ "$ARTIFACT_TYPE" == "wheel" ]]; then
   BRANCH_DESTINATION="branch_wheels"
   MASTER_DESTINATION="wheels"
-  ARTIFACT_PATH=".whl"
+  if [[ "$OSTYPE" == "msys" ]]; then
+    ARTIFACT_PATH="python/dist"
+  else
+    ARTIFACT_PATH=".whl"
+  fi
 else
   BRANCH_DESTINATION="branch_jars"
   MASTER_DESTINATION="jars"
   ARTIFACT_PATH=".jar/linux"
 fi
 
+if [[ "$OSTYPE" == "msys" ]]; then
+  ARTIFACT_PATH="python/dist"
+  ARTIFACT_MOUNT="/c/artifact-mount"
+fi
+
 export PATH=/opt/python/cp38-cp38/bin:$PATH
-pip install -q aws_requests_auth boto3
+pip install -q -c python/requirements_compiled.txt aws_requests_auth boto3 pyopenssl
 ./ci/env/env_info.sh
 
 # Sync the directory to buildkite artifacts
-rm -rf /artifact-mount/"$ARTIFACT_PATH" || true
-mkdir -p /artifact-mount/"$ARTIFACT_PATH"
-cp -r "$ARTIFACT_PATH" /artifact-mount/"$ARTIFACT_PATH"
-chmod -R 777 /artifact-mount/"$ARTIFACT_PATH"
+ARTIFACT_MOUNT_PATH="$ARTIFACT_MOUNT/$ARTIFACT_PATH"
+rm -rf "$ARTIFACT_MOUNT_PATH" || true
+mkdir -p "$ARTIFACT_MOUNT_PATH"
+cp -r "$ARTIFACT_PATH" "$ARTIFACT_MOUNT_PATH"
+chmod -R 777 "$ARTIFACT_MOUNT_PATH"
 
 # Upload to the wheels S3 bucket when running on postmerge pipeline.
 readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"

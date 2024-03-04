@@ -84,7 +84,7 @@ class TestDeploymentOptions:
         "route_prefix": "/",
         "ray_actor_options": {},
         "user_config": {},
-        "max_concurrent_queries": 10,
+        "max_ongoing_requests": 10,
         "autoscaling_config": None,
         "graceful_shutdown_wait_loop_s": 10,
         "graceful_shutdown_timeout_s": 10,
@@ -213,13 +213,6 @@ class TestDeploymentOptions:
 
         f = f.options(**options)
         assert f._deployment_config.user_configured_option_names == set(options.keys())
-
-        @serve.deployment
-        def g():
-            pass
-
-        g.set_options(**options)
-        assert g._deployment_config.user_configured_option_names == set(options.keys())
 
 
 if __name__ == "__main__":

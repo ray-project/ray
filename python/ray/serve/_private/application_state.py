@@ -18,12 +18,12 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     EndpointInfo,
-    EndpointTag,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    NEW_DEFAULT_MAX_CONCURRENT_QUERIES,
+    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deploy_utils import (
@@ -271,7 +271,7 @@ class ApplicationState:
         self._set_target_state(None, None, target_config, None, None, False)
 
     def _delete_deployment(self, name):
-        id = EndpointTag(name, self._name)
+        id = DeploymentID(name=name, app_name=self._name)
         self._endpoint_state.delete_endpoint(id)
         self._deployment_state_manager.delete_deployment(id)
 
@@ -304,7 +304,7 @@ class ApplicationState:
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
             )
 
-        deployment_id = DeploymentID(deployment_name, self._name)
+        deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
         self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
@@ -417,7 +417,8 @@ class ApplicationState:
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
-                runtime_env=config.runtime_env
+                runtime_env=config.runtime_env,
+                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
                 config.import_path,
                 config.deployment_names,
@@ -685,7 +686,7 @@ class ApplicationState:
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
         deployments = [
-            DeploymentID(deployment, self._name)
+            DeploymentID(name=deployment, app_name=self._name)
             for deployment in self.target_deployments
         ]
         return self._deployment_state_manager.get_deployment_statuses(deployments)
@@ -711,7 +712,7 @@ class ApplicationState:
         """
         details = {
             deployment_name: self._deployment_state_manager.get_deployment_details(
-                DeploymentID(deployment_name, self._name)
+                DeploymentID(name=deployment_name, app_name=self._name)
             )
             for deployment_name in self.target_deployments
         }
@@ -1036,20 +1037,25 @@ def override_deployment_info(
 
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
+        if "max_concurrent_queries" in options or "max_ongoing_requests" in options:
+            options["max_ongoing_requests"] = options.get(
+                "max_ongoing_requests"
+            ) or options.get("max_concurrent_queries")
+
         deployment_name = options["name"]
         info = deployment_infos[deployment_name]
         original_options = info.deployment_config.dict()
         original_options["user_configured_option_names"].update(set(options))
 
-        # Override `max_concurrent_queries` and `autoscaling_config` if
+        # Override `max_ongoing_requests` and `autoscaling_config` if
         # `num_replicas="auto"`
         if options.get("num_replicas") == "auto":
             options["num_replicas"] = None
             if (
-                "max_concurrent_queries"
+                "max_ongoing_requests"
                 not in original_options["user_configured_option_names"]
             ):
-                options["max_concurrent_queries"] = NEW_DEFAULT_MAX_CONCURRENT_QUERIES
+                options["max_ongoing_requests"] = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
             # If `autoscaling_config` is specified, its values override
             # the default `num_replicas="auto"` configuration
@@ -1118,12 +1124,12 @@ def override_deployment_info(
         deployment_config = deployment_infos[deployment_name].deployment_config
         if (
             deployment_config.autoscaling_config is not None
-            and deployment_config.max_concurrent_queries
+            and deployment_config.max_ongoing_requests
             < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
         ):
             logger.warning(
                 "Autoscaling will never happen, "
-                "because 'max_concurrent_queries' is less than "
+                "because 'max_ongoing_requests' is less than "
                 "'target_num_ongoing_requests_per_replica' now."
             )
 

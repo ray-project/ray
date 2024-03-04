@@ -78,10 +78,14 @@ py_binary(
 py_library(
     name = "docker_tags_lib",
     srcs = ["docker_tags_lib.py"],
+    data = [
+        "@crane_linux_x86_64//:file",
+    ],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [
         ci_require("requests"),
         "//ci/ray_ci:ray_ci_lib",
+        ci_require("bazel-runfiles"),
     ],
 )
 
@@ -97,5 +101,29 @@ py_test(
     deps = [
         ci_require("pytest"),
         ":docker_tags_lib",
+    ],
+)
+
+py_library(
+    name = "ray_wheels_lib",
+    srcs = ["ray_wheels_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        ci_require("boto3"),
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_test(
+    name = "test_ray_wheels_lib",
+    srcs = ["test_ray_wheels_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":ray_wheels_lib",
     ],
 )
