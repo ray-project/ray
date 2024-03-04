@@ -482,7 +482,8 @@ class TestWorkerFailures(unittest.TestCase):
                 rollout_fragment_length=16,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size_per_learner=32,
+                sgd_minibatch_size=32,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(
@@ -536,7 +537,8 @@ class TestWorkerFailures(unittest.TestCase):
                 rollout_fragment_length=16,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size_per_learner=32,
+                sgd_minibatch_size=32,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(
@@ -552,7 +554,7 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
+                evaluation_config=PPOConfig.overrides(
                     recreate_failed_workers=True,
                     # Restart the entire eval worker.
                     restart_failed_sub_environments=False,
@@ -631,7 +633,8 @@ class TestWorkerFailures(unittest.TestCase):
                 rollout_fragment_length=16,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size_per_learner=32,
+                sgd_minibatch_size=32,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(env="fault_env")
