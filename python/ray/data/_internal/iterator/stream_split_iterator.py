@@ -10,7 +10,7 @@ from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
@@ -100,8 +100,12 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         # Merge the locally recorded iter stats and the remotely recorded
         # stream execution stats.
-        summary = ray.get(self._coord_actor.stats.remote())
+        stats = ray.get(self._coord_actor.stats.remote())
+        summary = stats.to_summary()
         summary.iter_stats = self._iter_stats.to_summary().iter_stats
+        summary.iter_stats.streaming_split_coord_time.add(
+            stats.streaming_split_coordinator_s.get()
+        )
         return summary.to_string()
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
@@ -180,11 +184,11 @@ class SplitCoordinator:
         self._next_epoch = gen_epochs()
         self._output_iterator = None
 
-    def stats(self) -> DatasetStatsSummary:
+    def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats().to_summary()
-        return self._base_dataset._get_stats_summary()
+            return self._executor.get_stats()
+        return self._base_dataset._plan.stats()
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -204,7 +208,7 @@ class SplitCoordinator:
 
         This is intended to be called concurrently from multiple clients.
         """
-
+        start_time = time.perf_counter()
         if epoch_id != self._cur_epoch:
             raise ValueError(
                 "Invalid iterator: the dataset has moved on to another epoch."
@@ -235,6 +239,12 @@ class SplitCoordinator:
             return block
         except StopIteration:
             return None
+        finally:
+            stats = self.stats()
+            if stats and stats.streaming_split_coordinator_s:
+                stats.streaming_split_coordinator_s.add(
+                    time.perf_counter() - start_time
+                )
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

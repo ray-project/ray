@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     concat_samples,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import ExperimentalAPI, OldAPIStack
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import EpisodeType, SampleBatchType
 
@@ -127,6 +127,7 @@ def synchronous_parallel_sample(
         return sample_batches_or_episodes
 
 
+@OldAPIStack
 def standardize_fields(samples: SampleBatchType, fields: List[str]) -> SampleBatchType:
     """Standardize fields of the given SampleBatch"""
     wrapped = False
