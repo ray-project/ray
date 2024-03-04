@@ -1,8 +1,9 @@
 from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime
+from enum import Enum
 from itertools import chain
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
@@ -30,11 +31,14 @@ from ray.autoscaler.v2.schema import (
     Stats,
 )
 from ray.core.generated.autoscaler_pb2 import (
+    AffinityConstraint,
+    AntiAffinityConstraint,
     AutoscalingState,
     ClusterResourceState,
     GetClusterStatusReply,
     NodeState,
     NodeStatus,
+    PlacementConstraint,
     ResourceRequest,
 )
 from ray.core.generated.autoscaler_pb2 import (
@@ -103,6 +107,14 @@ class ResourceRequestUtil(ProtobufUtil):
     A utility class for resource requests, autoscaler.proto.ResourceRequest
     """
 
+    class PlacementConstraintType(Enum):
+        """
+        The affinity type for the resource request.
+        """
+
+        ANTI_AFFINITY = "ANTI_AFFINITY"
+        AFFINITY = "AFFINITY"
+
     @staticmethod
     def group_by_count(
         requests: List[ResourceRequest],
@@ -145,7 +157,10 @@ class ResourceRequestUtil(ProtobufUtil):
         return reqs
 
     @staticmethod
-    def make(resources_map: Dict[str, float]) -> ResourceRequest:
+    def make(
+        resources_map: Dict[str, float],
+        constraints: Optional[List[Tuple[PlacementConstraintType, str, str]]] = None,
+    ) -> ResourceRequest:
         """
         Make a resource request from the given resources map.
         Args:
@@ -157,7 +172,106 @@ class ResourceRequestUtil(ProtobufUtil):
         for resource_name, quantity in resources_map.items():
             request.resources_bundle[resource_name] = quantity
 
+        if constraints is None:
+            return request
+
+        for constraint_type, label, value in constraints:
+            if constraint_type == ResourceRequestUtil.PlacementConstraintType.AFFINITY:
+                request.placement_constraints.append(
+                    PlacementConstraint(
+                        affinity=AffinityConstraint(label_name=label, label_value=value)
+                    )
+                )
+            elif (
+                constraint_type
+                == ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+            ):
+                request.placement_constraints.append(
+                    PlacementConstraint(
+                        anti_affinity=AntiAffinityConstraint(
+                            label_name=label, label_value=value
+                        )
+                    )
+                )
+            else:
+                raise ValueError(f"Unknown constraint type: {constraint_type}")
+
         return request
+
+    @staticmethod
+    def combine_requests_with_affinity(
+        resource_requests: List[ResourceRequest],
+    ) -> List[ResourceRequest]:
+        """
+        Combine the resource requests with affinity constraints
+        into the same request. This is so that requests with affinity
+         constraints could be considered and placed together.
+
+        It merges the resource requests with the same affinity constraints
+        into one request, and dedup the placement constraints.
+
+        This assumes following:
+            1. There's only at most 1 placement constraint, either an affinity
+            constraint OR an anti-affinity constraint.
+
+        Args:
+            resource_requests: The list of resource requests to be combined.
+        Returns:
+            A list of combined resource requests.
+        """
+
+        # Map of set of serialized affinity constraint to the list of resource requests
+        requests_by_affinity: Dict[
+            Tuple[str, str], List[ResourceRequest]
+        ] = defaultdict(list)
+        combined_requests: List[ResourceRequest] = []
+
+        for request in resource_requests:
+            assert len(request.placement_constraints) <= 1, (
+                "There should be at most 1 placement constraint, "
+                "either an affinity constraint OR an anti-affinity constraint."
+            )
+
+            if len(request.placement_constraints) == 0:
+                # No affinity constraints, just add to the combined requests.
+                combined_requests.append(request)
+                continue
+
+            constraint = request.placement_constraints[0]
+
+            if constraint.HasField("affinity"):
+                affinity = constraint.affinity
+                requests_by_affinity[
+                    (affinity.label_name, affinity.label_value)
+                ].append(request)
+            elif constraint.HasField("anti_affinity"):
+                # We don't need to combine requests with anti-affinity constraints.
+                combined_requests.append(request)
+
+        for (
+            affinity_label_name,
+            affinity_label_value,
+        ), requests in requests_by_affinity.items():
+            combined_request = ResourceRequest()
+
+            # Merge the resource bundles with the same affinity constraint.
+            for request in requests:
+                for k, v in request.resources_bundle.items():
+                    combined_request.resources_bundle[k] = (
+                        combined_request.resources_bundle.get(k, 0) + v
+                    )
+
+            # Add the placement constraint to the combined request.
+            affinity_constraint = AffinityConstraint(
+                label_name=affinity_label_name, label_value=affinity_label_value
+            )
+            combined_request.placement_constraints.append(
+                PlacementConstraint(affinity=affinity_constraint)
+            )
+
+            combined_requests.append(combined_request)
+
+        return combined_requests
 
 
 class ClusterStatusFormatter:
