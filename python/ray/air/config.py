@@ -194,10 +194,9 @@ class ScalingConfig:
                 # GPUs, so not requesting a CPU does not lead to oversubscription.
                 resources_per_worker = {"GPU": 1}
             else:
-                return {"CPU": 1}
-        resources_per_worker = {
-            k: v for k, v in self.resources_per_worker.items() if v != 0
-        }
+                resources_per_worker = {"CPU": 1}
+
+        resources_per_worker = {k: v for k, v in resources_per_worker.items() if v != 0}
 
         if self.use_gpu:
             resources_per_worker.setdefault("GPU", 1)
