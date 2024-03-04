@@ -68,7 +68,8 @@ def test_upload_wheels_to_pypi(mock_subprocess, mock_get_pypi_url, mock_get_pypi
         for wheel in wheels:
             with open(os.path.join(tmp_dir, wheel), "w") as f:
                 f.write("")
-        upload_wheels_to_pypi(pypi_env, tmp_dir, wheels)
+        wheel_paths = [os.path.join(tmp_dir, wheel) for wheel in wheels]
+        upload_wheels_to_pypi(pypi_env, tmp_dir)
 
         mock_get_pypi_token.assert_called_once_with(pypi_env)
         mock_get_pypi_url.assert_called_once_with(pypi_env)
@@ -85,7 +86,7 @@ def test_upload_wheels_to_pypi(mock_subprocess, mock_get_pypi_url, mock_get_pypi
             assert command[7] == "__token__"
             assert command[8] == "--password"
             assert command[9] == "test_token"
-            assert command[10] == os.path.join(tmp_dir, wheels[i])
+            assert command[10] in wheel_paths
 
 
 @mock.patch("ci.ray_ci.automation.pypi_lib._get_pypi_token")
@@ -108,7 +109,7 @@ def test_upload_wheels_to_pypi_fail_twine_upload(
             with open(os.path.join(tmp_dir, wheel), "w") as f:
                 f.write("")
         with pytest.raises(subprocess.CalledProcessError):
-            upload_wheels_to_pypi(pypi_env, tmp_dir, wheels)
+            upload_wheels_to_pypi(pypi_env, tmp_dir)
 
 
 @mock.patch("ci.ray_ci.automation.pypi_lib._get_pypi_token")
@@ -127,7 +128,7 @@ def test_upload_wheels_to_pypi_fail_get_pypi(mock_get_pypi_url, mock_get_pypi_to
             with open(os.path.join(tmp_dir, wheel), "w") as f:
                 f.write("")
         with pytest.raises(ValueError, match="Invalid pypi_env: test"):
-            upload_wheels_to_pypi(pypi_env, tmp_dir, wheels)
+            upload_wheels_to_pypi(pypi_env, tmp_dir)
 
 
 if __name__ == "__main__":
