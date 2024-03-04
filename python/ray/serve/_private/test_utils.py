@@ -100,6 +100,35 @@ class MockKVStore:
         return False
 
 
+class MockClusterNodeInfoCache:
+    def __init__(self):
+        self.alive_node_ids = set()
+        self.alive_node_resources = dict()
+        self.draining_nodes = dict()
+
+    def get_alive_node_ids(self):
+        return self.alive_node_ids
+
+    def get_draining_nodes(self):
+        return self.draining_nodes
+
+    def get_active_node_ids(self):
+        return self.alive_node_ids - set(self.draining_nodes)
+
+    def get_node_az(self, node_id):
+        return None
+
+    def get_available_resources_per_node(self):
+        return self.alive_node_resources
+
+    def get_total_resources_per_node(self):
+        return self.alive_node_resources
+
+    def add_node(self, node_id: str, resources: Dict = None):
+        self.alive_node_ids.add(node_id)
+        self.alive_node_resources[node_id] = resources or {}
+
+
 def check_ray_stopped():
     try:
         requests.get("http://localhost:52365/api/ray/version")
