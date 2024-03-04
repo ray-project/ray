@@ -2016,7 +2016,7 @@ def test_basic_autoscaling(mock_deployment_state_manager, target_capacity_direct
     # Deploy deployment with 3 replicas
     info, v1 = deployment_info(
         autoscaling_config={
-            "target_num_ongoing_requests_per_replica": 1,
+            "target_ongoing_requests": 1,
             "min_replicas": 0,
             "max_replicas": 6,
             "initial_replicas": 3,
@@ -2132,7 +2132,7 @@ def test_downscaling_reclaiming_starting_replicas_first(
     # Deploy deployment with 3 replicas
     info, _ = deployment_info(
         autoscaling_config={
-            "target_num_ongoing_requests_per_replica": 1,
+            "target_ongoing_requests": 1,
             "min_replicas": 0,
             "max_replicas": 6,
             "initial_replicas": 3,
@@ -2281,7 +2281,7 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
     # Deploy deployment with 3 replicas
     info1, _ = deployment_info(
         autoscaling_config={
-            "target_num_ongoing_requests_per_replica": 1,
+            "target_ongoing_requests": 1,
             "min_replicas": 0,
             "max_replicas": 6,
             "initial_replicas": 3,
@@ -2320,7 +2320,7 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
     # Update autoscaling config
     info2, _ = deployment_info(
         autoscaling_config={
-            "target_num_ongoing_requests_per_replica": 1,
+            "target_ongoing_requests": 1,
             "min_replicas": 6,
             "max_replicas": 10,
             "upscale_delay_s": 0,
