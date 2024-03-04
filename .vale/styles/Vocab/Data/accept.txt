@@ -8,12 +8,12 @@ dtype
 [Gg]roupby
 [Ii]ndexable
 [Ii]ngest
-[Ii]nqueue(s)
+[Ii]nqueue(s)?
 [Ll]ookup(s)?
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?
-[Oo]utqueue(s)
+[Oo]utqueue(s)?
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching
