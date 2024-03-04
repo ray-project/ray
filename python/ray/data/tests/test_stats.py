@@ -208,7 +208,7 @@ Dataset iterator time breakdown:
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
-* Streaming split coordinator overhead time: T
+Streaming split coordinator overhead time: T
 """
     )
 
