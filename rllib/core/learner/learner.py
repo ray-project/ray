@@ -35,13 +35,14 @@ from ray.rllib.policy.sample_batch import (
     MultiAgentBatch,
     SampleBatch,
 )
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import convert_to_tensor, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_TRAINED,
@@ -693,27 +694,6 @@ class Learner:
             if ref in param_dict and param_dict[ref] is not None
         }
 
-    def get_module_state(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule.
-
-        The output should be numpy-friendly for easy serialization, not framework
-        specific tensors.
-
-        Args:
-            module_ids: The ids of the modules to get the weights for. If None, all
-                modules will be returned.
-
-        Returns:
-            A dictionary that holds the state of the modules in a numpy-friendly
-            format.
-        """
-        module_states = self.module.get_state(module_ids)
-        return convert_to_numpy({k: v for k, v in module_states.items()})
-
-    @abc.abstractmethod
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
-
     @abc.abstractmethod
     def get_param_ref(self, param: Param) -> Hashable:
         """Returns a hashable reference to a trainable parameter.
@@ -1259,52 +1239,65 @@ class Learner:
 
         """
 
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Set the state of the learner.
-
-        Args:
-            state: The state of the optimizer and module. Can be obtained
-                from `get_state`. State is a dictionary with two keys:
-                "module_state" and "optimizer_state". The value of each key
-                is a dictionary that can be passed to `set_module_state` and
-                `set_optimizer_state` respectively.
-
-        """
-        self._check_is_built()
-
-        module_state = state.get("module_state")
-        # TODO: once we figure out the optimizer format, we can set/get the state
-        if module_state is None:
-            raise ValueError(
-                "state must have a key 'module_state' for the module weights"
-            )
-        self.set_module_state(module_state)
-
-        optimizer_state = state.get("optimizer_state")
-        if optimizer_state is None:
-            raise ValueError(
-                "state must have a key 'optimizer_state' for the optimizer weights"
-            )
-        self.set_optimizer_state(optimizer_state)
-
-        # Update our trainable Modules information/function via our config.
-        # If not provided in state (None), all Modules will be trained by default.
-        self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
-
-    def get_state(self) -> Dict[str, Any]:
-        """Get the state of the learner.
+    def get_state(self, components: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Returns the state of this Learner.
 
         Returns:
             The state of the optimizer and module.
-
         """
         self._check_is_built()
-        return {
-            "module_state": self.get_module_state(),
-            "optimizer_state": self.get_optimizer_state(),
-            "modules_to_train": self.config.policies_to_train,
-        }
+        components = force_list(components)
+        state = {"modules_to_train": self.config.policies_to_train}
+        if "module_state" in components:
+            state["module_state"] = self.get_module_state()
+        if "optimizer_state" in components:
+            state["optimizer_state"] = self.get_optimizer_state()
 
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of this Learner.
+
+        Args:
+            state: The state dict containing necessary information to restore the
+                states of the optimizer, module, and other components. Can be obtained
+                from `self.get_state()`.
+        """
+        self._check_is_built()
+
+        if "module_state" in state:
+            self.set_module_state(state["module_state"])
+        if "optimizer_state" in state:
+            self.set_optimizer_state(state["optimizer_state"])
+        # If provided in state, update our trainable Modules information/function via
+        # our config.
+        # If None (explicitly set in state), all Modules will be trained by default.
+        if "modules_to_train" in state:
+            self.config.multi_agent(policies_to_train=state["modules_to_train"])
+
+    @OverrideToImplementCustomLogic
+    def get_module_state(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule.
+
+        The output should be numpy-friendly for easy serialization, not framework
+        specific tensors.
+
+        Args:
+            module_ids: The ids of the modules to get the weights for. If None, all
+                modules will be returned.
+
+        Returns:
+            A dictionary that holds the state of the modules in a numpy-friendly
+            format.
+        """
+        module_states = self.module.get_state(module_ids)
+        return convert_to_numpy({k: v for k, v in module_states.items()})
+
+    @OverrideToImplementCustomLogic
+    def set_module_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
+        state = convert_to_tensor(state, framework=self.framework, device=self._device)
+        return self.module.set_state(state)
+
+    @OverrideToImplementCustomLogic
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.
 
@@ -1313,6 +1306,7 @@ class Learner:
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_optimizer_state(self) -> Dict[str, Any]:
         """Returns the state of all optimizers currently registered in this Learner.
 
@@ -1473,27 +1467,6 @@ class Learner:
             "optimizer_state_dir": "optimizer_state",
         }
         return metadata
-
-    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        """Save the state of the optimizer to path
-
-        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
-        will be appended to.
-
-        Args:
-            path: The path to the directory to save the state to.
-
-        """
-        pass
-
-    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        """Load the state of the optimizer from path
-
-        Args:
-            path: The path to the directory to load the state from.
-
-        """
-        pass
 
     def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Save the state of the learner to path

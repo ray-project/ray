@@ -2430,8 +2430,6 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         state = self.__getstate__()
 
-        # TODO (sven): Move LearnerGroup `get_state` call here as well.
-
         # Extract policy states from worker state (Policies get their own
         # checkpoint sub-dirs).
         policy_states = {}
@@ -2476,7 +2474,8 @@ class Algorithm(Trainable, AlgorithmBase):
         # if we are using the learner API, save the learner group state
         if self.config._enable_new_api_stack:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.save_state(learner_state_dir)
+            os.makedirs(learner_state_dir, exist_ok=True)
+            learner_group_state = self.learner_group.get_state()
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:

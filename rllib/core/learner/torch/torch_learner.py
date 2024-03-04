@@ -158,30 +158,6 @@ class TorchLearner(Learner):
             optim.step()
 
     @override(Learner)
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the weights of the underlying MultiAgentRLModule"""
-        state = convert_to_torch_tensor(state, device=self._device)
-        return self._module.set_state(state)
-
-    @override(Learner)
-    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        optim_state = self.get_optimizer_state()
-        for name, state in optim_state.items():
-            torch.save(state, path / f"{name}.pt")
-
-    @override(Learner)
-    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        if not path.exists():
-            raise ValueError(f"Directory {path} does not exist.")
-        state = {}
-        for name in self._named_optimizers.keys():
-            state[name] = torch.load(path / f"{name}.pt")
-        self.set_optimizer_state(state)
-
-    @override(Learner)
     def get_optimizer_state(self) -> Dict[str, Any]:
         optimizer_name_state = {}
         for name, optim in self._named_optimizers.items():
@@ -233,7 +209,7 @@ class TorchLearner(Learner):
         )
 
         # we need to ddpify the module that was just added to the pool
-        module = self._module[module_id]
+        module = self.module[module_id]
 
         if self._torch_compile_forward_train:
             module.compile(self._torch_compile_cfg)
@@ -250,7 +226,7 @@ class TorchLearner(Learner):
             )
 
         if isinstance(module, TorchRLModule):
-            self._module[module_id].to(self._device)
+            self.module[module_id].to(self._device)
             if self.distributed:
                 if (
                     self._torch_compile_complete_update
@@ -261,7 +237,7 @@ class TorchLearner(Learner):
                         "together tested for now. Please disable "
                         "torch compile."
                     )
-                self._module.add_module(
+                self.module.add_module(
                     module_id, TorchDDPRLModule(module), override=True
                 )
 
@@ -335,13 +311,13 @@ class TorchLearner(Learner):
             )
         else:
             if self._torch_compile_forward_train:
-                if isinstance(self._module, TorchRLModule):
-                    self._module.compile(self._torch_compile_cfg)
-                elif isinstance(self._module, MultiAgentRLModule):
-                    for module in self._module._rl_modules.values():
+                if isinstance(self.module, TorchRLModule):
+                    self.module.compile(self._torch_compile_cfg)
+                elif isinstance(self.module, MultiAgentRLModule):
+                    for module in self.module._rl_modules.values():
                         # Compile only TorchRLModules, e.g. we don't want to compile
                         # a RandomRLModule.
-                        if isinstance(self._module, TorchRLModule):
+                        if isinstance(self.module, TorchRLModule):
                             module.compile(self._torch_compile_cfg)
                 else:
                     raise ValueError(
@@ -372,7 +348,7 @@ class TorchLearner(Learner):
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:
-        """Default logic for (maybe) making all Modules within self._module DDP."""
+        """Default logic for (maybe) making all Modules within self.module DDP."""
 
         # If the module is a MultiAgentRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
@@ -382,16 +358,16 @@ class TorchLearner(Learner):
         #  handle this.
         if self._distributed:
             # Single agent module: Convert to `TorchDDPRLModule`.
-            if isinstance(self._module, TorchRLModule):
-                self._module = TorchDDPRLModule(self._module)
+            if isinstance(self.module, TorchRLModule):
+                self._module = TorchDDPRLModule(self.module)
             # Multi agent module: Convert each submodule to `TorchDDPRLModule`.
             else:
-                assert isinstance(self._module, MultiAgentRLModule)
-                for key in self._module.keys():
-                    sub_module = self._module[key]
+                assert isinstance(self.module, MultiAgentRLModule)
+                for key in self.module.keys():
+                    sub_module = self.module[key]
                     if isinstance(sub_module, TorchRLModule):
-                        # Wrap and override the module ID key in self._module.
-                        self._module.add_module(
+                        # Wrap and override the module ID key in self.module.
+                        self.module.add_module(
                             key, TorchDDPRLModule(sub_module), override=True
                         )
 

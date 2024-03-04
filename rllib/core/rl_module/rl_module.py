@@ -702,7 +702,7 @@ class RLModule(abc.ABC):
         module_spec_class: Union[
             Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
         ],
-        additional_metadata: Optional[Mapping[str, Any]] = None,
+        additional_metadata: Optional[Dict[str, Any]] = None,
     ) -> Mapping[str, Any]:
         """Returns the metadata of the module.
 
