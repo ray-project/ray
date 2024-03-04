@@ -1,3 +1,4 @@
+import concurrent.futures
 import fnmatch
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -17,13 +18,6 @@ from ray.train._internal.storage import (
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 
 logger = logging.getLogger(__name__)
-
-
-_EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
-    "If this warning keeps showing up, consider diagnosing the "
-    "reason behind the hanging sync operation, or increase the "
-    "`sync_timeout` in `SyncConfig`."
-)
 
 
 def _find_newest_experiment_checkpoint(
@@ -144,11 +138,34 @@ class _ExperimentCheckpointManager:
         with out_of_band_serialize_dataset():
             save_fn()
 
-        _upload_to_fs_path(
-            local_path=driver_staging_path,
-            fs=self._storage.storage_filesystem,
-            fs_path=self._storage.experiment_fs_path,
-        )
+        def upload_experiment_state_to_storage():
+            _upload_to_fs_path(
+                local_path=driver_staging_path,
+                fs=self._storage.storage_filesystem,
+                fs_path=self._storage.experiment_fs_path,
+            )
+
+        # NOTE: This timeout is pretty arbitrarily set to be 2x the slow sync threshold.
+        # This timeout is okay since it's just catching the extreme case of a hanging
+        # upload operation.
+        # Saving + uploading the experiment state should take <1 second in most cases.
+        upload_timeout = self._slow_sync_threshold * 2
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(upload_experiment_state_to_storage)
+            try:
+                future.result(timeout=upload_timeout)
+            except concurrent.futures.TimeoutError:
+                logger.error(
+                    "Saving experiment state to storage timed out after "
+                    f"{upload_timeout} seconds. "
+                    "The experiment will continue trying to save the state. "
+                    "If this warning keeps showing up, you should diagnose "
+                    "the reason causing the upload operation to storage to hang."
+                )
+            except Exception:
+                logger.exception(
+                    "Saving experiment state to storage failed with exception: "
+                )
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
