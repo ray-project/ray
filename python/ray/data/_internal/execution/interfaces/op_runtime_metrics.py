@@ -123,7 +123,7 @@ class OpRuntimeMetrics:
 
     # Time operator spent in task submission backpressure
     task_submission_backpressure_time: float = field(
-        default=0, metadata={"export": False}
+        default=0, metadata={"export_metric": True}
     )
 
     def __init__(self, op: "PhysicalOperator"):
