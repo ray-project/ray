@@ -447,6 +447,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
                     len(deployment.replicas)
                     == deployment.deployment_config.num_replicas
                 )
+                assert len(deployment.replicas) == deployment.target_num_replicas
 
             for replica in deployment.replicas:
                 assert replica.state == ReplicaState.RUNNING

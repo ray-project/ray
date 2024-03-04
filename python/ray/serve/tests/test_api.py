@@ -335,41 +335,6 @@ def test_run_get_ingress_node(serve_instance):
     assert handle.remote().result() == "got f"
 
 
-class TestSetOptions:
-    def test_set_options_basic(self):
-        @serve.deployment(
-            num_replicas=4,
-            max_concurrent_queries=3,
-            ray_actor_options={"num_cpus": 2},
-            health_check_timeout_s=17,
-        )
-        def f():
-            pass
-
-        f.set_options(
-            num_replicas=9,
-            version="efgh",
-            ray_actor_options={"num_gpus": 3},
-        )
-
-        assert f.num_replicas == 9
-        assert f.max_concurrent_queries == 3
-        assert f.version == "efgh"
-        assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
-        assert f._deployment_config.health_check_timeout_s == 17
-
-    def test_set_options_validation(self):
-        @serve.deployment
-        def f():
-            pass
-
-        with pytest.raises(TypeError):
-            f.set_options(init_args=-4)
-
-        with pytest.raises(ValueError):
-            f.set_options(max_concurrent_queries=-4)
-
-
 def test_deploy_application_basic(serve_instance):
     """Test deploy multiple applications"""
 
@@ -458,7 +423,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(g.bind())
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("g", SERVE_DEFAULT_APP_NAME) in deployment_info
+    assert DeploymentID(name="g") in deployment_info
 
     @serve.deployment
     def f():
@@ -466,7 +431,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(f.bind(), route_prefix="/f", name="app1")
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("f", "app1") in deployment_info
+    assert DeploymentID(name="f", app_name="app1") in deployment_info
 
 
 def test_deploy_application_with_same_name(serve_instance):
@@ -483,7 +448,7 @@ def test_deploy_application_with_same_name(serve_instance):
     assert handle.remote().result() == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("Model", "app") in deployment_info
+    assert DeploymentID(name="Model", app_name="app") in deployment_info
 
     # After deploying a new app with the same name, no Model replicas should be running
     @serve.deployment
@@ -495,10 +460,10 @@ def test_deploy_application_with_same_name(serve_instance):
     assert handle.remote().result() == "got model1"
     assert requests.get("http://127.0.0.1:8000/").text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert DeploymentID("Model1", "app") in deployment_info
+    assert DeploymentID(name="Model1", app_name="app") in deployment_info
     assert (
-        DeploymentID("Model", "app") not in deployment_info
-        or deployment_info[DeploymentID("Model", "app")] == []
+        DeploymentID(name="Model", app_name="app") not in deployment_info
+        or deployment_info[DeploymentID(name="Model", app_name="app")] == []
     )
 
     # Redeploy with same app to update route prefix

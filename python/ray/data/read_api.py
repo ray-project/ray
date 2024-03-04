@@ -78,6 +78,7 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.tfrecords_datasource import TFXReadOptions
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -1580,10 +1581,19 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    tfx_read_options: Optional[TFXReadOptions] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
+
+    .. info:
+        Using tfx-bsl for reading tfrecord files is prefered, When reading large
+        datasets in production use cases. To use this implementation you should
+        install tfx-bsl with:
+            1. `pip install tfx_bsl --no-dependencies`
+            2. Pass tfx_read_options to read_tfrecords, for example:
+                `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -1654,13 +1664,33 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        tfx_read_options: Specifies read options when reading TFRecord files with TFX.
+            When no options are provided, the default version without tfx-bsl will
+            be used to read the tfrecords.
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
+    import platform
+
+    tfx_read = False
+
+    if tfx_read_options and platform.processor() != "arm":
+        try:
+            import tfx_bsl  # noqa: F401
+
+            tfx_read = True
+        except ModuleNotFoundError:
+            # override the tfx_read_options given that tfx-bsl is not installed
+            tfx_read_options = None
+            logger.warning(
+                "Please install tfx-bsl package with"
+                " `pip install tfx_bsl --no-dependencies`."
+                " This can help speed up the reading of large TFRecord files."
+            )
+
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
             TFRecordDatasource._FILE_EXTENSIONS
@@ -1677,13 +1707,26 @@ def read_tfrecords(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        tfx_read_options=tfx_read_options,
     )
-    return read_datasource(
+    ds = read_datasource(
         datasource,
         parallelism=parallelism,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+    if (
+        tfx_read_options
+        and tfx_read_options.auto_infer_schema
+        and tfx_read
+        and not tf_schema
+    ):
+        from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
+
+        return _infer_schema_and_transform(ds)
+
+    return ds
 
 
 @PublicAPI(stability="alpha")
