@@ -1670,7 +1670,7 @@ class Learner:
         """Returns a framework-specific tensor variable with the initial given value.
 
         This is a framework specific method that should be implemented by the
-        framework specific sub-class.
+        framework specific sub-classes.
 
         Args:
             value: The initial value for the tensor variable variable.
@@ -1706,12 +1706,3 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
-
-    @Deprecated(
-        help="Use `config` (AlgorithmConfig) everywhere where you would have used "
-        "Learner.hps instead.",
-        error=True,
-    )
-    @property
-    def hps(self):
-        pass
