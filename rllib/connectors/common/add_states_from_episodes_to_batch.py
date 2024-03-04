@@ -218,7 +218,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         column_data[key] = split_and_zero_pad_list(
                             item_list, T=self.max_seq_len
                         )
-                    else:
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -364,10 +363,12 @@ def split_and_zero_pad_list(item_list, T: int):
             current_t += 1
 
         if current_t == T:
-            ret.append(batch(
-                current_time_row,
-                individual_items_already_have_batch_dim="auto",
-            ))
+            ret.append(
+                batch(
+                    current_time_row,
+                    individual_items_already_have_batch_dim="auto",
+                )
+            )
             current_time_row = []
             current_t = 0
 
