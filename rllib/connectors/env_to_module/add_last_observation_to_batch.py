@@ -6,10 +6,11 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
-class AddObservationsFromEpisodesToBatch(ConnectorV2):
+class AddLastObservationToBatch(ConnectorV2):
     """Gets the last observation from a running episode and adds it to the batch.
 
     - Operates on a list of Episode objects.
@@ -23,7 +24,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         import gymnasium as gym
         import numpy as np
 
-        from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch
+        from ray.rllib.connectors.env_to_module import AddLastObservationToBatch
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
@@ -33,6 +34,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         act_space = gym.spaces.Discrete(2)
 
         episodes = [SingleAgentEpisode(
+            observation_space=obs_space,
             observations=[obs_space.sample(), obs_space.sample()],
             actions=[act_space.sample()],
             rewards=[1.0],
@@ -43,8 +45,8 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         print(f"1st Episode's last obs is {eps_1_last_obs}")
         print(f"2nd Episode's last obs is {eps_2_last_obs}")
 
-        # Create an instance of this class.
-        connector = AddObservationsFromEpisodesToBatch()
+        # Create an instance of this class, providing the obs- and action spaces.
+        connector = AddLastObservationToBatch(obs_space, act_space)
 
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
@@ -56,17 +58,8 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
             explore=True,
             shared_data={},
         )
-        # The output data should now contain the last observations of both episodes,
-        # in a "per-episode organized" fashion.
-        check(
-            output_data,
-            {
-                "obs": {
-                    (episodes[0].id_,): [eps_1_last_obs],
-                    (episodes[1].id_,): [eps_2_last_obs],
-                },
-            },
-        )
+        # The output data should now contain the last observations of both episodes.
+        check(output_data, {"obs": [eps_1_last_obs, eps_2_last_obs]})
     """
 
     def __init__(
@@ -77,13 +70,11 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a AddObservationsFromEpisodesToBatch instance.
+        """Initializes a AddLastObservationToBatchConnector instance.
 
         Args:
             as_learner_connector: Whether this connector is part of a Learner connector
-                pipeline, as opposed to a env-to-module pipeline. As a Learner
-                connector, it will add an entire Episode's observations (each timestep)
-                to the batch.
+                pipeline, as opposed to a env-to-module pipeline.
         """
         super().__init__(
             input_observation_space=input_observation_space,
@@ -104,34 +95,23 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # If "obs" already in data, early out.
-        if SampleBatch.OBS in data:
-            return data
-
-        for sa_episode in self.single_agent_episode_iterator(
-            episodes,
-            # If Learner connector, get all episodes (for train batch).
-            # If EnvToModule, get only those ongoing episodes that just had their
-            # agent step (b/c those are the ones we need to compute actions for next).
-            agents_that_stepped_only=not self._as_learner_connector,
-        ):
+        for sa_episode in self.single_agent_episode_iterator(episodes):
             if self._as_learner_connector:
-                self.add_n_batch_items(
+                prev_n_o = []
+                for ts in range(len(sa_episode)):
+                    prev_n_o.append(sa_episode.get_observations(indices=ts, fill=0.0))
+                self.add_batch_item(
                     data,
                     SampleBatch.OBS,
-                    items_to_add=[
-                        sa_episode.get_observations(indices=ts)
-                        for ts in range(len(sa_episode))
-                    ],
-                    num_items=len(sa_episode),
-                    single_agent_episode=sa_episode,
+                    batch(prev_n_o),
+                    sa_episode,
                 )
             else:
                 assert not sa_episode.is_finalized
                 self.add_batch_item(
                     data,
                     SampleBatch.OBS,
-                    item_to_add=sa_episode.get_observations(-1),
-                    single_agent_episode=sa_episode,
+                    sa_episode.get_observations(indices=-1, fill=0.0),
+                    sa_episode,
                 )
         return data

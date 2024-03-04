@@ -2,7 +2,7 @@ import functools
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
+    AddLastObservationToBatch,
     FlattenObservations,
     PrevActionsPrevRewardsConnector,
     WriteObservationsToEpisodes,
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     def _env_to_module(env):
         # Create the env-to-module connector pipeline.
         return [
-            AddObservationsFromEpisodesToBatch(),
+            AddLastObservationToBatch(),
             PrevActionsPrevRewardsConnector(
                 multi_agent=args.num_agents > 0,
                 n_prev_rewards=args.n_prev_rewards,
@@ -88,7 +88,6 @@ if __name__ == "__main__":
             model=dict(
                 {
                     "use_lstm": True,
-                    "max_seq_len": 50,
                     "fcnet_hiddens": [32],
                     "fcnet_activation": "linear",
                     "vf_share_layers": True,

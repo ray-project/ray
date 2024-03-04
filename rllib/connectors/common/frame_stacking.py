@@ -13,7 +13,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class _FrameStacking(ConnectorV2):
+class _FrameStackingConnector(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
     @override(ConnectorV2)
@@ -44,6 +44,11 @@ class _FrameStacking(ConnectorV2):
                 observation) for the RLModule's forward pass.
             multi_agent: Whether this is a connector operating on a multi-agent
                 observation space mapping AgentIDs to individual agents' observations.
+            # as_preprocessor: Whether this connector should simply postprocess the
+            #    received observations from the env and store these directly in the
+            #    episode object. In this mode, the connector can only be used in
+            #    an `EnvToModulePipeline` and it will act as a classic
+            #    RLlib framestacking postprocessor.
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to an env-to-module pipeline.
         """
@@ -70,9 +75,7 @@ class _FrameStacking(ConnectorV2):
     ) -> Any:
         # Learner connector pipeline. Episodes have been finalized/numpy'ized.
         if self._as_learner_connector:
-            for sa_episode in self.single_agent_episode_iterator(
-                episodes, agents_that_stepped_only=False
-            ):
+            for sa_episode in self.single_agent_episode_iterator(episodes):
 
                 def _map_fn(s):
                     # Squeeze out last dim.

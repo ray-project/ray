@@ -206,10 +206,6 @@ class MultiAgentRLModule(RLModule):
             for module_id, module in self._rl_modules.items()
         ]
 
-    def __contains__(self, item) -> bool:
-        """Returns whether the given `item` (ModuleID) is present in self."""
-        return item in self._rl_modules
-
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.
 
