@@ -2,21 +2,18 @@ import glob
 import json
 import numpy as np
 import os
-import random
 import shutil
 import tempfile
 import unittest
 
 import ray
 from ray.tune.registry import (
-    register_env,
     register_input,
     registry_get_input,
     registry_contains_input,
 )
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import (
     IOContext,
     JsonWriter,
