@@ -487,7 +487,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         self._configs = BASE_READONLY_CONFIG
         self._gcs_client = GcsClient(address=gcs_address)
 
-    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
+    def refresh_cached_autoscaling_config(self) -> AutoscalingConfig:
         # Update the config with node types from GCS.
         ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
@@ -515,4 +515,5 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         # Don't idle terminated nodes in read-only mode.
         self._configs.pop("idle_timeout_minutes", None)
 
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         return AutoscalingConfig(self._configs, skip_content_hash=True)
