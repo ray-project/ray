@@ -376,6 +376,8 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
             k8s_api_client=self.mock_client,
         )
+    
+    def test_get_nodes(self);
         nodes = self.provider.get_non_terminated()
         errors = self.provider.poll_errors()
 

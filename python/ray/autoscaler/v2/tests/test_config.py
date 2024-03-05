@@ -172,6 +172,7 @@ def test_read_config():
             f.write(default_file.read())
 
     # Still the same.
+    assert config_reader.get_cached_autoscaling_config().provider == Provider.AWS
 
     # Reload
     config_reader.refresh_cached_autoscaling_config()

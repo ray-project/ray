@@ -58,6 +58,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             cluster_name: The name of the RayCluster resource.
             namespace: The namespace of the RayCluster resource.
             k8s_api_client: The client to the Kubernetes API server.
+                This could be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]

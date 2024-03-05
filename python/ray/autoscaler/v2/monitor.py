@@ -51,12 +51,12 @@ class AutoscalerMonitor:
 
     def __init__(
         self,
-        gcs_address: str,
+        address: str,
         config_reader: IConfigReader,
         log_dir: str = None,
         monitor_ip: str = None,
     ):
-        self.gcs_address = gcs_address
+        self.gcs_address = address
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)

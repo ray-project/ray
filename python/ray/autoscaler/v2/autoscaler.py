@@ -62,7 +62,6 @@ class Autoscaler:
         config = config_reader.get_cached_autoscaling_config()
         logger.info(f"Using Autoscaling Config: \n{config.dump()}")
 
-
         self._gcs_client = gcs_client
         self._cloud_instance_provider = None
         self._instance_manager = None
@@ -182,9 +181,6 @@ class Autoscaler:
             # Refresh the config from the source
             self._config_reader.refresh_cached_autoscaling_config()
             autoscaling_config = self._config_reader.get_cached_autoscaling_config()
-
-            # Refresh the config from the source
-            self._config_reader.read_from_source()
 
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,
