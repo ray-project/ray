@@ -27,7 +27,7 @@ import numpy as np
 import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-from ray.data.context import WARN_PREFIX, DataContext
+from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
     import pandas
@@ -156,6 +156,16 @@ def _autodetect_parallelism(
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
+
+        if (
+            ctx.min_parallelism is not None
+            and ctx.min_parallelism != DEFAULT_READ_OP_MIN_NUM_BLOCKS
+        ):
+            logger.warning(
+                "``DataContext.min_parallelism`` is deprecated in Ray 2.10. "
+                "Please specify ``DataContext.read_op_min_num_blocks`` instead."
+            )
+
         # Start with 2x the number of cores as a baseline, with a min floor.
         if placement_group is None:
             placement_group = ray.util.get_current_placement_group()
