@@ -163,7 +163,7 @@ def check_deployment_status(name, expected_status) -> DeploymentStatus:
     return True
 
 
-def get_num_running_replicas(
+def get_num_alive_replicas(
     deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> int:
     """Get the replicas currently running for the given deployment."""
@@ -183,7 +183,7 @@ def check_num_replicas_gte(
 ) -> int:
     """Check if num replicas is >= target."""
 
-    assert get_num_running_replicas(name, app_name) >= target
+    assert get_num_alive_replicas(name, app_name) >= target
     return True
 
 
@@ -192,7 +192,7 @@ def check_num_replicas_eq(
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_running_replicas(name, app_name) == target
+    assert get_num_alive_replicas(name, app_name) == target
     return True
 
 
@@ -201,7 +201,7 @@ def check_num_replicas_lte(
 ) -> int:
     """Check if num replicas is <= target."""
 
-    assert get_num_running_replicas(name, app_name) <= target
+    assert get_num_alive_replicas(name, app_name) <= target
     return True
 
 
