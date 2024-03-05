@@ -187,6 +187,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* UDF time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
@@ -226,6 +227,7 @@ def test_large_args_scheduling_strategy(
         f"Operator N ReadRange: {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
         f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -235,6 +237,7 @@ def test_large_args_scheduling_strategy(
         f"Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
         f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -272,6 +275,7 @@ def test_dataset_stats_basic(
                 f"{EXECUTION_STRING}\n"
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
+                f"* UDF time: T min, T max, T mean, T total\n"
                 f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -288,6 +292,7 @@ def test_dataset_stats_basic(
                 f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
+                f"* UDF time: T min, T max, T mean, T total\n"
                 f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -304,6 +309,7 @@ def test_dataset_stats_basic(
         f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
         f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -313,6 +319,7 @@ def test_dataset_stats_basic(
         f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
         f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -345,6 +352,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
         f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -555,6 +563,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     Suboperator Z ReadRange->RandomShuffleMap: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
+    * UDF time: T min, T max, T mean, T total
     * Peak heap memory usage (MiB): N min, N max, N mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
@@ -564,6 +573,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     Suboperator N RandomShuffleReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
+    * UDF time: T min, T max, T mean, T total
     * Peak heap memory usage (MiB): N min, N max, N mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
@@ -575,6 +585,7 @@ Operator N Repartition: executed in T
     Suboperator Z RepartitionMap: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
+    * UDF time: T min, T max, T mean, T total
     * Peak heap memory usage (MiB): N min, N max, N mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
@@ -584,6 +595,7 @@ Operator N Repartition: executed in T
     Suboperator N RepartitionReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
+    * UDF time: T min, T max, T mean, T total
     * Peak heap memory usage (MiB): N min, N max, N mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
@@ -637,6 +649,7 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
         f"Operator N ReadParquet->Map(<lambda>): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
         f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -656,6 +669,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"Operator N ReadRange->Map(<lambda>): {EXECUTION_STRING}\n"
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* UDF time: T min, T max, T mean, T total\n"
             f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -665,6 +679,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"Operator N Split: {EXECUTION_STRING}\n"
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* UDF time: T min, T max, T mean, T total\n"
             f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -674,6 +689,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"Operator N Map(<lambda>): {EXECUTION_STRING}\n"
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
+            f"* UDF time: T min, T max, T mean, T total\n"
             f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
@@ -762,12 +778,21 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
         == summarized_lines[2]
     )
     assert (
+        "* UDF time: {}s min, {}s max, {}s mean, {}s total".format(
+            min(block_params["udf_time"]),
+            max(block_params["udf_time"]),
+            np.mean(block_params["udf_time"]),
+            sum(block_params["udf_time"]),
+        )
+        == summarized_lines[3]
+    )
+    assert (
         "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
             min(block_params["max_rss_bytes"]) / (1024 * 1024),
             max(block_params["max_rss_bytes"]) / (1024 * 1024),
             int(np.mean(block_params["max_rss_bytes"]) / (1024 * 1024)),
         )
-        == summarized_lines[3]
+        == summarized_lines[4]
     )
     assert (
         "* Output num rows per block: {} min, {} max, {} mean, {} total".format(
@@ -776,7 +801,7 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
             int(np.mean(block_params["num_rows"])),
             sum(block_params["num_rows"]),
         )
-        == summarized_lines[4]
+        == summarized_lines[5]
     )
     assert (
         "* Output size bytes per block: {} min, {} max, {} mean, {} total".format(
@@ -785,7 +810,7 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
             int(np.mean(block_params["size_bytes"])),
             sum(block_params["size_bytes"]),
         )
-        == summarized_lines[5]
+        == summarized_lines[6]
     )
 
     assert (
@@ -795,7 +820,7 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
             int(np.mean(list(block_params["num_rows"]))),
             len(set(block_params["task_idx"])),
         )
-        == summarized_lines[6]
+        == summarized_lines[7]
     )
 
     node_counts = Counter(block_params["node_id"])
@@ -806,7 +831,7 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
             int(np.mean(list(node_counts.values()))),
             len(node_counts),
         )
-        == summarized_lines[7]
+        == summarized_lines[8]
     )
 
 
@@ -847,6 +872,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
         == f"""Operator N ReadRange->Map(<lambda>): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* UDF time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
@@ -876,6 +902,7 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
         == f"""Operator N ReadRange->Write: {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* UDF time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
@@ -895,6 +922,7 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
         == f"""Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* UDF time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
@@ -904,6 +932,7 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 Operator N Write: {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
+* UDF time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
@@ -969,6 +998,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
         f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"

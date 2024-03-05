@@ -1575,6 +1575,8 @@ class Reconciler:
             cloud_instance_ids_managed_by_im,
             version,
         ) = _get_cloud_instance_ids_managed_by_im_and_version()
+        instances, version = Reconciler._get_im_instances(instance_manager)
+
         # Find the extra cloud instances that are not managed by the instance manager.
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
