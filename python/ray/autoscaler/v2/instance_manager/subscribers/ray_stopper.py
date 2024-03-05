@@ -69,7 +69,7 @@ class RayStopper(InstanceUpdatedSubscriber):
         if termination_request.cause == TerminationRequest.Cause.IDLE:
             reason = DrainNodeReason.DRAIN_NODE_REASON_IDLE_TERMINATION
             reason_str = "Termination of node that's idle for {} seconds.".format(
-                termination_request.idle_time_ms / 1000
+                termination_request.idle_duration_ms / 1000
             )
             self._drain_ray_node(
                 self._gcs_client,

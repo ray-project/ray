@@ -7,6 +7,8 @@ import string
 import sys
 import time
 from contextlib import redirect_stderr
+from pathlib import Path
+from typing import List, Tuple
 from unittest.mock import patch
 
 import pytest
@@ -22,11 +24,23 @@ from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NA
 from ray.serve._private.logging_utils import (
     ServeFormatter,
     ServeJSONFormatter,
+    StreamToLogger,
     configure_component_logger,
     get_component_log_file_name,
     get_serve_logs_dir,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
+
+
+class FakeLogger:
+    def __init__(self):
+        self._logs: List[Tuple[int, str]] = []
+
+    def log(self, level: int, message: str, stacklevel: int = 1):
+        self._logs.append((level, message))
+
+    def get_logs(self):
+        return self._logs
 
 
 @pytest.fixture
@@ -292,6 +306,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             user_method_log_regex = (
                 f'.*"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
+                f'"component_name": "replica", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
                 f'"application": "{resp["app_name"]}", "message":.* user func.*'
@@ -299,6 +314,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             user_class_method_log_regex = (
                 f'.*"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
+                f'"component_name": "replica", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '
                 f'"application": "{resp2["app_name"]}", "message":.* user log '
@@ -640,6 +656,111 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
 
         # Clean up logger handlers
         logger.handlers.clear()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_LOG_TO_STDERR": "0"},
+    ],
+    indirect=True,
+)
+def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
+    """Test logging when RAY_SERVE_LOG_TO_STDERR is set.
+
+    When RAY_SERVE_LOG_TO_STDERR=0 is set, serve should redirect stdout and stderr to
+    serve logger.
+    """
+    logs_dir = Path(tmp_dir)
+    logging_config = LoggingConfig(encoding="JSON", logs_dir=str(logs_dir))
+    serve_logger = logging.getLogger("ray.serve")
+
+    @serve.deployment(logging_config=logging_config)
+    def disable_stdout():
+        serve_logger.info("from_serve_logger")
+        print("from_print")
+        sys.stdout.write("direct_from_stdout\n")
+        sys.stderr.write("direct_from_stderr\n")
+        print("this\nis\nmultiline\nlog\n")
+        raise RuntimeError("from_error")
+
+    app = disable_stdout.bind()
+    serve.run(app)
+    requests.get("http://127.0.0.1:8000")
+
+    def contain_logging_prefix(message: str, from_replica: bool = False) -> bool:
+        logging_prefix = r"^test_logging.py:" if not from_replica else r"^replica.py:"
+        return len(re.findall(logging_prefix, message)) == 1
+
+    # Check if each of the logs exist in Serve's log files.
+    from_serve_logger_check = False
+    from_print_check = False
+    from_error_check = False
+    direct_from_stdout = False
+    direct_from_stderr = False
+    multiline_log = False
+    for log_file in os.listdir(logs_dir):
+        if log_file.startswith("replica_default_disable_stdout"):
+            with open(logs_dir / log_file) as f:
+                for line in f:
+                    structured_log = json.loads(line)
+                    _message = structured_log["message"]
+                    if "from_serve_logger" in _message and contain_logging_prefix(
+                        _message
+                    ):
+                        from_serve_logger_check = True
+                    elif "from_print" in _message and contain_logging_prefix(_message):
+                        from_print_check = True
+
+                    # Error was logged from replica directly.
+                    elif "from_error" in _message and contain_logging_prefix(
+                        _message, from_replica=True
+                    ):
+                        from_error_check = True
+                    elif "direct_from_stdout" in _message and contain_logging_prefix(
+                        _message
+                    ):
+                        direct_from_stdout = True
+                    elif "direct_from_stderr" in _message and contain_logging_prefix(
+                        _message
+                    ):
+                        direct_from_stderr = True
+                    elif (
+                        "this\nis\nmultiline\nlog\n" in _message
+                        and contain_logging_prefix(_message)
+                    ):
+                        multiline_log = True
+    assert from_serve_logger_check
+    assert from_print_check
+    assert from_error_check
+    assert direct_from_stdout
+    assert direct_from_stderr
+    assert multiline_log
+
+
+def test_stream_to_logger():
+    """Test calling methods on StreamToLogger."""
+    logger = FakeLogger()
+    stream_to_logger = StreamToLogger(logger, logging.INFO)
+    assert logger.get_logs() == []
+
+    # Calling isatty() should return True.
+    assert stream_to_logger.isatty() is True
+
+    # Logs are buffered and not flushed to logger.
+    stream_to_logger.write("foo")
+    assert logger.get_logs() == []
+
+    # Logs are flushed when the message ends with newline "\n".
+    stream_to_logger.write("bar\n")
+    assert logger.get_logs() == [(20, "foobar")]
+
+    # Calling flush directly can also flush the message to the logger.
+    stream_to_logger.write("baz")
+    assert logger.get_logs() == [(20, "foobar")]
+    stream_to_logger.flush()
+    assert logger.get_logs() == [(20, "foobar"), (20, "baz")]
 
 
 if __name__ == "__main__":

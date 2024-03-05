@@ -66,7 +66,8 @@ Usually, transforms are fused together and with the upstream read task.
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For more information on transforming data, see
+For the preceding example, each read task generates one output block. In the case where the read input file
+is large, a single read task may output multiple blocks. For more information on transforming data, see
 :ref:`Transforming data <transforming_data>`.
 
 Shuffling data
@@ -130,7 +131,7 @@ Ray Data execution by default is:
 - **Lazy**: This means that transformations on Dataset aren't executed until you call a
   consumption operation like :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`
   or :meth:`Dataset.materialize() <ray.data.Dataset.materialize>`. This creates
-  opportunities for optimizing the execution plan like :ref:`stage fusion <datasets_stage_fusion>`.
+  opportunities for optimizing the execution plan like :ref:`operator fusion <datasets_operator_fusion>`.
 - **Streaming**: This means that Dataset transformations are executed in a
   streaming way, incrementally on the base data, instead of on all of the data
   at once, and overlapping the execution of operations. This can be used for streaming
@@ -143,8 +144,8 @@ Ray Data execution by default is:
 Lazy Execution
 --------------
 
-Lazy execution offers opportunities for improved performance and memory stability due
-to stage fusion optimizations and aggressive garbage collection of intermediate results.
+Lazy execution offers opportunities for improved performance and memory stability, thanks to
+optimizations such as operator fusion and aggressive garbage collection of intermediate results.
 
 Dataset creation and transformation APIs are lazy, with execution only triggered by "sink"
 APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
@@ -194,7 +195,7 @@ The following code is a hello world example which invokes the execution with
    ):
        pass
 
-This launches a simple 4-stage pipeline. The example uses different compute arguments for each stage, which forces them to be run as separate operators instead of getting fused together. You should see a log message indicating streaming execution is being used:
+This launches a simple 4-operator Dataset. The example uses different compute arguments for each operator, which forces them to be run as separate operators instead of getting fused together. You should see a log message indicating streaming execution is being used:
 
 .. code-block::
 
@@ -219,7 +220,7 @@ These lines are only shown when verbose progress reporting is enabled. The `acti
 
 .. tip::
 
-    Avoid returning large outputs from the final operation of a pipeline you are iterating over, since the consumer process is a serial bottleneck.
+    Avoid returning large outputs from the final operation of a Dataset you are iterating over, since the consumer process is a serial bottleneck.
 
 Fault tolerance
 ---------------
@@ -233,28 +234,28 @@ system failure occurs, Ray Data recreates blocks by re-executing tasks.
     :class:`~ray.data.Dataset` dies.
 
 
-.. _datasets_stage_fusion:
+.. _datasets_operator_fusion:
 
-Stage Fusion Optimization
--------------------------
+Operator Fusion Optimization
+----------------------------
 
 In order to reduce memory usage and task overheads, Ray Data automatically fuses together
-lazy operations that are compatible:
+compatible operators which share the same compute pattern and strategy:
 
 * Same compute pattern: embarrassingly parallel map vs. all-to-all shuffle
 * Same compute strategy: Ray tasks vs Ray actors
 * Same resource specification, for example, ``num_cpus`` or ``num_gpus`` requests
 
-Read stages and subsequent map-like transformations are usually fused together.
+Read operators and subsequent map-like transformations are usually fused together.
 All-to-all transformations such as
 :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>` can be fused with earlier
-map-like stages, but not later stages.
+map-like operators, but not later operators.
 
-You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused stages (for example, ``read->map_batches``).
+You can tell if operator fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused operators (for example, ``Read->MapBatches``).
 
 .. code-block::
 
-    Stage N read->map_batches->shuffle_map: N tasks executed, N blocks produced in T
+    Operator N Read->MapBatches->RandomShuffleMap: N tasks executed, N blocks produced in T
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * Output num rows: N min, N max, N mean, N total

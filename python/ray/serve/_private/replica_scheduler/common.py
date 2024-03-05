@@ -60,7 +60,7 @@ class ReplicaWrapper(ABC):
         pass
 
     @property
-    def max_concurrent_requests(self) -> int:
+    def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
         pass
 
@@ -119,8 +119,8 @@ class ActorReplicaWrapper:
         return self._multiplexed_model_ids
 
     @property
-    def max_concurrent_requests(self) -> int:
-        return self._replica_info.max_concurrent_queries
+    def max_ongoing_requests(self) -> int:
+        return self._replica_info.max_ongoing_requests
 
     @property
     def is_cross_language(self) -> bool:

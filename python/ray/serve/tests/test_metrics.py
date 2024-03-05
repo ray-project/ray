@@ -1076,7 +1076,7 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=1,
+        max_ongoing_requests=1,
     )
     async def hang_on_first_request():
         await signal.wait.remote()

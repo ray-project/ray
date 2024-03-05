@@ -92,7 +92,7 @@ class FakeReplica(ReplicaWrapper):
 
 
 class FakeReplicaScheduler(ReplicaScheduler):
-    def __init__(self, **kwargs):
+    def __init__(self):
         self._block_requests = False
         self._blocked_requests: List[asyncio.Event] = []
         self._replica_to_return: Optional[FakeReplica] = None
@@ -158,6 +158,7 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
     if not hasattr(request, "param"):
         request.param = {}
 
+    fake_replica_scheduler = FakeReplicaScheduler()
     router = Router(
         # TODO(edoakes): refactor to make a better fake controller or not depend on it.
         controller_handle=Mock(),
@@ -169,13 +170,13 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
         event_loop=get_or_create_event_loop(),
         _prefer_local_node_routing=False,
         # TODO(edoakes): just pass a class instance here.
-        _router_cls="ray.serve.tests.unit.test_router.FakeReplicaScheduler",
         enable_queue_len_cache=request.param.get("enable_queue_len_cache", False),
-        enable_strict_max_concurrent_queries=request.param.get(
-            "enable_strict_max_concurrent_queries", False
+        enable_strict_max_ongoing_requests=request.param.get(
+            "enable_strict_max_ongoing_requests", False
         ),
+        replica_scheduler=fake_replica_scheduler,
     )
-    return router, router._replica_scheduler
+    return router, fake_replica_scheduler
 
 
 @pytest.mark.asyncio
@@ -205,11 +206,11 @@ class TestAssignRequest:
         "setup_router",
         [
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": False,
             },
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": True,
             },
         ],
@@ -248,11 +249,11 @@ class TestAssignRequest:
         "setup_router",
         [
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": False,
             },
             {
-                "enable_strict_max_concurrent_queries": True,
+                "enable_strict_max_ongoing_requests": True,
                 "enable_queue_len_cache": True,
             },
         ],
@@ -300,9 +301,7 @@ class TestAssignRequest:
 
     @pytest.mark.parametrize(
         "setup_router",
-        [
-            {"enable_strict_max_concurrent_queries": True},
-        ],
+        [{"enable_strict_max_ongoing_requests": True}],
         indirect=True,
     )
     async def test_cross_lang_no_rejection(
@@ -504,7 +503,7 @@ def running_replica_info(replica_id: str) -> RunningReplicaInfo:
         node_id="node_id",
         availability_zone="some-az",
         actor_handle=Mock(),
-        max_concurrent_queries=1,
+        max_ongoing_requests=1,
     )
 
 
@@ -513,7 +512,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -534,7 +532,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -557,7 +554,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -605,7 +601,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
@@ -642,7 +637,6 @@ class TestRouterMetricsManager:
             metrics_manager = RouterMetricsManager(
                 deployment_id,
                 handle_id,
-                get_or_create_event_loop(),
                 mock_controller_handle,
                 FakeCounter(tag_keys=("deployment", "route", "application")),
                 FakeGauge(tag_keys=("deployment", "application")),
@@ -680,7 +674,6 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
             Mock(),
             FakeCounter(tag_keys=("deployment", "route", "application")),
             FakeGauge(tag_keys=("deployment", "application")),
