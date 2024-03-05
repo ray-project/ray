@@ -1034,6 +1034,8 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
+            # The head could be None if there's no head node being reported yet
+            # from the ray cluster.
             nodes[num_to_terminate:] + ([head_node] if head_node else []),
         )
 

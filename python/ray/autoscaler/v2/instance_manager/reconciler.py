@@ -300,7 +300,7 @@ class Reconciler:
         )
 
         Reconciler._handle_extra_cloud_instances(
-            instance_manager, non_terminated_cloud_instances
+            instance_manager, non_terminated_cloud_instances, ray_nodes
         )
 
         Reconciler._handle_ray_status_transition(instance_manager, ray_nodes)
@@ -1144,6 +1144,12 @@ class Reconciler:
         If we scale up the cluster before head node is running,
         it would cause issues when launching the worker nodes.
 
+        There are corner cases when the GCS is up (so the ray cluster resource
+        state is retrievable from the GCS), but the head node's raylet is not
+        running so the head node is missing from the reported nodes. This happens
+        when the head node is still starting up, or the raylet is not running
+        due to some issues, and this would yield false.
+
         Args:
             instance_manager: The instance manager to reconcile.
 
@@ -1559,6 +1565,7 @@ class Reconciler:
     def _handle_extra_cloud_instances(
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        ray_nodes: List[NodeState],
     ):
         """
         For extra cloud instances (i.e. cloud instances that are non terminated as
@@ -1576,13 +1583,18 @@ class Reconciler:
                b. Worker nodes that's started by the cloud provider upon users'
                actions: i.e. KubeRay scaling up the cluster with ray cluster config
                change.
+            3. Ray nodes with cloud instance id not in the cloud provider. This could
+            happen if there's delay in the Ray's state (i.e. cloud instance already
+            terminated, but the ray node is still not dead yet).
 
         Args:
             instance_manager: The instance manager to reconcile.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
+            ray_nodes: The ray cluster's states of ray nodes.
         """
         instances, version = Reconciler._get_im_instances(instance_manager)
+        updates = {}
 
         cloud_instance_ids_managed_by_im = {
             instance.cloud_instance_id
@@ -1590,20 +1602,10 @@ class Reconciler:
             if instance.cloud_instance_id
         }
 
-        extra_cloud_instances: Dict[str, CloudInstance] = {}
+        # Find the extra cloud instances that are not managed by the instance manager.
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
                 continue
-
-            extra_cloud_instances[cloud_instance_id] = cloud_instance
-
-        if not extra_cloud_instances:
-            return
-
-        # Update the IM with TERMINATING status for the leaked cloud instances.
-        updates = {}
-
-        for cloud_instance_id, cloud_instance in extra_cloud_instances.items():
             updates[cloud_instance_id] = IMInstanceUpdateEvent(
                 instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
                 cloud_instance_id=cloud_instance_id,
@@ -1611,6 +1613,32 @@ class Reconciler:
                 node_kind=cloud_instance.node_kind,
                 instance_type=cloud_instance.node_type,
                 details="allocated unmanaged cloud instance from cloud provider",
+                upsert=True,
+            )
+
+        # Find the extra cloud instances reported by Ray but not managed by the instance
+        # manager.
+        for ray_node in ray_nodes:
+            if not ray_node.instance_id:
+                continue
+
+            cloud_instance_id = ray_node.instance_id
+            if cloud_instance_id in cloud_instance_ids_managed_by_im:
+                continue
+
+            updates[cloud_instance_id] = IMInstanceUpdateEvent(
+                instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
+                cloud_instance_id=cloud_instance_id,
+                new_instance_status=IMInstance.ALLOCATED,
+                # This could only be a worker node. Since we require a head node to
+                # have the correct cloud instance id to be set so that
+                # autoscaler V2 actually works.
+                node_kind=NodeKind.WORKER,
+                instance_type=ray_node.ray_node_type_name,
+                details=(
+                    "allocated unmanaged worker cloud instance from ray node: "
+                    f"{binary_to_hex(ray_node.node_id)}"
+                ),
                 upsert=True,
             )
 
