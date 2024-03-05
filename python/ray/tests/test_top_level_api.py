@@ -1,19 +1,10 @@
 from inspect import getmembers, isfunction, ismodule
-import subprocess
 import sys
 
 import pytest
 
 import ray
-
-
-def _run_script_in_subprocess(script):
-    try:
-        out = subprocess.check_output([sys.executable, "-c", script])
-        print(out)
-    except subprocess.CalledProcessError as e:
-        print(e.output.decode())
-        raise
+from ray._private.test_utils import run_string_as_driver
 
 
 # NOTE: Before adding a new API to Ray (and modifying this test), the new API
@@ -88,7 +79,7 @@ ray.autoscaler
 # Check that the package is cached.
 assert "ray.autoscaler" in sys.modules
 """
-    _run_script_in_subprocess(script)
+    run_string_as_driver(script)
 
 
 def test_dynamic_subpackage_missing():
@@ -111,7 +102,7 @@ except ImportError:
     pass
 """
 
-    _run_script_in_subprocess(script)
+    run_string_as_driver(script)
 
 
 def test_dynamic_subpackage_fallback_only():
@@ -127,7 +118,7 @@ try:
 except AttributeError:
     pass
 """
-    _run_script_in_subprocess(script)
+    run_string_as_driver(script)
 
 
 def test_for_strings():
