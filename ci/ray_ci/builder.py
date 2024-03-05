@@ -63,12 +63,6 @@ from ci.ray_ci.utils import logger, docker_login
     default=False,
     help=("Upload the build artifacts"),
 )
-@click.option(
-    "--nightly-alias",
-    type=bool,
-    default=False,
-    help=("Tag nightly alias"),
-)
 def main(
     artifact_type: str,
     image_type: str,
