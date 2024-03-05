@@ -87,7 +87,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             )
 
         # Choose the requested loss function. Note, in case of the Huber loss
-        # we fall back to the default of `delta=1.0`.
+        # we fall back to the default of `delta=1.0`
         loss_fn = (
             nn.HuberLoss if self.config.td_error_loss_fn == "huber" else nn.MSELoss
         )

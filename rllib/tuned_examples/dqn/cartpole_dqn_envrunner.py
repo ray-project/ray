@@ -3,6 +3,11 @@ from ray import train, tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
+# from ray.rllib.utils.framework import try_import_torch
+
+# torch, _ = try_import_torch()
+# torch.autograd.set_detect_anomaly(True)
+
 config = (
     DQNConfig()
     .environment(env="CartPole-v1")
@@ -16,6 +21,7 @@ config = (
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
             "epsilon": 0.2,
+            # This is the default in the old stack.
             "fcnet_weights_initializer": "xavier_uniform_",
             "post_fcnet_weights_initializer": "xavier_uniform_",
         },
@@ -28,14 +34,14 @@ config = (
         double_q=False,
         num_atoms=10,
         dueling=False,
-        noisy=True,
+        noisy=False,
         sigma0=0.5,
     )
 )
 
 stop = {
     "sampler_results/episode_reward_mean": 100,
-    "timesteps_total": 100000,
+    "timesteps_total": 10000,
 }
 
 
