@@ -63,20 +63,19 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         cluster_name, cluster_namespace
     )
 
-    # Init GCS client
-    _initialize_internal_kv(GcsClient(ray_address))
-    if is_autoscaler_v2(fetch_from_server=True):
+    gcs_client = GcsClient(ray_address)
+    if is_autoscaler_v2(fetch_from_server=True, gcs_client=gcs_client):
         from ray.autoscaler.v2.monitor import AutoscalerMonitor as MonitorV2
 
         MonitorV2(
-            gcs_address=ray_address,
+            address=gcs_client.address,
             config_reader=KubeRayConfigReader(autoscaling_config_producer),
             log_dir=_get_log_dir(),
             monitor_ip=head_ip,
         ).run()
     else:
         Monitor(
-            address=ray_address,
+            address=gcs_client.address,
             # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
             # In this case, it's a callable.
             autoscaling_config=autoscaling_config_producer,
