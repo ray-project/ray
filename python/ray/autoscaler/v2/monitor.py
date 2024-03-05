@@ -32,10 +32,6 @@ from ray.autoscaler.v2.instance_manager.config import (
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
-)
 
 try:
     import prometheus_client
@@ -64,7 +60,6 @@ class AutoscalerMonitor:
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
             self.gcs_client.internal_kv_put(
@@ -131,9 +126,6 @@ class AutoscalerMonitor:
         In this case, the metrics reported from the monitor won't have
         the correct session name.
         """
-        if not _internal_kv_initialized():
-            return None
-
         session_name = gcs_client.internal_kv_get(
             b"session_name",
             ray_constants.KV_NAMESPACE_SESSION,
