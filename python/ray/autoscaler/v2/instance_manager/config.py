@@ -376,6 +376,9 @@ class AutoscalingConfig:
     def get_provider_config(self) -> Dict[str, Any]:
         return self._configs.get("provider", {})
 
+    def dump(self) -> str:
+        return yaml.safe_dump(self._configs)
+
     @property
     def provider(self) -> Provider:
         provider_str = self._configs.get("provider", {}).get("type", "")

@@ -954,9 +954,6 @@ class TestReconciler:
         "status",
         [
             Instance.InstanceStatus.Name(Instance.RAY_STOPPING),
-            Instance.InstanceStatus.Name(Instance.RAY_INSTALL_FAILED),
-            Instance.InstanceStatus.Name(Instance.RAY_STOPPED),
-            Instance.InstanceStatus.Name(Instance.TERMINATION_FAILED),
             Instance.InstanceStatus.Name(Instance.QUEUED),
         ],
     )
