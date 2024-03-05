@@ -40,7 +40,8 @@ class Controller():
 
     def reconcile(self, user_task):
         # print("reconcile: ", user_task.spec[USER_TASK_ID])
-
+        # print("s3 parameter: ",user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR],user_task.spec['s3'],user_task.spec[BUCKET_NAME])
+        # print("s3 Object Key:",user_task.spec[OBJECT_KEY])
         # schedule to this task to a node
         if user_task.status[ASSIGN_NODE] is None:
             node_id = self.schedule(user_task)
@@ -94,10 +95,13 @@ class Controller():
             return
                 
 
-    def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_name):
+    def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_key):
+        
 
         @ray.remote(num_cpus=0.3)
         def bind_label():
+            # print("s3:",s3,"  bucket name:",str(bucket_name),"  object_key:",object_key,"  working_dir:",label,"node_type:",os.getenv('LOCAL_NODE_TYPE'))
+
             def download_s3_folder(bucket_name, s3_folder='', local_dir=None,node_type=1):
                 """
                 Download the contents of a folder directory
@@ -107,7 +111,7 @@ class Controller():
                     local_dir: a relative or absolute directory path in the local file system
                 """
 
-                bandwidth = {0: None, 1: MAX_BANDWIDTH_HPC, 2: None}
+                bandwidth = {'0': None, '1': MAX_BANDWIDTH_HPC, '2': None}
                 band_width=bandwidth[node_type]
                 config=TransferConfig( max_bandwidth=band_width)
                 s3=boto3.resource('s3')
@@ -137,14 +141,17 @@ class Controller():
             #     os.system("rsync -a -P {} {}".format(label,node_ip+":"+label))
             
             if os.path.exists(label):
-               
+                # print("path exists")
                 ray.get_runtime_context().set_label({label: label})
             else:
+                # print("path not exists, s3 is ", s3)
                 # node_ip=self.get_node_ip(data_id)
                 if s3==True:
                     
                     node_type=os.getenv('LOCAL_NODE_TYPE')
-                    download_s3_folder(str(bucket_name),str(object_name),str(label),node_type)
+                    # print("bucket name:",str(bucket_name),"  object_key:",object_key,"  working_dir:",label,"node_type:",node_type)
+                    download_s3_folder(str(bucket_name),str(object_key),str(label),str(node_type))
+                    ray.get_runtime_context().set_label({label: label})
 
                 else:
                     # os.system("rsync --mkpath -a -P {} {}".format(NODE_USER_NAME + "@" + DATA_IP+":"+label,label))
