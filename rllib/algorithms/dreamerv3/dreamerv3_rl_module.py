@@ -12,11 +12,10 @@ from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
 from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
 from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import DreamerModel
 from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -119,11 +118,11 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
-        return [SampleBatch.OBS, STATE_IN, "is_first"]
+        return [Columns.OBS, Columns.STATE_IN, "is_first"]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        return [SampleBatch.ACTIONS, STATE_OUT]
+        return [Columns.ACTIONS, Columns.STATE_OUT]
 
     @override(RLModule)
     def input_specs_exploration(self):
@@ -135,7 +134,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
-        return [SampleBatch.OBS, SampleBatch.ACTIONS, "is_first"]
+        return [Columns.OBS, Columns.ACTIONS, "is_first"]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
