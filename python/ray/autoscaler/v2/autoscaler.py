@@ -21,6 +21,7 @@ from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater impor
     CloudInstanceUpdater,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
@@ -38,6 +39,7 @@ class Autoscaler:
         config_reader: IConfigReader,
         gcs_client: GcsClient,
         event_logger: Optional[AutoscalerEventLogger] = None,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
         """
         Args:
@@ -45,6 +47,7 @@ class Autoscaler:
             config_reader: The config reader.
             gcs_client: The GCS client.
             event_logger: The event logger for emitting cluster events.
+            metrics_reporter: The metrics reporter for emitting cluster metrics.
         """
 
         self._config_reader = config_reader
@@ -57,6 +60,7 @@ class Autoscaler:
         self._ray_stop_errors_queue = Queue()
         self._ray_install_errors_queue = Queue()
         self._event_logger = event_logger
+        self._metrics_reporter = metrics_reporter
 
         self._init_cloud_provider(config, config_reader)
         self._init_instance_manager(
@@ -167,6 +171,7 @@ class Autoscaler:
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
                 autoscaling_config=self._config_reader.get_autoscaling_config(),
+                metrics_reporter=self._metrics_reporter,
             )
         except Exception as e:
             logger.exception(e)
