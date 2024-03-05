@@ -31,7 +31,6 @@ steps:
       - oss
     job_env: MACOS
     instance_type: macos
-    soft_fail: true
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_small_test
 
@@ -43,7 +42,6 @@ steps:
       - oss
     job_env: MACOS
     instance_type: macos
-    soft_fail: true
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_medium_a_j_test
 
@@ -55,7 +53,6 @@ steps:
       - oss
     job_env: MACOS
     instance_type: macos
-    soft_fail: true
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_medium_k_z_test
 
@@ -67,7 +64,6 @@ steps:
       - oss
     job_env: MACOS
     instance_type: macos
-    soft_fail: true
     parallelism: 3
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_large_test

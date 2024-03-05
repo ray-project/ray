@@ -23,11 +23,8 @@ from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater impor
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
-from ray.core.generated.autoscaler_pb2 import (
-    AutoscalingState,
-    ClusterResourceState,
-    GetClusterResourceStateReply,
-)
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.core.generated.autoscaler_pb2 import AutoscalingState
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +49,7 @@ class Autoscaler:
 
         self._config_reader = config_reader
         config = config_reader.get_autoscaling_config()
-        logger.info(config.dump())
+        logger.info(f"Using Autoscaling Config: \n{config.dump()}")
 
         self._gcs_client = gcs_client
         self._cloud_provider = None
@@ -113,28 +110,21 @@ class Autoscaler:
             RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )
         if not config.disable_node_updaters():
-            # Supporting ray installer is only needed for providers that install
-            # and manage ray. Not for providers that only launch instances
-            # (e.g. KubeRay)
-            raise NotImplementedError("RayInstaller is not implemented yet.")
+            # Supporting ray installer is only needed for providers that doesn't
+            # install or manage ray (e.g. AWS, GCP). These providers will be
+            # supported in the future.
+            raise NotImplementedError(
+                "RayInstaller is not supported yet in current "
+                "release of the Autoscaler V2. Therefore, providers "
+                "that update nodes (with `disable_node_updaters` set to True) "
+                "are not supported yet. Only KubeRay is supported for now which sets "
+                "disable_node_updaters to True in provider's config."
+            )
 
         self._instance_manager = InstanceManager(
             instance_storage=instance_storage,
             instance_status_update_subscribers=subscribers,
         )
-
-    def _get_cluster_resource_state(self) -> ClusterResourceState:
-        """
-        Get the current state of the ray cluster resources.
-
-        Returns:
-            ClusterResourceState: The current state of the cluster resources.
-        """
-        str_reply = self._gcs_client.get_cluster_resource_state()
-        reply = GetClusterResourceStateReply()
-        reply.ParseFromString(str_reply)
-
-        return reply.cluster_resource_state
 
     def update_autoscaling_state(
         self,
@@ -145,7 +135,11 @@ class Autoscaler:
         update subscribers with the desired state.
 
         Returns:
-            AutoscalingState: The new autoscaling state of the cluster.
+            AutoscalingState: The new autoscaling state of the cluster or None if
+            the state is not updated.
+
+        Raises:
+            No exception.
         """
 
         try:
@@ -157,7 +151,8 @@ class Autoscaler:
             while not self._ray_install_errors_queue.empty():
                 ray_install_errors.append(self._ray_install_errors_queue.get())
 
-            ray_cluster_resource_state = self._get_cluster_resource_state()
+            # Get the current state of the ray cluster resources.
+            ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,

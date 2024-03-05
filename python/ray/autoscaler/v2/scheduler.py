@@ -55,7 +55,7 @@ class SchedulingRequest:
     idle_timeout_s: Optional[float] = None
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
-    resource_requests: List[ResourceRequest] = field(default_factory=list)
+    resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
     # The Gang resource requests.
     gang_resource_requests: List[GangResourceRequest] = field(default_factory=list)
     # cluster resource constraints.
@@ -251,10 +251,8 @@ class SchedulingNode:
         Args:
             instance: The instance.
             node_type_configs: The node type configs.
-            allow_missing_node_type_config: Whether to allow missing node type config.
-                If True, the method will skip the instance if the node type config is
-                missing. If False, the method will terminate the instance if the node
-                type config is missing.
+            disable_launch_config_check: If outdated node check through launch config is
+                disabled.
 
         """
         if not SchedulingNode.is_schedulable(instance):
@@ -536,6 +534,8 @@ class SchedulingNode:
 
         available_resources_dict = self.get_available_resources(resource_request_source)
 
+        available_resources_dict = self.get_available_resources(resource_request_source)
+
         # Check if there's enough resources to schedule the request.
         if not _fits(available_resources_dict, dict(request.resources_bundle)):
             return False
@@ -624,7 +624,7 @@ class SchedulingNode:
 
 class ResourceDemandScheduler(IResourceScheduler):
     """
-    A "simple" resource scheduler that schedules resource requests based on the
+    A resource demand scheduler that schedules resource requests based on the
     following rules:
         1. Enforce the minimal count of nodes for each worker node type.
         2. Enforce the cluster resource constraints.
@@ -1057,6 +1057,8 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
+            # The head could be None if there's no head node being reported yet
+            # from the ray cluster.
             nodes[num_to_terminate:] + ([head_node] if head_node else []),
         )
 

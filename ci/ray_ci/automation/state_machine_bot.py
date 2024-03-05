@@ -1,5 +1,6 @@
-import click
 from typing import List
+
+import click
 
 from ci.ray_ci.utils import logger
 from ray_release.test import Test

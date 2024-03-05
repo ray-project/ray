@@ -399,6 +399,8 @@ def add_custom_assets(
         app.add_js_file("js/examples.js")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
+    elif pagename == "ray-overview/use-cases":
+        app.add_css_file("css/use_cases.css")
 
 
 def setup(app):

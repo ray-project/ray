@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
 import pytest
@@ -46,6 +46,34 @@ class MockTimer(TimerBase):
             self._curr += amt + 0.001
 
 
+class MockAsyncTimer:
+    def __init__(self, start_time: Optional[float] = 0):
+        self.reset(start_time=start_time)
+        self._num_sleepers = 0
+
+    def reset(self, start_time: 0):
+        self._curr = start_time
+
+    def time(self) -> float:
+        return self._curr
+
+    async def sleep(self, amt: float):
+        self._num_sleepers += 1
+        end = self._curr + amt
+
+        # Give up the event loop
+        while self._curr < end:
+            await asyncio.sleep(0)
+
+        self._num_sleepers -= 1
+
+    def advance(self, amt: float):
+        self._curr += amt
+
+    def num_sleepers(self):
+        return self._num_sleepers
+
+
 class MockKVStore:
     def __init__(self):
         self.store = dict()
@@ -70,6 +98,35 @@ class MockKVStore:
             return True
 
         return False
+
+
+class MockClusterNodeInfoCache:
+    def __init__(self):
+        self.alive_node_ids = set()
+        self.alive_node_resources = dict()
+        self.draining_nodes = dict()
+
+    def get_alive_node_ids(self):
+        return self.alive_node_ids
+
+    def get_draining_nodes(self):
+        return self.draining_nodes
+
+    def get_active_node_ids(self):
+        return self.alive_node_ids - set(self.draining_nodes)
+
+    def get_node_az(self, node_id):
+        return None
+
+    def get_available_resources_per_node(self):
+        return self.alive_node_resources
+
+    def get_total_resources_per_node(self):
+        return self.alive_node_resources
+
+    def add_node(self, node_id: str, resources: Dict = None):
+        self.alive_node_ids.add(node_id)
+        self.alive_node_resources[node_id] = resources or {}
 
 
 def check_ray_stopped():
@@ -111,7 +168,7 @@ def get_num_running_replicas(
 ) -> int:
     """Get the replicas currently running for the given deployment."""
 
-    dep_id = DeploymentID(deployment_name, app_name)
+    dep_id = DeploymentID(name=deployment_name, app_name=app_name)
     actors = state_api.list_actors(
         filters=[
             ("class_name", "=", dep_id.to_replica_actor_class_name()),
@@ -381,3 +438,55 @@ class FakeGrpcContext:
 
     def invocation_metadata(self):
         return self._invocation_metadata
+
+
+class FakeGauge:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.value = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+        self.value = value
+        if tags:
+            self.tags.update(tags)
+
+    def get_value(self):
+        return self.value
+
+    def get_tags(self):
+        return self.tags
+
+
+class FakeCounter:
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.count: int = 0
+        if tag_keys:
+            self.tags = {key: None for key in tag_keys}
+        else:
+            self.tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.tags[key] = tag
+
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        self.count += value
+        if tags:
+            self.tags.update(tags)
+
+    def get_count(self) -> int:
+        return self.count
+
+    def get_tags(self):
+        return self.tags
