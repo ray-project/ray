@@ -59,15 +59,14 @@ class ServeJSONFormatter(logging.Formatter):
         self,
         component_name: str,
         component_id: str,
-        actor_id: str,
-        worker_id: str,
         component_type: Optional[ServeComponentType] = None,
     ):
+        runtime_context = ray.get_runtime_context()
         self.component_log_fmt = {
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
-            SERVE_LOG_ACTOR_ID: actor_id,
-            SERVE_LOG_WORKER_ID: worker_id,
+            SERVE_LOG_ACTOR_ID: runtime_context.get_actor_id(),
+            SERVE_LOG_WORKER_ID: runtime_context.get_worker_id(),
         }
         if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
@@ -341,18 +340,8 @@ def configure_component_logger(
             "'LoggingConfig' to enable json format."
         )
     if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        runtime_context = ray.get_runtime_context()
-        actor_id = runtime_context.get_actor_id()
-        worker_id = runtime_context.get_worker_id()
-
         file_handler.setFormatter(
-            ServeJSONFormatter(
-                component_name=component_name,
-                component_id=component_id,
-                component_type=component_type,
-                actor_id=actor_id,
-                worker_id=worker_id,
-            )
+            ServeJSONFormatter(component_name, component_id, component_type)
         )
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
