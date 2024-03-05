@@ -29,7 +29,7 @@ class DeploymentID:
     app_name: str = SERVE_DEFAULT_APP_NAME
 
     def __repr__(self):
-        s = f"Deployment('{self.name}'"
+        s = f"Deployment(name='{self.name}'"
         if not self.app_name or self.app_name == SERVE_DEFAULT_APP_NAME:
             s += ")"
         else:
