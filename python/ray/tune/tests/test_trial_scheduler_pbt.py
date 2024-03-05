@@ -578,20 +578,18 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             def status(self, status):
                 pass
 
-        trial1 = MockTrial("PPO", config=dict(num=1), storage=storage_context)
-        trial2 = MockTrial("PPO", config=dict(num=2), storage=storage_context)
-        trial3 = MockTrial("PPO", config=dict(num=3), storage=storage_context)
-        trial4 = MockTrial("PPO", config=dict(num=4), storage=storage_context)
+        trials = [
+            MockTrial("PPO", config=dict(num=i), storage=storage_context)
+            for i in range(1, 5)
+        ]
+        trial1, trial2, trial3, trial4 = trials
 
-        runner.add_trial(trial1)
-        runner.add_trial(trial2)
-        runner.add_trial(trial3)
-        runner.add_trial(trial4)
+        for trial in trials:
+            trial.init_local_path()
+            runner.add_trial(trial)
 
-        scheduler.on_trial_add(runner, trial1)
-        scheduler.on_trial_add(runner, trial2)
-        scheduler.on_trial_add(runner, trial3)
-        scheduler.on_trial_add(runner, trial4)
+        for trial in trials:
+            scheduler.on_trial_add(runner, trial)
 
         # Add initial results.
         scheduler.on_trial_result(
