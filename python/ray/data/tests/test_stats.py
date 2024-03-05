@@ -344,11 +344,7 @@ def test_dataset_stats_basic(
         pass
     stats = canonicalize(ds.materialize().stats())
 
-    extra_metrics_1 = gen_extra_metrics_str(
-        STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
-        verbose_stats_logs,
-    )
-    extra_metrics_2 = gen_extra_metrics_str(
+    extra_metrics = gen_extra_metrics_str(
         STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
         verbose_stats_logs,
     )
@@ -362,7 +358,7 @@ def test_dataset_stats_basic(
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"{extra_metrics_1}\n"
+        f"{extra_metrics}\n"
         f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
@@ -371,7 +367,7 @@ def test_dataset_stats_basic(
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"{extra_metrics_2}\n"
+        f"{extra_metrics}\n"
         f"Dataset iterator time breakdown:\n"
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"

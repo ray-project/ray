@@ -6,6 +6,8 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
+# TODO(scottjlee): programatically generate panels based on stats attribute input
+
 DATA_GRAFANA_PANELS = [
     Panel(
         id=1,
