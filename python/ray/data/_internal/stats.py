@@ -337,7 +337,7 @@ class _StatsActor:
 
             self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
-            self.current_bytes.set(stats.get("estimated_object_store_usage", 0), tags)
+            self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
             self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)

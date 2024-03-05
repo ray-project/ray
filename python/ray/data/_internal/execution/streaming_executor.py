@@ -298,6 +298,8 @@ class StreamingExecutor(Executor, threading.Thread):
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
         )
+        self._update_operator_object_store_usage(op)
+
         i = 0
         while op is not None:
             i += 1
@@ -315,6 +317,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
             )
+            self._update_operator_object_store_usage(op)
 
         update_operator_states(topology)
 
@@ -381,6 +384,13 @@ class StreamingExecutor(Executor, threading.Thread):
                 for i, (op, op_state) in enumerate(self._topology.items())
             },
         }
+
+    def _update_operator_object_store_usage(self, op: Optional[PhysicalOperator]):
+        """Update the object store memory usage for the given operator."""
+        if op:
+            execution_resources = self._resource_manager._op_usages[op]
+            op_object_store_memory = execution_resources.object_store_memory
+            op._metrics.obj_store_mem_used = op_object_store_memory
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
         StatsManager.update_execution_metrics(

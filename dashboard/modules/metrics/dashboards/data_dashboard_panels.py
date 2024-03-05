@@ -8,45 +8,22 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
-
-def _generate_grafana_panel_from_metric(
-    field_name: str,
-    panel_id: int,
-    title: str,
-    unit: str,
-    legend: str,
-    fill: int = 0,
-    stack: bool = False,
-) -> Panel:
-    """Generate a Grafana Panel object from the given OpRuntimeMetrics field name,
-    using the args provided. By default, Ray Data charts are unstacked
-    line charts."""
-    from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-        OpRuntimeMetrics,
-    )
-
-    RUNTIME_METRIC_FIELDS: Dict[
-        str, dataclasses.Field
-    ] = OpRuntimeMetrics.__dataclass_fields__
-
-    metric = RUNTIME_METRIC_FIELDS[field_name]
-    md = metric.metadata
-
-    return Panel(
-        title=title,
-        description=md.get("description"),
-        id=panel_id,
-        unit=unit,
-        targets=[
-            Target(
-                expr=f"sum(ray_data_{metric.name}"
-                + "{{{global_filters}}}) by (dataset, operator)",
-                legend=legend,
-            )
-        ],
-        fill=fill,
-        stack=stack,
-    )
+# When adding a new panels for an OpRuntimeMetric, follow this format:
+# Panel(
+#     title=title,
+#     description=metric.metadata.get("description"),
+#     id=panel_id,
+#     unit=unit,
+#     targets=[
+#         Target(
+#             expr=f"sum(ray_data_{metric.name}"
+#             + "{{{global_filters}}}) by (dataset, operator)",
+#             legend=legend,
+#         )
+#     ],
+#     fill=fill,
+#     stack=stack,
+# )
 
 
 DATA_GRAFANA_PANELS = [
@@ -164,124 +141,229 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     # Ray Data Metrics (Inputs)
-    _generate_grafana_panel_from_metric(
-        field_name="num_inputs_received",
-        panel_id=17,
+    Panel(
+        id=17,
         title="Input Blocks Received by Operator",
+        description="Number of input blocks received by operator.",
         unit="blocks",
-        legend="Blocks Received: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_inputs_received{{{global_filters}}}) by (dataset, operator)",
+                legend="Blocks Received: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="num_task_inputs_processed",
-        panel_id=19,
+    Panel(
+        id=18,
+        title="Input Blocks Received by Operator",
+        description="Byte size of input blocks received by operator.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_bytes_inputs_received{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Received: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=19,
         title="Input Blocks Processed by Tasks",
+        description=(
+            "Number of input blocks that operator's tasks " "have finished processing."
+        ),
         unit="blocks",
-        legend="Blocks Processed: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_task_inputs_processed{{{global_filters}}}) by (dataset, operator)",
+                legend="Blocks Processed: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="bytes_task_inputs_processed",
-        panel_id=20,
+    Panel(
+        id=20,
         title="Input Bytes Processed by Tasks",
+        description=(
+            "Byte size of input blocks that operator's tasks "
+            "have finished processing."
+        ),
         unit="bytes",
-        legend="Bytes Processed: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_bytes_task_inputs_processed{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Processed: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="bytes_inputs_of_submitted_tasks",
-        panel_id=21,
+    Panel(
+        id=21,
         title="Input Bytes Submitted to Tasks",
+        description="Byte size of input blocks passed to submitted tasks.",
         unit="bytes",
-        legend="Bytes Submitted: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_bytes_inputs_of_submitted_tasks{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Submitted: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    # Ray Data Metrics (Outputs)
-    _generate_grafana_panel_from_metric(
-        field_name="num_task_outputs_generated",
-        panel_id=22,
+    Panel(
+        id=22,
         title="Blocks Generated by Tasks",
+        description="Number of output blocks generated by tasks.",
         unit="blocks",
-        legend="Blocks Generated: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_task_outputs_generated{{{global_filters}}}) by (dataset, operator)",
+                legend="Blocks Generated: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="bytes_task_outputs_generated",
-        panel_id=23,
+    Panel(
+        id=23,
         title="Bytes Generated by Tasks",
+        description="Byte size of output blocks generated by tasks.",
         unit="bytes",
-        legend="Bytes Generated: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_bytes_task_outputs_generated{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Generated: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="rows_task_outputs_generated",
-        panel_id=24,
+    Panel(
+        id=24,
         title="Rows Generated by Tasks",
+        description="Number of rows in generated output blocks from finished tasks.",
         unit="rows",
-        legend="Rows Generated: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_rows_task_outputs_generated{{{global_filters}}}) by (dataset, operator)",
+                legend="Rows Generated: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="num_outputs_taken",
-        panel_id=25,
+    Panel(
+        id=25,
         title="Output Blocks Taken by Downstream Operators",
+        description="Number of output blocks that are already taken by downstream operators.",
         unit="blocks",
-        legend="Blocks Taken: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_outputs_taken{{{global_filters}}}) by (dataset, operator)",
+                legend="Blocks Taken: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="bytes_outputs_taken",
-        panel_id=26,
+    Panel(
+        id=26,
         title="Output Bytes Taken by Downstream Operators",
+        description=(
+            "Byte size of output blocks that are already "
+            "taken by downstream operators."
+        ),
         unit="bytes",
-        legend="Bytes Taken: {{dataset}}, {{operator}}",
-    ),
-    _generate_grafana_panel_from_metric(
-        field_name="num_outputs_of_finished_tasks",
-        panel_id=27,
-        title="Output Blocks from Finished Tasks",
-        unit="blocks",
-        legend="Blocks Taken: {{dataset}}, {{operator}}",
-    ),
-    _generate_grafana_panel_from_metric(
-        field_name="bytes_outputs_of_finished_tasks",
-        panel_id=28,
-        title="Output Bytes from Finished Tasks",
-        unit="bytes",
-        legend="Bytes Taken: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_bytes_outputs_taken{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Taken: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
     # Ray Data Metrics (Tasks)
-    _generate_grafana_panel_from_metric(
-        field_name="num_tasks_submitted",
-        panel_id=29,
+    Panel(
+        id=29,
         title="Submitted Tasks",
+        description="Number of submitted tasks.",
         unit="tasks",
-        legend="Submitted Tasks: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_submitted{{{global_filters}}}) by (dataset, operator)",
+                legend="Submitted Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="num_tasks_running",
-        panel_id=30,
+    Panel(
+        id=30,
         title="Running Tasks",
+        description="Number of running tasks.",
         unit="tasks",
-        legend="Running Tasks: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_running{{{global_filters}}}) by (dataset, operator)",
+                legend="Running Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="num_tasks_have_outputs",
-        panel_id=31,
+    Panel(
+        id=31,
         title="Tasks with output blocks",
+        description="Number of tasks that already have output.",
         unit="tasks",
-        legend="Tasks with output blocks: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_have_outputs{{{global_filters}}}) by (dataset, operator)",
+                legend="Tasks with output blocks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="num_tasks_finished",
-        panel_id=32,
+    Panel(
+        id=32,
         title="Finished Tasks",
+        description="Number of finished tasks.",
         unit="tasks",
-        legend="Finished Tasks: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_finished{{{global_filters}}}) by (dataset, operator)",
+                legend="Finished Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="num_tasks_failed",
-        panel_id=33,
+    Panel(
+        id=33,
         title="Failed Tasks",
+        description="Number of failed tasks.",
         unit="tasks",
-        legend="Failed Tasks: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_failed{{{global_filters}}}) by (dataset, operator)",
+                legend="Failed Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=8,
         title="Block Generation Time",
-        description="Time spent generating blocks.",
+        description="Time spent generating blocks in tasks.",
         unit="seconds",
         targets=[
             Target(
@@ -292,64 +374,120 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="task_submission_backpressure_time",
-        panel_id=37,
+    Panel(
+        id=37,
         title="Task Submission Backpressure Time",
+        description="Time spent in task submission backpressure.",
         unit="seconds",
-        legend="Backpressure Time: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_task_submission_backpressure_time{{{global_filters}}}) by (dataset, operator)",
+                legend="Backpressure Time: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
     ),
     # Ray Data Metrics (Object Store Memory)
-    _generate_grafana_panel_from_metric(
-        field_name="obj_store_mem_internal_inqueue_blocks",
-        panel_id=13,
+    Panel(
+        id=13,
         title="Operator Internal Inqueue Size (Blocks)",
+        description="Number of blocks in operator's internal input queue",
         unit="blocks",
-        legend="Number of Blocks: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}}}) by (dataset, operator)",
+                legend="Number of Blocks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="obj_store_mem_internal_inqueue",
-        panel_id=14,
+    Panel(
+        id=14,
         title="Operator Internal Inqueue Size (Bytes)",
+        description="Byte size of input blocks in the operator's internal input queue.",
         unit="bytes",
-        legend="Bytes Size: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_inqueue{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
         stack=True,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="obj_store_mem_internal_outqueue_blocks",
-        panel_id=15,
+    Panel(
+        id=15,
         title="Operator Internal Outqueue Size (Blocks)",
+        description="Number of blocks in operator's internal output queue",
         unit="blocks",
-        legend="Number of Blocks: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters}}}) by (dataset, operator)",
+                legend="Number of Blocks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="obj_store_mem_internal_outqueue",
-        panel_id=16,
+    Panel(
+        id=16,
         title="Operator Internal Outqueue Size (Bytes)",
+        description=(
+            "Byte size of output blocks in the operator's internal output queue."
+        ),
         unit="bytes",
-        legend="Bytes Size: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_internal_outqueue{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
         stack=True,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="obj_store_mem_pending_task_inputs",
-        panel_id=34,
+    Panel(
+        id=34,
         title="Size of Blocks used in Pending Tasks (Bytes)",
+        description="Byte size of input blocks used by pending tasks.",
         unit="bytes",
-        legend="Bytes Size: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_pending_task_inputs{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="obj_store_mem_freed",
-        panel_id=35,
+    Panel(
+        id=35,
         title="Freed Memory in Object Store (Bytes)",
+        description="Byte size of freed memory in object store.",
         unit="bytes",
-        legend="Bytes Size: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_freed{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
     ),
-    _generate_grafana_panel_from_metric(
-        field_name="obj_store_mem_spilled",
-        panel_id=36,
+    Panel(
+        id=36,
         title="Spilled Memory in Object Store (Bytes)",
+        description="Byte size of spilled memory in object store.",
         unit="bytes",
-        legend="Bytes Size: {{dataset}}, {{operator}}",
+        targets=[
+            Target(
+                expr="sum(ray_data_obj_store_mem_spilled{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Size: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
     ),
     # Ray Data Metrics (Iteration)
     Panel(

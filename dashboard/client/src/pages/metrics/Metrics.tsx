@@ -254,14 +254,6 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Output Bytes Taken by Downstream Operators",
         pathParams: "orgId=1&theme=light&panelId=26",
       },
-      {
-        title: "Output Blocks from Finished Tasks",
-        pathParams: "orgId=1&theme=light&panelId=27",
-      },
-      {
-        title: "Output Bytes from Finished Tasks",
-        pathParams: "orgId=1&theme=light&panelId=28",
-      },
     ],
   },
   {

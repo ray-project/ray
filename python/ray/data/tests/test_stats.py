@@ -62,6 +62,7 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
+            "'obj_store_mem_used': N,",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
