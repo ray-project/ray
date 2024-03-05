@@ -7,23 +7,25 @@ from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType, ModelWeights
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class SingleAgentEnvRunner(EnvRunner):
     """The generic environment runner for the single agent case."""
 
@@ -259,7 +261,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Act randomly.
             if random_actions:
                 to_env = {
-                    SampleBatch.ACTIONS: self.env.action_space.sample(),
+                    Columns.ACTIONS: self.env.action_space.sample(),
                 }
             # Compute an action using the RLModule.
             else:
@@ -294,8 +296,8 @@ class SingleAgentEnvRunner(EnvRunner):
             # already unsquashed/clipped) to be sent to the environment) and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(SampleBatch.ACTIONS)
-            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            actions = to_env.pop(Columns.ACTIONS)
+            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
             obs, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env
@@ -456,7 +458,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Act randomly.
             if random_actions:
                 to_env = {
-                    SampleBatch.ACTIONS: self.env.action_space.sample(),
+                    Columns.ACTIONS: self.env.action_space.sample(),
                 }
             # Compute an action using the RLModule.
             else:
@@ -490,8 +492,8 @@ class SingleAgentEnvRunner(EnvRunner):
             # already unsquashed/clipped) to be sent to the environment) and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(SampleBatch.ACTIONS)
-            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            actions = to_env.pop(Columns.ACTIONS)
+            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
             obs, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env

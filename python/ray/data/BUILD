@@ -370,7 +370,7 @@ py_test(
 
 py_test(
     name = "test_huggingface",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_huggingface.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

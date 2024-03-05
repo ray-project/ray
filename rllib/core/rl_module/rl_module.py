@@ -16,13 +16,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
-from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
-from ray.rllib.utils.typing import ViewRequirementsDict
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
 from ray.rllib.policy.view_requirement import ViewRequirement
 
@@ -34,15 +28,20 @@ from ray.rllib.core.models.specs.checker import (
 )
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
     deserialize_type,
 )
+from ray.rllib.utils.typing import SampleBatchType, ViewRequirementsDict
 
 
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
@@ -520,8 +519,8 @@ class RLModule(abc.ABC):
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
             max_seq_len = self.config.model_config_dict["max_seq_len"]
             assert max_seq_len is not None
-            defaults[STATE_IN] = ViewRequirement(
-                data_col=STATE_OUT,
+            defaults[Columns.STATE_IN] = ViewRequirement(
+                data_col=Columns.STATE_OUT,
                 shift=-1,
                 used_for_compute_actions=True,
                 used_for_training=True,
@@ -531,7 +530,7 @@ class RLModule(abc.ABC):
 
             if self.config.model_config_dict["lstm_use_prev_action"]:
                 defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
-                    data_col=SampleBatch.ACTIONS,
+                    data_col=Columns.ACTIONS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
@@ -539,14 +538,14 @@ class RLModule(abc.ABC):
 
             if self.config.model_config_dict["lstm_use_prev_reward"]:
                 defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
-                    data_col=SampleBatch.REWARDS,
+                    data_col=Columns.REWARDS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
                 )
 
-            defaults[STATE_OUT] = ViewRequirement(
-                data_col=STATE_OUT,
+            defaults[Columns.STATE_OUT] = ViewRequirement(
+                data_col=Columns.STATE_OUT,
                 used_for_compute_actions=False,
                 used_for_training=True,
                 space=space,
@@ -598,7 +597,7 @@ class RLModule(abc.ABC):
 
     def _default_input_specs(self) -> SpecType:
         """Returns the default input specs."""
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")

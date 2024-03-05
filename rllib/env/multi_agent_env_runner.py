@@ -6,19 +6,20 @@ from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ModelWeights
+from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class MultiAgentEnvRunner(EnvRunner):
     """The genetic environment runner for the multi-agent case."""
 
@@ -239,7 +240,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     actions = self.env.action_space_sample()
                 # Remove all actions for agents that had no observation.
                 to_env = {
-                    SampleBatch.ACTIONS: {
+                    Columns.ACTIONS: {
                         agent_id: agent_action
                         for agent_id, agent_action in actions.items()
                         if agent_id in self._episode.get_agents_to_act()
@@ -278,8 +279,8 @@ class MultiAgentEnvRunner(EnvRunner):
             # already unsquashed/clipped) to be sent to the environment) and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(SampleBatch.ACTIONS)
-            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            actions = to_env.pop(Columns.ACTIONS)
+            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
@@ -449,7 +450,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     actions = self.env.action_space_sample()
                 # Remove all actions for agents that had no observation.
                 to_env = {
-                    SampleBatch.ACTIONS: {
+                    Columns.ACTIONS: {
                         agent_id: agent_action
                         for agent_id, agent_action in actions.items()
                         if agent_id in _episode.get_agents_to_act()
@@ -487,8 +488,8 @@ class MultiAgentEnvRunner(EnvRunner):
             # already unsquashed/clipped) to be sent to the environment) and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(SampleBatch.ACTIONS)
-            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            actions = to_env.pop(Columns.ACTIONS)
+            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
@@ -671,8 +672,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
     @override(EnvRunner)
     def stop(self):
-        """Closes this `EnvRunner` by running necessary closing operations."""
-
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
 
