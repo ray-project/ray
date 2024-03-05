@@ -212,7 +212,7 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
         lengths = get_lengths(i1, i2)
         assert lengths == [0, 1], lengths
 
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     for equal_split, use_iter_batches in itertools.product(
         [True, False], [True, False]
     ):
@@ -226,7 +226,7 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
 
 
 def test_streaming_split_barrier(ray_start_10_cpus_shared):
-    ds = ray.data.range(20, parallelism=20)
+    ds = ray.data.range(20, override_num_blocks=20)
     (
         i1,
         i2,
@@ -251,7 +251,7 @@ def test_streaming_split_barrier(ray_start_10_cpus_shared):
 
 
 def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
-    ds = ray.data.range(20, parallelism=20)
+    ds = ray.data.range(20, override_num_blocks=20)
     (
         i1,
         i2,
@@ -286,7 +286,7 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     num_splits = 2
     ds = ray.data.range(
         num_splits * num_blocks_per_split,
-        parallelism=num_splits * num_blocks_per_split,
+        override_num_blocks=num_splits * num_blocks_per_split,
     )
     (
         i1,
@@ -348,7 +348,7 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
 )
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     def run():
-        ray.data.range(5, parallelism=5).map(
+        ray.data.range(5, override_num_blocks=5).map(
             lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
         ).take_all()
 
@@ -374,7 +374,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().large_args_threshold = 0
 
     # Simple 2-operator pipeline.
-    ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
+    ray.data.range(2, override_num_blocks=2).map(lambda x: x, num_cpus=2).take_all()
 
     # Read tasks get SPREAD by default, subsequent ones use default policy.
     tasks = sorted(tasks)
@@ -407,7 +407,7 @@ def test_scheduling_progress_when_output_blocked(
 
     # Only take the first item from the iterator.
     it = iter(
-        ray.data.range(100, parallelism=100)
+        ray.data.range(100, override_num_blocks=100)
         .map_batches(func, batch_size=None)
         .iter_batches(batch_size=None)
     )
@@ -447,7 +447,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     ctx.execution_options.resource_limits.object_store_memory = block_size
 
     # Only take the first item from the iterator.
-    ds = ray.data.range(100, parallelism=100).map_batches(func, batch_size=None)
+    ds = ray.data.range(100, override_num_blocks=100).map_batches(func, batch_size=None)
     it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
     next(it)
     time.sleep(3)  # Pause a little so anything that would be executed runs.
@@ -473,7 +473,7 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
     ctx.execution_options.resource_limits.object_store_memory = 1
-    ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
+    ds = ray.data.range(10000, override_num_blocks=100).map(lambda x: x, num_cpus=2)
     # This will hang forever if the liveness logic is wrong, since the output
     # backpressure will prevent any operators from running at all.
     assert extract_values("id", ds.take_all()) == list(range(10000))
@@ -519,7 +519,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
     # Tests that we autoscale up to necessary size.
     # 6 tasks + 1 tasks in flight per actor => need at least 6 actors to run.
-    ray.data.range(6, parallelism=6).map_batches(
+    ray.data.range(6, override_num_blocks=6).map_batches(
         BarrierWaiter,
         fn_constructor_args=(b1,),
         compute=ray.data.ActorPoolStrategy(
@@ -533,7 +533,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
     # Tests that we don't over-scale up.
     # 6 tasks + 2 tasks in flight per actor => only scale up to 3 actors
-    ray.data.range(6, parallelism=6).map_batches(
+    ray.data.range(6, override_num_blocks=6).map_batches(
         BarrierWaiter,
         fn_constructor_args=(b2,),
         compute=ray.data.ActorPoolStrategy(
@@ -548,7 +548,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
 
     # This will hang, since the actor pool is too small.
     with pytest.raises(ray.exceptions.RayTaskError):
-        ray.data.range(6, parallelism=6).map(
+        ray.data.range(6, override_num_blocks=6).map(
             BarrierWaiter,
             fn_constructor_args=(b3,),
             compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
@@ -564,7 +564,7 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
     # Tests that autoscaling works even when resource constrained via actor killing.
     # To pass this, we need to autoscale down to free up slots for task execution.
     DataContext.get_current().execution_options.resource_limits.cpu = 2
-    ray.data.range(5, parallelism=5).map_batches(
+    ray.data.range(5, override_num_blocks=5).map_batches(
         UDFClass,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         batch_size=None,
@@ -592,7 +592,7 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
             return x
 
     # Test recover.
-    base = ray.data.range(1000, parallelism=100)
+    base = ray.data.range(1000, override_num_blocks=100)
     ds1 = base.map_batches(
         RandomExit, compute=ray.data.ActorPoolStrategy(size=4), max_task_retries=999
     )

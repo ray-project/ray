@@ -631,6 +631,9 @@ class DatasetStats:
         self.global_bytes_restored: int = 0
         self.dataset_bytes_spilled: int = 0
 
+        # Streaming split coordinator stats (dataset level)
+        self.streaming_split_coordinator_s: Timer = Timer()
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
@@ -677,6 +680,7 @@ class DatasetStats:
             self.iter_user_s,
             self.iter_initialize_s,
             self.iter_total_s,
+            self.streaming_split_coordinator_s,
             self.iter_blocks_local,
             self.iter_blocks_remote,
             self.iter_unknown_location,
@@ -793,6 +797,29 @@ class DatasetStatsSummary:
                 out += "\nDataset memory:\n"
                 out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
 
+            output_num_rows = self.operators_stats[-1].output_num_rows
+            total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
+            total_wall_time = sum(
+                [
+                    op_stats.wall_time["sum"]
+                    for op_stats in self.operators_stats
+                    if op_stats.wall_time
+                ]
+            )
+            if total_num_out_rows and self.time_total_s and total_wall_time:
+                out += "\n"
+                out += "Dataset throughput:\n"
+                out += (
+                    "\t* Ray Data throughput:"
+                    f" {total_num_out_rows / self.time_total_s} "
+                    "rows/s\n"
+                )
+                out += (
+                    "\t* Estimated single node throughput:"
+                    f" {total_num_out_rows / total_wall_time} "
+                    "rows/s\n"
+                )
+
         return out
 
     def __repr__(self, level=0) -> str:
@@ -870,6 +897,7 @@ class OperatorStatsSummary:
     # {"min": ..., "max": ..., "mean": ..., "sum": ...}
     wall_time: Optional[Dict[str, float]] = None
     cpu_time: Optional[Dict[str, float]] = None
+    udf_time: Optional[Dict[str, float]] = None
     # memory: no "sum" stat
     memory: Optional[Dict[str, float]] = None
     output_num_rows: Optional[Dict[str, float]] = None
@@ -937,7 +965,7 @@ class OperatorStatsSummary:
                 len(task_rows), exec_summary_str
             )
 
-        wall_time_stats = None
+        wall_time_stats, cpu_stats, memory_stats, udf_stats = None, None, None, None
         if exec_stats:
             wall_time_stats = {
                 "min": min([e.wall_time_s for e in exec_stats]),
@@ -945,9 +973,6 @@ class OperatorStatsSummary:
                 "mean": np.mean([e.wall_time_s for e in exec_stats]),
                 "sum": sum([e.wall_time_s for e in exec_stats]),
             }
-
-        cpu_stats, memory_stats = None, None
-        if exec_stats:
             cpu_stats = {
                 "min": min([e.cpu_time_s for e in exec_stats]),
                 "max": max([e.cpu_time_s for e in exec_stats]),
@@ -962,6 +987,13 @@ class OperatorStatsSummary:
                 "min": min(memory_stats_mb),
                 "max": max(memory_stats_mb),
                 "mean": int(np.mean(memory_stats_mb)),
+            }
+
+            udf_stats = {
+                "min": min([e.udf_time_s for e in exec_stats]),
+                "max": max([e.udf_time_s for e in exec_stats]),
+                "mean": np.mean([e.udf_time_s for e in exec_stats]),
+                "sum": sum([e.udf_time_s for e in exec_stats]),
             }
 
         output_num_rows_stats = None
@@ -1007,6 +1039,7 @@ class OperatorStatsSummary:
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
+            udf_time=udf_stats,
             memory=memory_stats,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1043,6 +1076,16 @@ class OperatorStatsSummary:
                 fmt(cpu_stats["max"]),
                 fmt(cpu_stats["mean"]),
                 fmt(cpu_stats["sum"]),
+            )
+
+        udf_stats = self.udf_time
+        if udf_stats:
+            out += indent
+            out += "* UDF time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(udf_stats["min"]),
+                fmt(udf_stats["max"]),
+                fmt(udf_stats["mean"]),
+                fmt(udf_stats["sum"]),
             )
 
         memory_stats = self.memory
@@ -1098,6 +1141,20 @@ class OperatorStatsSummary:
                 node_count_stats["max"],
                 node_count_stats["mean"],
                 node_count_stats["count"],
+            )
+        if output_num_rows_stats and self.time_total_s and wall_time_stats:
+            total_num_out_rows = output_num_rows_stats["sum"]
+            out += indent
+            out += "* Operator throughput:\n"
+            out += (
+                indent + "\t* Ray Data throughput:"
+                f" {total_num_out_rows / self.time_total_s} "
+                "rows/s\n"
+            )
+            out += (
+                indent + "\t* Estimated single node throughput:"
+                f" {total_num_out_rows / wall_time_stats['sum']} "
+                "rows/s\n"
             )
         return out
 
@@ -1161,6 +1218,8 @@ class IterStatsSummary:
     initialize_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
+    # Time spent in streaming split coordinator
+    streaming_split_coord_time: Timer
     # Num of blocks that are in local object store
     iter_blocks_local: int
     # Num of blocks that are in remote node and have to fetch locally
@@ -1253,6 +1312,9 @@ class IterStatsSummary:
                 out += "    * Num blocks unknown location: {}\n".format(
                     self.iter_unknown_location
                 )
+            if self.streaming_split_coord_time.get() != 0:
+                out += "Streaming split coordinator overhead time: "
+                out += f"{fmt(self.streaming_split_coord_time.get())}\n"
 
         return out
 

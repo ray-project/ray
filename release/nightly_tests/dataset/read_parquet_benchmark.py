@@ -17,7 +17,7 @@ def read_parquet(
 ) -> Dataset:
     return ray.data.read_parquet(
         paths=root,
-        parallelism=parallelism,
+        override_num_blocks=parallelism,
         use_threads=use_threads,
         filter=filter,
         columns=columns,
@@ -33,7 +33,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
                 test_name,
                 read_parquet,
                 root="s3://anonymous@air-example-data/ursa-labs-taxi-data/downsampled_2009_full_year_data.parquet",  # noqa: E501
-                parallelism=parallelism,
+                override_num_blocks=parallelism,
                 use_threads=use_threads,
             )
 
@@ -79,7 +79,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
                 test_name,
                 read_parquet,
                 root=data_dirs[-1],
-                parallelism=1,  # We are testing one task to handle N files
+                override_num_blocks=1,  # We are testing one task to handle N files
             )
     for dir in data_dirs:
         shutil.rmtree(dir)
