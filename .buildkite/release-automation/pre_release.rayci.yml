@@ -30,6 +30,7 @@ steps:
         RAYCI_CONTINUOUS_BUILD: 1
   
   - label: "Trigger Release nightly test"
+    key: trigger-release-nightly
     trigger: "release"
     depends_on: check-commit-hash
     build:
@@ -41,8 +42,11 @@ steps:
         RELEASE_FREQUENCY: "nightly"
 
   - label: "Trigger Release nightly-3x test"
+    key: trigger-release-nightly-3x
     trigger: "release"
-    depends_on: check-commit-hash
+    depends_on: 
+      - check-commit-hash
+      - trigger-release-nightly
     if: build.env("DAY") == "monday" || build.env("DAY") == "wednesday" || build.env("DAY") == "friday"
     build:
       commit: "${BUILDKITE_COMMIT}"
@@ -54,7 +58,9 @@ steps:
 
   - label: "Trigger Release weekly test"
     trigger: "release"
-    depends_on: check-commit-hash
+    depends_on: 
+      - check-commit-hash
+      - trigger-release-nightly-3x
     if: build.env("DAY") == "friday"
     build:
       commit: "${BUILDKITE_COMMIT}"
