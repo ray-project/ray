@@ -47,13 +47,35 @@ class Provider(Enum):
 class IConfigReader(ABC):
     """An interface for reading Autoscaling config.
 
-    A utility class that converts the raw autoscaling configs into
-    various data structures that are used by the autoscaler.
+    A utility class that reads autoscaling configs from various sources:
+        - File
+        - In-memory dict
+        - Remote config service (e.g. KubeRay's config)
+
+    Example:
+        reader = FileConfigReader("path/to/config.yaml")
+        # Get the recently cached config.
+        config = reader.get_cached_autoscaling_config()
+
+        ...
+        # Refresh the cached config.
+        reader.refresh_cached_autoscaling_config()
+        config = reader.get_cached_autoscaling_config()
+
     """
 
     @abstractmethod
-    def get_autoscaling_config(self) -> "AutoscalingConfig":
-        """Returns the autoscaling config."""
+    def get_cached_autoscaling_config(self) -> "AutoscalingConfig":
+        """Returns the recently read autoscaling config.
+
+        Returns:
+            AutoscalingConfig: The recently read autoscaling config.
+        """
+        pass
+
+    @abstractmethod
+    def refresh_cached_autoscaling_config(self):
+        """Read the config from the source."""
         pass
 
 
@@ -433,19 +455,26 @@ class FileConfigReader(IConfigReader):
         """
         self._config_file_path = Path(config_file).resolve()
         self._skip_content_hash = skip_content_hash
+        self._cached_config = self._read()
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
+    def _read(self) -> AutoscalingConfig:
+        with open(self._config_file_path) as f:
+            config = yaml.safe_load(f.read())
+            return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
+
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         """
         Reads the configs from the file and returns the autoscaling config.
 
-        This reads from the file every time to pick up changes.
+        Args:
 
         Returns:
             AutoscalingConfig: The autoscaling config.
         """
-        with open(self._config_file_path) as f:
-            config = yaml.safe_load(f.read())
-            return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
+        return self._cached_config
+
+    def refresh_cached_autoscaling_config(self):
+        self._cached_config = self._read()
 
 
 class ReadOnlyProviderConfigReader(IConfigReader):
@@ -458,7 +487,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         self._configs = BASE_READONLY_CONFIG
         self._gcs_client = GcsClient(address=gcs_address)
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         # Update the config with node types from GCS.
         ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
