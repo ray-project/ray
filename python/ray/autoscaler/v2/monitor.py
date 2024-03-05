@@ -13,6 +13,9 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray._private.usage.usage_constants as usage_constant
+from ray._private.usage.usage_constants import EXTRA_USAGE_TAG_AUTOSCALER_V2
+from ray._private.usage.usage_lib import record_extra_usage_tag
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
@@ -32,6 +35,7 @@ from ray.autoscaler.v2.instance_manager.config import (
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
+from ray.core.generated.usage_pb2 import TagKey
 
 try:
     import prometheus_client
@@ -60,6 +64,8 @@ class AutoscalerMonitor:
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
+
+        record_autoscaler_v2_usage(self.gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
             self.gcs_client.internal_kv_put(
@@ -168,6 +174,16 @@ class AutoscalerMonitor:
         except Exception:
             logger.exception("Error in monitor loop")
             raise
+
+
+def record_autoscaler_v2_usage(gcs_client: GcsClient) -> None:
+    """
+    Record usage for autoscaler v2.
+    """
+    try:
+        record_extra_usage_tag(TagKey.AUTOSCALER_VERSION, "v2", gcs_client)
+    except Exception:
+        logger.exception("Error recording usage for autoscaler v2.")
 
 
 if __name__ == "__main__":

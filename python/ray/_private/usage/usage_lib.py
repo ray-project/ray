@@ -58,9 +58,14 @@ import requests
 import yaml
 
 import ray
+from ray._raylet import GcsClient
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
+from ray.experimental.internal_kv import (
+    _internal_kv_initialized,
+    _internal_kv_put,
+    internal_kv_get_gcs_client,
+)
 from ray.core.generated import usage_pb2, gcs_pb2
 
 logger = logging.getLogger(__name__)
@@ -214,7 +219,9 @@ def _put_hardware_usage(hardware_usage: str):
     _add_to_usage_set(usage_constant.HARDWARE_USAGE_SET_NAME, hardware_usage)
 
 
-def record_extra_usage_tag(key: TagKey, value: str):
+def record_extra_usage_tag(
+    key: TagKey, value: str, gcs_client: Optional[GcsClient] = None
+):
     """Record extra kv usage tag.
 
     If the key already exists, the value will be overwritten.
@@ -222,6 +229,11 @@ def record_extra_usage_tag(key: TagKey, value: str):
     To record an extra tag, first add the key to the TagKey enum and
     then call this function.
     It will make a synchronous call to the internal kv store if the tag is updated.
+
+    Args:
+        key: The key of the tag.
+        value: The value of the tag.
+        gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
     """
     key = TagKey.Name(key).lower()
     with _recorded_extra_usage_tags_lock:
@@ -229,17 +241,21 @@ def record_extra_usage_tag(key: TagKey, value: str):
             return
         _recorded_extra_usage_tags[key] = value
 
-    if not _internal_kv_initialized():
-        # This happens if the record is before ray.init
+    if gcs_client is None:
+        gcs_client = internal_kv_get_gcs_client()
+
+    if gcs_client is None:
+        # This happens if the record is before ray.init and no
+        # gcs client is used.
         return
 
-    _put_extra_usage_tag(key, value)
+    _put_extra_usage_tag(key, value, gcs_client)
 
 
-def _put_extra_usage_tag(key: str, value: str):
-    assert _internal_kv_initialized()
+def _put_extra_usage_tag(key: str, value: str, gcs_client: GcsClient):
+    assert gcs_client is not None
     try:
-        _internal_kv_put(
+        gcs_client.internal_kv_put(
             f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode(),
             value.encode(),
             namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
@@ -294,7 +310,7 @@ def _put_pre_init_library_usages():
 def _put_pre_init_extra_usage_tags():
     assert _internal_kv_initialized()
     for k, v in _recorded_extra_usage_tags.items():
-        _put_extra_usage_tag(k, v)
+        _put_extra_usage_tag(k, v, internal_kv_get_gcs_client())
 
 
 def put_pre_init_usage_stats():
