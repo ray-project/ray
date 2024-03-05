@@ -1,16 +1,19 @@
 from collections import Counter
+import fnmatch
 from pathlib import Path
 from typing import Callable, Dict, Optional, Union
-
 import logging
 import os
 import time
+
+import pyarrow.fs
 
 from ray.train._internal.storage import (
     StorageContext,
     get_fs_and_path,
     _download_from_fs_path,
     _list_at_fs_path,
+    _upload_to_fs_path,
 )
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
@@ -31,23 +34,29 @@ def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
     return bool(_find_newest_experiment_checkpoint(experiment_dir=experiment_dir))
 
 
-def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
+def _find_newest_experiment_checkpoint(
+    experiment_path: str, fs: Optional[pyarrow.fs.FileSystem] = None
+) -> Optional[str]:
     """Returns file name of most recently created experiment checkpoint.
 
     Args:
-        experiment_dir: Local or remote path to the experiment directory
+        experiment_path: Local or remote path to the experiment directory
             containing at least one experiment checkpoint file.
 
     Returns:
         str: The local or remote path to the latest experiment checkpoint file
             based on timestamp. None if no experiment checkpoints were found.
     """
-    from ray.tune.analysis import ExperimentAnalysis
+    from ray.tune.execution.tune_controller import TuneController
 
-    fs, path = get_fs_and_path(experiment_dir)
-    return ExperimentAnalysis._find_newest_experiment_checkpoint(
-        fs=fs, experiment_fs_path=path
-    )
+    fs, experiment_fs_path = get_fs_and_path(experiment_path, storage_filesystem=fs)
+    filenames = _list_at_fs_path(fs=fs, fs_path=experiment_fs_path)
+    pattern = TuneController.CKPT_FILE_TMPL.format("*")
+    matching = fnmatch.filter(filenames, pattern)
+    if not matching:
+        return None
+    filename = max(matching)
+    return Path(experiment_fs_path, filename).as_posix()
 
 
 class _ExperimentCheckpointManager:
@@ -154,10 +163,8 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        experiment_local_path = self._storage.experiment_local_path
-        if not experiment_local_path:
-            return
-
+        driver_staging_path = self._storage.experiment_driver_staging_path
+        # TODO(justinvyu): [local_dir] Probably want to disable this num_to_keep force
         force = force or self._should_force_cloud_sync
 
         now = time.time()
@@ -175,8 +182,11 @@ class _ExperimentCheckpointManager:
         with out_of_band_serialize_dataset():
             save_fn()
 
-        # Sync to cloud
-        self.sync_up(force=force, wait=wait)
+        _upload_to_fs_path(
+            local_path=driver_staging_path,
+            fs=self._storage.storage_filesystem,
+            fs_path=self._storage.experiment_fs_path,
+        )
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
@@ -185,7 +195,6 @@ class _ExperimentCheckpointManager:
 
         # Finish
         self._last_save_time = time.time()
-        return experiment_local_path
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
         syncer = self._storage.syncer
@@ -198,7 +207,7 @@ class _ExperimentCheckpointManager:
         # But for now, this is needed to upload driver artifacts that live in the
         # trial directory.
         exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
-        experiment_local_path = self._storage.experiment_local_path
+        experiment_local_path = self._storage.experiment_driver_staging_path
         experiment_fs_path = self._storage.experiment_fs_path
 
         if force:
@@ -244,25 +253,13 @@ class _ExperimentCheckpointManager:
         sync_time_taken = now - start_time
 
         if sync_time_taken > self._slow_sync_threshold:
-            try:
-                import fsspec
-            except Exception:
-                fsspec = None
-
-            fsspec_msg = ""
-            if fsspec is None:
-                fsspec_msg = (
-                    "If your data is small, try installing fsspec "
-                    "(`pip install fsspec`) for more efficient local file parsing. "
-                )
-
             logger.warning(
-                "Syncing the experiment checkpoint to cloud took a long time with "
+                "Syncing the experiment checkpoint to cloud took a "
                 f"{sync_time_taken:.2f} seconds. This can be due to a large number "
                 f"of trials, large logfiles, or throttling from the "
-                f"remote storage provider for too frequent syncs. {fsspec_msg}"
-                f"If your `CheckpointConfig.num_to_keep` is a low number, this can "
-                f"trigger frequent syncing, in which case you should increase it. "
+                f"remote storage provider for too frequent syncs.\n"
+                f"If you set `CheckpointConfig.num_to_keep` to a low number, this can "
+                f"trigger frequent syncing. Try increasing the `num_to_keep`. "
             )
 
         if not synced:
@@ -300,62 +297,13 @@ class _ExperimentCheckpointManager:
         ]
         for relpath in matches:
             fs_path = Path(self._storage.experiment_fs_path, relpath).as_posix()
-            local_path = Path(self._storage.experiment_local_path, relpath).as_posix()
+            local_path = Path(
+                self._storage.experiment_driver_staging_path, relpath
+            ).as_posix()
             _download_from_fs_path(fs=fs, fs_path=fs_path, local_path=local_path)
         logger.debug(
             f"Copied {matches} from:\n(fs, path) = "
             f"({self._storage.storage_filesystem.type_name}, "
             f"{self._storage.experiment_fs_path})\n"
-            f"-> {self._storage.experiment_local_path}"
+            f"-> {self._storage.experiment_driver_staging_path}"
         )
-
-    def resume(self) -> bool:
-        """Checks whether to resume experiment.
-
-        The experiment can be resumed if a metadata file uploaded from a
-        previous run can be found at the specified experiment directory on storage.
-        If experiment should be resumed, this method will pull the necessary
-        experiment state from storage.
-
-        Returns:
-            can_restore: Whether the experiment can be restored.
-        """
-        experiment_local_path = self._storage.experiment_local_path
-        experiment_fs_path = self._storage.experiment_fs_path
-
-        syncer = self._storage.syncer
-
-        # syncer is not None when the local path != storage path
-        if syncer:
-            logger.info(
-                f"Trying to find and download experiment checkpoint from: "
-                f"{experiment_fs_path}"
-            )
-            try:
-                self.sync_down_experiment_state()
-            except Exception:
-                logger.exception(
-                    "Got error when trying to sync down experiment state from "
-                    f"{experiment_fs_path}\n"
-                    "Please check this error message for potential "
-                    "access problems - if a directory was not found, "
-                    "that is expected at this stage when you're starting "
-                    "a new experiment."
-                )
-                return False
-
-        latest_experiment_checkpoint_path = _find_newest_experiment_checkpoint(
-            experiment_local_path
-        )
-        if latest_experiment_checkpoint_path is None:
-            logger.warning(
-                f"No experiment metadata was found at {experiment_fs_path}. "
-                "Starting a new run..."
-            )
-            return False
-
-        logger.info(
-            f"The run will now start from the experiment state found in: "
-            f"{latest_experiment_checkpoint_path}"
-        )
-        return True

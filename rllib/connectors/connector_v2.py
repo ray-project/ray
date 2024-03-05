@@ -3,12 +3,13 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import gymnasium as gym
+import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
-from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -131,7 +132,7 @@ class ConnectorV2(abc.ABC):
         this parent method implementation untouched.
 
         Returns:
-            The new observation space (after data has passed through this ConenctorV2
+            The new observation space (after data has passed through this ConnectorV2
             piece).
         """
         return self.input_observation_space
@@ -465,6 +466,12 @@ class ConnectorV2(abc.ABC):
                 batch["test_col"],
                 [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
             )
+            # In a new column (test_col_2), store some already batched items.
+            # This way, you may avoid having to disassemble an already batched item
+            # (e.g. a numpy array of shape (10, 2)) into its individual items (e.g.
+            # split the array into a list of len=10) and then adding these individually.
+            # The performance gains may be quite large when providing already batched
+            # items (such as numpy arrays with a batch dim):
             ConnectorV2.add_n_batch_items(
                 batch,
                 "test_col_2",
@@ -472,11 +479,18 @@ class ConnectorV2(abc.ABC):
                 {"a": np.array([3, 5]), "b": np.array([4, 6])},
                 num_items=2,
             )
+            # Add more already batched items (this time with a different batch size)
+            ConnectorV2.add_n_batch_items(
+                batch,
+                "test_col_2",
+                {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
+                num_items=3,  # <- in this case, this must be the batch size
+            )
             check(
                 batch["test_col_2"],
                 [
-                    {"a": np.array(3), "b": np.array(4)},
-                    {"a": np.array(5), "b": np.array(6)},
+                    {"a": np.array([3, 5]), "b": np.array([4, 6])},
+                    {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
                 ],
             )
 
@@ -575,24 +589,24 @@ class ConnectorV2(abc.ABC):
                 )
             return
 
-        # Process a batched (possibly complex) struct by splitting it up into a list
-        # first and then calling this method again on the resulting list.
-        items_as_list = unbatch(items_to_add)
-        ConnectorV2.add_n_batch_items(
+        # Process a batched (possibly complex) struct.
+        # We could just unbatch the item (split it into a list) and then add each
+        # individual item to our `batch`. However, this comes with a heavy performance
+        # penalty. Instead, we tag the thus added array(s) here as "_has_batch_dim=True"
+        # and then know that when batching the entire list under the respective
+        # (eps_id, agent_id, module_id)-tuple key, we need to concatenate, not stack
+        # the items in there.
+        def _tag(s):
+            return BatchedNdArray(s)
+
+        ConnectorV2.add_batch_item(
             batch=batch,
             column=column,
-            items_to_add=items_as_list,
-            num_items=num_items,
+            # Convert given input into BatchedNdArray(s) such that the `batch` utility
+            # knows that it'll have to concat, not stack.
+            item_to_add=tree.map_structure(_tag, items_to_add),
             single_agent_episode=single_agent_episode,
         )
-
-    # @staticmethod
-    # def get_batch_item(batch, column, episode_id, agent_id, module_id):
-    #    if isinstance(batch[column], list):
-    #        assert agent_id is None and module_id is None
-    #        return batch[column][(episode_id,)]
-    #    else:
-    #        return batch[column][(episode_id, agent_id, module_id)]
 
     @staticmethod
     def foreach_batch_item_change_in_place(
