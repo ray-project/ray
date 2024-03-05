@@ -5,15 +5,16 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+<<<<<<< HEAD
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler.v2.utils import is_head_node
+=======
+>>>>>>> pr-auto-main
 
 import yaml
-from ray._private.utils import binary_to_hex
-from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
-from ray.autoscaler.v2.sdk import get_cluster_resource_state
 
 from ray._private.ray_constants import env_integer
+from ray._private.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -22,6 +23,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
+from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
 from ray.autoscaler._private.util import (
     format_readonly_node_type,
 )
@@ -32,6 +34,8 @@ from ray.autoscaler._private.util import (
     validate_config,
 )
 from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.autoscaler.v2.utils import is_head_node
 
 logger = logging.getLogger(__name__)
 
@@ -516,7 +520,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         self._configs = BASE_READONLY_CONFIG
         self._gcs_client = GcsClient(address=gcs_address)
 
-    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
+    def refresh_cached_autoscaling_config(self) -> AutoscalingConfig:
         # Update the config with node types from GCS.
         ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
@@ -544,5 +548,5 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         # Don't idle terminated nodes in read-only mode.
         self._configs.pop("idle_timeout_minutes", None)
 
-    def refresh_cached_autoscaling_config(self):
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         return AutoscalingConfig(self._configs, skip_content_hash=True)

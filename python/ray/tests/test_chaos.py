@@ -344,7 +344,8 @@ def test_node_killer_filter(autoscaler_v2):
         )
 
         def check_killed():
-            # Check that killed node is consistent across list_nodes() and NodeKillerActor
+            # Check that killed node is consistent across list_nodes() and
+            # NodeKillerActor
             killed = list(ray.get(node_killer.get_total_killed.remote()))
             dead = [node.node_id for node in list_nodes() if node.state == "DEAD"]
             if len(killed) != 1 or len(dead) != 1:

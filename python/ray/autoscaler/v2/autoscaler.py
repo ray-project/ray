@@ -1,9 +1,6 @@
 import logging
 from queue import Queue
 from typing import List, Optional
-from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (
-    ReadOnlyProvider,
-)
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
@@ -11,6 +8,9 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider i
     KubeRayProvider,
 )
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
+from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (  # noqa
+    ReadOnlyProvider,
+)
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
     IConfigReader,

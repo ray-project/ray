@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import ray
 from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
 from ray._private.utils import binary_to_hex
+from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeAvailabilityRecord,
@@ -44,7 +45,7 @@ from ray.core.generated.autoscaler_pb2 import (
 from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount as ResourceRequestByCountProto,
 )
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_initialized
+from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
@@ -785,11 +786,19 @@ class ClusterStatusParser:
 cached_is_autoscaler_v2 = None
 
 
-def is_autoscaler_v2(fetch_from_server: bool = False) -> bool:
+def is_autoscaler_v2(
+    fetch_from_server: bool = False, gcs_client: Optional[GcsClient] = None
+) -> bool:
     """
     Check if the autoscaler is v2 from reading GCS internal KV.
 
     If the method is called multiple times, the result will be cached in the module.
+
+    Args:
+        fetch_from_server: If True, fetch the value from the GCS server, otherwise
+            use the cached value.
+        gcs_client: The GCS client to use. If not provided, the default GCS
+            client will be used.
 
     Returns:
         is_v2: True if the autoscaler is v2, False otherwise.
@@ -809,14 +818,17 @@ def is_autoscaler_v2(fetch_from_server: bool = False) -> bool:
     if cached_is_autoscaler_v2 is not None and not fetch_from_server:
         return cached_is_autoscaler_v2
 
-    if not _internal_kv_initialized():
-        raise Exception(
-            "GCS address could not be resolved (e.g. ray.init() not called)"
-        )
+    if gcs_client is None:
+        gcs_client = internal_kv_get_gcs_client()
+
+    assert gcs_client, (
+        "GCS client is not available. Please initialize the global GCS client "
+        "first by calling ray.init() or explicitly calls to _initialize_internal_kv()."
+    )
 
     # See src/ray/common/constants.h for the definition of this key.
     cached_is_autoscaler_v2 = (
-        _internal_kv_get(
+        gcs_client.internal_kv_get(
             AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()
         )
         == b"1"
