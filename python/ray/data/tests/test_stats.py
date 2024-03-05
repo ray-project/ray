@@ -50,6 +50,11 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
+            "'block_generation_time': N",
+            (
+                "'task_submission_backpressure_time': "
+                f"{'N' if task_backpressure else 'Z'}"
+            ),
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
@@ -57,11 +62,6 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
-            "'block_generation_time': N",
-            (
-                "'task_submission_backpressure_time': "
-                f"{'N' if task_backpressure else 'Z'}"
-            ),
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -71,14 +71,14 @@ def gen_expected_metrics(
             "'bytes_inputs_received': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
-            "'obj_store_mem_internal_inqueue_blocks': Z",
-            "'obj_store_mem_internal_inqueue': Z",
-            "'obj_store_mem_internal_outqueue_blocks': Z",
-            "'obj_store_mem_internal_outqueue': Z",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            "'obj_store_mem_internal_inqueue_blocks': Z",
+            "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue_blocks': Z",
+            "'obj_store_mem_internal_outqueue': Z",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -503,6 +503,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
+        "      block_generation_time: N,\n"
+        "      task_submission_backpressure_time: N,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
@@ -510,8 +512,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
-        "      block_generation_time: N,\n"
-        "      task_submission_backpressure_time: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"

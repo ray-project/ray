@@ -190,6 +190,21 @@ class OpRuntimeMetrics:
             "map_only": True,
         },
     )
+    block_generation_time: float = field(
+        default=0,
+        metadata={
+            "description": "Time spent generating blocks in tasks.",
+            "metrics_group": "tasks",
+            "map_only": True,
+        },
+    )
+    task_submission_backpressure_time: float = field(
+        default=0,
+        metadata={
+            "description": "Time spent in task submission backpressure.",
+            "metrics_group": "tasks",
+        },
+    )
 
     # === Object store memory metrics ===
     obj_store_mem_internal_inqueue_blocks: int = field(
@@ -235,7 +250,7 @@ class OpRuntimeMetrics:
     obj_store_mem_freed: int = field(
         default=0,
         metadata={
-            "description": "Byte size of Freed memory in object store.",
+            "description": "Byte size of freed memory in object store.",
             "metrics_group": "object_store_memory",
             "map_only": True,
         },
@@ -250,21 +265,7 @@ class OpRuntimeMetrics:
     )
 
     # === Miscellaneous metrics ===
-    block_generation_time: float = field(
-        default=0,
-        metadata={
-            "description": "Time spent generating blocks in tasks.",
-            "metrics_group": "misc",
-            "map_only": True,
-        },
-    )
-    task_submission_backpressure_time: float = field(
-        default=0,
-        metadata={
-            "description": "Time spent in task submission backpressure.",
-            "metrics_group": "misc",
-        },
-    )
+    # Use "metrics_group: "misc" in the metadata for new metrics in this section.
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -396,6 +397,19 @@ class OpRuntimeMetrics:
             return None
 
         return self.average_bytes_outputs_per_task - self.average_bytes_inputs_per_task
+
+    @property
+    def estimated_object_store_usage(self) -> Optional[float]:
+        """Estimated object store memory usage, in bytes, of
+        operator's internal queues."""
+        if self.obj_store_mem_internal_inqueue is None:
+            return None
+        return sum(
+            [
+                self.obj_store_mem_internal_inqueue,
+                self.obj_store_mem_internal_outqueue,
+            ]
+        )
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""

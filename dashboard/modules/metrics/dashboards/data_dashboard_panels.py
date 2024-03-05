@@ -47,6 +47,7 @@ def _generate_grafana_panel_from_metric(
 
 
 DATA_GRAFANA_PANELS = [
+    # Ray Data Metrics (Overview)
     Panel(
         id=1,
         title="Bytes Spilled",
@@ -159,7 +160,7 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-    # Inputs-related metrics
+    # Ray Data Metrics (Inputs)
     _generate_grafana_panel_from_metric(
         field_name="num_inputs_received",
         panel_id=17,
@@ -188,6 +189,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         legend="Bytes Submitted: {{dataset}}, {{operator}}",
     ),
+    # Ray Data Metrics (Outputs)
     _generate_grafana_panel_from_metric(
         field_name="num_task_outputs_generated",
         panel_id=22,
@@ -237,6 +239,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         legend="Bytes Taken: {{dataset}}, {{operator}}",
     ),
+    # Ray Data Metrics (Tasks)
     _generate_grafana_panel_from_metric(
         field_name="num_tasks_submitted",
         panel_id=29,
@@ -272,7 +275,28 @@ DATA_GRAFANA_PANELS = [
         unit="tasks",
         legend="Failed Tasks: {{dataset}}, {{operator}}",
     ),
-    # Object store memory metrics
+    Panel(
+        id=8,
+        title="Block Generation Time",
+        description="Time spent generating blocks.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_block_generation_time{{{global_filters}}}) by (dataset, operator)",
+                legend="Block Generation Time: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    _generate_grafana_panel_from_metric(
+        field_name="task_submission_backpressure_time",
+        panel_id=37,
+        title="Task Submission Backpressure Time",
+        unit="seconds",
+        legend="Backpressure Time: {{dataset}}, {{operator}}",
+    ),
+    # Ray Data Metrics (Object Store Memory)
     _generate_grafana_panel_from_metric(
         field_name="obj_store_mem_internal_inqueue_blocks",
         panel_id=13,
@@ -324,28 +348,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         legend="Bytes Size: {{dataset}}, {{operator}}",
     ),
-    Panel(
-        id=8,
-        title="Block Generation Time",
-        description="Time spent generating blocks.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="sum(ray_data_block_generation_seconds{{{global_filters}}}) by (dataset, operator)",
-                legend="Block Generation Time: {{dataset}}, {{operator}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
-    _generate_grafana_panel_from_metric(
-        field_name="task_submission_backpressure_time",
-        panel_id=37,
-        title="Task Submission Backpressure Time",
-        unit="seconds",
-        legend="Backpressure Time: {{dataset}}, {{operator}}",
-    ),
-    # Iteration metrics
+    # Ray Data Metrics (Iteration)
     Panel(
         id=12,
         title="Iteration Initialization Time",
@@ -388,6 +391,7 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    # Ray Data Metrics (Miscellaneous)
 ]
 
 ids = []
