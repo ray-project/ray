@@ -699,7 +699,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # Make sure each iteration doesn't take too long.
                 min_time_s_per_iteration=0.5,
                 # Make sure metrics reporting doesn't hang for too long
-                # since we are gonna have a hanging worker.
+                # since we will have a hanging worker.
                 metrics_episode_collection_timeout_s=1,
             )
             .environment(
