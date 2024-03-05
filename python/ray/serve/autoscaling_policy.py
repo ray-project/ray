@@ -40,8 +40,7 @@ def _calculate_desired_num_replicas(
     # Example: if error_ratio == 2.0, we have two times too many ongoing
     # requests per replica, so we desire twice as many replicas.
     target_num_requests = (
-        autoscaling_config.target_num_ongoing_requests_per_replica
-        * num_running_replicas
+        autoscaling_config.get_target_ongoing_requests() * num_running_replicas
     )
     error_ratio: float = total_num_requests / target_num_requests
 

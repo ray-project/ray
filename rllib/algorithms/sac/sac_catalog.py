@@ -10,7 +10,7 @@ from ray.rllib.core.models.configs import (
     MLPEncoderConfig,
     MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Model, Encoder
+from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.models.torch.torch_distributions import TorchSquashedGaussian
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 
@@ -26,6 +26,7 @@ class SACCatalog(Catalog):
         observation_space: gym.Space,
         action_space: gym.Space,
         model_config_dict: dict,
+        view_requirements: dict = None,
     ):
         """Initializes the SACCatalog.
 
@@ -34,6 +35,10 @@ class SACCatalog(Catalog):
             action_space: The action space for the Pi Head.
             model_config_dict: The model config to use.
         """
+        assert view_requirements is None, (
+            "Instead, use the new ConnectorV2 API to pick whatever information "
+            "you need from the running episodes"
+        )
 
         super().__init__(
             observation_space=observation_space,
@@ -70,7 +75,7 @@ class SACCatalog(Catalog):
         """Builds the Q-function encoder.
 
         In contrast to PPO, SAC needs a different encoder for Pi and
-        Q-function as the Q-function in gthe continuous case has to
+        Q-function as the Q-function in the continuous case has to
         encode actions, too. Therefore the Q-function uses its own
         encoder config.
         Note, the Pi network uses the base encoder from the `Catalog`.
@@ -169,6 +174,3 @@ class SACCatalog(Catalog):
     def get_action_dist_cls(self, framework: str) -> "TorchSquashedGaussian":
         assert framework == "torch"
         return TorchSquashedGaussian
-
-
-# __sphinx_doc_end__

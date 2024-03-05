@@ -317,7 +317,7 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/test_tfrecords.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "tfxbsl"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -363,7 +363,7 @@ py_test(
 
 py_test(
     name = "test_huggingface",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_huggingface.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -451,14 +451,6 @@ py_test(
 )
 
 py_test(
-    name = "test_runtime_metrics_scheduling",
-    size = "small",
-    srcs = ["tests/test_runtime_metrics_scheduling.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_size_estimation",
     size = "medium",
     srcs = ["tests/test_size_estimation.py"],
@@ -523,14 +515,6 @@ py_test(
 )
 
 py_test(
-    name = "test_streaming_backpressure_edge_case",
-    size = "medium",
-    srcs = ["tests/test_streaming_backpressure_edge_case.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_transform_pyarrow",
     size = "small",
     srcs = ["tests/test_transform_pyarrow.py"],
@@ -558,6 +542,14 @@ py_test(
     name = "test_backpressure_policies",
     size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_backpressure_e2e",
+    size = "large",
+    srcs = ["tests/test_backpressure_e2e.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

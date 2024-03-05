@@ -59,12 +59,12 @@ def start_and_shutdown_ray_cli_function():
     ],
     indirect=True,
 )
-def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
-    """Test that max_concurrent_queries is respected when there are long poll timeouts.
+def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
+    """Test that max_ongoing_requests is respected when there are long poll timeouts.
 
     Previously, when a long poll update occurred (e.g., a timeout or new replicas
     added), ongoing requests would no longer be counted against
-    `max_concurrent_queries`.
+    `max_ongoing_requests`.
 
     Issue: https://github.com/ray-project/ray/issues/32652
     """
@@ -83,14 +83,14 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     signal_actor = SignalActor.remote()
     counter_actor = CounterActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     async def f():
         await counter_actor.inc.remote()
         await signal_actor.wait.remote()
         return "hello"
 
     # Issue a blocking request which should occupy the only slot due to
-    # `max_concurrent_queries=1`.
+    # `max_ongoing_requests=1`.
     serve.run(f.bind())
 
     @ray.remote
@@ -109,7 +109,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     wait_for_condition(check_request_started, timeout=5, num_expected_requests=1)
 
     # Now issue 10 more requests and wait for significantly longer than the long poll
-    # timeout. They should all be queued in the handle due to `max_concurrent_queries`
+    # timeout. They should all be queued in the handle due to `max_ongoing_requests`
     # enforcement (verified via the counter).
     new_refs = [do_req.remote() for _ in range(10)]
     ready, _ = ray.wait(new_refs, timeout=1)
@@ -226,7 +226,7 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     try:
 
-        @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+        @serve.deployment(num_replicas=2, max_ongoing_requests=1)
         def f(do_crash: bool = False):
             if do_crash:
                 os._exit(1)
