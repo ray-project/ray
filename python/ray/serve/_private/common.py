@@ -28,11 +28,14 @@ class DeploymentID:
     name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
 
-    def __str__(self):
-        return f"{self.app_name}_{self.name}"
-
     def to_replica_actor_class_name(self):
         return f"ServeReplica:{self.app_name}:{self.name}"
+
+    def __str__(self):
+        return f"Deployment(name='{self.name}', app='{self.app_name}')"
+
+    def __repr__(self):
+        return str(self)
 
 
 ReplicaTag = str
