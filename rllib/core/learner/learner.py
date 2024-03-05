@@ -1298,20 +1298,20 @@ class Learner:
         return self.module.set_state(state)
 
     @OverrideToImplementCustomLogic
-    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of all optimizers currently registered in this Learner.
-
-        Args:
-            state: The state of the optimizers.
-        """
-        raise NotImplementedError
-
-    @OverrideToImplementCustomLogic
     def get_optimizer_state(self) -> Dict[str, Any]:
         """Returns the state of all optimizers currently registered in this Learner.
 
         Returns:
             The current state of all optimizers currently registered in this Learner.
+        """
+        raise NotImplementedError
+
+    @OverrideToImplementCustomLogic
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of all optimizers currently registered in this Learner.
+
+        Args:
+            state: The state of the optimizers.
         """
         raise NotImplementedError
 
