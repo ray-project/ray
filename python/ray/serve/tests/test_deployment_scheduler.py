@@ -115,8 +115,8 @@ def test_spread_deployment_scheduling_policy_upscale(
             )
             == 2
         )
-    scheduler.on_replica_stopping(dep_id, r1_id)
-    scheduler.on_replica_stopping(dep_id, r2_id)
+    scheduler.on_replica_stopping(r1_id)
+    scheduler.on_replica_stopping(r2_id)
     scheduler.on_deployment_deleted(dep_id)
 
 
