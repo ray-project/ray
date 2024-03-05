@@ -2,7 +2,7 @@ import time
 import uuid
 from typing import Dict, List, Optional, Set
 
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 
 class InstanceUtil:
@@ -160,7 +160,7 @@ class InstanceUtil:
             Instance.QUEUED: {
                 # Cloud provider requested to launch a node for the instance.
                 # This happens when the a launch request is made to the node provider.
-                Instance.REQUESTED
+                Instance.REQUESTED,
             },
             # When in this status, a launch request to the node provider is made.
             Instance.REQUESTED: {
@@ -412,3 +412,23 @@ class InstanceUtil:
             # All nodes reachable from 'start'
             visited = set()
             cls._reachable_from[status] = dfs(valid_transitions, status, visited)
+
+    @staticmethod
+    def get_log_str_for_update(instance: Instance, update: InstanceUpdateEvent) -> str:
+        """Returns a log string for the given instance update."""
+        if update.upsert:
+            return (
+                f"New instance "
+                f"{Instance.InstanceStatus.Name(update.new_instance_status)} (id="
+                f"{instance.instance_id}, type={instance.instance_type}, "
+                f"cloud_instance_id={instance.cloud_instance_id}, "
+                f"ray_id={instance.node_id}): {update.details}"
+            )
+        return (
+            f"Update instance "
+            f"{Instance.InstanceStatus.Name(instance.status)}->"
+            f"{Instance.InstanceStatus.Name(update.new_instance_status)} (id="
+            f"{instance.instance_id}, type={instance.instance_type}, "
+            f"cloud_instance_id={instance.cloud_instance_id}, "
+            f"ray_id={instance.node_id}): {update.details}"
+        )
