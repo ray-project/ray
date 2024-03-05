@@ -541,6 +541,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    deploy_success_callback: Optional[Callable] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -563,6 +564,7 @@ def run(
             nor in the ingress deployment, the route prefix will default to '/'.
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        deploy_success_callback: The callable to call after the deployment is succeeded.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -573,6 +575,9 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
     )
+
+    if deploy_success_callback:
+        deploy_success_callback()
 
     if blocking:
         try:

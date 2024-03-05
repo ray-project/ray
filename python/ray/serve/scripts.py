@@ -544,10 +544,19 @@ def run(
                     # Block, letting Ray print logs to the terminal.
                     time.sleep(10)
         else:
+
+            def log_deploy_success_message():
+                cli_logger.success("Deployed app successfully.")
+
             # This should not block if reload is true so the watchfiles can be triggered
             should_block = blocking and not reload
-            serve.run(app, blocking=should_block, name=name, route_prefix=route_prefix)
-            cli_logger.success("Deployed app successfully.")
+            serve.run(
+                target=app,
+                blocking=should_block,
+                name=name,
+                route_prefix=route_prefix,
+                deploy_success_callback=log_deploy_success_message,
+            )
 
         if reload:
             if not blocking:
@@ -558,6 +567,9 @@ def run(
                 watch_dir = working_dir
             else:
                 watch_dir = app_dir
+
+            def log_redeploy_success_message():
+                cli_logger.success("Redeployed app successfully.")
 
             for changes in watchfiles.watch(
                 watch_dir,
@@ -574,9 +586,12 @@ def run(
                         import_attr(import_path, reload_module=True), args_dict
                     )
                     serve.run(
-                        target=app, blocking=True, name=name, route_prefix=route_prefix
+                        target=app,
+                        blocking=True,
+                        name=name,
+                        route_prefix=route_prefix,
+                        deploy_success_callback=log_redeploy_success_message,
                     )
-                    cli_logger.success("Redeployed app successfully.")
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

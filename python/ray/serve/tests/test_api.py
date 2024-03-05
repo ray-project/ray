@@ -974,6 +974,41 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     assert h.remote().result() == "hi"
 
 
+@pytest.mark.parametrize("fail_deployment", [False, True])
+def test_serve_run_callback(serve_instance, fail_deployment):
+    """Test the `deploy_success_callback` arg on serve.run.
+
+    If the deployment succeeded, the function passed by `deploy_success_callback`
+    should be called. If the deployment failed, the function passed by
+    `deploy_success_callback` should not be called.
+    """
+    callback_called = False
+
+    def deploy_success_callback():
+        nonlocal callback_called
+        callback_called = True
+
+    @serve.deployment
+    class Foo:
+        def __init__(self):
+            if fail_deployment:
+                1 / 0
+
+        def __call__(self):
+            return "foo"
+
+    if fail_deployment:
+        with pytest.raises(RuntimeError):
+            serve.run(
+                target=Foo.bind(), deploy_success_callback=deploy_success_callback
+            )
+
+        assert callback_called is False
+    else:
+        serve.run(target=Foo.bind(), deploy_success_callback=deploy_success_callback)
+        assert callback_called is True
+
+
 if __name__ == "__main__":
     import sys
 
