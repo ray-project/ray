@@ -63,9 +63,6 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         cluster_name, cluster_namespace
     )
 
-    print(f"Ray version: {ray.__version__}")
-    print(f"Ray commit: {ray.__commit__}")
-
     # Init GCS client
     _initialize_internal_kv(GcsClient(ray_address))
     if is_autoscaler_v2(fetch_from_server=True):

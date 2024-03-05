@@ -742,7 +742,6 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # Execute the func. (Make sure the function doesn't block!)
                 out = func(*args, **kwargs)
                 # Check out_stream once a second until the timeout.
-
                 # Raise a RuntimeError if we timeout.
                 wait_for_condition(
                     # Does redirected stdout contain all of the expected strings?
