@@ -21,16 +21,16 @@ Optimizing reads
 .. _read_output_blocks:
 
 Tuning output blocks for read
-~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray Data automatically selects the number of output blocks for read according to the following procedure:
 
-The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of output blocks and read tasks to create.
-Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``override_num_blocks`` also determines the number of map tasks.
+- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
+- Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``override_num_blocks`` also determines the number of map tasks.
 
 Ray Data decides the default value for number of output blocks based on the following heuristics, applied in order:
 
-1. Start with the default value of 200. You can overwrite this by setting :class:`DataContext.min_num_blocks <ray.data.context.DataContext>`.
+1. Start with the default value of 200. You can overwrite this by setting :class:`DataContext.read_op_min_num_blocks <ray.data.context.DataContext>`.
 2. Min block size (default=1 MiB). If number of blocks would make blocks smaller than this threshold, reduce number of blocks to avoid the overhead of tiny blocks. You can override by setting :class:`DataContext.target_min_block_size <ray.data.context.DataContext>` (bytes).
 3. Max block size (default=128 MiB). If number of blocks would make blocks larger than this threshold, increase number of blocks to avoid out-of-memory errors during processing. You can override by setting :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` (bytes).
 4. Available CPUs. Increase number of blocks to utilize all of the available CPUs in the cluster. Ray Data chooses the number of read tasks to be at least 2x the number of available CPUs.
@@ -157,7 +157,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     ...
 
 To turn off this behavior and allow the read and map operators to be fused, set ``override_num_blocks`` manually.
-For example, this code sets ``override_num_blocks`` to equal the number of files:
+For example, this code sets the number of files equal to ``override_num_blocks``:
 
 .. testcode::
     :hide:

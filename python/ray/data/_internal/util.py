@@ -114,7 +114,7 @@ def _autodetect_parallelism(
     This detects parallelism using the following heuristics, applied in order:
 
      1) We start with the default value of 200. This can be overridden by
-        setting the `min_num_blocks` attribute of
+        setting the `read_op_min_num_blocks` attribute of
         :class:`~ray.data.context.DataContext`.
      2) Min block size. If the parallelism would make blocks smaller than this
         threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
@@ -161,13 +161,16 @@ def _autodetect_parallelism(
             placement_group = ray.util.get_current_placement_group()
         avail_cpus = avail_cpus or _estimate_avail_cpus(placement_group)
         parallelism = max(
-            min(ctx.min_num_blocks, max_reasonable_parallelism),
+            min(ctx.read_op_min_num_blocks, max_reasonable_parallelism),
             min_safe_parallelism,
             avail_cpus * 2,
         )
 
-        if parallelism == ctx.min_num_blocks:
-            reason = f"DataContext.get_current().min_num_blocks={ctx.min_num_blocks}"
+        if parallelism == ctx.read_op_min_num_blocks:
+            reason = (
+                "DataContext.get_current().read_op_min_num_blocks="
+                f"{ctx.read_op_min_num_blocks}"
+            )
         elif parallelism == max_reasonable_parallelism:
             reason = (
                 "output blocks of size at least "

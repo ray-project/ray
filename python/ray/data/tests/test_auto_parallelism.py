@@ -126,7 +126,7 @@ def test_autodetect_parallelism(
 def test_auto_parallelism_basic(shutdown_only):
     ray.init(num_cpus=8)
     context = DataContext.get_current()
-    context.min_num_blocks = 1
+    context.read_op_min_num_blocks = 1
     # Datasource bound.
     ds = ray.data.range_tensor(5, shape=(100,), override_num_blocks=-1)
     assert ds._plan.initial_num_blocks() == 5, ds

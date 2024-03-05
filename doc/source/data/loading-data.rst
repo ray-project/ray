@@ -948,7 +948,7 @@ Howeve, you can also override the default value by setting the ``override_num_bl
 argument. Ray Data decides internally how many read tasks to run concurrently to best
 utilize the cluster, ranging from ``1...override_num_blocks`` tasks. In other words,
 the higher the ``override_num_blocks``, the smaller the data blocks in the Dataset and
-hence the more opportunity for parallel execution.
+hence more opportunities for parallel execution.
 
-For  more information on how to tune the number of output blocks, see
+For more information on how to tune the number of output blocks, see
 :ref:`Tuning output blocks for read <read_output_blocks>`.
