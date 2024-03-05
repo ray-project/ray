@@ -11,10 +11,9 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.env.multi_agent_env import make_multi_agent
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
@@ -159,7 +158,7 @@ class FaultInjectEnv(gym.Env):
         return self.env.action_space.sample()
 
 
-class ForwardHealthCheckToEnvWorker(RolloutWorker):
+class ForwardHealthCheckToEnvWorker(SingleAgentEnvRunner):
     """Configure RolloutWorker to error in specific condition is hard.
 
     So we take a short-cut, and simply forward ping() to env.sample().
@@ -215,11 +214,7 @@ class AddPolicyCallback(DefaultCallbacks):
         # Add a custom policy to algorithm.
         algorithm.add_policy(
             policy_id="test_policy",
-            policy_cls=(
-                PPOTorchPolicy
-                if algorithm.config.framework_str == "torch"
-                else PPOTF2Policy
-            ),
+            policy_cls=PPOTorchPolicy,
             observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
             action_space=gym.spaces.Discrete(2),
             config={},
@@ -267,7 +262,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         print(config)
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks=("torch")):
             algo = config.build()
             algo.train()
 
@@ -298,7 +293,7 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             }
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        for _ in framework_iterator(config, frameworks="torch"):
             a = config.build()
             self.assertRaises(Exception, lambda: a.train())
             a.stop()
@@ -345,7 +340,7 @@ class TestWorkerFailures(unittest.TestCase):
             ),
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks="torch"):
             # Reset interaction counter.
             ray.wait([counter.reset.remote()])
 
@@ -503,7 +498,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks="torch"):
             # Reset interaciton counter.
             ray.wait([counter.reset.remote()])
 
@@ -577,7 +572,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks="torch"):
             # Reset interaction counter.
             ray.wait([counter.reset.remote()])
 
@@ -662,7 +657,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks="torch"):
             # Reset interaciton counter.
             ray.wait([counter.reset.remote()])
 
@@ -735,7 +730,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks="torch"):
             # Reset interaciton counter.
             ray.wait([counter.reset.remote()])
 
