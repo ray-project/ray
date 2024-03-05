@@ -65,11 +65,11 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert ds.input_files() == [_unwrap_protocol(path1)]
     assert "{one: int64, two: string}" in str(ds), ds
 
-    # Two files, parallelism=2.
+    # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "test2.json")
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json([path1, path2], parallelism=2, filesystem=fs)
+    ds = ray.data.read_json([path1, path2], override_num_blocks=2, filesystem=fs)
     dsdf = ds.to_pandas()
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
@@ -77,11 +77,11 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     for block, meta in ds._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
-    # Three files, parallelism=2.
+    # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     path3 = os.path.join(data_path, "test3.json")
     df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json([path1, path2, path3], parallelism=2, filesystem=fs)
+    ds = ray.data.read_json([path1, path2, path3], override_num_blocks=2, filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -229,11 +229,11 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     assert ds.count() == 3
     assert ds.input_files() == [path1]
 
-    # Two files, parallelism=2.
+    # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(tmp_path, "test2.json.gz")
     df2.to_json(path2, compression="gzip", orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2], parallelism=2)
+    ds = ray.data.read_json([path1, path2], override_num_blocks=2)
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
@@ -567,7 +567,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
                 new_file_path = old_file_path.replace(".json", ".jsonl")
                 os.rename(old_file_path, new_file_path)
         else:
-            ds2 = ray.data.read_json(data_path, parallelism=2, filesystem=fs)
+            ds2 = ray.data.read_json(data_path, override_num_blocks=2, filesystem=fs)
         ds2df = ds2.to_pandas()
         assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
         # Test metadata ops.
@@ -643,7 +643,7 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
 
 @pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
 def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
-    ray.data.range(100, parallelism=20).write_json(
+    ray.data.range(100, override_num_blocks=20).write_json(
         tmp_path, num_rows_per_file=num_rows_per_file
     )
 

@@ -251,10 +251,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
-            app_msg = f" in application '{self.app_name}'" if self.app_name else ""
             logger.info(
-                f"Got updated replicas for deployment '{self._deployment_id.name}'"
-                f"{app_msg}: {new_replica_id_set}.",
+                f"Got updated replicas for {self._deployment_id}: "
+                f"{new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
@@ -344,20 +343,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
                 while len(self._replicas) == 0:
-                    app_msg = (
-                        f" in application '{self.app_name}'" if self.app_name else ""
-                    )
                     logger.info(
-                        "Tried to assign replica for deployment "
-                        f"'{self._deployment_id.name}'{app_msg} but none are "
-                        "available. Waiting for new replicas to be added.",
+                        "No replicas are currently available for "
+                        f"{self._deployment_id}.",
                         extra={"log_to_stderr": False},
                     )
                     self._replicas_updated_event.clear()
                     await self._replicas_updated_event.wait()
                     logger.info(
-                        f"Got replicas for deployment '{self._deployment_id.name}'"
-                        f"{app_msg}, waking up.",
+                        f"New replicas are available for {self._deployment_id}, "
+                        "attempting to schedule queued requests.",
                         extra={"log_to_stderr": False},
                     )
 
@@ -568,7 +563,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 # Include replicas whose queues are full as not in the cache so we will
                 # actively probe them. Otherwise we may end up in "deadlock" until their
                 # cache entries expire.
-                if queue_len is None or queue_len >= r.max_concurrent_requests:
+                if queue_len is None or queue_len >= r.max_ongoing_requests:
                     not_in_cache.append(r)
                 elif queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
@@ -587,10 +582,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     # None is returned if we failed to get the queue len.
                     continue
 
-                if (
-                    queue_len < r.max_concurrent_requests
-                    and queue_len < lowest_queue_len
-                ):
+                if queue_len < r.max_ongoing_requests and queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
                     chosen_replica_id = r.replica_id
         elif len(not_in_cache) > 0:

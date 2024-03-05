@@ -12,22 +12,28 @@ In this section, we go into more detail about Serve autoscaling concepts as well
 
 ### [Required] Define the steady state of your system
 
-To define what the steady state of your deployments should be, set values for `target_num_ongoing_requests_per_replica` and `max_concurrent_queries`.
+To define what the steady state of your deployments should be, set values for `target_ongoing_requests` and `max_ongoing_requests`.
 
 #### **target_num_ongoing_requests_per_replica [default=1]**
-Serve scales the number of replicas for a deployment up or down based on the average number of ongoing requests per replica. Specifically, Serve compares the *actual* number of ongoing requests per replica with the target value you set in the autoscaling config and makes upscale or downscale decisions from that. The target value is set by `target_num_ongoing_requests_per_replica`, and Serve tries to make sure that each replica has roughly that number
+This parameter is renamed to `target_ongoing_requests`. `target_num_ongoing_requests_per_replica` will be removed in a future release.
+
+#### **target_ongoing_requests [default=1]**
+Serve scales the number of replicas for a deployment up or down based on the average number of ongoing requests per replica. Specifically, Serve compares the *actual* number of ongoing requests per replica with the target value you set in the autoscaling config and makes upscale or downscale decisions from that. Set the target value with `target_ongoing_requests`, and Serve attempts to ensure that each replica has roughly that number
 of requests being processed and waiting in the queue. 
 
-It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance. We recommend you benchmark your application code and set this number based on an end-to-end latency objective.
+Always load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_ongoing_requests` number to maintain high performance. Benchmark your application code and set this number based on an end-to-end latency objective.
 
 :::{note}
-As an example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Then requests are assigned to replicas faster than the replicas can finish processing them; more and more requests are queued up at the replica (these are considered "ongoing requests") as time goes on, and then the average number of ongoing requests at each replica steadily increases. Latency will also increase since new requests have to wait for old requests to finish processing. If you set `target_num_ongoing_requests_per_replica = 1`, Serve detects a higher than desired number of ongoing requests per replica, and adds more replicas. At 3 replicas, your system would be able to process 30 QPS with 1 ongoing request per replica on average.
+As an example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Then Serve assigns requests to replicas faster than the replicas can finish processing them; more and more requests queue up at the replica (these requests are "ongoing requests") as time progresses, and then the average number of ongoing requests at each replica steadily increases. Latency also increases because new requests have to wait for old requests to finish processing. If you set `target_ongoing_requests = 1`, Serve detects a higher than desired number of ongoing requests per replica, and adds more replicas. At 3 replicas, your system would be able to process 30 QPS with 1 ongoing request per replica on average.
 :::
 
-#### **max_concurrent_queries [default=100]**
-There is also a maximum queue limit that is proxies respect when assigning requests to replicas. The limit is defined by `max_concurrent_queries`. We recommend setting `max_concurrent_queries` to ~20 to 50% higher than `target_num_ongoing_requests_per_replica`. Note that `target_num_ongoing_requests_per_replica` should always be strictly less than `max_concurrent_queries`, otherwise the deployment never scales up. Take into account the following when setting `max_concurrent_queries`:
+#### **max_concurrent_queries [default=100] (DEPRECATED)**
+This parameter is renamed to `max_ongoing_requests`. `max_concurrent_queries` will be removed in a future release.
 
-- Setting it too low limits upscaling. For instance, if your target value is 50 and `max_concurrent_queries` is 51, then even if the traffic increases significantly, the requests will queue up at the proxy instead of at the replicas. As a result, the autoscaler only increases the number of replicas at most 2% at a time, which is very slow.
+#### **max_ongoing_requests [default=100]**
+There is also a maximum queue limit that proxies respect when assigning requests to replicas. Define the limit with `max_ongoing_requests`. Set `max_ongoing_requests` to ~20 to 50% higher than `target_ongoing_requests`. Note that `target_ongoing_requests` should always be strictly less than `max_ongoing_requests`, otherwise the deployment never scales up.
+
+- Setting it too low limits upscaling. For instance, if your target value is 50 and `max_ongoing_requests` is 51, then even if the traffic increases significantly, the requests will queue up at the proxy instead of at the replicas. As a result, the autoscaler only increases the number of replicas at most 2% at a time, which is very slow.
 - Setting it too high can lead to imbalanced routing. Concretely, this can lead to very high tail latencies during upscale, because when the autoscaler is scaling a deployment up due to a traffic spike, most or all of the requests might be assigned to the existing replicas before the new replicas are started.
 
 ### [Required] Define upper and lower autoscaling limits
@@ -41,7 +47,7 @@ To use autoscaling, you need to define the minimum and maximum number of resourc
 
 ### [Optional] Define how the system reacts to changing traffic
 
-Given a steady stream of traffic and appropriately configured `min_replicas` and `max_replicas`, the steady state of your system is essentially fixed for a chosen configuration value for `target_num_ongoing_requests_per_replica`. Before reaching steady state, however, your system is reacting to traffic shifts. How you want your system to react to changes in traffic determines how you want to set the remaining autoscaling configurations.
+Given a steady stream of traffic and appropriately configured `min_replicas` and `max_replicas`, the steady state of your system is essentially fixed for a chosen configuration value for `target_ongoing_requests`. Before reaching steady state, however, your system is reacting to traffic shifts. How you want your system to react to changes in traffic determines how you want to set the remaining autoscaling configurations.
 
 * **upscale_delay_s [default=30s]**: This defines how long Serve waits before scaling up the number of replicas in your deployment. In other words, this parameter controls the frequency of upscale decisions. If the replicas are *consistently* serving more requests than desired for an `upscale_delay_s` number of seconds, then Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your service is likely to experience bursts of traffic, you can lower `upscale_delay_s` so that your application can react quickly to increases in traffic.
 
@@ -76,7 +82,7 @@ First consider the following deployment configurations. Because the driver deplo
 ```yaml
 - name: Driver
   num_replicas: 1
-  max_concurrent_queries: 200
+  max_ongoing_requests: 200
 ```
 
 :::
@@ -85,9 +91,9 @@ First consider the following deployment configurations. Because the driver deplo
 
 ```yaml
 - name: HeavyLoad
-  max_concurrent_queries: 3
+  max_ongoing_requests: 3
   autoscaling_config:
-    target_num_ongoing_requests_per_replica: 1
+    target_ongoing_requests: 1
     min_replicas: 0
     initial_replicas: 0
     max_replicas: 200
@@ -105,9 +111,9 @@ First consider the following deployment configurations. Because the driver deplo
 
 ```yaml
 - name: LightLoad
-  max_concurrent_queries: 3
+  max_ongoing_requests: 3
   autoscaling_config:
-    target_num_ongoing_requests_per_replica: 1
+    target_ongoing_requests: 1
     min_replicas: 0
     initial_replicas: 0
     max_replicas: 200
@@ -154,7 +160,7 @@ Note that the number of `HeavyLoad` replicas should roughly match the number of 
 
 ### Attempt 2: Autoscale `Driver`
 
-For this attempt, set an autoscaling configuration for `Driver` as well, with the setting `target_num_ongoing_requests_per_replica = 20`. Now the deployment configurations are as follows.
+For this attempt, set an autoscaling configuration for `Driver` as well, with the setting `target_ongoing_requests = 20`. Now the deployment configurations are as follows:
 
 ::::{tab-set}
 
@@ -162,9 +168,9 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
 
 ```yaml
 - name: Driver
-  max_concurrent_queries: 200
+  max_ongoing_requests: 200
   autoscaling_config:
-    target_num_ongoing_requests_per_replica: 20
+    target_ongoing_requests: 20
     min_replicas: 1
     initial_replicas: 1
     max_replicas: 10
@@ -182,9 +188,9 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
 
 ```yaml
 - name: HeavyLoad
-  max_concurrent_queries: 3
+  max_ongoing_requests: 3
   autoscaling_config:
-    target_num_ongoing_requests_per_replica: 1
+    target_ongoing_requests: 1
     min_replicas: 0
     initial_replicas: 0
     max_replicas: 200
@@ -202,9 +208,9 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
 
 ```yaml
 - name: LightLoad
-  max_concurrent_queries: 3
+  max_ongoing_requests: 3
   autoscaling_config:
-    target_num_ongoing_requests_per_replica: 1
+    target_ongoing_requests: 1
     min_replicas: 0
     initial_replicas: 0
     max_replicas: 200
@@ -255,7 +261,7 @@ If you expect your application to receive bursty traffic, and at the same time w
 * Set a lower `upscale_delay_s`. The autoscaler always waits `upscale_delay_s` seconds before making a decision to upscale, so lowering this delay allows the autoscaler to react more quickly to changes, especially bursts, of traffic.
 * Set a larger `upscale_smoothing_factor`. If `upscale_smoothing_factor > 1`, then the autoscaler scales up more aggressively than normal. This setting can allow your deployment to be more sensitive to bursts of traffic.
 * Lower the `metric_interval_s`. Always set `metric_interval_s` to be less than or equal to `upscale_delay_s`, otherwise upscaling is delayed because the autoscaler doesn't receive fresh information often enough.
-* Set a lower `max_concurrent_queries`. If `max_concurrent_queries` is too high relative to `target_num_ongoing_requests_per_replica`, then when traffic increases, most or all of the requests might be assigned to the existing replicas before the new replicas are started. This setting can lead to very high latencies during upscale.
+* Set a lower `max_ongoing_requests`. If `max_ongoing_requests` is too high relative to `target_ongoing_requests`, then when traffic increases, Serve might assign most or all of the requests to the existing replicas before the new replicas are started. This setting can lead to very high latencies during upscale.
 
 
 ### Deployments scaling down too quickly
