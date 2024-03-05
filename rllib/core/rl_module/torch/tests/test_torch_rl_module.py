@@ -16,10 +16,10 @@ from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 
 class TestRLModule(unittest.TestCase):
-    def test_compilation(self):
 
+    def _get_module(self):
         env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule(
+        return DiscreteBCTorchModule(
             config=RLModuleConfig(
                 env.observation_space,
                 env.action_space,
@@ -27,24 +27,19 @@ class TestRLModule(unittest.TestCase):
             )
         )
 
+    def test_compilation(self):
+        module = self._get_module()
         self.assertIsInstance(module, TorchRLModule)
 
     def test_forward_train(self):
 
         bsize = 1024
-        env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
-        )
+        module = self._get_module()
 
-        obs_shape = env.observation_space.shape
+        obs_shape = module.config.observation_space.shape
         obs = torch.randn((bsize,) + obs_shape)
         actions = torch.stack(
-            [torch.tensor(env.action_space.sample()) for _ in range(bsize)]
+            [torch.tensor(module.config.action_space.sample()) for _ in range(bsize)]
         )
         output = module.forward_train({"obs": obs})
 
@@ -65,40 +60,25 @@ class TestRLModule(unittest.TestCase):
     def test_forward(self):
         """Test forward inference and exploration of"""
 
-        env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
-        )
+        module = self._get_module()
 
-        obs_shape = env.observation_space.shape
+        obs_shape = module.config.observation_space.shape
         obs = torch.randn((1,) + obs_shape)
 
         # just test if the forward pass runs fine
         module.forward_inference({"obs": obs})
         module.forward_exploration({"obs": obs})
 
-    def test_get_set_state(self):
+    def test_get_state_and_set_state(self):
 
-        env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
-        )
-
+        module = self._get_module()
         state = module.get_state()
         self.assertIsInstance(state, dict)
 
         module2 = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
+                module.config.observation_space,
+                module.config.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         )
@@ -109,20 +89,32 @@ class TestRLModule(unittest.TestCase):
         state2_after = module2.get_state()
         check(state, state2_after)
 
-    def test_checkpointing(self):
-        env = gym.make("CartPole-v1")
-        module = DiscreteBCTorchModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
-        )
+    def test_save_restore_and_from_checkpoint(self):
+        module = self._get_module()
         with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir = "/tmp/rl_module_test"
-            module.save_to_checkpoint(tmpdir)
-            new_module = DiscreteBCTorchModule.from_checkpoint(tmpdir)
+            checkpoint = module.save(path=tmpdir)
+            new_module = DiscreteBCTorchModule.from_checkpoint(checkpoint)
 
+        # Should be the same (but not identical objects).
+        module_state = module.get_state()
+        check(module_state, new_module.get_state())
+        self.assertNotEqual(id(module), id(new_module))
+
+        # Change something in module (set one weight to a different value).
+        module_state["policy.0.weight"][0][0] = -100.0
+        module.set_state(module_state)
+        check(
+            module.get_state()["policy.0.weight"],
+            new_module.get_state()["policy.0.weight"],
+            false=True,
+        )
+
+        # Restore new_module to make them the same again.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = module.save(path=tmpdir)
+            new_module.restore(checkpoint)
+
+        # Should be the same again (but not identical objects).
         check(module.get_state(), new_module.get_state())
         self.assertNotEqual(id(module), id(new_module))
 

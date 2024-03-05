@@ -1,21 +1,23 @@
 import pathlib
-from typing import Any, List, Mapping, Tuple, Union, Type
+from typing import Any, Dict, List, Mapping, Tuple, Type, Union
 
 from packaging import version
 
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLMODULE_STATE_FILE_NAME, RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
 from ray.rllib.utils.typing import NetworkType
+from ray.train import Checkpoint
 
 torch, nn = try_import_torch()
 
@@ -104,25 +106,25 @@ class TorchRLModule(nn.Module, RLModule):
         return compile_wrapper(self, compile_config)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
-        return self.state_dict()
+    def get_state(self) -> Dict[str, Any]:
+        # Make sure reliably return numpy arrays from this method.
+        torch_state = self.state_dict()
+        return convert_to_numpy(torch_state)
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.load_state_dict(convert_to_torch_tensor(state_dict))
-
-    def _module_state_file_name(self) -> pathlib.Path:
-        return pathlib.Path("module_state.pt")
+    def set_state(self, state: Dict[str, Any]) -> None:
+        torch_state = convert_to_torch_tensor(state)
+        self.load_state_dict(torch_state)
 
     @override(RLModule)
-    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        torch.save(self.state_dict(), path)
+    def _save_state(self, path) -> None:
+        torch_state = self.state_dict()
+        torch.save(torch_state, path)
 
     @override(RLModule)
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        self.set_state(torch.load(path))
+    def _load_state(self, path):
+        torch_state = torch.load(path)
+        self.load_state_dict(torch_state)
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
@@ -164,24 +166,12 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.unwrapped().set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save_state(self, *args, **kwargs):
-        self.unwrapped().save_state(*args, **kwargs)
+    def save(self, *args, **kwargs):
+        self.unwrapped().save(*args, **kwargs)
 
     @override(RLModule)
-    def load_state(self, *args, **kwargs):
-        self.unwrapped().load_state(*args, **kwargs)
-
-    @override(RLModule)
-    def save_to_checkpoint(self, *args, **kwargs):
-        self.unwrapped().save_to_checkpoint(*args, **kwargs)
-
-    @override(RLModule)
-    def _save_module_metadata(self, *args, **kwargs):
-        self.unwrapped()._save_module_metadata(*args, **kwargs)
-
-    @override(RLModule)
-    def _module_metadata(self, *args, **kwargs):
-        return self.unwrapped()._module_metadata(*args, **kwargs)
+    def restore(self, *args, **kwargs):
+        self.unwrapped().load(*args, **kwargs)
 
     @override(RLModule)
     def unwrapped(self) -> "RLModule":
