@@ -1241,6 +1241,10 @@ class Reconciler:
 
         if not Reconciler._is_head_node_running(instance_manager):
             # We shouldn't be scaling the cluster until the head node is ready.
+            # This could happen when the head node (i.e. the raylet) is still
+            # pending registration even though GCS is up.
+            # We will wait until the head node is running and ready to avoid
+            # scaling the cluster from min worker nodes constraint.
             return
 
         # Scale the clusters if needed.
