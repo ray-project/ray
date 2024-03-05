@@ -403,6 +403,7 @@ def test_serve_num_replica_idle_node(autoscaler_v2):
 
         # Need this so that the next test can run.
         from ray.serve.context import _set_global_client
+
         _set_global_client(None)
 
 

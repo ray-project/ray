@@ -1,13 +1,13 @@
 import logging
 from queue import Queue
 from typing import List, Optional
-from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (
-    ReadOnlyProvider,
-)
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
+from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (
+    ReadOnlyProvider,
+)
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
     IConfigReader,
@@ -58,7 +58,6 @@ class Autoscaler:
 
         config = config_reader.get_cached_autoscaling_config()
         logger.info(f"Using Autoscaling Config: \n{config.dump()}")
-
 
         self._gcs_client = gcs_client
         self._cloud_instance_provider = None

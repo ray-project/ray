@@ -1,13 +1,8 @@
 from typing import Dict, List
+
 from ray._private.utils import binary_to_hex
-from ray.autoscaler._private.util import format_readonly_node_type
-from ray.autoscaler.v2.sdk import get_cluster_resource_state
-from ray.autoscaler.v2.utils import is_head_node
-from ray.core.generated.autoscaler_pb2 import (
-    GetClusterResourceStateReply,
-    NodeStatus,
-)
 from ray._raylet import GcsClient
+from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -15,6 +10,9 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     ICloudInstanceProvider,
     NodeKind,
 )
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.autoscaler.v2.utils import is_head_node
+from ray.core.generated.autoscaler_pb2 import GetClusterResourceStateReply, NodeStatus
 
 
 class ReadOnlyProvider(ICloudInstanceProvider):
