@@ -1,7 +1,8 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator, ModelChecker
@@ -63,7 +64,7 @@ class TestRecurrentEncoders(unittest.TestCase):
                 )
                 # State shapes: [1=B, 1=num_layers, [hidden_dim]]
                 self.assertEqual(
-                    outputs[STATE_OUT]["h"].shape,
+                    outputs[Columns.STATE_OUT]["h"].shape,
                     (1, num_layers, hidden_dim),
                 )
             # Check all added models against each other.
@@ -121,11 +122,11 @@ class TestRecurrentEncoders(unittest.TestCase):
                 )
                 # State shapes: [1=B, 1=num_layers, [hidden_dim]]
                 self.assertEqual(
-                    outputs[STATE_OUT]["h"].shape,
+                    outputs[Columns.STATE_OUT]["h"].shape,
                     (1, num_layers, hidden_dim),
                 )
                 self.assertEqual(
-                    outputs[STATE_OUT]["c"].shape,
+                    outputs[Columns.STATE_OUT]["c"].shape,
                     (1, num_layers, hidden_dim),
                 )
 

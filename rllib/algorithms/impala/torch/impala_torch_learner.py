@@ -6,10 +6,11 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -35,12 +36,12 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             self.module[module_id].unwrapped().get_train_action_dist_cls()
         )
         target_policy_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
-        values = fwd_out[SampleBatch.VF_PREDS]
+        values = fwd_out[Columns.VF_PREDS]
 
-        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
-        target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        behaviour_actions_logp = batch[Columns.ACTION_LOGP]
+        target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
         rollout_frag_or_episode_len = config.get_rollout_fragment_length()
         recurrent_seq_len = None
 
@@ -58,7 +59,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
-            batch[SampleBatch.REWARDS],
+            batch[Columns.REWARDS],
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
@@ -68,10 +69,10 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             recurrent_seq_len=recurrent_seq_len,
         )
         if self.config.uses_new_env_runners:
-            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+            bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
         else:
             bootstrap_values_time_major = make_time_major(
-                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                batch[Columns.VALUES_BOOTSTRAPPED],
                 trajectory_len=rollout_frag_or_episode_len,
                 recurrent_seq_len=recurrent_seq_len,
             )
@@ -82,7 +83,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         discounts_time_major = (
             1.0
             - make_time_major(
-                batch[SampleBatch.TERMINATEDS],
+                batch[Columns.TERMINATEDS],
                 trajectory_len=rollout_frag_or_episode_len,
                 recurrent_seq_len=recurrent_seq_len,
             ).type(dtype=torch.float32)
@@ -152,11 +153,11 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
     @override(ImpalaLearner)
     def _compute_values(self, batch):
-        infos = batch.pop(SampleBatch.INFOS, None)
+        infos = batch.pop(Columns.INFOS, None)
         batch = convert_to_torch_tensor(batch, device=self._device)
         # batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
         if infos is not None:
-            batch[SampleBatch.INFOS] = infos
+            batch[Columns.INFOS] = infos
 
         # TODO (sven): Make multi-agent capable.
         module = self.module[DEFAULT_POLICY_ID].unwrapped()
