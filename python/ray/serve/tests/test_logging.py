@@ -316,10 +316,10 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
                 f'"component_name": "replica", '
-                '"message":.* user func.*, '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
-                f'"application": "{resp["app_name"]}"'
+                f'"application": "{resp["app_name"]}", '
+                '"message":.* user func.*'
             )
             user_class_method_log_regex = (
                 ".*"
@@ -328,10 +328,10 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
                 f'"component_name": "replica", '
-                '"message":.* user log message from class method.*'
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '
-                f'"application": "{resp2["app_name"]}"'
+                f'"application": "{resp2["app_name"]}", '
+                '"message":.* user log message from class method.*'
             )
         else:
             user_method_log_regex = (

@@ -103,11 +103,12 @@ class ServeJSONFormatter(logging.Formatter):
         record_attributes = copy.deepcopy(record.__dict__)
         record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
         record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
-        record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
 
         for field in ServeJSONFormatter.ADD_IF_EXIST_FIELDS:
             if field in record_attributes:
                 record_format[field] = record_attributes[field]
+
+        record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
 
         if SERVE_LOG_EXTRA_FIELDS in record_attributes:
             if not isinstance(record_attributes[SERVE_LOG_EXTRA_FIELDS], dict):
