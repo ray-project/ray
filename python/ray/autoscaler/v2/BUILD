@@ -47,3 +47,11 @@ py_test_module_list(
     tags=["team:core", "exclusive"],
     deps=["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_autoscaler",
+    size = "medium",
+    srcs = ["tests/test_autoscaler.py"],
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
