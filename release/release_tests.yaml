@@ -2734,7 +2734,7 @@
     script: python train_batch_inference_benchmark.py "xgboost" --size=10G
 
     wait_for_nodes:
-      num_nodes: 11
+      num_nodes: 2
 
   variations:
     - __suffix__: aws
