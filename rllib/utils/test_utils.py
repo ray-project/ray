@@ -146,7 +146,16 @@ def add_rllib_example_script_args(
         default=0,
         help=(
             "The frequency (in training iterations) with which to create checkpoints. "
-            "Note that if --wandb-key is provided, these checkpoints will "
+            "Note that if --wandb-key is provided, all checkpoints will "
+            "automatically be uploaded to WandB."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-at-end",
+        action="store_true",
+        help=(
+            "Whether to create a checkpoint at the very end of the experiment. "
+            "Note that if --wandb-key is provided, all checkpoints will "
             "automatically be uploaded to WandB."
         ),
     )
@@ -1236,6 +1245,7 @@ def run_rllib_example_script_experiment(
             callbacks=callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
+                checkpoint_at_end=args.checkpoint_at_end,
             ),
         ),
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
