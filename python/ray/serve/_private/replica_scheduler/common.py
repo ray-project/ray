@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 import ray
 from ray import ObjectRef, ObjectRefGenerator
 from ray.serve._private.common import (
+    ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
@@ -50,8 +51,8 @@ class ReplicaWrapper(ABC):
     """
 
     @property
-    def replica_id(self) -> str:
-        """Replica ID of this replica."""
+    def replica_id(self) -> ReplicaID:
+        """ID of this replica."""
         pass
 
     @property
@@ -103,8 +104,8 @@ class ActorReplicaWrapper:
             self._actor_handle = replica_info.actor_handle
 
     @property
-    def replica_id(self) -> str:
-        return self._replica_info.replica_id.unique_id
+    def replica_id(self) -> ReplicaID:
+        return self._replica_info.replica_id
 
     @property
     def node_id(self) -> str:
@@ -221,7 +222,7 @@ class ReplicaQueueLengthCache:
         staleness_timeout_s: float = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
         get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
-        self._cache: Dict[str, ReplicaQueueLengthCacheEntry] = {}
+        self._cache: Dict[ReplicaID, ReplicaQueueLengthCacheEntry] = {}
         self._staleness_timeout_s = staleness_timeout_s
         self._get_curr_time_s = (
             get_curr_time_s if get_curr_time_s is not None else time.time
@@ -230,8 +231,8 @@ class ReplicaQueueLengthCache:
     def _is_timed_out(self, timestamp_s: int) -> bool:
         return self._get_curr_time_s() - timestamp_s > self._staleness_timeout_s
 
-    def get(self, replica_id: str) -> Optional[int]:
-        """Get the queue length for a replica ID.
+    def get(self, replica_id: ReplicaID) -> Optional[int]:
+        """Get the queue length for a replica.
 
         Returns `None` if the replica ID is not present or the entry is timed out.
         """
@@ -241,13 +242,13 @@ class ReplicaQueueLengthCache:
 
         return entry.queue_len
 
-    def update(self, replica_id: str, queue_len: int):
+    def update(self, replica_id: ReplicaID, queue_len: int):
         """Set (or update) the queue length for a replica ID."""
         self._cache[replica_id] = ReplicaQueueLengthCacheEntry(
             queue_len, self._get_curr_time_s()
         )
 
-    def remove_inactive_replicas(self, *, active_replica_ids: Set[str]):
+    def remove_inactive_replicas(self, *, active_replica_ids: Set[ReplicaID]):
         """Removes entries for all replica IDs not in the provided active set."""
         # NOTE: the size of the cache dictionary changes during this loop.
         for replica_id in list(self._cache.keys()):

@@ -18,7 +18,7 @@ from typing import (
 )
 
 from ray.exceptions import RayActorError
-from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
+from ray.serve._private.common import DeploymentID, ReplicaID, RequestMetadata, RunningReplicaInfo
 from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
@@ -102,8 +102,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
-        self._replica_id_set: Set[str] = set()
-        self._replicas: Dict[str, ReplicaWrapper] = {}
+        self._replica_id_set: Set[ReplicaID] = set()
+        self._replicas: Dict[ReplicaID, ReplicaWrapper] = {}
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
@@ -116,10 +116,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
 
         # Colocated replicas (e.g. wrt node, AZ)
-        self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
+        self._colocated_replica_ids: DefaultDict[LocalityScope, Set[ReplicaID]] = defaultdict(
             set
         )
-        self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
+        self._multiplexed_model_id_to_replica_ids: DefaultDict[str, Set[ReplicaID]] = defaultdict(
             set
         )
 
@@ -522,7 +522,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 result.append((replica, None))
                 msg = (
                     "Failed to fetch queue length for "
-                    f"replica {replica.replica_id}: '{t.exception()}'"
+                    f"{replica.replica_id}: '{t.exception()}'"
                 )
                 # If we get a RayActorError, it means the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
