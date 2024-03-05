@@ -119,7 +119,6 @@ steps:
         --image-type ray
         --architecture aarch64
         --upload
-        --schedule "$${RAYCI_SCHEDULE:-ONCE}"
     depends_on:
       - manylinux-aarch64
       - forge-aarch64

@@ -16,7 +16,6 @@ class RayDockerContainer(DockerContainer):
         """
         Build and publish ray docker images
         """
-        print("Ray container")
         assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
         rayci_build_id = os.environ["RAYCI_BUILD_ID"]
         if self.architecture == DEFAULT_ARCHITECTURE:
