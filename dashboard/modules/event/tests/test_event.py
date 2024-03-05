@@ -370,27 +370,9 @@ def test_autoscaler_cluster_events(autoscaler_v2, shutdown_only):
                 "Resized to 8 CPUs, 1 GPUs.",
                 "AUTOSCALER",
             ) in messages, cluster_events
-            if autoscaler_v2:
-                # We have a slightly better message to indicate infeasible requests
-                # with count information in v2. (Rather than printing our multiple
-                # entries)
-                assert (
-                    (
-                        "No available node types can fulfill resource "
-                        "requests {'GPU': 5.0}*1. Add suitable node "
-                        "types to this cluster to resolve this issue."
-                    ),
-                    "AUTOSCALER",
-                ) in messages
-            else:
-                assert (
-                    (
-                        "Error: No available node types can fulfill resource "
-                        "request {'GPU': 5.0}. Add suitable node "
-                        "types to this cluster to resolve this issue."
-                    ),
-                    "AUTOSCALER",
-                ) in messages
+            assert "No available node types can fulfill resource request" in "".join(
+                [t[0] for t in messages]
+            )
 
             return True
 

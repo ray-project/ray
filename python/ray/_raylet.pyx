@@ -2887,6 +2887,7 @@ cdef class GcsClient:
         serialzied_state: c_string,
         timeout_s=None
     ):
+        """Report autoscaling state to GCS"""
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
         with nogil:

@@ -105,21 +105,22 @@ class RayStopper(InstanceUpdatedSubscriber):
             reason_str: The reason message to drain the node.
         """
         try:
-            accepted = gcs_client.drain_node(
+            accepted, reject_msg_str = gcs_client.drain_node(
                 node_id=ray_node_id,
                 reason=reason,
                 reason_message=reason_str,
                 # TODO: we could probably add a deadline here that's derived
-                # from the stuck instance reconcilation configs.
+                # from the stuck instance reconciliation configs.
                 deadline_timestamp_ms=0,
             )
             logger.info(
-                f"Draining ray on {ray_node_id}(success={accepted}): {reason_str}"
+                f"Drained ray on {ray_node_id}(success={accepted}, msg={reject_msg_str})"
             )
             if not accepted:
                 error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
         except Exception:
-            logger.exception("Error draining ray.")
+            logger.exception(f"Error draining ray on {ray_node_id}")
+            error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
 
     @staticmethod
     def _stop_ray_node(
@@ -139,10 +140,14 @@ class RayStopper(InstanceUpdatedSubscriber):
             drained = gcs_client.drain_nodes(node_ids=[hex_to_binary(ray_node_id)])
             success = len(drained) > 0
             logger.info(
-                f"Stopping ray on {ray_node_id}(instance={instance_id}): success={success})"
+                f"Stopping ray on {ray_node_id}(instance={instance_id}): "
+                f"success={success})"
             )
+
             if not success:
-                if not success:
-                    error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
+                error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
         except Exception:
-            logger.exception("Error stopping ray.")
+            logger.exception(
+                f"Error stopping ray on {ray_node_id}(instance={instance_id})"
+            )
+            error_queue.put_nowait(RayStopError(im_instance_id=instance_id))
