@@ -106,7 +106,7 @@ class ReplicaMetricsManager:
         autoscaling_config: Optional[AutoscalingConfig],
     ):
         self._replica_id = replica_id
-        self._metrics_pusher = MetricsPusher(event_loop)
+        self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self._autoscaling_config = autoscaling_config
         self._controller_handle = ray.get_actor(
