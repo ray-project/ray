@@ -68,6 +68,19 @@ class ServeJSONFormatter(logging.Formatter):
             SERVE_LOG_ACTOR_ID: runtime_context.get_actor_id(),
             SERVE_LOG_WORKER_ID: runtime_context.get_worker_id(),
         }
+        try:
+            runtime_context = ray.get_runtime_context()
+            actor_id = runtime_context.get_actor_id()
+            if actor_id:
+                self.component_log_fmt[SERVE_LOG_ACTOR_ID] = actor_id
+            worker_id = runtime_context.get_worker_id()
+            if worker_id:
+                self.component_log_fmt[SERVE_LOG_WORKER_ID] = worker_id
+        except Exception:
+            # If get_runtime_context() fails for any reason, do nothing (no adding
+            # actor_id and/or worker_id to the fmt)
+            pass
+
         if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
             self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
