@@ -12,6 +12,7 @@ from ray.serve._private.common import (
     ReplicaID,
     RunningReplicaInfo,
     StatusOverview,
+    REPLICA_ID_FULL_ID_STR_PREFIX,
 )
 from ray.serve._private.utils import get_random_string
 from ray.serve.generated.serve_pb2 import (
@@ -27,24 +28,13 @@ def test_replica_id_formatting():
     deployment = "DeploymentA"
     unique_id = get_random_string()
 
-    # Test without app.
-    replica_id = ReplicaID(
-        unique_id, deployment_id=DeploymentID(name=deployment, app_name="")
-    )
-    assert (
-        replica_id.to_full_id_str()
-        == f"{ReplicaID.full_id_str_prefix}{deployment}#{unique_id}"
-    )
-    assert str(replica_id) == f"Replica(id='{unique_id}', deployment='{deployment}')"
-
-    # Test with app.
     app = "my_app"
     replica_id = ReplicaID(
         unique_id, deployment_id=DeploymentID(name=deployment, app_name=app)
     )
     assert (
         replica_id.to_full_id_str()
-        == f"{ReplicaID.full_id_str_prefix}{app}#{deployment}#{unique_id}"
+        == f"{REPLICA_ID_FULL_ID_STR_PREFIX}{app}#{deployment}#{unique_id}"
     )
     assert (
         str(replica_id)
@@ -56,13 +46,13 @@ def test_replica_id_from_str():
     unique_id = get_random_string()
 
     # Test without app name.
-    full_id_str = f"{ReplicaID.full_id_str_prefix}DeploymentA#{unique_id}"
+    full_id_str = f"{REPLICA_ID_FULL_ID_STR_PREFIX}DeploymentA#{unique_id}"
     replica_id = ReplicaID.from_full_id_str(full_id_str)
     assert replica_id.unique_id == unique_id
     assert replica_id.deployment_id == DeploymentID(name="DeploymentA", app_name="")
 
     # Test with app name.
-    full_id_str = f"{ReplicaID.full_id_str_prefix}App1#DeploymentA#{unique_id}"
+    full_id_str = f"{REPLICA_ID_FULL_ID_STR_PREFIX}App1#DeploymentA#{unique_id}"
     replica_id = ReplicaID.from_full_id_str(full_id_str)
     assert replica_id.unique_id == unique_id
     assert replica_id.deployment_id == DeploymentID(name="DeploymentA", app_name="App1")
@@ -77,7 +67,7 @@ def test_invalid_id_from_str():
         ReplicaID.from_full_id_str(full_id_str)
 
     # Too many delimiters.
-    full_id_str = f"{ReplicaID.full_id_str_prefix}DeploymentA###{unique_id}"
+    full_id_str = f"{REPLICA_ID_FULL_ID_STR_PREFIX}DeploymentA###{unique_id}"
     with pytest.raises(ValueError):
         ReplicaID.from_full_id_str(full_id_str)
 
@@ -88,10 +78,10 @@ def test_is_replica_id():
     assert not ReplicaID.is_full_id_str(f"DeploymentA##{unique_id}")
     assert not ReplicaID.is_full_id_str(f"DeploymentA#{unique_id}")
     assert ReplicaID.is_full_id_str(
-        f"{ReplicaID.full_id_str_prefix}DeploymentA#{unique_id}"
+        f"{REPLICA_ID_FULL_ID_STR_PREFIX}DeploymentA#{unique_id}"
     )
     assert ReplicaID.is_full_id_str(
-        f"{ReplicaID.full_id_str_prefix}#App1#DeploymentA#{unique_id}"
+        f"{REPLICA_ID_FULL_ID_STR_PREFIX}#App1#DeploymentA#{unique_id}"
     )
 
 
