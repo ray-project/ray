@@ -372,7 +372,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             cluster_name="test",
             provider_config={
                 "namespace": "default",
-                "head_node_type_name": KUBERAY_TYPE_HEAD,
+                "head_node_type": KUBERAY_TYPE_HEAD,
             },
             k8s_api_client=self.mock_client,
         )

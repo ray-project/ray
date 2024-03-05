@@ -92,7 +92,7 @@ class Autoscaler:
         """
         provider_config = config.get_provider_config()
         if provider_config["type"] == "kuberay":
-            provider_config["head_node_type_name"] = config.get_head_node_type()
+            provider_config["head_node_type"] = config.get_head_node_type()
             self._cloud_provider = KubeRayProvider(
                 config.get_config("cluster_name"),
                 provider_config,

@@ -14,7 +14,6 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KUBERAY_KIND_WORKER,
     KUBERAY_LABEL_KEY_KIND,
     KUBERAY_LABEL_KEY_TYPE,
-    KUBERAY_TYPE_HEAD,
     RAY_HEAD_POD_NAME,
     IKubernetesHttpApiClient,
     KubernetesHttpApiClient,
@@ -62,7 +61,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
-        self._head_node_type_name = provider_config["head_node_type_name"]
+        self._head_node_type = provider_config["head_node_type"]
 
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
@@ -479,24 +478,26 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # Ignore pods marked for termination.
                 continue
             pod_name = pod["metadata"]["name"]
-            cloud_instance = self._cloud_instance_from_pod(
-                pod, self._head_node_type_name
-            )
+            cloud_instance = self._cloud_instance_from_pod(pod, self._head_node_type)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
         return cloud_instances
 
     @staticmethod
     def _cloud_instance_from_pod(
-        pod: Dict[str, Any], head_node_type_name: NodeType
+        pod: Dict[str, Any], head_node_type: NodeType
     ) -> Optional[CloudInstance]:
         """
         Convert a pod to a Ray CloudInstance.
+
+        Args:
+            pod: The pod resource dict.
+            head_node_type: The node type of the head node.
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
             kind = NodeKind.HEAD
-            type = head_node_type_name
+            type = head_node_type
         elif labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_WORKER:
             kind = NodeKind.WORKER
             type = labels[KUBERAY_LABEL_KEY_TYPE]
