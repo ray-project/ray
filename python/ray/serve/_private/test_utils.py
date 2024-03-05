@@ -46,6 +46,34 @@ class MockTimer(TimerBase):
             self._curr += amt + 0.001
 
 
+class MockAsyncTimer:
+    def __init__(self, start_time: Optional[float] = 0):
+        self.reset(start_time=start_time)
+        self._num_sleepers = 0
+
+    def reset(self, start_time: 0):
+        self._curr = start_time
+
+    def time(self) -> float:
+        return self._curr
+
+    async def sleep(self, amt: float):
+        self._num_sleepers += 1
+        end = self._curr + amt
+
+        # Give up the event loop
+        while self._curr < end:
+            await asyncio.sleep(0)
+
+        self._num_sleepers -= 1
+
+    def advance(self, amt: float):
+        self._curr += amt
+
+    def num_sleepers(self):
+        return self._num_sleepers
+
+
 class MockKVStore:
     def __init__(self):
         self.store = dict()
@@ -70,6 +98,35 @@ class MockKVStore:
             return True
 
         return False
+
+
+class MockClusterNodeInfoCache:
+    def __init__(self):
+        self.alive_node_ids = set()
+        self.alive_node_resources = dict()
+        self.draining_nodes = dict()
+
+    def get_alive_node_ids(self):
+        return self.alive_node_ids
+
+    def get_draining_nodes(self):
+        return self.draining_nodes
+
+    def get_active_node_ids(self):
+        return self.alive_node_ids - set(self.draining_nodes)
+
+    def get_node_az(self, node_id):
+        return None
+
+    def get_available_resources_per_node(self):
+        return self.alive_node_resources
+
+    def get_total_resources_per_node(self):
+        return self.alive_node_resources
+
+    def add_node(self, node_id: str, resources: Dict = None):
+        self.alive_node_ids.add(node_id)
+        self.alive_node_resources[node_id] = resources or {}
 
 
 def check_ray_stopped():
@@ -111,7 +168,7 @@ def get_num_running_replicas(
 ) -> int:
     """Get the replicas currently running for the given deployment."""
 
-    dep_id = DeploymentID(deployment_name, app_name)
+    dep_id = DeploymentID(name=deployment_name, app_name=app_name)
     actors = state_api.list_actors(
         filters=[
             ("class_name", "=", dep_id.to_replica_actor_class_name()),

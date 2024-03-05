@@ -14,7 +14,7 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import (
     deprecation_warning,
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 TOWER_SCOPE_NAME = "tower"
 
 
-@DeveloperAPI
+@OldAPIStack
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
@@ -51,7 +51,6 @@ class DynamicTFPolicy(TFPolicy):
     to generate your custom tf (graph-mode or eager) Policy classes.
     """
 
-    @DeveloperAPI
     def __init__(
         self,
         obs_space: gym.spaces.Space,
@@ -480,7 +479,6 @@ class DynamicTFPolicy(TFPolicy):
             self.get_session().run(tf1.global_variables_initializer())
 
     @override(TFPolicy)
-    @DeveloperAPI
     def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
@@ -554,7 +552,6 @@ class DynamicTFPolicy(TFPolicy):
         return instance
 
     @override(Policy)
-    @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         if self.model:
             return self.model.get_initial_state()
@@ -562,7 +559,6 @@ class DynamicTFPolicy(TFPolicy):
             return []
 
     @override(Policy)
-    @DeveloperAPI
     def load_batch_into_buffer(
         self,
         batch: SampleBatch,
@@ -595,7 +591,6 @@ class DynamicTFPolicy(TFPolicy):
         )
 
     @override(Policy)
-    @DeveloperAPI
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
@@ -610,7 +605,6 @@ class DynamicTFPolicy(TFPolicy):
         return self.multi_gpu_tower_stacks[buffer_index].num_tuples_loaded
 
     @override(Policy)
-    @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
@@ -920,7 +914,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
-@DeveloperAPI
+@OldAPIStack
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 

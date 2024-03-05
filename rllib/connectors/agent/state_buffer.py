@@ -18,13 +18,13 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class StateBufferConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext, states: Any = None):
         super().__init__(ctx)

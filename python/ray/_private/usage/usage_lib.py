@@ -92,62 +92,62 @@ class ClusterStatusToReport:
 class UsageStatsToReport:
     """Usage stats to report"""
 
-    #: The Ray version in use.
-    ray_version: str
-    #: The Python version in use.
-    python_version: str
     #: The schema version of the report.
     schema_version: str
     #: The source of the data (i.e. OSS).
     source: str
-    #: A random id of the cluster session.
-    session_id: str
-    #: The git commit hash of Ray (i.e. ray.__commit__).
-    git_commit: str
-    #: The operating system in use.
-    os: str
     #: When the data is collected and reported.
     collect_timestamp_ms: int
-    #: When the cluster is started.
-    session_start_timestamp_ms: int
-    #: The cloud provider found in the cluster.yaml file (e.g., aws).
-    cloud_provider: Optional[str]
-    #: The min_workers found in the cluster.yaml file.
-    min_workers: Optional[int]
-    #: The max_workers found in the cluster.yaml file.
-    max_workers: Optional[int]
-    #: The head node instance type found in the cluster.yaml file (e.g., i3.8xlarge).
-    head_node_instance_type: Optional[str]
-    #: The worker node instance types found in the cluster.yaml file (e.g., i3.8xlarge).
-    worker_node_instance_types: Optional[List[str]]
-    #: The total num of cpus in the cluster.
-    total_num_cpus: Optional[int]
-    #: The total num of gpus in the cluster.
-    total_num_gpus: Optional[int]
-    #: The total size of memory in the cluster.
-    total_memory_gb: Optional[float]
-    #: The total size of object store memory in the cluster.
-    total_object_store_memory_gb: Optional[float]
-    #: The Ray libraries that are used (e.g., rllib).
-    library_usages: Optional[List[str]]
     #: The total number of successful reports for the lifetime of the cluster.
-    total_success: int
+    total_success: Optional[int] = None
     #: The total number of failed reports for the lifetime of the cluster.
-    total_failed: int
+    total_failed: Optional[int] = None
     #: The sequence number of the report.
-    seq_number: int
+    seq_number: Optional[int] = None
+    #: The Ray version in use.
+    ray_version: Optional[str] = None
+    #: The Python version in use.
+    python_version: Optional[str] = None
+    #: A random id of the cluster session.
+    session_id: Optional[str] = None
+    #: The git commit hash of Ray (i.e. ray.__commit__).
+    git_commit: Optional[str] = None
+    #: The operating system in use.
+    os: Optional[str] = None
+    #: When the cluster is started.
+    session_start_timestamp_ms: Optional[int] = None
+    #: The cloud provider found in the cluster.yaml file (e.g., aws).
+    cloud_provider: Optional[str] = None
+    #: The min_workers found in the cluster.yaml file.
+    min_workers: Optional[int] = None
+    #: The max_workers found in the cluster.yaml file.
+    max_workers: Optional[int] = None
+    #: The head node instance type found in the cluster.yaml file (e.g., i3.8xlarge).
+    head_node_instance_type: Optional[str] = None
+    #: The worker node instance types found in the cluster.yaml file (e.g., i3.8xlarge).
+    worker_node_instance_types: Optional[List[str]] = None
+    #: The total num of cpus in the cluster.
+    total_num_cpus: Optional[int] = None
+    #: The total num of gpus in the cluster.
+    total_num_gpus: Optional[int] = None
+    #: The total size of memory in the cluster.
+    total_memory_gb: Optional[float] = None
+    #: The total size of object store memory in the cluster.
+    total_object_store_memory_gb: Optional[float] = None
+    #: The Ray libraries that are used (e.g., rllib).
+    library_usages: Optional[List[str]] = None
     #: The extra tags to report when specified by an
     #  environment variable RAY_USAGE_STATS_EXTRA_TAGS
-    extra_usage_tags: Optional[Dict[str, str]]
+    extra_usage_tags: Optional[Dict[str, str]] = None
     #: The number of alive nodes when the report is generated.
-    total_num_nodes: Optional[int]
+    total_num_nodes: Optional[int] = None
     #: The total number of running jobs excluding internal ones
     #  when the report is generated.
-    total_num_running_jobs: Optional[int]
+    total_num_running_jobs: Optional[int] = None
     #: The libc version in the OS.
-    libc_version: Optional[str]
+    libc_version: Optional[str] = None
     #: The hardwares that are used (e.g. Intel Xeon).
-    hardware_usages: Optional[List[str]]
+    hardware_usages: Optional[List[str]] = None
 
 
 @dataclass(init=True)
@@ -379,21 +379,24 @@ def usage_stats_prompt_enabled():
     return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
 
 
-def _generate_cluster_metadata():
-    """Return a dictionary of cluster metadata."""
+def _generate_cluster_metadata(*, ray_init_cluster: bool):
+    """Return a dictionary of cluster metadata.
+
+    Params:
+        ray_init_cluster: Whether the cluster is started by ray.init()
+    """
     ray_version, python_version = ray._private.utils.compute_version_info()
     # These two metadata is necessary although usage report is not enabled
     # to check version compatibility.
     metadata = {
         "ray_version": ray_version,
         "python_version": python_version,
+        "ray_init_cluster": ray_init_cluster,
     }
     # Additional metadata is recorded only when usage stats are enabled.
     if usage_stats_enabled():
         metadata.update(
             {
-                "schema_version": usage_constant.SCHEMA_VERSION,
-                "source": os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
                 "session_id": str(uuid.uuid4()),
                 "git_commit": ray.__commit__,
                 "os": sys.platform,
@@ -494,18 +497,19 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def put_cluster_metadata(gcs_client) -> None:
+def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
 
     Params:
         gcs_client: The GCS client to perform KV operation PUT.
+        ray_init_cluster: Whether the cluster is started by ray.init()
 
     Raises:
         gRPC exceptions if PUT fails.
     """
-    metadata = _generate_cluster_metadata()
+    metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
     gcs_client.internal_kv_put(
         usage_constant.CLUSTER_METADATA_KEY,
         json.dumps(metadata).encode(),
@@ -787,6 +791,28 @@ def get_cluster_metadata(gcs_client) -> dict:
     )
 
 
+def is_ray_init_cluster(gcs_address: str) -> bool:
+    """Return whether the cluster is started by ray.init()"""
+
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+
+    cluster_metadata = get_cluster_metadata(gcs_client)
+    return cluster_metadata["ray_init_cluster"]
+
+
+def generate_disabled_report_data() -> UsageStatsToReport:
+    """Generate the report data indicating usage stats is disabled"""
+    data = UsageStatsToReport(
+        schema_version=usage_constant.SCHEMA_VERSION,
+        source=os.getenv(
+            usage_constant.USAGE_STATS_SOURCE_ENV_VAR,
+            usage_constant.USAGE_STATS_SOURCE_OSS,
+        ),
+        collect_timestamp_ms=int(time.time() * 1000),
+    )
+    return data
+
+
 def generate_report_data(
     cluster_config_to_report: ClusterConfigToReport,
     total_success: int,
@@ -816,14 +842,20 @@ def generate_report_data(
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
 
     data = UsageStatsToReport(
+        schema_version=usage_constant.SCHEMA_VERSION,
+        source=os.getenv(
+            usage_constant.USAGE_STATS_SOURCE_ENV_VAR,
+            usage_constant.USAGE_STATS_SOURCE_OSS,
+        ),
+        collect_timestamp_ms=int(time.time() * 1000),
+        total_success=total_success,
+        total_failed=total_failed,
+        seq_number=seq_number,
         ray_version=cluster_metadata["ray_version"],
         python_version=cluster_metadata["python_version"],
-        schema_version=cluster_metadata["schema_version"],
-        source=cluster_metadata["source"],
         session_id=cluster_metadata["session_id"],
         git_commit=cluster_metadata["git_commit"],
         os=cluster_metadata["os"],
-        collect_timestamp_ms=int(time.time() * 1000),
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
         cloud_provider=cluster_config_to_report.cloud_provider,
         min_workers=cluster_config_to_report.min_workers,
@@ -835,9 +867,6 @@ def generate_report_data(
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
         library_usages=get_library_usages_to_report(gcs_client),
-        total_success=total_success,
-        total_failed=total_failed,
-        seq_number=seq_number,
         extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
         total_num_nodes=get_total_num_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),

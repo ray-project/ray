@@ -66,7 +66,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
@@ -112,7 +112,7 @@ logger = logging.getLogger(__name__)
 _global_worker: Optional["RolloutWorker"] = None
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_global_worker() -> "RolloutWorker":
     """Returns a handle to the active rollout worker in this process."""
 
@@ -155,7 +155,7 @@ def _update_env_seed_if_necessary(
             )
 
 
-@DeveloperAPI
+@OldAPIStack
 class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     """Common experience collection class.
 
@@ -1670,17 +1670,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
 
-    @DeveloperAPI
     def get_host(self) -> str:
         """Returns the hostname of the process running this evaluator."""
         return platform.node()
 
-    @DeveloperAPI
     def get_node_ip(self) -> str:
         """Returns the IP address of the node that this worker runs on."""
         return ray.util.get_node_ip_address()
 
-    @DeveloperAPI
     def find_free_port(self) -> int:
         """Finds a free port on the node that this worker runs on."""
         from ray.air._internal.util import find_free_port
