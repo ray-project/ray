@@ -259,7 +259,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             app_msg = f" in application '{self.app_name}'" if self.app_name else ""
             logger.info(
                 f"Got updated replicas for deployment '{self._deployment_id.name}'"
-                f"{app_msg}: {set(r.unique_id for r in new_replica_id_set)}.",
+                f"{app_msg}: {{r.unique_id for r in new_replica_id_set}}.",
                 extra={"log_to_stderr": False},
             )
 
