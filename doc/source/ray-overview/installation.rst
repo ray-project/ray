@@ -335,7 +335,7 @@ Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platfor
    * - latest
      - The most recent Ray release.
    * - x.y.z
-     - A specific Ray release, e.g. 1.12.1
+     - A specific Ray release, e.g. 2.9.3
    * - nightly
      - The most recent Ray development build (a recent commit from Github ``master``)
 
