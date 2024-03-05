@@ -338,6 +338,14 @@ class AutoscalingConfig:
         return node_type_configs
 
     def get_head_node_type(self) -> NodeType:
+        """
+        Returns the head node type.
+
+        If there is only one node type, return the only node type as the head
+        node type.
+        If there are multiple node types, return the head node type specified
+        in the config.
+        """
         available_node_types = self._configs.get("available_node_types", {})
         if len(available_node_types) == 1:
             return list(available_node_types.keys())[0]

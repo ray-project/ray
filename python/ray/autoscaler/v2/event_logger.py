@@ -1,7 +1,6 @@
-import functools
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ray._private.event.event_logger import EventLoggerAdapter
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig

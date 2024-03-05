@@ -1235,7 +1235,7 @@ def start_api_server(
         # dashboard inclusion, the install is not minimal.
         if include_dashboard and minimal:
             logger.error(
-                "--include-dashboard is not supported when minimal ray is used."
+                "--include-dashboard is not supported when minimal ray is used. "
                 "Download ray[default] to use the dashboard."
             )
             raise Exception("Cannot include dashboard with missing packages.")

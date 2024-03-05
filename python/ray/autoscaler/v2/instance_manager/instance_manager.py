@@ -212,7 +212,6 @@ class InstanceManager:
             assert (
                 update.cloud_instance_id
             ), "TERMINATING update must have cloud instance id"
-            pass
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:

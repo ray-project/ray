@@ -107,10 +107,18 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            logger.get_logger().info("Executing DAG %s", dag)
-            logger.get_logger().info("Execution config: %s", self._options)
+            stdout_logger = logger.get_logger()
+            log_path = logger.get_datasets_log_path()
+            message = "Starting execution of Dataset."
+            if log_path is not None:
+                message += f" Full log is in {log_path}"
+            stdout_logger.info(message)
+            stdout_logger.info("Execution plan of Dataset: %s\n", dag)
+            logger.get_logger(log_to_stdout=False).info(
+                "Execution config: %s", self._options
+            )
             if not self._options.verbose_progress:
-                logger.get_logger().info(
+                logger.get_logger(log_to_stdout=False).info(
                     "Tip: For detailed progress reporting, run "
                     "`ray.data.DataContext.get_current()."
                     "execution_options.verbose_progress = True`"
@@ -145,7 +153,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         output_split_idx
                     )
                     if self._outer._global_info:
-                        self._outer._global_info.update(1, dag._estimated_output_blocks)
+                        self._outer._global_info.update(1, dag.num_outputs_total())
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -168,7 +176,7 @@ class StreamingExecutor(Executor, threading.Thread):
         with self._shutdown_lock:
             if not self._execution_started or self._shutdown:
                 return
-            logger.get_logger().debug(f"Shutting down {self}.")
+            logger.get_logger(log_to_stdout=False).debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -208,8 +216,16 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         try:
             # Run scheduling loop until complete.
-            while self._scheduling_loop_step(self._topology) and not self._shutdown:
-                pass
+            while True:
+                t_start = time.process_time()
+                # use process_time to avoid timing ray.wait in _scheduling_loop_step
+                continue_sched = self._scheduling_loop_step(self._topology)
+                if self._initial_stats:
+                    self._initial_stats.streaming_exec_schedule_s.add(
+                        time.process_time() - t_start
+                    )
+                if not continue_sched or self._shutdown:
+                    break
         except Exception as e:
             # Propagate it to the result iterator.
             self._output_node.mark_finished(e)
@@ -236,6 +252,11 @@ class StreamingExecutor(Executor, threading.Thread):
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict()
+        stats.streaming_exec_schedule_s = (
+            self._initial_stats.streaming_exec_schedule_s
+            if self._initial_stats
+            else None
+        )
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
@@ -253,11 +274,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if DEBUG_TRACE_SCHEDULING:
             logger.get_logger().info("Scheduling loop step...")
 
+        self._resource_manager.update_usages()
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         num_errored_blocks = process_completed_tasks(
-            topology, self._backpressure_policies, self._max_errored_blocks
+            topology,
+            self._resource_manager,
+            self._max_errored_blocks,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
@@ -399,29 +423,17 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
             "The current cluster doesn't have the required resources to execute your "
             "Dataset pipeline:\n"
         )
-        if (
-            base_usage.cpu is not None
-            and limits.cpu is not None
-            and base_usage.cpu > limits.cpu
-        ):
+        if base_usage.cpu > limits.cpu:
             error_message += (
                 f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
                 f"only has {limits.cpu}.\n"
             )
-        if (
-            base_usage.gpu is not None
-            and limits.gpu is not None
-            and base_usage.gpu > limits.gpu
-        ):
+        if base_usage.gpu > limits.gpu:
             error_message += (
                 f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
                 f"only has {limits.gpu}.\n"
             )
-        if (
-            base_usage.object_store_memory is not None
-            and base_usage.object_store_memory is not None
-            and base_usage.object_store_memory > limits.object_store_memory
-        ):
+        if base_usage.object_store_memory > limits.object_store_memory:
             error_message += (
                 f"- Your application needs {base_usage.object_store_memory}B object "
                 f"store memory, but your cluster only has "
