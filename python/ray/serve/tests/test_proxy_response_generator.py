@@ -72,7 +72,7 @@ class TestUnary:
     async def test_timeout_while_assigning(self, serve_instance):
         signal_actor = SignalActor.remote()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self):
                 await signal_actor.wait.remote()
@@ -123,7 +123,7 @@ class TestUnary:
         signal_actor = SignalActor.remote()
         disconnect_event, disconnect_task = disconnect_task_and_event()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self):
                 await signal_actor.wait.remote()
@@ -246,7 +246,7 @@ class TestStreaming:
     async def test_timeout_while_assigning(self, serve_instance):
         signal_actor = SignalActor.remote()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
@@ -299,7 +299,7 @@ class TestStreaming:
         signal_actor = SignalActor.remote()
         disconnect_event, disconnect_task = disconnect_task_and_event()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"

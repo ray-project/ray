@@ -79,9 +79,9 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_blocks=..., num_rows=5, schema={id: int64})
+        Dataset(num_rows=5, schema={id: int64})
         >>> ds.iterator()
-        DataIterator(Dataset(num_blocks=..., num_rows=5, schema={id: int64}))
+        DataIterator(Dataset(num_rows=5, schema={id: int64}))
     """
 
     @abc.abstractmethod
@@ -697,7 +697,6 @@ class DataIterator(abc.ABC):
             ... )
             >>> it = ds.iterator(); it
             DataIterator(Dataset(
-               num_blocks=...,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -728,7 +727,6 @@ class DataIterator(abc.ABC):
             >>> it
             DataIterator(Concatenator
             +- Dataset(
-                  num_blocks=...,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,

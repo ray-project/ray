@@ -384,6 +384,9 @@ message JobConfig {
   // System paths of the driver scripts. Python workers need to search
   // these paths to load modules.
   repeated string py_driver_sys_path = 8;
+  // Node ID of the driver. Used to determine if we need to apply `py_driver_sys_path`
+  // to worker. Populated by driver in CoreWorker ctor.
+  bytes driver_node_id = 9;
 }
 
 message StreamingGeneratorReturnIdInfo {
@@ -497,6 +500,8 @@ message TaskSpec {
   // TODO(sang): Maybe we should consolidate all streaming generator related config
   // to a separate message?
   int64 generator_backpressure_num_objects = 38;
+  // Boolean if task events enabled, i.e tasks events would be reported.
+  bool enable_task_events = 39;
 }
 
 message TaskInfoEntry {
@@ -564,6 +569,11 @@ message PlacementGroupSpec {
   bool is_detached = 9;
   // The maximum fraction of CPU cores that this placement group can use on each node.
   double max_cpu_fraction_per_node = 10;
+  // Binary ID of the target node where bundles should be placed
+  // iff the target node has enough available resources and alive.
+  // Otherwise, the bundles can be placed elsewhere.
+  // This only applies to STRICT_PACK pg.
+  bytes soft_target_node_id = 11;
 }
 
 message ObjectReference {

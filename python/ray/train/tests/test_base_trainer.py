@@ -9,7 +9,6 @@ from ray import train, tune
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.context import DataContext
 from ray.train import Checkpoint, ScalingConfig
-from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
 
@@ -31,14 +30,6 @@ class DummyTrainer(BaseTrainer):
 
     def training_loop(self) -> None:
         self.train_loop(self)
-
-
-class DummyGBDTTrainer(GBDTTrainer):
-    _dmatrix_cls: type = None
-    _ray_params_cls: type = None
-    _tune_callback_report_cls: type = None
-    _tune_callback_checkpoint_cls: type = None
-    _init_model_arg_name: str = None
 
 
 def test_trainer_fit(ray_start_4_cpus):
@@ -66,7 +57,10 @@ def test_resources(ray_start_4_cpus):
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DummyTrainer(
-        check_cpus, scaling_config=ScalingConfig(trainer_resources={"CPU": 2})
+        check_cpus,
+        scaling_config=ScalingConfig(
+            trainer_resources={"CPU": 2}, resources_per_worker={}
+        ),
     )
     trainer.fit()
 
@@ -79,7 +73,7 @@ def test_arg_override(ray_start_4_cpus):
         assert self.custom_arg["outer"]["fixed"] == 1
 
         pg = get_current_placement_group()
-        assert len(pg.bundle_specs) == 2  # 1 trainer, 1 worker
+        assert len(pg.bundle_specs) == 1  # Merged trainer and worker bundle
 
     scale_config = ScalingConfig(num_workers=4)
     trainer = DummyTrainer(

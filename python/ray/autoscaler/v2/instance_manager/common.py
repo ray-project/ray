@@ -326,8 +326,9 @@ class InstanceUtil:
 
         Args:
             instance: The instance.
-            instance_status: The status to search for. If None, returns all
-                status updates.
+            select_instance_status: The go-to status to search for, i.e. select
+                only status history when the instance transitions into the status.
+                If None, returns all status updates.
         """
         history = []
         for status_update in instance.status_history:

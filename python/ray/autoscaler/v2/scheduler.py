@@ -535,6 +535,8 @@ class SchedulingNode:
 
         available_resources_dict = self.get_available_resources(resource_request_source)
 
+        available_resources_dict = self.get_available_resources(resource_request_source)
+
         # Check if there's enough resources to schedule the request.
         if not _fits(available_resources_dict, dict(request.resources_bundle)):
             return False
@@ -1039,6 +1041,8 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
+            # The head could be None if there's no head node being reported yet
+            # from the ray cluster.
             nodes[num_to_terminate:] + ([head_node] if head_node else []),
         )
 

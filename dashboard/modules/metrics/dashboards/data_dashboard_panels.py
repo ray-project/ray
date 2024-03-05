@@ -18,6 +18,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Bytes Spilled: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=2,
@@ -30,6 +32,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Bytes Allocated: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=3,
@@ -42,6 +46,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Bytes Freed: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=4,
@@ -54,6 +60,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Current Usage: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=5,
@@ -66,6 +74,8 @@ DATA_GRAFANA_PANELS = [
                 legend="CPU Usage: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=6,
@@ -78,6 +88,8 @@ DATA_GRAFANA_PANELS = [
                 legend="GPU Usage: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=7,
@@ -90,6 +102,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Bytes Outputted: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=11,
@@ -102,6 +116,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Rows Outputted: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=8,
@@ -114,6 +130,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Block Generation Time: {{dataset}}, {{operator}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=9,
@@ -126,6 +144,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Seconds: {{dataset}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=10,
@@ -138,6 +158,8 @@ DATA_GRAFANA_PANELS = [
                 legend="Seconds: {{dataset}}",
             )
         ],
+        fill=0,
+        stack=False,
     ),
 ]
 
