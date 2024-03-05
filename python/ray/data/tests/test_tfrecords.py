@@ -499,9 +499,9 @@ def test_write_tfrecords(
     # The dataset we will write to a .tfrecords file.
     ds = ray.data.from_items(
         data_partial(with_tf_schema),
-        # Here, we specify `override_num_blocks=1` to ensure that all rows end up in the same
-        # block, which is required for type inference involving
-        # partially missing columns.
+        # Here, we specify `override_num_blocks=1` to ensure that all rows end up in
+        # the same block, which is required for type inference involving partially
+        # missing columns.
         override_num_blocks=1,
     )
 
