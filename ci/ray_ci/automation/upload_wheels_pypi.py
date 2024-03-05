@@ -8,7 +8,7 @@ from ci.ray_ci.automation.pypi_lib import upload_wheels_to_pypi
 @click.command()
 @click.option("--ray_version", required=True, type=str)
 @click.option("--commit_hash", required=True, type=str)
-@click.option("--pypi_env", required=True, type=str, choices=["test", "prod"])
+@click.option("--pypi_env", required=True, type=click.Choice(["test", "prod"]))
 def main(ray_version, commit_hash, pypi_env):
     with tempfile.TemporaryDirectory() as temp_dir:
         download_ray_wheels_from_s3(
