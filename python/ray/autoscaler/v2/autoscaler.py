@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
+from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceManager,
@@ -20,6 +21,7 @@ from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater impor
     CloudInstanceUpdater,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
@@ -33,12 +35,16 @@ class Autoscaler:
         session_name: str,
         config_reader: IConfigReader,
         gcs_client: GcsClient,
+        event_logger: Optional[AutoscalerEventLogger] = None,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
         """
         Args:
-            session_name: The session name of ray.
+            session_name: The name of the ray session.
             config_reader: The config reader.
             gcs_client: The GCS client.
+            event_logger: The event logger for emitting cluster events.
+            metrics_reporter: The metrics reporter for emitting cluster metrics.
         """
 
         self._config_reader = config_reader
@@ -50,6 +56,8 @@ class Autoscaler:
         self._instance_manager = None
         self._ray_stop_errors_queue = Queue()
         self._ray_install_errors_queue = Queue()
+        self._event_logger = event_logger
+        self._metrics_reporter = metrics_reporter
 
         self._init_cloud_provider(config, config_reader)
         self._init_instance_manager(
@@ -58,7 +66,7 @@ class Autoscaler:
             cloud_provider=self._cloud_provider,
             gcs_client=self._gcs_client,
         )
-        self._scheduler = ResourceDemandScheduler()
+        self._scheduler = ResourceDemandScheduler(self._event_logger)
 
     def _init_cloud_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
@@ -158,6 +166,7 @@ class Autoscaler:
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
                 autoscaling_config=self._config_reader.get_autoscaling_config(),
+                metrics_reporter=self._metrics_reporter,
             )
         except Exception as e:
             logger.exception(e)

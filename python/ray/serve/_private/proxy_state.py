@@ -150,7 +150,7 @@ class ActorProxyWrapper(ProxyWrapper):
         except ValueError:
             logger.info(
                 f"Starting proxy on node '{node_id}' "
-                f"listening on '{config.host}:{port}'",
+                f"listening on '{config.host}:{port}'.",
                 extra={"log_to_stderr": False},
             )
 
