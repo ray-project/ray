@@ -57,18 +57,18 @@ class IConfigReader(ABC):
 
     Example:
         reader = FileConfigReader("path/to/config.yaml")
-        # Get the recently loaded config.
-        config = reader.get_autoscaling_config()
+        # Get the recently cached config.
+        config = reader.get_cached_autoscaling_config()
 
         ...
-        # Read from the source
-        reader.read_from_source()
-        config = reader.get_autoscaling_config()
+        # Refresh the cached config.
+        reader.refresh_cached_autoscaling_config()
+        config = reader.get_cached_autoscaling_config()
 
     """
 
     @abstractmethod
-    def get_autoscaling_config(self) -> "AutoscalingConfig":
+    def get_cached_autoscaling_config(self) -> "AutoscalingConfig":
         """Returns the recently read autoscaling config.
 
         Returns:
@@ -77,7 +77,7 @@ class IConfigReader(ABC):
         pass
 
     @abstractmethod
-    def read_from_source(self):
+    def refresh_cached_autoscaling_config(self):
         """Read the config from the source."""
         pass
 
@@ -160,25 +160,21 @@ class AutoscalingConfig:
         self,
         configs: Dict[str, Any],
         skip_content_hash: bool = False,
-        skip_prepare=False,
+        skip_prepare: bool = False,
     ) -> None:
         """
         Args:
             configs : The raw configs dict.
             skip_content_hash :
                 Whether to skip file mounts/ray command hash calculation.
-            skip_prepare:
-                Whether to skip the config preparation and validation.
+            skip_prepare :
+                Whether to skip the config validation and prepare step.
         """
         self._sync_continuously = False
-        self.update_configs(configs, skip_content_hash, skip_prepare)
+        if not skip_prepare:
+            self.update_configs(configs, skip_content_hash)
 
-    def update_configs(
-        self, configs: Dict[str, Any], skip_content_hash: bool, skip_prepare
-    ) -> None:
-        if skip_prepare:
-            self._configs = configs
-            return
+    def update_configs(self, configs: Dict[str, Any], skip_content_hash: bool) -> None:
         self._configs = prepare_config(configs)
         validate_config(self._configs)
         if skip_content_hash:
@@ -363,6 +359,14 @@ class AutoscalingConfig:
         return node_type_configs
 
     def get_head_node_type(self) -> NodeType:
+        """
+        Returns the head node type.
+
+        If there is only one node type, return the only node type as the head
+        node type.
+        If there are multiple node types, return the head node type specified
+        in the config.
+        """
         available_node_types = self._configs.get("available_node_types", {})
         if len(available_node_types) == 1:
             return list(available_node_types.keys())[0]
@@ -413,13 +417,6 @@ class AutoscalingConfig:
 
     def get_provider_config(self) -> Dict[str, Any]:
         return self._configs.get("provider", {})
-
-    def get_head_node_type(self) -> NodeType:
-        node_types = self._configs.get("available_node_types", {})
-        if len(node_types) == 1:
-            # If there's only one node type, it's the head node type.
-            return list(node_types.keys())[0]
-        return self._configs.get("head_node_type", "")
 
     def dump(self) -> str:
         return yaml.safe_dump(self._configs)
@@ -472,19 +469,15 @@ class FileConfigReader(IConfigReader):
             config = yaml.safe_load(f.read())
             return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         """
-        Reads the configs from the file and returns the autoscaling config.
-
-        Args:
-
         Returns:
             AutoscalingConfig: The autoscaling config.
         """
 
         return self._cached_config
 
-    def read_from_source(self):
+    def refresh_cached_autoscaling_config(self):
         self._cached_config = self._read()
 
 
@@ -498,7 +491,7 @@ class KubeRayConfigReader(IConfigReader):
     def _read(self) -> AutoscalingConfig:
         return AutoscalingConfig(self._config_producer(), skip_prepare=True)
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         """
         Reads the configs from the K8s RayCluster CR and returns the autoscaling config.
 
@@ -509,7 +502,7 @@ class KubeRayConfigReader(IConfigReader):
         """
         return self._cached_config
 
-    def read_from_source(self):
+    def refresh_cached_autoscaling_config(self):
         self._cached_config = self._read()
 
 
@@ -523,12 +516,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         self._configs = BASE_READONLY_CONFIG
         self._gcs_client = GcsClient(address=gcs_address)
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
-        return AutoscalingConfig(
-            self._configs, skip_content_hash=True, skip_prepare=True
-        )
-
-    def read_from_source(self):
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         # Update the config with node types from GCS.
         ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
@@ -545,6 +533,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
                 "resources": dict(node_state.total_resources),
                 "min_workers": 0,
                 "max_workers": 0 if is_head_node(node_state) else 1,
+                "node_config": {},
             }
         if available_node_types:
             self._configs["available_node_types"].update(available_node_types)
@@ -555,6 +544,5 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         # Don't idle terminated nodes in read-only mode.
         self._configs.pop("idle_timeout_minutes", None)
 
-        return AutoscalingConfig(
-            self._configs, skip_content_hash=True, skip_prepare=True
-        )
+    def refresh_cached_autoscaling_config(self):
+        return AutoscalingConfig(self._configs, skip_content_hash=True)

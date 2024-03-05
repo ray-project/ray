@@ -88,7 +88,7 @@ class FakeMultiNodeProviderTester(CloudInstanceProviderTesterBase):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
-        self.config = self.config_reader.get_autoscaling_config()
+        self.config = self.config_reader.get_cached_autoscaling_config()
         self.ray_session = None
 
         os.environ["RAY_FAKE_CLUSTER"] = "1"
@@ -129,7 +129,7 @@ class MockProviderTester(CloudInstanceProviderTesterBase):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
-        self.config = self.config_reader.get_autoscaling_config()
+        self.config = self.config_reader.get_cached_autoscaling_config()
         self.base_provider = MockProvider()
         provider = NodeProviderAdapter(
             self.base_provider,
@@ -154,7 +154,7 @@ class MagicMockProviderTester(CloudInstanceProviderTesterBase):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
-        self.config = self.config_reader.get_autoscaling_config()
+        self.config = self.config_reader.get_cached_autoscaling_config()
         self.base_provider = MagicMock()
         provider = NodeProviderAdapter(
             self.base_provider,

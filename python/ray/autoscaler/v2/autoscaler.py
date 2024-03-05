@@ -33,11 +33,8 @@ from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater impor
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
-from ray.core.generated.autoscaler_pb2 import (
-    AutoscalingState,
-    ClusterResourceState,
-    GetClusterResourceStateReply,
-)
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.core.generated.autoscaler_pb2 import AutoscalingState
 
 logger = logging.getLogger(__name__)
 
@@ -61,27 +58,29 @@ class Autoscaler:
         """
 
         self._config_reader = config_reader
-        config = config_reader.get_autoscaling_config()
-        logger.info(config.dump())
+
+        config = config_reader.get_cached_autoscaling_config()
+        logger.info(f"Using Autoscaling Config: \n{config.dump()}")
+
 
         self._gcs_client = gcs_client
-        self._cloud_provider = None
+        self._cloud_instance_provider = None
         self._instance_manager = None
         self._ray_stop_errors_queue = Queue()
         self._ray_install_errors_queue = Queue()
         self._event_logger = event_logger
         self._metrics_reporter = metrics_reporter
 
-        self._init_cloud_provider(config, config_reader)
+        self._init_cloud_instance_provider(config, config_reader)
         self._init_instance_manager(
             session_name=session_name,
             config=config,
-            cloud_provider=self._cloud_provider,
+            cloud_provider=self._cloud_instance_provider,
             gcs_client=self._gcs_client,
         )
         self._scheduler = ResourceDemandScheduler(self._event_logger)
 
-    def _init_cloud_provider(
+    def _init_cloud_instance_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
     ):
         """
@@ -101,7 +100,7 @@ class Autoscaler:
             )
         elif config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address
-            self._cloud_provider = ReadOnlyProvider(
+            self._cloud_instance_provider = ReadOnlyProvider(
                 provider_config=provider_config,
             )
         else:
@@ -110,7 +109,7 @@ class Autoscaler:
                 config.get_config("cluster_name"),
             )
 
-            self._cloud_provider = NodeProviderAdapter(
+            self._cloud_instance_provider = NodeProviderAdapter(
                 v1_provider=node_provider_v1,
                 config_reader=config_reader,
             )
@@ -136,28 +135,21 @@ class Autoscaler:
             RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )
         if not config.disable_node_updaters():
-            # Supporting ray installer is only needed for providers that install
-            # and manage ray. Not for providers that only launch instances
-            # (e.g. KubeRay)
-            raise NotImplementedError("RayInstaller is not implemented yet.")
+            # Supporting ray installer is only needed for providers that doesn't
+            # install or manage ray (e.g. AWS, GCP). These providers will be
+            # supported in the future.
+            raise NotImplementedError(
+                "RayInstaller is not supported yet in current "
+                "release of the Autoscaler V2. Therefore, providers "
+                "that update nodes (with `disable_node_updaters` set to True) "
+                "are not supported yet. Only KubeRay is supported for now which sets "
+                "disable_node_updaters to True in provider's config."
+            )
 
         self._instance_manager = InstanceManager(
             instance_storage=instance_storage,
             instance_status_update_subscribers=subscribers,
         )
-
-    def _get_cluster_resource_state(self) -> ClusterResourceState:
-        """
-        Get the current state of the ray cluster resources.
-
-        Returns:
-            ClusterResourceState: The current state of the cluster resources.
-        """
-        str_reply = self._gcs_client.get_cluster_resource_state()
-        reply = GetClusterResourceStateReply()
-        reply.ParseFromString(str_reply)
-
-        return reply.cluster_resource_state
 
     def update_autoscaling_state(
         self,
@@ -168,7 +160,11 @@ class Autoscaler:
         update subscribers with the desired state.
 
         Returns:
-            AutoscalingState: The new autoscaling state of the cluster.
+            AutoscalingState: The new autoscaling state of the cluster or None if
+            the state is not updated.
+
+        Raises:
+            No exception.
         """
 
         try:
@@ -180,7 +176,12 @@ class Autoscaler:
             while not self._ray_install_errors_queue.empty():
                 ray_install_errors.append(self._ray_install_errors_queue.get())
 
-            ray_cluster_resource_state = self._get_cluster_resource_state()
+            # Get the current state of the ray cluster resources.
+            ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
+
+            # Refresh the config from the source
+            self._config_reader.refresh_cached_autoscaling_config()
+            autoscaling_config = self._config_reader.get_cached_autoscaling_config()
 
             # Refresh the config from the source
             self._config_reader.read_from_source()
@@ -188,15 +189,15 @@ class Autoscaler:
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
-                cloud_provider=self._cloud_provider,
+                cloud_provider=self._cloud_instance_provider,
                 ray_cluster_resource_state=ray_cluster_resource_state,
                 non_terminated_cloud_instances=(
-                    self._cloud_provider.get_non_terminated()
+                    self._cloud_instance_provider.get_non_terminated()
                 ),
-                cloud_provider_errors=self._cloud_provider.poll_errors(),
+                cloud_provider_errors=self._cloud_instance_provider.poll_errors(),
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
-                autoscaling_config=self._config_reader.get_autoscaling_config(),
+                autoscaling_config=autoscaling_config,
                 metrics_reporter=self._metrics_reporter,
             )
         except Exception as e:

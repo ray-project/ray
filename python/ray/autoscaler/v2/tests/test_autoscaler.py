@@ -67,6 +67,7 @@ def make_autoscaler():
             "env_vars": {
                 "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+                "RAY_NODE_TYPE_NAME": "ray.head.default",
             },
             "num_cpus": config["available_node_types"]["ray.head.default"]["resources"][
                 "CPU"
@@ -85,8 +86,8 @@ def make_autoscaler():
         config["provider"]["head_node_id"] = FAKE_HEAD_NODE_ID
         config["provider"]["launch_multiple"] = True
         os.environ["RAY_FAKE_CLUSTER"] = "1"
-        mock_config_reader.get_autoscaling_config.return_value = AutoscalingConfig(
-            configs=config, skip_content_hash=True
+        mock_config_reader.get_cached_autoscaling_config.return_value = (
+            AutoscalingConfig(configs=config, skip_content_hash=True)
         )
         gcs_address = gcs_address
         gcs_client = GcsClient(gcs_address)
@@ -106,7 +107,8 @@ def make_autoscaler():
     try:
         ray.shutdown()
         ctx["cluster"].shutdown()
-    finally:
+    except Exception:
+        logger.exception("Error during teardown")
         # Run ray stop to clean up everything
         subprocess.run(
             ["ray", "stop", "--force"], stdout=subprocess.PIPE, stderr=subprocess.PIPE

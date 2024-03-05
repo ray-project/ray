@@ -835,4 +835,5 @@ def is_head_node(node_state: NodeState) -> bool:
         is_head: True if the node is a head node, False otherwise.
     """
     # TODO: we should include this bit of information in the future.
+    # NOTE: we could use labels in the future to determine if it's a head node.
     return "node:__internal_head__" in dict(node_state.total_resources)
