@@ -1025,10 +1025,6 @@ cdef c_bool determine_if_retryable(
     # Python API should have converted the list of exceptions to a tuple.
     assert isinstance(exception_allowlist, tuple)
 
-    # For exceptions raised when running UDFs in Ray Data, we need to unwrap the special
-    # exception type thrown by Ray Data in order to get the underlying exception.
-    if isinstance(e, ray.data.exceptions.UserCodeException):
-        e = e.__cause__
     # Check that e is in allowlist.
     return isinstance(e, exception_allowlist)
 
@@ -2863,6 +2859,19 @@ cdef class GcsClient:
                 timeout_ms, bundles, count_array))
 
     @_auto_reconnect
+    def get_cluster_resource_state(
+            self,
+            timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().GetClusterResourceState(timeout_ms,
+                         serialized_reply))
+
+        return serialized_reply
+
+    @_auto_reconnect
     def get_cluster_status(
             self,
             timeout_s=None):
@@ -2874,6 +2883,19 @@ cdef class GcsClient:
                          serialized_reply))
 
         return serialized_reply
+
+    @_auto_reconnect
+    def report_autoscaling_state(
+        self,
+        serialzied_state: c_string,
+        timeout_s=None
+    ):
+        """Report autoscaling state to GCS"""
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+        with nogil:
+            check_status(self.inner.get().ReportAutoscalingState(
+                timeout_ms, serialzied_state))
 
     @_auto_reconnect
     def drain_node(

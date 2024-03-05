@@ -4,7 +4,6 @@ import torch
 from torchvision import transforms
 
 import ray
-from ray.data.exceptions import UserCodeException
 from ray.data.preprocessors import TorchVisionPreprocessor
 
 
@@ -116,7 +115,7 @@ class TestTorchVisionPreprocessor:
         transform = transforms.Lambda(lambda tensor: "BLAH BLAH INVALID")
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
-        with pytest.raises((UserCodeException, ValueError)):
+        with pytest.raises(ValueError):
             preprocessor.transform(dataset).materialize()
 
 

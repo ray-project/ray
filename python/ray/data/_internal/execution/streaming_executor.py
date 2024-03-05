@@ -153,7 +153,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         output_split_idx
                     )
                     if self._outer._global_info:
-                        self._outer._global_info.update(1, dag._estimated_output_blocks)
+                        self._outer._global_info.update(1, dag.num_outputs_total())
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
