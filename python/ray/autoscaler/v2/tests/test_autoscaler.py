@@ -85,8 +85,8 @@ def make_autoscaler():
         config["provider"]["head_node_id"] = FAKE_HEAD_NODE_ID
         config["provider"]["launch_multiple"] = True
         os.environ["RAY_FAKE_CLUSTER"] = "1"
-        mock_config_reader.get_autoscaling_config.return_value = AutoscalingConfig(
-            configs=config, skip_content_hash=True
+        mock_config_reader.get_cached_autoscaling_config.return_value = (
+            AutoscalingConfig(configs=config, skip_content_hash=True)
         )
         gcs_address = gcs_address
         gcs_client = GcsClient(gcs_address)

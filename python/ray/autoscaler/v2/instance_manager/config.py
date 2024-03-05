@@ -54,18 +54,18 @@ class IConfigReader(ABC):
 
     Example:
         reader = FileConfigReader("path/to/config.yaml")
-        # Get the recently loaded config.
-        config = reader.get_autoscaling_config()
+        # Get the recently cached config.
+        config = reader.get_cached_autoscaling_config()
 
         ...
-        # Read from the source
-        reader.read_from_source()
-        config = reader.get_autoscaling_config()
+        # Refresh the cached config.
+        reader.refresh_cached_autoscaling_config()
+        config = reader.get_cached_autoscaling_config()
 
     """
 
     @abstractmethod
-    def get_autoscaling_config(self) -> "AutoscalingConfig":
+    def get_cached_autoscaling_config(self) -> "AutoscalingConfig":
         """Returns the recently read autoscaling config.
 
         Returns:
@@ -74,7 +74,7 @@ class IConfigReader(ABC):
         pass
 
     @abstractmethod
-    def read_from_source(self):
+    def refresh_cached_autoscaling_config(self):
         """Read the config from the source."""
         pass
 
@@ -462,7 +462,7 @@ class FileConfigReader(IConfigReader):
             config = yaml.safe_load(f.read())
             return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         """
         Reads the configs from the file and returns the autoscaling config.
 
@@ -473,7 +473,7 @@ class FileConfigReader(IConfigReader):
         """
         return self._cached_config
 
-    def read_from_source(self):
+    def refresh_cached_autoscaling_config(self):
         self._cached_config = self._read()
 
 
@@ -487,7 +487,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         self._configs = BASE_READONLY_CONFIG
         self._gcs_client = GcsClient(address=gcs_address)
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         # Update the config with node types from GCS.
         ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
