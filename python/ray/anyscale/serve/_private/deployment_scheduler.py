@@ -3,7 +3,7 @@
 import copy
 import sys
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
@@ -76,60 +76,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
 
         self._head_node_id = head_node_id or get_head_node_id()
 
-    def on_deployment_created(
-        self,
-        deployment_id: DeploymentID,
-        scheduling_policy: SpreadDeploymentSchedulingPolicy,
-    ) -> None:
-        assert deployment_id not in self._pending_replicas
-        assert deployment_id not in self._launching_replicas
-        assert deployment_id not in self._recovering_replicas
-        assert deployment_id not in self._running_replicas
-        self._deployments[deployment_id] = scheduling_policy
-
-    def on_deployment_deleted(self, deployment_id: DeploymentID) -> None:
-        assert not self._pending_replicas[deployment_id]
-        self._pending_replicas.pop(deployment_id, None)
-
-        assert not self._launching_replicas[deployment_id]
-        self._launching_replicas.pop(deployment_id, None)
-
-        assert not self._recovering_replicas[deployment_id]
-        self._recovering_replicas.pop(deployment_id, None)
-
-        assert not self._running_replicas[deployment_id]
-        self._running_replicas.pop(deployment_id, None)
-
-        del self._deployments[deployment_id]
-
-    def on_replica_stopping(
-        self, deployment_id: DeploymentID, replica_name: str
-    ) -> None:
-        self._pending_replicas[deployment_id].pop(replica_name, None)
-        self._launching_replicas[deployment_id].pop(replica_name, None)
-        self._recovering_replicas[deployment_id].discard(replica_name)
-        self._running_replicas[deployment_id].pop(replica_name, None)
-
-    def on_replica_running(
-        self, deployment_id: DeploymentID, replica_name: str, node_id: str
-    ) -> None:
-        assert replica_name not in self._pending_replicas[deployment_id]
-
-        self._launching_replicas[deployment_id].pop(replica_name, None)
-        self._recovering_replicas[deployment_id].discard(replica_name)
-
-        self._running_replicas[deployment_id][replica_name] = node_id
-
-    def on_replica_recovering(
-        self, deployment_id: DeploymentID, replica_name: str
-    ) -> None:
-        assert replica_name not in self._pending_replicas[deployment_id]
-        assert replica_name not in self._launching_replicas[deployment_id]
-        assert replica_name not in self._running_replicas[deployment_id]
-        assert replica_name not in self._recovering_replicas[deployment_id]
-
-        self._recovering_replicas[deployment_id].add(replica_name)
-
     def schedule(
         self,
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
@@ -147,7 +93,8 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                 continue
 
             assert isinstance(
-                self._deployments[deployment_id], SpreadDeploymentSchedulingPolicy
+                self._deployments[deployment_id].scheduling_policy,
+                SpreadDeploymentSchedulingPolicy,
             )
             self._schedule_spread_deployment(deployment_id)
 
@@ -250,7 +197,7 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                 # to limit the number of replicas on a single node.
                 actor_options["resources"][
                     f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
-                    f"{deployment_id.app}:{deployment_id.name}"
+                    f"{deployment_id.app_name}:{deployment_id.name}"
                 ] = (1.0 / replica_scheduling_request.max_replicas_per_node)
             actor_handle = replica_scheduling_request.actor_def.options(
                 scheduling_strategy=scheduling_strategy,
@@ -337,3 +284,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                     replicas_to_stop.add(running_replica)
 
         return replicas_to_stop
+
+    def detect_compact_opportunities(self) -> Tuple[str, float]:
+        return None, None
