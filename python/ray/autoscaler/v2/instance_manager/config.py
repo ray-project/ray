@@ -160,7 +160,7 @@ class AutoscalingConfig:
         self,
         configs: Dict[str, Any],
         skip_content_hash: bool = False,
-        skip_prepare: bool = False,
+        skip_prepare=False,
     ) -> None:
         """
         Args:
