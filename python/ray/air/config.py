@@ -195,8 +195,10 @@ class ScalingConfig:
                 resources_per_worker = {"GPU": 1}
             else:
                 resources_per_worker = {"CPU": 1}
-
-        resources_per_worker = {k: v for k, v in resources_per_worker.items() if v != 0}
+        else:
+            resources_per_worker = {
+                k: v for k, v in self.resources_per_worker.items() if v != 0
+            }
 
         if self.use_gpu:
             resources_per_worker.setdefault("GPU", 1)
