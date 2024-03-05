@@ -2,6 +2,7 @@ import abc
 import operator
 import time
 from abc import abstractmethod
+from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 import ray
@@ -9,6 +10,31 @@ from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, Resource
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+
+
+class MockEventLogger:
+    def __init__(self, logger) -> None:
+        self._logs = defaultdict(list)
+        self._logger = logger
+
+    def info(self, s):
+        self._logger.info(s)
+        self._logs["info"].append(s)
+
+    def warning(self, s):
+        self._logger.warning(s)
+        self._logs["warning"].append(s)
+
+    def error(self, s):
+        self._logger.error(s)
+        self._logs["error"].append(s)
+
+    def debug(self, s):
+        self._logger.debug(s)
+        self._logs["debug"].append(s)
+
+    def get_logs(self, level: str) -> List[str]:
+        return self._logs[level]
 
 
 class MockSubscriber:

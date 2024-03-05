@@ -16,6 +16,7 @@ from typing import (
 
 import pyarrow.fs
 
+from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
@@ -581,10 +582,14 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path to store results at. Can be a local directory or
-            a destination on cloud storage. If Ray storage is set up,
-            defaults to the storage location. Otherwise, this defaults to
-            the local ``~/ray_results`` directory.
+        storage_path: [Beta] Path where all results and checkpoints are persisted.
+            Can be a local directory or a destination on cloud storage.
+            For multi-node training/tuning runs, this must be set to a
+            shared storage location (e.g., S3, NFS).
+            This defaults to the local ``~/ray_results`` directory.
+        storage_filesystem: [Beta] A custom filesystem to use for storage.
+            If this is provided, `storage_path` should be a path with its
+            prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
         sync_config: Configuration object for syncing. See train.SyncConfig.
@@ -634,7 +639,20 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.train import SyncConfig
+        from ray.train.constants import DEFAULT_STORAGE_PATH
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
+
+        if self.storage_path is None:
+            self.storage_path = DEFAULT_STORAGE_PATH
+
+            # If no remote path is set, try to get Ray Storage URI
+            ray_storage_uri: Optional[str] = _get_storage_uri()
+            if ray_storage_uri is not None:
+                logger.info(
+                    "Using configured Ray Storage URI as the `storage_path`: "
+                    f"{ray_storage_uri}"
+                )
+                self.storage_path = ray_storage_uri
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
