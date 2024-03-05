@@ -21,19 +21,14 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
-    def __init__(self, ray_resources: Dict = None):
-        if not ray_resources:
-            super().__init__()
+    @classmethod
+    def from_ray_resource_dict(cls, ray_resource_dict: Dict):
+        num_cpus = ray_resource_dict.get("CPU", 0)
+        num_gpus = ray_resource_dict.get("GPU", 0)
+        memory = ray_resource_dict.get("memory", 0)
+        custom_resources = ray_resource_dict.get("resources", dict())
 
-        else:
-            num_cpus = ray_resources.get("CPU", 0)
-            num_gpus = ray_resources.get("GPU", 0)
-            memory = ray_resources.get("memory", 0)
-            custom_resources = ray_resources.get("resources", dict())
-
-            super().__init__(
-                CPU=num_cpus, GPU=num_gpus, memory=memory, **custom_resources
-            )
+        return cls(CPU=num_cpus, GPU=num_gpus, memory=memory, **custom_resources)
 
     def get(self, key: str):
         val = super().get(key)
@@ -223,12 +218,15 @@ class DeploymentScheduler(ABC):
     ) -> None:
         assert deployment_id in self._deployments
 
-        self._deployments[deployment_id].actor_resources = Resources(
+        self._deployments[
+            deployment_id
+        ].actor_resources = Resources.from_ray_resource_dict(
             replica_config.resource_dict
         )
         if replica_config.placement_group_bundles:
             self._deployments[deployment_id].placement_group_bundles = [
-                Resources(bundle) for bundle in replica_config.placement_group_bundles
+                Resources.from_ray_resource_dict(bundle)
+                for bundle in replica_config.placement_group_bundles
             ]
         if replica_config.placement_group_strategy:
             self._deployments[

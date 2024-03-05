@@ -494,6 +494,7 @@ autodoc_mock_imports = [
     "torchvision",
     "transformers",
     "tree",
+    "typer",
     "uvicorn",
     "wandb",
     "watchfiles",

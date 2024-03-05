@@ -165,6 +165,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "initial_replicas": None,
                                     "max_replicas": 10,
                                     "target_num_ongoing_requests_per_replica": 1.0,
+                                    "target_ongoing_requests": None,
                                     "metrics_interval_s": 10.0,
                                     "look_back_period_s": 30.0,
                                     "smoothing_factor": 1.0,
@@ -182,6 +183,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "num_cpus": 1.0,
                                 },
                             },
+                            "target_num_replicas": 1,
                             "replicas": [
                                 {
                                     "node_id": node_id,
