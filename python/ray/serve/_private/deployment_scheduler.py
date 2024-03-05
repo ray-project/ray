@@ -163,7 +163,7 @@ class DeploymentSchedulingInfo:
         )
 
 
-class DeploymentScheduler:
+class DeploymentScheduler(ABC):
     """A centralized scheduler for all Serve deployments.
 
     It makes a batch of scheduling decisions in each update cycle.
