@@ -82,16 +82,13 @@ class ReplicaID:
 
         This is used in user-facing log messages, so take care when updating it.
         """
-        s = f"Replica(id='{self.unique_id}', deployment='{self.deployment_id.name}'"
-        if (
-            self.deployment_id.app_name
-            and self.deployment_id.app_name != SERVE_DEFAULT_APP_NAME
-        ):
-            s += f", app='{self.deployment_id.app_name}')"
-        else:
-            s += ")"
-
-        return s
+        return (
+            f"Replica("
+            f"id='{self.unique_id}', "
+            f"deployment='{self.deployment_id.name}', "
+            f"app='{self.deployment_id.app_name}'"
+            ")"
+        )
 
 
 NodeId = str
