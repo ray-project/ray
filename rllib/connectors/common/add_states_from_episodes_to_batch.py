@@ -131,9 +131,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             episodes=[episode.finalize()],
             shared_data={},
         )
-        # The output data's STATE_IN key should now contain the episode's last
-        # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
-        # fashion.
         check(
             output_data[Columns.STATE_IN],
             {
@@ -142,7 +139,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 # is NOT passed through the forward_train, b/c there is nothing to learn
                 # at that timestep, unless we need to compute e.g. bootstrap value
                 # predictions).
-                (episode.id_,): [rl_module_init_state, -3.0],
+                # Also note that the different STATE_IN timesteps are already present
+                # as one batched item per episode in the list.
+                (episode.id_,): [[rl_module_init_state, -3.0]],
             },
         )
     """

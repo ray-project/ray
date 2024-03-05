@@ -6,6 +6,7 @@ import tree  # pip install dm_tree
 from typing import Any, List, Optional, Union
 
 
+@DeveloperAPI
 class BatchedNdArray(np.ndarray):
     """A simple ndarray-wrapped adding the _has_batch_dim boolean flag.
 
