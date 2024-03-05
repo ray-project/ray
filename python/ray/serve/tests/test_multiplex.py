@@ -316,7 +316,7 @@ def test_multiplexed_replica_info(serve_instance):
         replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
         for replica in replica_scheduler.curr_replicas.values():
             if (
-                replica.replica_id != replica_id.unique_id
+                replica.replica_id != replica_id
                 or model_ids != replica.multiplexed_model_ids
             ):
                 return False
