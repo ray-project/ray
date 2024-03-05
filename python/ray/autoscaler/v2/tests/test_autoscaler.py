@@ -62,6 +62,7 @@ def make_autoscaler():
             "env_vars": {
                 "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+                "RAY_NODE_TYPE_NAME": "ray.head.default",
             },
             "num_cpus": config["available_node_types"]["ray.head.default"]["resources"][
                 "CPU"

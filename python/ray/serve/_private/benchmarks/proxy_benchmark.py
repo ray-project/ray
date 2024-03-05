@@ -125,10 +125,10 @@ class gRPCClient:
 
 def build_app(
     num_replicas: int,
-    max_concurrent_queries: int,
+    max_ongoing_requests: int,
     data_size: int,
 ):
-    @serve.deployment(max_concurrent_queries=1000)
+    @serve.deployment(max_ongoing_requests=1000)
     class DataPreprocessing:
         def __init__(self, handle: DeploymentHandle):
             self._handle = handle
@@ -161,7 +161,7 @@ def build_app(
 
     @serve.deployment(
         num_replicas=num_replicas,
-        max_concurrent_queries=max_concurrent_queries,
+        max_ongoing_requests=max_ongoing_requests,
     )
     class ModelInference:
         def __init__(self):
@@ -179,7 +179,7 @@ def build_app(
 
 async def trial(
     num_replicas: int,
-    max_concurrent_queries: int,
+    max_ongoing_requests: int,
     data_size: int,
     num_clients: int,
     proxy: RequestProtocol,
@@ -190,7 +190,7 @@ async def trial(
     # Build and deploy the app.
     app = build_app(
         num_replicas=num_replicas,
-        max_concurrent_queries=max_concurrent_queries,
+        max_ongoing_requests=max_ongoing_requests,
         data_size=data_size,
     )
     serve.run(app)
@@ -212,7 +212,7 @@ async def trial(
         f"proxy:{proxy}/"
         f"num_client:{num_clients}/"
         f"replica:{num_replicas}/"
-        f"concurrent_queries:{max_concurrent_queries}/"
+        f"concurrent_queries:{max_ongoing_requests}/"
         f"data_size:{data_size}"
     )
     tps_mean, tps_sdt = await get_query_tps(
@@ -228,7 +228,7 @@ async def trial(
         "proxy": proxy.value,
         "num_client": num_clients,
         "replica": num_replicas,
-        "concurrent_queries": max_concurrent_queries,
+        "concurrent_queries": max_ongoing_requests,
         "data_size": data_size,
         "tps_mean": tps_mean,
         "tps_sdt": tps_sdt,
@@ -243,14 +243,14 @@ async def main():
     start_time = time.time()
     results = []
     for num_replicas in [1, 8]:
-        for max_concurrent_queries in [1, 10_000]:
+        for max_ongoing_requests in [1, 10_000]:
             for data_size in [1, 100, 10_000]:
                 for num_clients in [1, 8]:
                     for proxy in [RequestProtocol.GRPC, RequestProtocol.HTTP]:
                         results.append(
                             await trial(
                                 num_replicas=num_replicas,
-                                max_concurrent_queries=max_concurrent_queries,
+                                max_ongoing_requests=max_ongoing_requests,
                                 data_size=data_size,
                                 num_clients=num_clients,
                                 proxy=proxy,

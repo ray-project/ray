@@ -22,7 +22,6 @@ Ray Data represents tensors as
 .. testoutput::
 
     Dataset(
-       num_blocks=...,
        num_rows=100,
        schema={image: numpy.ndarray(shape=(28, 28), dtype=uint8)}
     )

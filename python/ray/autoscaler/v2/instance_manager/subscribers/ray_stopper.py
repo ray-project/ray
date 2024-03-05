@@ -114,7 +114,8 @@ class RayStopper(InstanceUpdatedSubscriber):
                 deadline_timestamp_ms=0,
             )
             logger.info(
-                f"Drained ray on {ray_node_id}(success={accepted}, msg={reject_msg_str})"
+                f"Drained ray on {ray_node_id}(success={accepted}, "
+                f"msg={reject_msg_str})"
             )
             if not accepted:
                 error_queue.put_nowait(RayStopError(im_instance_id=instance_id))

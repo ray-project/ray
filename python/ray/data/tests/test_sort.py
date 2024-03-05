@@ -616,14 +616,14 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     ds = ray.data.range(1000, parallelism=parallelism)
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
-    assert shuffled_ds.num_blocks() == parallelism
+    assert shuffled_ds._plan.initial_num_blocks() == parallelism
 
     DataContext.get_current().set_config(
         "debug_limit_shuffle_execution_to_num_blocks", 1
     )
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
-    assert shuffled_ds.num_blocks() == 1
+    assert shuffled_ds._plan.initial_num_blocks() == 1
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
