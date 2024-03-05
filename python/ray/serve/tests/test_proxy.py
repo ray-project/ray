@@ -441,32 +441,6 @@ class TestHTTPProxy:
         )
 
     @pytest.mark.asyncio
-    async def test_timeout_response(self):
-        """Test HTTPProxy set up the correct timeout response."""
-        http_proxy = self.create_http_proxy()
-        request_id = "fake_request_id"
-        gen = http_proxy.timeout_response(
-            request_id=request_id,
-        )
-        status = None
-        messages = []
-        async for message in gen:
-            if isinstance(message, ResponseStatus):
-                status = message
-            else:
-                messages.append(message)
-
-        assert messages[0]["headers"] is not None
-        assert (
-            messages[1]["body"]
-            .decode("utf-8")
-            .startswith(f"Request {request_id} timed out after")
-        )
-        assert isinstance(status, ResponseStatus)
-        assert status.code == 408
-        assert status.is_error is True
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
     @pytest.mark.parametrize("routes_updated", [False, True])
     async def test_routes_response(self, is_draining: bool, routes_updated: bool):

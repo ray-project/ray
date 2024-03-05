@@ -271,7 +271,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
-    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
@@ -332,9 +331,19 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
+    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_autoscaler.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -346,15 +355,6 @@ py_test_module_list(
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
-    "test_autoscaler.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

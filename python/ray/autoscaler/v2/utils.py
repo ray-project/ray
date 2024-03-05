@@ -81,10 +81,12 @@ class ProtobufUtil:
         Returns:
             dict: the dict
         """
-        from google.protobuf.json_format import MessageToDict
+        from ray._private.protobuf_compat import message_to_dict
 
-        return MessageToDict(
-            proto, preserving_proto_field_name=True, including_default_value_fields=True
+        return message_to_dict(
+            proto,
+            preserving_proto_field_name=True,
+            always_print_fields_with_no_presence=True,
         )
 
     @staticmethod
@@ -227,7 +229,7 @@ class ResourceRequestUtil(ProtobufUtil):
 
     @staticmethod
     def combine_requests_with_affinity(
-        rs: List[ResourceRequest],
+        resource_requests: List[ResourceRequest],
     ) -> List[ResourceRequest]:
         """
         Combine the resource requests with affinity constraints
@@ -238,52 +240,63 @@ class ResourceRequestUtil(ProtobufUtil):
         into one request, and dedup the placement constraints.
 
         This assumes following:
-            1. There's only 1 affinity constraint per request.
-            2. Requests with affinity constraints should not
-            have anti-affinity constraints against each other.
+            1. There's only at most 1 placement constraint, either an affinity
+            constraint OR an anti-affinity constraint.
 
         Args:
-            rs: The list of resource requests to be combined.
+            resource_requests: The list of resource requests to be combined.
         Returns:
             A list of combined resource requests.
         """
 
         # Map of set of serialized affinity constraint to the list of resource requests
-        requests_by_affinity: Dict[str, List[ResourceRequest]] = defaultdict(list)
+        requests_by_affinity: Dict[
+            Tuple[str, str], List[ResourceRequest]
+        ] = defaultdict(list)
         combined_requests: List[ResourceRequest] = []
 
-        for r in rs:
-            has_affinity = False
-            # Check if there's affinity constraints, and group the requests
-            # by the affinity label name and value.
-            for constraint in r.placement_constraints:
-                if constraint.HasField("affinity"):
-                    affinity = constraint.affinity
-                    requests_by_affinity[str(affinity.SerializeToString())].append(r)
-                    has_affinity = True
+        for request in resource_requests:
+            assert len(request.placement_constraints) <= 1, (
+                "There should be at most 1 placement constraint, "
+                "either an affinity constraint OR an anti-affinity constraint."
+            )
 
-            if not has_affinity:
+            if len(request.placement_constraints) == 0:
                 # No affinity constraints, just add to the combined requests.
-                combined_requests.append(r)
+                combined_requests.append(request)
+                continue
 
-        for _, rs in requests_by_affinity.items():
+            constraint = request.placement_constraints[0]
+
+            if constraint.HasField("affinity"):
+                affinity = constraint.affinity
+                requests_by_affinity[
+                    (affinity.label_name, affinity.label_value)
+                ].append(request)
+            elif constraint.HasField("anti_affinity"):
+                # We don't need to combine requests with anti-affinity constraints.
+                combined_requests.append(request)
+
+        for (
+            affinity_label_name,
+            affinity_label_value,
+        ), requests in requests_by_affinity.items():
             combined_request = ResourceRequest()
-            seen_placement_constraint = set()
-            for r in rs:
-                # Merge the resource bundles with the same affinity constraint.
-                for k, v in r.resources_bundle.items():
+
+            # Merge the resource bundles with the same affinity constraint.
+            for request in requests:
+                for k, v in request.resources_bundle.items():
                     combined_request.resources_bundle[k] = (
                         combined_request.resources_bundle.get(k, 0) + v
                     )
 
-                # Add and dedup the placement constraints.
-                for constraint in r.placement_constraints:
-                    serialized_placement_constraint = str(
-                        constraint.SerializeToString()
-                    )
-                    if serialized_placement_constraint not in seen_placement_constraint:
-                        combined_request.placement_constraints.append(constraint)
-                        seen_placement_constraint.add(serialized_placement_constraint)
+            # Add the placement constraint to the combined request.
+            affinity_constraint = AffinityConstraint(
+                label_name=affinity_label_name, label_value=affinity_label_value
+            )
+            combined_request.placement_constraints.append(
+                PlacementConstraint(affinity=affinity_constraint)
+            )
 
             combined_requests.append(combined_request)
 
@@ -772,7 +785,7 @@ class ClusterStatusParser:
 cached_is_autoscaler_v2 = None
 
 
-def is_autoscaler_v2() -> bool:
+def is_autoscaler_v2(fetch_from_server: bool = False) -> bool:
     """
     Check if the autoscaler is v2 from reading GCS internal KV.
 
@@ -785,7 +798,7 @@ def is_autoscaler_v2() -> bool:
         Exception: if GCS address could not be resolved (e.g. ray.init() not called)
     """
     # If env var is set to enable autoscaler v2, we should always return True.
-    if ray._config.enable_autoscaler_v2():
+    if ray._config.enable_autoscaler_v2() and not fetch_from_server:
         # TODO(rickyx): Once we migrate completely to v2, we should remove this.
         # While this short-circuit may allow client-server inconsistency
         # (e.g. client running v1, while server running v2), it's currently
@@ -793,7 +806,7 @@ def is_autoscaler_v2() -> bool:
         return True
 
     global cached_is_autoscaler_v2
-    if cached_is_autoscaler_v2 is not None:
+    if cached_is_autoscaler_v2 is not None and not fetch_from_server:
         return cached_is_autoscaler_v2
 
     if not _internal_kv_initialized():
@@ -810,3 +823,16 @@ def is_autoscaler_v2() -> bool:
     )
 
     return cached_is_autoscaler_v2
+
+
+def is_head_node(node_state: NodeState) -> bool:
+    """
+    Check if the node is a head node from the node state.
+
+    Args:
+        node_state: the node state
+    Returns:
+        is_head: True if the node is a head node, False otherwise.
+    """
+    # TODO: we should include this bit of information in the future.
+    return "node:__internal_head__" in dict(node_state.total_resources)

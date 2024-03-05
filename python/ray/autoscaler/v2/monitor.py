@@ -1,4 +1,8 @@
-"""Autoscaler monitoring loop daemon."""
+"""Autoscaler monitoring loop daemon.
+
+See autoscaler._private/monitor.py for the legacy implementation. All the legacy flags
+are supported here, but the new implementation uses the new autoscaler v2.
+"""
 
 import argparse
 import logging
@@ -20,7 +24,11 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-from ray.autoscaler.v2.instance_manager.config import FileConfigReader, IConfigReader
+from ray.autoscaler.v2.instance_manager.config import (
+    FileConfigReader,
+    IConfigReader,
+    ReadOnlyProviderConfigReader,
+)
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
@@ -258,11 +266,6 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count,
     )
 
-    if not args.autoscaling_config:
-        logger.info("No autoscaling config provided: Not running autoscaler monitor.")
-        exit(0)
-
-    autoscaling_config = os.path.expanduser(args.autoscaling_config)
     logger.info(
         f"Starting autoscaler v2 monitor using ray installation: {ray.__file__}"
     )
@@ -270,16 +273,21 @@ if __name__ == "__main__":
     logger.info(f"Ray commit: {ray.__commit__}")
     logger.info(f"AutoscalerMonitor started with command: {sys.argv}")
 
-    bootstrap_address = args.gcs_address
-    if bootstrap_address is None:
+    gcs_address = args.gcs_address
+    if gcs_address is None:
         raise ValueError("--gcs-address must be set!")
 
-    config_reader = FileConfigReader(
-        config_file=autoscaling_config, skip_content_hash=True
-    )
+    if not args.autoscaling_config:
+        logger.info("No autoscaling config provided: use read only node provider.")
+        config_reader = ReadOnlyProviderConfigReader(gcs_address)
+    else:
+        autoscaling_config = os.path.expanduser(args.autoscaling_config)
+        config_reader = FileConfigReader(
+            config_file=autoscaling_config, skip_content_hash=True
+        )
 
     monitor = AutoscalerMonitor(
-        bootstrap_address,
+        gcs_address,
         config_reader,
         log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,

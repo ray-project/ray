@@ -63,12 +63,7 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
-from ray.data._internal.util import (
-    AllToAllAPI,
-    ConsumptionAPI,
-    _is_local_scheme,
-    get_compute_strategy,
-)
+from ray.data._internal.util import AllToAllAPI, ConsumptionAPI, get_compute_strategy
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -1049,11 +1044,10 @@ class Dataset:
         """  # noqa: E501
 
         if num_blocks is not None:
-            warnings.warn(
+            raise DeprecationWarning(
                 "`num_blocks` parameter is deprecated in Ray 2.9. random_shuffle() "
                 "does not support to change the number of output blocks. Use "
                 "repartition() instead.",  # noqa: E501
-                DeprecationWarning,
             )
         plan = self._plan.copy()
         op = RandomShuffle(
@@ -3545,50 +3539,11 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
         """  # noqa: E501
-        warnings.warn(
+        raise DeprecationWarning(
             "`write_datasource` is deprecated in Ray 2.9. Create a `Datasink` and use "
             "`write_datasink` instead. For more information, see "
-            "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasource.html.",  # noqa: E501
-            DeprecationWarning,
+            "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasink.html.",  # noqa: E501
         )
-
-        if ray_remote_args is None:
-            ray_remote_args = {}
-        path = write_args.get("path", None)
-        if path and _is_local_scheme(path):
-            if ray.util.client.ray.is_connected():
-                raise ValueError(
-                    f"The local scheme paths {path} are not supported in Ray Client."
-                )
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
-
-        plan = self._plan.copy()
-
-        write_op = Write(
-            self._logical_plan.dag,
-            datasource,
-            ray_remote_args=ray_remote_args,
-            **write_args,
-        )
-        logical_plan = LogicalPlan(write_op)
-
-        try:
-            import pandas as pd
-
-            datasource.on_write_start(**write_args)
-            self._write_ds = Dataset(plan, logical_plan).materialize()
-            blocks = ray.get(self._write_ds._plan.execute().get_blocks())
-            assert all(
-                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
-            )
-            write_results = [block["write_result"][0] for block in blocks]
-            datasource.on_write_complete(write_results, **write_args)
-        except Exception as e:
-            datasource.on_write_failed([], e)
-            raise
 
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
@@ -3667,7 +3622,9 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+    def iter_rows(
+        self, *, prefetch_batches: int = 0, prefetch_blocks: int = 0
+    ) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
         Examples:
@@ -3681,13 +3638,17 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to prefetch ahead of the current
+                batch during the scan.
+            prefetch_blocks: This argument is deprecated. Use ``prefetch_batches``
+                instead.
 
         Returns:
             An iterable over the rows in this dataset.
         """
-        return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
+        return self.iterator().iter_rows(
+            prefetch_batches=prefetch_batches, prefetch_blocks=prefetch_blocks
+        )
 
     @ConsumptionAPI
     def iter_batches(
@@ -3700,8 +3661,6 @@ class Dataset:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
-        # Deprecated.
-        prefetch_blocks: int = 0,
     ) -> Iterable[DataBatch]:
         """Return an iterable over batches of data.
 
@@ -3753,7 +3712,6 @@ class Dataset:
         batch_format = _apply_batch_format(batch_format)
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
@@ -3774,8 +3732,6 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
 
@@ -3861,7 +3817,6 @@ class Dataset:
         """  # noqa: E501
         return self.iterator().iter_torch_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
             device=device,
@@ -3881,8 +3836,6 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> Iterable[TensorFlowTensorBatchType]:
         """Return an iterable over batches of data represented as TensorFlow tensors.
 
@@ -3948,7 +3901,6 @@ class Dataset:
         """  # noqa: E501
         return self.iterator().iter_tf_batches(
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
             drop_last=drop_last,
@@ -3975,8 +3927,6 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
         """Return a
         `Torch IterableDataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset>`_
@@ -4076,7 +4026,6 @@ class Dataset:
             label_column_dtype=label_column_dtype,
             feature_column_dtypes=feature_column_dtypes,
             batch_size=batch_size,
-            prefetch_blocks=prefetch_blocks,
             prefetch_batches=prefetch_batches,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
@@ -4098,8 +4047,6 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        # Deprecated
-        prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
         """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
         over this :class:`~ray.data.Dataset`.
@@ -4204,7 +4151,6 @@ class Dataset:
             feature_columns=feature_columns,
             label_columns=label_columns,
             prefetch_batches=prefetch_batches,
-            prefetch_blocks=prefetch_blocks,
             drop_last=drop_last,
             batch_size=batch_size,
             local_shuffle_buffer_size=local_shuffle_buffer_size,

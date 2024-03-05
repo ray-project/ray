@@ -1,11 +1,18 @@
 import logging
 from queue import Queue
 from typing import List, Optional
+from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (
+    ReadOnlyProvider,
+)
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
+from ray.autoscaler.v2.instance_manager.config import (
+    AutoscalingConfig,
+    IConfigReader,
+    Provider,
+)
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceManager,
     InstanceUpdatedSubscriber,
@@ -57,9 +64,9 @@ class Autoscaler:
         self._gcs_client = gcs_client
         self._cloud_provider = None
         self._instance_manager = None
-        self._ray_stop_errors_queue = None
-        self._ray_install_errors_queue = None
-        self._event_logger = None
+        self._ray_stop_errors_queue = Queue()
+        self._ray_install_errors_queue = Queue()
+        self._event_logger = event_logger
         self._metrics_reporter = metrics_reporter
 
         self._init_cloud_provider(config, config_reader)
@@ -68,23 +75,8 @@ class Autoscaler:
             config=config,
             cloud_provider=self._cloud_provider,
             gcs_client=self._gcs_client,
-            ray_stop_errors_queue=self._ray_stop_errors_queue,
         )
-        self._event_logger = event_logger
         self._scheduler = ResourceDemandScheduler(self._event_logger)
-
-        self._init_head_node()
-
-    def _init_head_node(self):
-        """
-        Initialize the head node of the cluster.
-        This is needed to ensure that the head node is properly initialized
-        in the instance manager.
-        """
-        Reconciler.initialize_head_node(
-            instance_manager=self._instance_manager,
-            non_terminated_cloud_instances=self._cloud_provider.get_non_terminated(),
-        )
 
     def _init_cloud_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
@@ -97,45 +89,44 @@ class Autoscaler:
             config_reader: The config reader.
 
         """
-        node_provider_v1 = _get_node_provider(
-            config.get_provider_config(),
-            config.get_config("cluster_name"),
-        )
+        provider_config = config.get_provider_config()
+        if config.provider == Provider.READ_ONLY:
+            provider_config["gcs_address"] = self._gcs_client.address
+            self._cloud_provider = ReadOnlyProvider(
+                provider_config=provider_config,
+            )
+        else:
+            node_provider_v1 = _get_node_provider(
+                provider_config,
+                config.get_config("cluster_name"),
+            )
 
-        self._cloud_provider = NodeProviderAdapter(
-            v1_provider=node_provider_v1,
-            config_reader=config_reader,
-        )
+            self._cloud_provider = NodeProviderAdapter(
+                v1_provider=node_provider_v1,
+                config_reader=config_reader,
+            )
 
     def _init_instance_manager(
         self,
         session_name: str,
         cloud_provider: ICloudInstanceProvider,
         gcs_client: GcsClient,
-        ray_stop_errors_queue: Queue,
         config: AutoscalingConfig,
     ):
         """
-        Initialize the instance manager, and its dependencies:
-            - _ray_stop_errors_queue: Error queues from which ray stop errors
-                are passed from RayStopper
-            - _ray_install_errors_queue: Error queues from which ray install errors
-                are passed from RayInstaller.
+        Initialize the instance manager, and its dependencies.
         """
 
         instance_storage = InstanceStorage(
             cluster_id=session_name,
             storage=InMemoryStorage(),
         )
-        self._ray_stop_errors_queue = Queue()
-        self._ray_install_errors_queue = Queue()
-
         subscribers: List[InstanceUpdatedSubscriber] = []
         subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
         subscribers.append(
-            RayStopper(gcs_client=gcs_client, error_queue=ray_stop_errors_queue)
+            RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )
-        if not config.skip_ray_install():
+        if not config.disable_node_updaters():
             # Supporting ray installer is only needed for providers that install
             # and manage ray. Not for providers that only launch instances
             # (e.g. KubeRay)

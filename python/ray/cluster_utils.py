@@ -44,12 +44,15 @@ class AutoscalingCluster:
         """
         self._head_resources = head_resources
         self._config = self._generate_config(
-            head_resources, worker_node_types, autoscaler_v2, **config_kwargs
+            head_resources,
+            worker_node_types,
+            autoscaler_v2=autoscaler_v2,
+            **config_kwargs,
         )
         self._autoscaler_v2 = autoscaler_v2
 
     def _generate_config(
-        self, head_resources, worker_node_types, autoscaler_v2, **config_kwargs
+        self, head_resources, worker_node_types, autoscaler_v2=False, **config_kwargs
     ):
         base_config = yaml.safe_load(
             open(
@@ -111,6 +114,7 @@ class AutoscalingCluster:
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
         if self._autoscaler_v2:
+            # Set the necessary environment variables for autoscaler v2.
             env.update(
                 {
                     "RAY_enable_autoscaler_v2": "1",

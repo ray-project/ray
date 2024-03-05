@@ -244,11 +244,34 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.ALLOCATED,
         }
         for s in positive_statuses:
-            assert InstanceUtil.is_ray_pending(s)
+            assert InstanceUtil.is_ray_pending(s), Instance.InstanceStatus.Name(s)
             all_statuses.remove(s)
 
         for s in all_statuses:
-            assert not InstanceUtil.is_ray_pending(s)
+            assert not InstanceUtil.is_ray_pending(s), Instance.InstanceStatus.Name(s)
+
+    def test_is_ray_running_reachable(self):
+        all_status = set(Instance.InstanceStatus.values())
+        positive_status = {
+            Instance.QUEUED,
+            Instance.REQUESTED,
+            Instance.ALLOCATED,
+            Instance.RAY_INSTALLING,
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
+        }
+        for s in positive_status:
+            assert InstanceUtil.is_ray_running_reachable(
+                s
+            ), Instance.InstanceStatus.Name(s)
+            all_status.remove(s)
+
+        # Unknown not possible.
+        all_status.remove(Instance.UNKNOWN)
+        for s in all_status:
+            assert not InstanceUtil.is_ray_running_reachable(
+                s
+            ), Instance.InstanceStatus.Name(s)
 
     def test_reachable_from(self):
         def add_reachable_from(reachable, src, transitions):
