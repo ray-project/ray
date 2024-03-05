@@ -9,7 +9,7 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- --ray_version="$RAY_VERSION" --commit_hash="$RAY_HASH" --pypi_env=test
+      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- --ray_version="$RAY_VERSION" --commit_hash="$BUILDKITE_COMMIT" --pypi_env=test
 
   - block: "Download & validate Ray wheels from TestPyPI"
     depends_on: 
@@ -72,4 +72,4 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- --ray_version="$RAY_VERSION" --commit_hash="$RAY_HASH" --pypi_env=prod
+      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- --ray_version="$RAY_VERSION" --commit_hash="$BUILDKITE_COMMIT" --pypi_env=prod
