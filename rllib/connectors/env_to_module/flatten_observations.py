@@ -6,8 +6,8 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
@@ -20,7 +20,7 @@ class FlattenObservations(ConnectorV2):
     """A connector piece that flattens all observation components into a 1D array.
 
     - Only works on data that has already been added to the batch.
-    - This connector makes the assumption that under the SampleBatch.OBS key in batch,
+    - This connector makes the assumption that under the Columns.OBS key in batch,
     there is either a list of individual env observations to be flattened (single-agent
     case) or a dict mapping agent- and module IDs to lists of data items to be
     flattened (multi-agent case).
@@ -160,21 +160,21 @@ class FlattenObservations(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = data.get(SampleBatch.OBS)
+        observations = data.get(Columns.OBS)
 
         if observations is None:
             raise ValueError(
-                f"`batch` must already have a column named {SampleBatch.OBS} in it "
+                f"`batch` must already have a column named {Columns.OBS} in it "
                 f"for this connector to work!"
             )
 
-        # Process each item under the SampleBatch.OBS key individually and flatten
+        # Process each item under the Columns.OBS key individually and flatten
         # it. We are using the `ConnectorV2.foreach_batch_item_change_in_place` API,
         # allowing us to not worry about multi- or single-agent setups and returning
         # the new version of each item we are iterating over.
         self.foreach_batch_item_change_in_place(
             batch=data,
-            column=SampleBatch.OBS,
+            column=Columns.OBS,
             func=(
                 lambda item, eps_id, agent_id, module_id: flatten_inputs_to_1d_tensor(
                     item,

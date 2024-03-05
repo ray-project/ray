@@ -160,7 +160,7 @@ class InstanceUtil:
             Instance.QUEUED: {
                 # Cloud provider requested to launch a node for the instance.
                 # This happens when the a launch request is made to the node provider.
-                Instance.REQUESTED
+                Instance.REQUESTED,
             },
             # When in this status, a launch request to the node provider is made.
             Instance.REQUESTED: {
