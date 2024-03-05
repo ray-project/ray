@@ -1,9 +1,9 @@
 from typing import Any, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
@@ -55,7 +55,7 @@ class ListifyDataForVectorEnv(ConnectorV2):
                 ]
                 # Batch actions for (single-agent) gym.vector.Env.
                 # All other columns, leave listify'ed.
-                if column in [SampleBatch.ACTIONS_FOR_ENV, SampleBatch.ACTIONS]:
+                if column in [Columns.ACTIONS_FOR_ENV, Columns.ACTIONS]:
                     data[column] = batch(data[column])
 
         return data

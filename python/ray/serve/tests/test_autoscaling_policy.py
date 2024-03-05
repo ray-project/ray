@@ -89,21 +89,38 @@ def test_assert_no_replicas_deprovisioned():
         assert_no_replicas_deprovisioned(replica_tags_2, replica_tags_1)
 
 
-def test_autoscaling_metrics(serve_instance):
+@pytest.mark.parametrize(
+    "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+    [(True, True), (True, False), (False, True)],
+)
+def test_autoscaling_metrics(
+    serve_instance,
+    use_target_num_ongoing_requests_per_replica,
+    use_target_ongoing_requests,
+):
     """Test that request metrics are sent correctly to the controller."""
 
     signal = SignalActor.remote()
 
+    autoscaling_config = {
+        "metrics_interval_s": 0.1,
+        "min_replicas": 1,
+        "max_replicas": 10,
+        "upscale_delay_s": 0,
+        "downscale_delay_s": 0,
+        "look_back_period_s": 1,
+    }
+    if use_target_ongoing_requests and not use_target_num_ongoing_requests_per_replica:
+        autoscaling_config["target_ongoing_requests"] = 10
+    elif use_target_ongoing_requests and use_target_num_ongoing_requests_per_replica:
+        autoscaling_config["target_ongoing_requests"] = 10
+        # Random setting, should get ignored
+        autoscaling_config["target_num_ongoing_requests_per_replica"] = 234
+    else:
+        autoscaling_config["target_num_ongoing_requests_per_replica"] = 10
+
     @serve.deployment(
-        autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 2,
-            "target_num_ongoing_requests_per_replica": 1,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-            "look_back_period_s": 1,
-        },
+        autoscaling_config=autoscaling_config,
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
@@ -111,8 +128,8 @@ def test_autoscaling_metrics(serve_instance):
         version="v1",
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     dep_id = DeploymentID(name="A")
@@ -132,24 +149,19 @@ def test_autoscaling_metrics(serve_instance):
     # Many queries should be inflight.
     def last_timestamp_value_high():
         metrics = get_data()
-        assert metrics > 40
+        assert metrics > 45
         return True
 
     wait_for_condition(last_timestamp_value_high)
-    print("Confirmed there are metrics from 2 replicas, and many queries are inflight.")
+    print("Confirmed many queries are inflight.")
+
+    wait_for_condition(check_num_replicas_eq, name="A", target=5)
+    print("Confirmed deployment scaled to 5 replicas.")
     print("Releasing signal.")
     signal.send.remote()
 
-    def check_running_replicas(expected):
-        replicas = ray.get(
-            serve_instance._controller._dump_replica_states_for_testing.remote(dep_id)
-        )
-        running_replicas = replicas.get([ReplicaState.RUNNING])
-        assert len(running_replicas) == expected
-        return True
-
     # After traffic stops, num replica should drop to 1
-    wait_for_condition(check_running_replicas, expected=1, timeout=15)
+    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=15)
     print("Num replicas dropped to 1.")
 
     # Request metrics should drop to 0
