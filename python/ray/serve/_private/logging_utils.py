@@ -61,12 +61,9 @@ class ServeJSONFormatter(logging.Formatter):
         component_id: str,
         component_type: Optional[ServeComponentType] = None,
     ):
-        runtime_context = ray.get_runtime_context()
         self.component_log_fmt = {
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
-            SERVE_LOG_ACTOR_ID: runtime_context.get_actor_id(),
-            SERVE_LOG_WORKER_ID: runtime_context.get_worker_id(),
         }
         try:
             runtime_context = ray.get_runtime_context()
