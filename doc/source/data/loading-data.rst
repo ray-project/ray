@@ -944,7 +944,7 @@ Performance considerations
 
 By default, the number of output blocks from all read tasks is dynamically decided
 based on input data size and available resources. It should work well in most cases.
-Howeve, you can also override the default value by setting the ``override_num_blocks``
+However, you can also override the default value by setting the ``override_num_blocks``
 argument. Ray Data decides internally how many read tasks to run concurrently to best
 utilize the cluster, ranging from ``1...override_num_blocks`` tasks. In other words,
 the higher the ``override_num_blocks``, the smaller the data blocks in the Dataset and
