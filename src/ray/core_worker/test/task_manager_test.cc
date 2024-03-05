@@ -1489,37 +1489,32 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   reference_counter_->RemoveLocalReference(generator_id, nullptr);
 }
 
-// TEST_F(TaskManagerTest, TestPeekObjectReady) {
-//  auto spec =
-//      CreateTaskHelper(1, {}, /*dynamic_returns=*/true,
-//      /*is_streaming_generator=*/true);
-//  auto generator_id = spec.ReturnId(0);
-//  rpc::Address caller_address;
-//  manager_.AddPendingTask(caller_address, spec, "", 0);
-//
-//  // WRITE
-//  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
-//  auto data = GenerateRandomBuffer();
-//  auto req = GetIntermediateTaskReturn(
-//      /*idx*/ 0,
-//      generator_id,
-//      /*dynamic_return_id*/ dynamic_return_id,
-//      /*data*/ data,
-//      /*set_in_plasma*/ false);
-//
-//  {
-//    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
-//    ASSERT_FALSE(ready);
-//  }
-//  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
-//      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
-//
-//  {
-//    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
-//    ASSERT_TRUE(ready);
-//  }
-//  CompletePendingStreamingTask(spec, caller_address, 1);
-//}
+TEST_F(TaskManagerTest, TestPeekObjectReady) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true,
+      /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  // WRITE
+  {
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_FALSE(ready);
+  }
+
+  auto dynamic_return_id = ReportGeneratorItemReturns(generator_id, 0, /*set_in_plasma=*/false);
+
+  {
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_TRUE(ready);
+    ASSERT_EQ(obj_id, dynamic_return_id);
+  }
+  CompletePendingStreamingTask(spec, caller_address, 1);
+
+  // DELETE
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+}
 //
 // TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
 //  /**
