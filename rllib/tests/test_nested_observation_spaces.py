@@ -280,6 +280,9 @@ class DictSpyModel(TFModelV2):
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
         self._main_layer = tf.keras.models.Model([input_], [out])
 
+        value_out = tf.keras.layers.Dense(1)(input_)
+        self._value_fn = tf.keras.models.Model([input_], [value_out])
+
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, front_cam, task):
             # TF runs this function in an isolated context, so we have to use
@@ -306,7 +309,12 @@ class DictSpyModel(TFModelV2):
         with tf1.control_dependencies([spy_fn]):
             output = self._main_layer([input_dict["obs"]["sensors"]["position"]])
 
+        self._value_in = input_dict["obs"]["sensors"]["position"]
+
         return output, []
+
+    def value_function(self):
+        return tf.reshape(self._value_fn([self._value_in]), [-1])
 
 
 class TupleSpyModel(TFModelV2):
@@ -320,6 +328,9 @@ class TupleSpyModel(TFModelV2):
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
         self._main_layer = tf.keras.models.Model([input_], [out])
+
+        value_out = tf.keras.layers.Dense(1)(input_)
+        self._value_fn = tf.keras.models.Model([input_], [value_out])
 
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, cam, task):
@@ -346,7 +357,13 @@ class TupleSpyModel(TFModelV2):
 
         with tf1.control_dependencies([spy_fn]):
             output = tf1.layers.dense(input_dict["obs"][0], self.num_outputs)
+
+        self._value_in = input_dict["obs"][0]
+
         return output, []
+
+    def value_function(self):
+        return tf.reshape(self._value_fn([self._value_in]), [-1])
 
 
 class TestNestedObservationSpaces(unittest.TestCase):
@@ -385,6 +402,75 @@ class TestNestedObservationSpaces(unittest.TestCase):
             "State output is not a list",
             lambda: config.build(),
         )
+
+    def do_test_nested_dict(self, make_env, test_lstm=False):
+        ModelCatalog.register_custom_model("composite", DictSpyModel)
+        register_env("nested", make_env)
+        config = (
+            PPOConfig()
+            .experimental(_disable_preprocessor_api=True)
+            .environment("nested", disable_env_checking=True)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
+            .framework("tf")
+            .training(
+                model={"custom_model": "composite", "use_lstm": test_lstm},
+                train_batch_size_per_learner=5,
+                sgd_minibatch_size=5,
+            )
+        )
+        algo = config.build()
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        DictSpyModel.capture_index = 0
+        algo.train()
+
+        # Check that the model sees the correct reconstructed observations
+        for i in range(4):
+            seen = pickle.loads(
+                ray.experimental.internal_kv._internal_kv_get("d_spy_in_{}".format(i))
+            )
+            pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
+            cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
+            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
+            self.assertEqual(seen[0][0].tolist(), pos_i)
+            self.assertEqual(seen[1][0].tolist(), cam_i)
+            check(seen[2][0], task_i)
+        algo.stop()
+
+    def do_test_nested_tuple(self, make_env):
+        ModelCatalog.register_custom_model("composite2", TupleSpyModel)
+        register_env("nested2", make_env)
+        config = (
+            PPOConfig()
+            .experimental(_disable_preprocessor_api=True)
+            .environment("nested2", disable_env_checking=True)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
+            .framework("tf")
+            .training(
+                model={"custom_model": "composite2"},
+                train_batch_size_per_learner=5,
+                sgd_minibatch_size=5,
+            )
+        )
+
+        algo = config.build()
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        TupleSpyModel.capture_index = 0
+        algo.train()
+
+        # Check that the model sees the correct reconstructed observations
+        for i in range(4):
+            seen = pickle.loads(
+                ray.experimental.internal_kv._internal_kv_get("t_spy_in_{}".format(i))
+            )
+            pos_i = TUPLE_SAMPLES[i][0].tolist()
+            cam_i = TUPLE_SAMPLES[i][1][0].tolist()
+            task_i = TUPLE_SAMPLES[i][2]
+            self.assertEqual(seen[0][0].tolist(), pos_i)
+            self.assertEqual(seen[1][0].tolist(), cam_i)
+            check(seen[2][0], task_i)
+        algo.stop()
 
     def test_nested_dict_gym(self):
         self.do_test_nested_dict(lambda _: NestedDictEnv())
