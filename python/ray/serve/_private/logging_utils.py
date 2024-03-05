@@ -14,6 +14,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_TO_STDERR,
+    SERVE_LOG_ACTOR_ID,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
@@ -26,6 +27,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
+    SERVE_LOG_WORKER_ID,
     SERVE_LOGGER_NAME,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
@@ -46,6 +48,14 @@ class ServeJSONFormatter(logging.Formatter):
     The formatter will generate the json log format on the fly
     based on the field of record.
     """
+
+    ADD_IF_EXIST_FIELDS = [
+        SERVE_LOG_REQUEST_ID,
+        SERVE_LOG_ROUTE,
+        SERVE_LOG_APPLICATION,
+        SERVE_LOG_ACTOR_ID,
+        SERVE_LOG_WORKER_ID,
+    ]
 
     def __init__(
         self,
@@ -82,20 +92,11 @@ class ServeJSONFormatter(logging.Formatter):
         record_attributes = copy.deepcopy(record.__dict__)
         record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
         record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
-
-        if SERVE_LOG_REQUEST_ID in record_attributes:
-            record_format[SERVE_LOG_REQUEST_ID] = record_attributes[
-                SERVE_LOG_REQUEST_ID
-            ]
-        if SERVE_LOG_ROUTE in record_attributes:
-            record_format[SERVE_LOG_ROUTE] = record_attributes[SERVE_LOG_ROUTE]
-
-        if SERVE_LOG_APPLICATION in record_attributes:
-            record_format[SERVE_LOG_APPLICATION] = record_attributes[
-                SERVE_LOG_APPLICATION
-            ]
-
         record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
+
+        for field in ServeJSONFormatter.ADD_IF_EXIST_FIELDS:
+            if field in record_attributes:
+                record_format[field] = record_attributes[field]
 
         if SERVE_LOG_EXTRA_FIELDS in record_attributes:
             if not isinstance(record_attributes[SERVE_LOG_EXTRA_FIELDS], dict):
@@ -298,6 +299,11 @@ def configure_component_logger(
             setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
         if request_context.app_name:
             setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
+
+        runtime_context = ray.get_runtime_context()
+        setattr(record, SERVE_LOG_ACTOR_ID, runtime_context.get_actor_id())
+        setattr(record, SERVE_LOG_WORKER_ID, runtime_context.get_worker_id())
+
         return record
 
     logging.setLogRecordFactory(record_factory)
