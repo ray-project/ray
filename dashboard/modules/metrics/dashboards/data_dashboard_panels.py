@@ -7,11 +7,6 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Panel,
     Target,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
-
-RUNTIME_METRIC_FIELDS: Dict[
-    str, dataclasses.Field
-] = OpRuntimeMetrics.__dataclass_fields__
 
 
 def _generate_grafana_panel_from_metric(
@@ -26,6 +21,14 @@ def _generate_grafana_panel_from_metric(
     """Generate a Grafana Panel object from the given OpRuntimeMetrics field name,
     using the args provided. By default, Ray Data charts are unstacked
     line charts."""
+    from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+        OpRuntimeMetrics,
+    )
+
+    RUNTIME_METRIC_FIELDS: Dict[
+        str, dataclasses.Field
+    ] = OpRuntimeMetrics.__dataclass_fields__
+
     metric = RUNTIME_METRIC_FIELDS[field_name]
     md = metric.metadata
 
