@@ -343,20 +343,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
                 while len(self._replicas) == 0:
-                    app_msg = (
-                        f" in application '{self.app_name}'" if self.app_name else ""
-                    )
                     logger.info(
-                        "Tried to assign replica for deployment "
-                        f"'{self._deployment_id.name}'{app_msg} but none are "
-                        "available. Waiting for new replicas to be added.",
+                        "No replicas are currently available for "
+                        f"{repr(self._deployment_id)}.",
                         extra={"log_to_stderr": False},
                     )
                     self._replicas_updated_event.clear()
                     await self._replicas_updated_event.wait()
                     logger.info(
-                        f"Got replicas for deployment '{self._deployment_id.name}'"
-                        f"{app_msg}, waking up.",
+                        f"New replicas are available for {self._deployment_id}, "
+                        "attempting to schedule queued requests.",
                         extra={"log_to_stderr": False},
                     )
 
