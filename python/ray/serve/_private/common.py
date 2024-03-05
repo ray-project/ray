@@ -24,6 +24,7 @@ from ray.serve.grpc_util import RayServegRPCContext
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
+
 @dataclass(frozen=True)
 class DeploymentID:
     name: str
