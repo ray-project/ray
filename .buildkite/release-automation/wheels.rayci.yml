@@ -7,6 +7,7 @@ steps:
   - label: "Upload wheels from S3 to TestPyPI"
     key: upload-wheels-testpypi
     job_env: forge
+    instance_type: small_branch
     commands:
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- --ray_version="$RAY_VERSION" --commit_hash="$RAY_HASH" --pypi_env=test
 
@@ -68,5 +69,7 @@ steps:
 
   - label: "Upload wheels to PyPI"
     key: upload-wheels-pypi
+    job_env: forge
+    instance_type: small_branch
     commands:
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- --ray_version="$RAY_VERSION" --commit_hash="$RAY_HASH" --pypi_env=prod
