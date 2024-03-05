@@ -53,19 +53,21 @@ class ServeJSONFormatter(logging.Formatter):
         SERVE_LOG_REQUEST_ID,
         SERVE_LOG_ROUTE,
         SERVE_LOG_APPLICATION,
-        SERVE_LOG_ACTOR_ID,
-        SERVE_LOG_WORKER_ID,
     ]
 
     def __init__(
         self,
         component_name: str,
         component_id: str,
+        actor_id: str,
+        worker_id: str,
         component_type: Optional[ServeComponentType] = None,
     ):
         self.component_log_fmt = {
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
+            SERVE_LOG_ACTOR_ID: actor_id,
+            SERVE_LOG_WORKER_ID: worker_id,
         }
         if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
@@ -299,11 +301,6 @@ def configure_component_logger(
             setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
         if request_context.app_name:
             setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
-
-        runtime_context = ray.get_runtime_context()
-        setattr(record, SERVE_LOG_ACTOR_ID, runtime_context.get_actor_id())
-        setattr(record, SERVE_LOG_WORKER_ID, runtime_context.get_worker_id())
-
         return record
 
     logging.setLogRecordFactory(record_factory)
@@ -344,8 +341,18 @@ def configure_component_logger(
             "'LoggingConfig' to enable json format."
         )
     if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
+        runtime_context = ray.get_runtime_context()
+        actor_id = runtime_context.get_actor_id()
+        worker_id = runtime_context.get_worker_id()
+
         file_handler.setFormatter(
-            ServeJSONFormatter(component_name, component_id, component_type)
+            ServeJSONFormatter(
+                component_name=component_name,
+                component_id=component_id,
+                component_type=component_type,
+                actor_id=actor_id,
+                worker_id=worker_id,
+            )
         )
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
