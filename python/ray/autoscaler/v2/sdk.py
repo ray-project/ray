@@ -6,9 +6,9 @@ from ray._raylet import GcsClient
 from ray.autoscaler.v2.schema import ClusterStatus, Stats
 from ray.autoscaler.v2.utils import ClusterStatusParser
 from ray.core.generated.autoscaler_pb2 import (
-    GetClusterStatusReply,
     ClusterResourceState,
     GetClusterResourceStateReply,
+    GetClusterStatusReply,
 )
 
 DEFAULT_RPC_TIMEOUT_S = 10
