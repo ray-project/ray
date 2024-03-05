@@ -107,7 +107,8 @@ def make_autoscaler():
     try:
         ray.shutdown()
         ctx["cluster"].shutdown()
-    finally:
+    except Exception:
+        logger.exception("Error during teardown")
         # Run ray stop to clean up everything
         subprocess.run(
             ["ray", "stop", "--force"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
