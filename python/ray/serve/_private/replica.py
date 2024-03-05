@@ -109,8 +109,7 @@ class ReplicaMetricsManager:
     ):
         self._replica_tag = replica_tag
         self._deployment_id = deployment_id
-        self._event_loop = event_loop
-        self._metrics_pusher = MetricsPusher(event_loop)
+        self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self._autoscaling_config = autoscaling_config
         self._controller_handle = ray.get_actor(
@@ -288,7 +287,7 @@ class ReplicaActor:
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
-            app_name=self._deployment_id.app,
+            app_name=self._deployment_id.app_name,
             deployment=self._deployment_id.name,
             replica_tag=self._replica_tag,
             servable_object=servable_object,
@@ -346,7 +345,7 @@ class ReplicaActor:
             ray.serve.context._RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
-                self._deployment_id.app,
+                self._deployment_id.app_name,
                 request_metadata.multiplexed_model_id,
                 request_metadata.grpc_context,
             )
@@ -493,11 +492,11 @@ class ReplicaActor:
         *request_args,
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
-        """Entrypoint for all requests with strict max_concurrent_queries enforcement.
+        """Entrypoint for all requests with strict max_ongoing_requests enforcement.
 
         The first response from this generator is always a system message indicating
         if the request was accepted (the replica has capacity for the request) or
-        rejected (the replica is already at max_concurrent_queries).
+        rejected (the replica is already at max_ongoing_requests).
 
         For non-streaming requests, there will only be one more message, the unary
         result of the user request handler.
@@ -506,11 +505,11 @@ class ReplicaActor:
         user request handler (which must be a generator).
         """
         request_metadata = pickle.loads(pickled_request_metadata)
-        limit = self._deployment_config.max_concurrent_queries
+        limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
             logger.warning(
-                f"Replica at capacity of max_concurrent_queries={limit}, "
+                f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},
             )

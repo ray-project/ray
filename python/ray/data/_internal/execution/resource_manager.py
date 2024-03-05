@@ -1,9 +1,8 @@
-import copy
 import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -37,8 +36,14 @@ class ResourceManager:
     GLOBAL_LIMITS_UPDATE_INTERVAL_S = 10
 
     # The fraction of the object store capacity that will be used as the default object
-    # store memory limit for the streaming executor.
+    # store memory limit for the streaming executor,
+    # when `ReservationOpResourceAllocator` is enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.5
+
+    # The fraction of the object store capacity that will be used as the default object
+    # store memory limit for the streaming executor,
+    # when `ReservationOpResourceAllocator` is not enabled.
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = 0.25
 
     # Memory accounting is accurate only for these operators.
     # We'll enable memory reservation if a dataset only contains these operators.
@@ -67,7 +72,7 @@ class ResourceManager:
         self._debug = DEBUG_RESOURCE_MANAGER
 
         self._downstream_fraction: Dict[PhysicalOperator, float] = {}
-        self._downstream_object_store_memory: Dict[PhysicalOperator, int] = {}
+        self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
         ctx = DataContext.get_current()
@@ -96,6 +101,7 @@ class ResourceManager:
 
         # Op's external output buffer.
         mem_op_outputs = state.outqueue_memory_usage()
+        # Input buffers of the downstream operators.
         for next_op in op.output_dependencies:
             mem_op_outputs += (
                 next_op.metrics.obj_store_mem_internal_inqueue
@@ -158,28 +164,22 @@ class ResourceManager:
             return self._global_limits
 
         self._global_limits_last_update_time = time.time()
-        base = self._options.resource_limits
+        default_limits = self._options.resource_limits
         exclude = self._options.exclude_resources
         cluster = ray.cluster_resources()
-
-        cpu = base.cpu
-        if cpu is None:
-            cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
-        gpu = base.gpu
-        if gpu is None:
-            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
-        object_store_memory = base.object_store_memory
-        if object_store_memory is None:
-            object_store_memory = round(
-                self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
-                * cluster.get("object_store_memory", 0.0)
-            ) - (exclude.object_store_memory or 0)
-
-        self._global_limits = ExecutionResources(
-            cpu=cpu,
-            gpu=gpu,
-            object_store_memory=object_store_memory,
+        default_mem_fraction = (
+            self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
+            if self.op_resource_allocator_enabled()
+            else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION
         )
+        cluster_resources = ExecutionResources(
+            cpu=cluster.get("CPU", 0.0),
+            gpu=cluster.get("GPU", 0.0),
+            object_store_memory=round(
+                default_mem_fraction * cluster.get("object_store_memory", 0.0)
+            ),
+        )
+        self._global_limits = default_limits.min(cluster_resources).subtract(exclude)
         return self._global_limits
 
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
@@ -270,7 +270,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         num_map_ops` resources, half of which is reserved only for the operator outputs,
         excluding pending task outputs.
     3. Non-reserved resources are shared among all operators.
-    3. In each scheduling iteration, each map operator will get "remaining of their own
+    4. In each scheduling iteration, each map operator will get "remaining of their own
        reserved resources" + "remaining of shared resources / num_map_ops" resources.
 
     The `reservation_ratio` is set to 50% by default. Users can tune this value to
@@ -353,8 +353,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # i.e., `RessourceManager._mem_op_outputs`.
         #
         # Note, if we don't reserve memory for op outputs, all the budget may be used by
-        # the pending task outputs, and/or op' internal output buffers (the latter can
-        # happen when `preserve_order=True`.
+        # the pending task outputs, and/or op's internal output buffers (the latter can
+        # happen when `preserve_order=True`).
         # Then we'll have no budget to pull blocks from the op.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
         # Total shared resources.
@@ -396,7 +396,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
-        self._total_shared = copy.deepcopy(global_limits)
+        self._total_shared = global_limits.copy()
 
         if len(eligible_ops) == 0:
             return
@@ -411,13 +411,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # This makes sure that we will have enough budget to pull blocks from the
             # op.
             self._reserved_for_op_outputs[op] = max(
-                default_reserved.object_store_memory // 2, 1
+                default_reserved.object_store_memory / 2, 1.0
             )
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = copy.deepcopy(
-                op.incremental_resource_usage(consider_autoscaling=False)
-            )
+            min_reserved = op.incremental_resource_usage(
+                consider_autoscaling=False
+            ).copy()
             # 2. To ensure that all GPUs are utilized, reserve enough resource budget
             # to launch one task for each worker.
             if (
@@ -486,21 +486,27 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 return True
         return False
 
-    def _op_outputs_reserved_remaining(self, op: PhysicalOperator) -> int:
+    def _get_op_outputs_usage_with_downstream(self, op: PhysicalOperator) -> int:
+        """Get the outputs memory usage of the given operator, including the downstream
+        non-Map operators.
+        """
         # Outputs usage of the current operator.
-        outputs_usage = self._resource_manager._mem_op_outputs[op]
+        op_outputs_usage = self._resource_manager._mem_op_outputs[op]
         # Also account the downstream non-Map operators' memory usage.
-        outputs_usage += sum(
+        op_outputs_usage += sum(
             self._resource_manager.get_op_usage(next_op).object_store_memory
             for next_op in self._get_downstream_non_map_ops(op)
         )
-        return max(self._reserved_for_op_outputs[op] - outputs_usage, 0)
+        return op_outputs_usage
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
         res = self._op_budgets[op].object_store_memory
-        res += self._op_outputs_reserved_remaining(op)
+        # Add the remaining of `_reserved_for_op_outputs`.
+        op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
+        res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
+        res = int(res)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
             res = 1
@@ -508,7 +514,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def _get_downstream_non_map_ops(
         self, op: PhysicalOperator
-    ) -> List[PhysicalOperator]:
+    ) -> Iterable[PhysicalOperator]:
         """Get the downstream non-Map operators of the given operator.
 
         E.g.,
@@ -520,7 +526,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 yield next_op
                 yield from self._get_downstream_non_map_ops(next_op)
 
-    def _get_downstream_map_ops(self, op: PhysicalOperator) -> List[PhysicalOperator]:
+    def _get_downstream_map_ops(
+        self, op: PhysicalOperator
+    ) -> Iterable[PhysicalOperator]:
         """Get the downstream Map operators of the given operator, ignoring intermediate
         non-Map operators.
 
@@ -550,21 +558,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
             op_mem_usage += self._resource_manager._mem_op_internal[op]
-            op_mem_usage += max(
-                self._resource_manager._mem_op_outputs[op]
-                - self._reserved_for_op_outputs[op],
-                0,
-            )
-            # Also account the downstream non-Map operators' memory usage
-            # to the current Map operator.
-            # This is because we don't directly throttle non-Map operators.
-            # So if they are using too much memory, we should throttle their
-            # upstream Map operator.
-            op_mem_usage += sum(
-                self._resource_manager.get_op_usage(next_op).object_store_memory
-                for next_op in self._get_downstream_non_map_ops(op)
-            )
-            op_usage = copy.deepcopy(self._resource_manager.get_op_usage(op))
+            # Add the portion of op outputs usage that has
+            # exceeded `_reserved_for_op_outputs`.
+            op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
+            op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
+            op_usage = self._resource_manager.get_op_usage(op).copy()
             op_usage.object_store_memory = op_mem_usage
             op_reserved = self._op_reserved[op]
             # How much of the reserved resources are remaining.

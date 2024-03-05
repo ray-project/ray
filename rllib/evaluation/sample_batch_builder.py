@@ -7,8 +7,7 @@ from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import PolicyID, AgentID
@@ -27,7 +26,7 @@ def _to_float_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
-@Deprecated(new="a child class of `SampleCollector`", error=False)
+@OldAPIStack
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 
@@ -69,9 +68,7 @@ class SampleBatchBuilder:
         return batch
 
 
-# Deprecated class: Use a child class of `SampleCollector` instead
-#  (which handles multi-agent setups as well).
-@DeveloperAPI
+@OldAPIStack
 class MultiAgentSampleBatchBuilder:
     """Util to build SampleBatches for each policy in a multi-agent env.
 
@@ -131,7 +128,6 @@ class MultiAgentSampleBatchBuilder:
 
         return len(self.agent_builders) > 0
 
-    @DeveloperAPI
     def add_values(self, agent_id: AgentID, policy_id: AgentID, **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch.
 
@@ -244,7 +240,6 @@ class MultiAgentSampleBatchBuilder:
                     "to True. "
                 )
 
-    @DeveloperAPI
     def build_and_reset(self, episode: Optional[Episode] = None) -> MultiAgentBatch:
         """Returns the accumulated sample batches for each policy.
 

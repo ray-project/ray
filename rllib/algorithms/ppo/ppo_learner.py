@@ -5,7 +5,7 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
@@ -52,20 +52,54 @@ class PPOLearner(Learner):
         )
 
     @override(Learner)
-    def _preprocess_train_data(
+    def _update_from_batch_or_episodes(
         self,
         *,
-        batch: Optional[MultiAgentBatch] = None,
+        batch=None,
+        episodes=None,
+        reduce_fn=_reduce_mean_results,
+        minibatch_size=None,
+        num_iters=1,
+    ):
+        # First perform GAE computation on the entirety of the given train data (all
+        # episodes).
+        if self.config.uses_new_env_runners:
+            batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+        # Now that GAE (advantages and value targets) have been added to the train
+        # batch, we can proceed normally (calling super method) with the update step.
+        return super()._update_from_batch_or_episodes(
+            batch=batch,
+            episodes=episodes,
+            reduce_fn=reduce_fn,
+            minibatch_size=minibatch_size,
+            num_iters=num_iters,
+        )
+
+    def _compute_gae_from_episodes(
+        self,
+        *,
         episodes: Optional[List[EpisodeType]] = None,
     ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
-        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
+        """Computes GAE advantages (and value targets) given a list of episodes.
 
+        Note that the episodes may be SingleAgent- or MultiAgentEpisodes and may be
+        episode chunks (not starting from reset or ending prematurely).
+
+        The GAE computation here is performed in a very efficient way via elongating
+        all given episodes by 1 artificial timestep (last obs, actions, states, etc..
+        repeated, last reward=0.0, etc..), then creating a forward batch from this data
+        using the connector, pushing the resulting batch through the value function,
+        thereby extracting the bootstrap values (at the artificially added time steos)
+        and all other value predictions (all other timesteps) and then reducing the
+        batch and episode lengths again accordingly.
+        """
         if not episodes:
             raise ValueError(
-                "`PPOLearner._preprocess_train_data()` must have the `episodes` arg "
-                "to work with! Otherwise, GAE/advantage computation can't be performed."
+                "`PPOLearner._compute_gae_from_episodes()` must have the `episodes` "
+                "arg provided! Otherwise, GAE/advantage computation can't be performed."
             )
-        batch = batch or {}
+
+        batch = {}
 
         sa_episodes_list = list(
             self._learner_connector.single_agent_episode_iterator(
@@ -86,25 +120,25 @@ class PPOLearner(Learner):
             rl_module=self.module,
             data={},
             episodes=episodes,
+            shared_data={},
+        )
+        # TODO (sven): Try to not require MultiAgentBatch anymore.
+        batch_for_vf = MultiAgentBatch(
+            {mid: SampleBatch(v) for mid, v in batch_for_vf.items()},
+            env_steps=sum(len(e) for e in episodes),
         )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
 
         for module_id, module_vf_preds in vf_preds.items():
             # Collect new (single-agent) episode lengths.
-            if is_multi_agent:
-                episode_lens_plus_1 = [
-                    len(sa_eps)
-                    for ma_eps in episodes
-                    for sa_eps in ma_eps.agent_episodes.values()
-                    if sa_eps.module_id == module_id
-                ]
-            else:
-                episode_lens_plus_1 = [len(eps) for eps in episodes]
+            episode_lens_plus_1 = [
+                len(e)
+                for e in sa_episodes_list
+                if e.module_id is None or e.module_id == module_id
+            ]
 
-            batch[module_id] = {}
-
-            # Remove all zero-padding again, if applicable for the upcoming
+            # Remove all zero-padding again, if applicable, for the upcoming
             # GAE computations.
             module_vf_preds = unpad_data_if_necessary(
                 episode_lens_plus_1, module_vf_preds
@@ -129,23 +163,42 @@ class PPOLearner(Learner):
             # Remove the extra timesteps again from vf_preds and value targets. Now that
             # the GAE computation is done, we don't need this last timestep anymore in
             # any of our data.
-            (
-                batch[module_id][SampleBatch.VF_PREDS],
-                batch[module_id][Postprocessing.VALUE_TARGETS],
-            ) = remove_last_ts_from_data(
+            module_vf_preds, module_value_targets = remove_last_ts_from_data(
                 episode_lens_plus_1,
                 module_vf_preds,
                 module_value_targets,
             )
-            module_advantages = (
-                batch[module_id][Postprocessing.VALUE_TARGETS]
-                - batch[module_id][SampleBatch.VF_PREDS]
-            )
+            module_advantages = module_value_targets - module_vf_preds
+            # Drop vf-preds, not needed in loss. Note that in the PPORLModule, vf-preds
+            # are recomputed with each `forward_train` call anyway.
             # Standardize advantages (used for more stable and better weighted
             # policy gradient computations).
-            batch[module_id][Postprocessing.ADVANTAGES] = (
-                module_advantages - module_advantages.mean()
-            ) / max(1e-4, module_advantages.std())
+            module_advantages = (module_advantages - module_advantages.mean()) / max(
+                1e-4, module_advantages.std()
+            )
+
+            # Restructure ADVANTAGES and VALUE_TARGETS in a way that the Learner
+            # connector can properly re-batch these new fields.
+            batch_pos = 0
+            for eps in sa_episodes_list:
+                if eps.module_id is not None and eps.module_id != module_id:
+                    continue
+                len_ = len(eps) - 1
+                self._learner_connector.add_n_batch_items(
+                    batch=batch,
+                    column=Postprocessing.ADVANTAGES,
+                    items_to_add=module_advantages[batch_pos : batch_pos + len_],
+                    num_items=len_,
+                    single_agent_episode=eps,
+                )
+                self._learner_connector.add_n_batch_items(
+                    batch=batch,
+                    column=Postprocessing.VALUE_TARGETS,
+                    items_to_add=module_value_targets[batch_pos : batch_pos + len_],
+                    num_items=len_,
+                    single_agent_episode=eps,
+                )
+                batch_pos += len_
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
         remove_last_ts_from_episodes_and_restore_truncateds(

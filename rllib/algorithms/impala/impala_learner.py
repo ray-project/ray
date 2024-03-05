@@ -41,8 +41,7 @@ class ImpalaLearner(Learner):
             )
         )
 
-    @override(Learner)
-    def _preprocess_train_data(
+    def _compute_v_trace_from_episodes(
         self,
         *,
         batch,
