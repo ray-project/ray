@@ -234,6 +234,7 @@ def record_extra_usage_tag(
         key: The key of the tag.
         value: The value of the tag.
         gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
+            When None, it will try to get the global client from the internal_kv.
     """
     key = TagKey.Name(key).lower()
     with _recorded_extra_usage_tags_lock:

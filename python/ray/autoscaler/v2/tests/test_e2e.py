@@ -7,10 +7,9 @@ import pytest
 
 import ray
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.usage.usage_constants import EXTRA_USAGE_TAG_AUTOSCALER_V2
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray._raylet import GcsClient
-from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated.usage_pb2 import TagKey

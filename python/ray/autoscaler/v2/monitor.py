@@ -13,12 +13,10 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.usage.usage_constants as usage_constant
-from ray._private.usage.usage_constants import EXTRA_USAGE_TAG_AUTOSCALER_V2
-from ray._private.usage.usage_lib import record_extra_usage_tag
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
+from ray._private.usage.usage_lib import record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_METRIC_PORT,
