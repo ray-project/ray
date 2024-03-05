@@ -161,7 +161,7 @@ def test_split_small(ray_start_regular_shared):
             for locality_hints in [None, x[:n]]:
                 for equal in [True, False]:
                     print("Testing", m, n, equal, locality_hints)
-                    ds = ray.data.from_items(data, parallelism=m)
+                    ds = ray.data.from_items(data, override_num_blocks=m)
                     splits = ds.split(n, equal=equal, locality_hints=locality_hints)
                     assert len(splits) == n
                     outs = ray.get([take.remote(s) for s in splits])
@@ -192,7 +192,7 @@ def test_split_small(ray_start_regular_shared):
 
 
 def test_split_at_indices_simple(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=3)
+    ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
         ds.split_at_indices([])
@@ -252,7 +252,7 @@ def test_split_at_indices_simple(ray_start_regular_shared):
 def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
-    ds = ray.data.range(20, parallelism=num_blocks)
+    ds = ray.data.range(20, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
@@ -290,7 +290,7 @@ def test_split_at_indices_coverage_complete(
 ):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
-    ds = ray.data.range(5, parallelism=num_blocks)
+    ds = ray.data.range(5, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
@@ -298,7 +298,7 @@ def test_split_at_indices_coverage_complete(
 
 
 def test_split_proportionately(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=3)
+    ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
         ds.split_proportionately([])
@@ -336,7 +336,7 @@ def test_split_proportionately(ray_start_regular_shared):
 
 
 def test_split(ray_start_regular_shared):
-    ds = ray.data.range(20, parallelism=10)
+    ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
@@ -395,7 +395,7 @@ def test_split_hints(ray_start_regular_shared):
                 datasets[1] contains block 2.
         """
         num_blocks = len(block_node_ids)
-        ds = ray.data.range(num_blocks, parallelism=num_blocks)
+        ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
         blocks = ds.get_internal_block_refs()
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
@@ -770,7 +770,7 @@ def test_train_test_split(ray_start_regular_shared):
 
 def test_split_is_not_disruptive(ray_start_cluster):
     ray.shutdown()
-    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x)
+    ds = ray.data.range(100, override_num_blocks=10).map_batches(lambda x: x)
 
     def verify_integrity(splits):
         for dss in splits:

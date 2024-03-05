@@ -24,6 +24,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.sdk import is_head_node
@@ -179,6 +180,7 @@ class Reconciler:
         cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
         ray_install_errors: Optional[List[RayInstallError]] = None,
         ray_stop_errors: Optional[List[RayStopError]] = None,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
@@ -204,6 +206,8 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
+            metrics_reporter: The metric reporter to report the autoscaler metrics.
+            _logger: The logger (for testing).
 
         """
         cloud_provider_errors = cloud_provider_errors or []
@@ -233,6 +237,13 @@ class Reconciler:
             autoscaling_config=autoscaling_config,
             _logger=_logger,
         )
+
+        Reconciler._report_metrics(
+            instance_manager=instance_manager,
+            autoscaling_config=autoscaling_config,
+            metrics_reporter=metrics_reporter,
+        )
+
         return autoscaling_state
 
     @staticmethod
@@ -289,6 +300,7 @@ class Reconciler:
                 the cloud provider.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
+            ray_stop_errors: The errors from RayStopper.
 
         """
 
@@ -356,6 +368,8 @@ class Reconciler:
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
+            autoscaling_config: The autoscaling config.
+            _logger: The logger (for testing).
 
         """
 
@@ -1620,3 +1634,18 @@ class Reconciler:
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
+    def _report_metrics(
+        instance_manager: InstanceManager,
+        autoscaling_config: AutoscalingConfig,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
+    ):
+        if not metrics_reporter:
+            return
+
+        instances, _ = Reconciler._get_im_instances(instance_manager)
+        node_type_configs = autoscaling_config.get_node_type_configs()
+
+        metrics_reporter.report_instances(instances, node_type_configs)
+        metrics_reporter.report_resources(instances, node_type_configs)
