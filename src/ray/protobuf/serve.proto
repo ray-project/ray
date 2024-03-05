@@ -32,9 +32,7 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // Target number of in flight requests per replicas. This is the primary configuration
-  // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
-  // being scaled up. Must be a non-negative integer.
+  // [DEPRECATED] Use `target_ongoing_requests` instead.
   double target_num_ongoing_requests_per_replica = 3;
 
   // The frequency of how long does each replica sending metrics to autoscaler.
@@ -67,6 +65,11 @@ message AutoscalingConfig {
   // The import path of the policy if user passed a string. Will be the concatenation
   // of the policy module and the policy name if user passed a callable.
   string _policy = 13;
+
+  // Target number of in flight requests per replica. This is the primary configuration
+  // knob for replica autoscaler. Lower the number, the more rapidly the replicas
+  // scales up. Must be a non-negative integer.
+  double target_ongoing_requests = 14;
 }
 
 //[Begin] LOGGING CONFIG
