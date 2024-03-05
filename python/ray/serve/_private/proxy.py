@@ -1339,9 +1339,6 @@ class ProxyActor:
                 "Please make sure your http-host and http-port are specified correctly."
             )
 
-        uvicorn_logger = logging.getLogger("uvicorn.error")
-        uvicorn_logger.setLevel(logging.WARNING)
-
         # NOTE: We have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
