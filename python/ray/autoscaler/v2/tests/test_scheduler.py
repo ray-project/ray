@@ -63,13 +63,17 @@ def sched_request(
         gang_resource_requests=[
             GangResourceRequest(requests=reqs) for reqs in gang_resource_requests
         ],
-        cluster_resource_constraints=[
-            ClusterResourceConstraint(
-                min_bundles=ResourceRequestUtil.group_by_count(
-                    cluster_resource_constraints
+        cluster_resource_constraints=(
+            [
+                ClusterResourceConstraint(
+                    min_bundles=ResourceRequestUtil.group_by_count(
+                        cluster_resource_constraints
+                    )
                 )
-            )
-        ],
+            ]
+            if cluster_resource_constraints
+            else []
+        ),
         current_instances=instances,
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
@@ -219,6 +223,56 @@ class TestSchedulingNode:
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "foo"}
 
+    @staticmethod
+    def test_new_head_node():
+        # An allocated head node.
+        node_type_configs = {
+            "head": NodeTypeConfig(
+                name="head",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=1,
+            ),
+        }
+        instance = make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_kind=NodeKind.HEAD,
+            )
+        )
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check=False
+        )
+        assert node is not None
+        # It's important to check if the node is a head node
+        assert node.node_kind == NodeKind.HEAD
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+
+        # An running head node.
+        instance = make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="head",
+                available_resources={"CPU": 0},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="head",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
+                node_kind=NodeKind.HEAD,
+            ),
+        )
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check=False
+        )
+        assert node is not None
+        assert node.node_kind == NodeKind.HEAD
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+
 
 def test_min_worker_nodes():
     scheduler = ResourceDemandScheduler()
@@ -301,6 +355,54 @@ def test_min_worker_nodes():
     reply = scheduler.schedule(request)
     actual_to_launch, _ = _launch_and_terminate(reply)
     assert actual_to_launch == expected_to_launch
+
+
+def test_max_workers_head_node_type():
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "head_type": NodeTypeConfig(
+            name="head_type",
+            resources={},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+        )
+    }
+    instances = [
+        # A head node
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head_type",
+                status=Instance.ALLOCATED,
+                instance_id="0",
+                node_kind=NodeKind.HEAD,
+            ),
+        ),
+        # A worker node
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head_type",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_kind=NodeKind.WORKER,
+            ),
+        ),
+        # A worker node
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head_type",
+                status=Instance.ALLOCATED,
+                instance_id="2",
+                node_kind=NodeKind.WORKER,
+            ),
+        ),
+    ]
+
+    request = sched_request(node_type_configs=node_type_configs, instances=instances)
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert len(actual_to_terminate) == 1
+    assert actual_to_terminate[0][0] in ["1", "2"]
+    assert actual_to_terminate[0][2] == TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE
 
 
 def test_max_workers_per_type():
