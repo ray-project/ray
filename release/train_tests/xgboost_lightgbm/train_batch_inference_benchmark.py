@@ -27,7 +27,7 @@ _EXPERIMENT_PARAMS = {
     },
     "10G": {
         "data": "s3://air-example-data-2/10G-xgboost-data.parquet/",
-        "num_workers": 10,
+        "num_workers": 1,
         "cpus_per_worker": 16,
     },
     "100G": {
@@ -71,7 +71,7 @@ _FRAMEWORK_PARAMS = {
         "predictor_cls": LightGBMPredictor,
         "params": {
             "objective": "binary",
-            "eval_metric": ["binary_logloss", "binary_error"],
+            "metric": ["binary_logloss", "binary_error"],
         },
     },
 }
