@@ -53,5 +53,8 @@ tuner = tune.Tuner(
         stop=stop,
         name="test_rainbow",
     ),
+    # tune_config=tune.TuneConfig(
+    #     num_samples=10,
+    # )
 )
 tuner.fit()

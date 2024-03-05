@@ -86,12 +86,6 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 neginf=0.0,
             )
 
-        # Choose the requested loss function. Note, in case of the Huber loss
-        # we fall back to the default of `delta=1.0`
-        loss_fn = (
-            nn.HuberLoss if self.config.td_error_loss_fn == "huber" else nn.MSELoss
-        )
-
         # If we learn a Q-distribution.
         if self.config.num_atoms > 1:
             # Extract the Q-logits evaluated at the selected actions.
@@ -172,6 +166,12 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # Compute the weighted loss (importance sampling weights).
             total_loss = torch.mean(batch["weights"] * td_error)
         else:
+            # Choose the requested loss function. Note, in case of the Huber loss
+            # we fall back to the default of `delta=1.0`
+            loss_fn = (
+                nn.HuberLoss if self.config.td_error_loss_fn == "huber" else nn.MSELoss
+            )
+
             # Masked all Q-values with terminated next states in the targets.
             q_next_best_masked = (
                 1.0 - batch[Columns.TERMINATEDS].float()
