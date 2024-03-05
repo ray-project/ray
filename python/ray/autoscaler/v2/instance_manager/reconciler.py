@@ -1420,7 +1420,7 @@ class Reconciler:
         return IMInstanceUpdateEvent(
             instance_id=instance.instance_id,
             new_instance_status=new_status,
-            details=f"Timeout={timeout_s}s at status "
+            details=f"timeout={timeout_s}s at status "
             f"{IMInstance.InstanceStatus.Name(instance.status)}",
             **update_kwargs,
         )

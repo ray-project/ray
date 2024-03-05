@@ -6,9 +6,9 @@ from ray._raylet import GcsClient
 from ray.autoscaler.v2.schema import ClusterStatus, Stats
 from ray.autoscaler.v2.utils import ClusterStatusParser
 from ray.core.generated.autoscaler_pb2 import (
+    GetClusterStatusReply,
     ClusterResourceState,
     GetClusterResourceStateReply,
-    GetClusterStatusReply,
 )
 
 DEFAULT_RPC_TIMEOUT_S = 10
@@ -83,13 +83,10 @@ def get_cluster_status(
 def get_cluster_resource_state(gcs_client: GcsClient) -> ClusterResourceState:
     """
     Get the cluster resource state from GCS.
-
     Args:
         gcs_client: The GCS client to query.
-
     Returns:
         A ClusterResourceState object
-
     Raises:
         Exception: If the request times out or failed.
     """

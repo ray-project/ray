@@ -3,7 +3,6 @@ import uuid
 from typing import Dict, List, Optional, Set
 
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
-from google.protobuf.text_format import MessageToString
 
 
 class InstanceUtil:

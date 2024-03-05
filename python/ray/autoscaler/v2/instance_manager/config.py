@@ -552,3 +552,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
 
         # Don't idle terminated nodes in read-only mode.
         self._configs.pop("idle_timeout_minutes", None)
+
+        return AutoscalingConfig(
+            self._configs, skip_content_hash=True, skip_prepare=True
+        )
