@@ -93,7 +93,7 @@ class TestRayDockerContainer(RayCITestBase):
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
             )
-            for i in range(3, 11): # check nightly alias
+            for i in range(3, 11):  # check nightly alias
                 assert "nightly-" in self.cmds[i]
             for i in range(11, len(self.cmds)):  # check nightly date alias
                 assert f"nightly.{formatted_date}" in self.cmds[i]
