@@ -54,6 +54,7 @@ class Node:
         spawn_reaper: bool = True,
         connect_only: bool = False,
         default_worker: bool = False,
+        ray_init_cluster: bool = False,
     ):
         """Start a node.
 
@@ -69,6 +70,7 @@ class Node:
             connect_only: If true, connect to the node without starting
                 new processes.
             default_worker: Whether it's running from a ray worker or not
+            ray_init_cluster: Whether it's a cluster created by ray.init()
         """
         if shutdown_at_exit:
             if connect_only:
@@ -83,6 +85,10 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
+
+        self.ray_init_cluster = ray_init_cluster
+        if ray_init_cluster:
+            assert head, "ray.init() created cluster only has the head node"
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
@@ -1256,7 +1262,9 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
+        ray_usage_lib.put_cluster_metadata(
+            self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
+        )
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
             b"session_name",

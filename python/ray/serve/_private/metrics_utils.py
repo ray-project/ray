@@ -61,13 +61,16 @@ class MetricsPusher:
             except Exception as e:
                 logger.exception(f"Failed to run metrics task '{name}': {e}")
 
+            sleep_task = asyncio.create_task(
+                self._async_sleep(self._tasks[name].interval_s)
+            )
             await asyncio.wait(
-                [
-                    wait_for_stop_event,
-                    self._async_sleep(self._tasks[name].interval_s),
-                ],
+                [sleep_task, wait_for_stop_event],
                 return_when=asyncio.FIRST_COMPLETED,
             )
+
+            if not sleep_task.done():
+                sleep_task.cancel()
 
     def register_or_update_task(
         self,

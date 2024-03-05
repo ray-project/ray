@@ -1125,12 +1125,12 @@ def override_deployment_info(
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_ongoing_requests
-            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
+            < deployment_config.autoscaling_config.get_target_ongoing_requests()
         ):
             logger.warning(
                 "Autoscaling will never happen, "
                 "because 'max_ongoing_requests' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
+                "'target_ongoing_requests' now."
             )
 
     # Overwrite ingress route prefix
