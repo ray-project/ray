@@ -79,11 +79,8 @@ class TestRayDockerContainer(RayCITestBase):
             formatted_date = datetime.now().strftime("%y%m%d")
             container = RayDockerContainer(v, "cu11.8.0", "ray")
             container.run()
-            cmd = self.cmds[0]
-            first_run_cmd_count = len(self.cmds)
-            assert first_run_cmd_count == 19
 
-            assert cmd == (
+            assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:123-ray-py{v}-cu11.8.0-base "
@@ -91,21 +88,21 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray:123456-{pv}-cu118 "
                 f"ray:123456-{pv}-cu118_pip-freeze.txt"
             )
-            # Start from index 11 since first 10 commands
-            # are for building image and push commit tags
-            # index 0: build docker image
-            # index 1: pip install -q aws_requests_auth boto3
-            # index 2: python .buildkite/copy_files.py --destination docker_login
-            for i in range(11, first_run_cmd_count):
+            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert (
+                self.cmds[2]
+                == "python .buildkite/copy_files.py --destination docker_login"
+            )
+            for i in range(11, len(self.cmds)):  # jump to nightly alias
                 assert f"nightly.{formatted_date}" in self.cmds[i]
 
+            self.cmds = []
             v = self.get_non_default_python()
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, "cpu", "ray-ml")
             container.run()
-            cmd = self.cmds[first_run_cmd_count]
-            assert cmd == (
+            assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:123-ray-ml-py{v}-cpu-base "
@@ -113,7 +110,12 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-ml:123456-{pv}-cpu "
                 f"ray-ml:123456-{pv}-cpu_pip-freeze.txt"
             )
-            for i in range(first_run_cmd_count + 5, len(self.cmds)):
+            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert (
+                self.cmds[2]
+                == "python .buildkite/copy_files.py --destination docker_login"
+            )
+            for i in range(5, len(self.cmds)):  # jump to nightly alias
                 assert f"nightly.{formatted_date}" in self.cmds[i]
 
     def test_canonical_tag(self) -> None:
