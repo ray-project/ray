@@ -1,6 +1,5 @@
 import json
 import time
-import os
 
 import boto3
 import click
@@ -49,7 +48,7 @@ def main(production: bool, check: bool) -> None:
         logger.info("Weekly green metric updated successfully")
 
     if check and blockers.totalCount != 0:
-        os.exit(42)  # Not retrying this check for buildkite jobs
+        raise Exception(f"Found {blockers.totalCount} release blockers")
 
 
 if __name__ == "__main__":
