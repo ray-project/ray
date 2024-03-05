@@ -11,9 +11,8 @@ steps:
   - label: "Check commit hash"
     key: check-commit-hash
     job_env: forge
-    depends_on:
-      - step: check-release-blockers
-        allow_failure: true
+    depends_on: check-release-blockers
+    allow_dependency_failure: true
     commands:
       - bash .buildkite/release-automation/check-commit-hash.sh
 
