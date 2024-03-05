@@ -187,6 +187,17 @@ class TestRayDockerContainer(RayCITestBase):
             f"rayproject/ray-ml:nightly.{formatted_date}-{pv}",
         ]
 
+        with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
+            v = DEFAULT_PYTHON_VERSION
+            pv = self.get_python_version(v)
+            container = RayDockerContainer(v, "cpu", "ray")
+            assert container._get_image_names() == [
+                f"rayproject/ray:1.0.0.123456-{pv}-cpu",
+                "rayproject/ray:1.0.0.123456-cpu",
+                f"rayproject/ray:1.0.0.123456-{pv}",
+                "rayproject/ray:1.0.0.123456",
+            ]
+
     def test_get_python_version_tag(self) -> None:
         v = DEFAULT_PYTHON_VERSION
         pv = self.get_python_version(v)
