@@ -94,7 +94,6 @@ steps:
         --platform cu11.8.0 --platform cu12.1.1 --platform cpu
         --image-type ray
         --upload
-        --nightly-alias "${NIGHTLY_ALIAS}"
     depends_on:
       - manylinux
       - forge
@@ -120,7 +119,7 @@ steps:
         --image-type ray
         --architecture aarch64
         --upload
-        --nightly-alias "${NIGHTLY_ALIAS}"
+        --schedule "$${RAYCI_SCHEDULE:-ONCE}"
     depends_on:
       - manylinux-aarch64
       - forge-aarch64
@@ -143,7 +142,6 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu11.8.0 --platform cpu --image-type ray-ml
         --upload
-        --nightly-alias "${NIGHTLY_ALIAS}"
     depends_on:
       - manylinux
       - forge

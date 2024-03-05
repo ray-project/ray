@@ -78,7 +78,6 @@ def main(
     architecture: str,
     canonical_tag: str,
     upload: bool,
-    nightly_alias: bool,
 ) -> None:
     """
     Build a wheel or jar artifact
@@ -99,7 +98,6 @@ def main(
             architecture,
             canonical_tag,
             upload,
-            nightly_alias,
         )
         return
 
@@ -138,7 +136,6 @@ def build_docker(
     architecture: str,
     canonical_tag: str,
     upload: bool,
-    nightly_alias: bool,
 ) -> None:
     """
     Build a container artifact.
@@ -152,7 +149,6 @@ def build_docker(
             architecture,
             canonical_tag,
             upload,
-            nightly_alias,
         ).run()
 
 

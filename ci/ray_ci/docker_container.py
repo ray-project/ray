@@ -30,7 +30,6 @@ class DockerContainer(LinuxContainer):
         architecture: str = DEFAULT_ARCHITECTURE,
         canonical_tag: str = None,
         upload: bool = False,
-        nightly_alias: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
@@ -40,7 +39,6 @@ class DockerContainer(LinuxContainer):
         self.architecture = architecture
         self.canonical_tag = canonical_tag
         self.upload = upload
-        self.nightly_alias = nightly_alias
 
         super().__init__(
             "forge" if architecture == "x86_64" else "forge-aarch64",
@@ -57,11 +55,7 @@ class DockerContainer(LinuxContainer):
 
         if branch == "master":
             formatted_date = datetime.now().strftime("%y%m%d")
-            return (
-                [sha_tag, f"nightly.{formatted_date}"]
-                if self.nightly_alias
-                else [sha_tag]
-            )
+            return [sha_tag, f"nightly.{formatted_date}"]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]

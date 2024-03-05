@@ -16,6 +16,7 @@ class RayDockerContainer(DockerContainer):
         """
         Build and publish ray docker images
         """
+        print("Ray container")
         assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
         rayci_build_id = os.environ["RAYCI_BUILD_ID"]
         if self.architecture == DEFAULT_ARCHITECTURE:
@@ -49,6 +50,8 @@ class RayDockerContainer(DockerContainer):
                 "python .buildkite/copy_files.py --destination docker_login",
             ]
             for alias in self._get_image_names():
+                if os.environ["RAYCI_SCHEDULE"] != "NIGHTLY" and "nightly" in alias:
+                    continue
                 cmds += [
                     f"docker tag {ray_image} {alias}",
                     f"docker push {alias}",
