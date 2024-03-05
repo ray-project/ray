@@ -14,17 +14,17 @@ from ray.rllib.connectors.connector import (
 )
 from ray import cloudpickle
 from ray.rllib.connectors.registry import register_connector
+from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class StateBufferConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext, states: Any = None):
         super().__init__(ctx)
@@ -91,7 +91,7 @@ class StateBufferConnector(AgentConnector):
             states = self._initial_states
         if self._enable_new_api_stack:
             if states:
-                d[STATE_OUT] = states
+                d[Columns.STATE_OUT] = states
         else:
             for i, v in enumerate(states):
                 d["state_out_{}".format(i)] = v

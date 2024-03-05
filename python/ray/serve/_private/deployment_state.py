@@ -37,7 +37,9 @@ from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -468,6 +470,7 @@ class ActorReplicaWrapper:
             "name": self._actor_name,
             "namespace": SERVE_NAMESPACE,
             "lifetime": "detached",
+            "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
@@ -1366,6 +1369,14 @@ class DeploymentState:
         return self._target_state.info
 
     @property
+    def target_version(self) -> DeploymentVersion:
+        return self._target_state.version
+
+    @property
+    def target_num_replicas(self) -> int:
+        return self._target_state.target_num_replicas
+
+    @property
     def curr_status_info(self) -> DeploymentStatusInfo:
         return self._curr_status_info
 
@@ -1384,6 +1395,9 @@ class DeploymentState:
                 [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
             )
         ]
+
+    def get_num_running_replicas(self, version: DeploymentVersion = None) -> int:
+        return self._replicas.count(states=[ReplicaState.RUNNING], version=version)
 
     def get_active_node_ids(self) -> Set[str]:
         """Get the node ids of all running replicas in this deployment.
@@ -2317,12 +2331,11 @@ class DeploymentState:
 
         return to_stop, remaining
 
-    def _migrate_replicas_on_draining_nodes(self):
-        draining_node_deadlines = self._cluster_node_info_cache.get_draining_nodes()
+    def _migrate_replicas_on_draining_nodes(self, draining_nodes: Dict[str, int]):
         for replica in self._replicas.pop(
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING, ReplicaState.STARTING]
         ):
-            if replica.actor_node_id in draining_node_deadlines:
+            if replica.actor_node_id in draining_nodes:
                 # For RUNNING replicas, migrate them safely by starting
                 # a replacement replica first.
                 if replica.actor_details.state == ReplicaState.RUNNING:
@@ -2347,7 +2360,7 @@ class DeploymentState:
             replicas_to_keep,
         ) = self._choose_pending_migration_replicas_to_stop(
             self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]),
-            draining_node_deadlines,
+            draining_nodes,
             num_pending_migration_replicas_to_stop,
         )
         for replica in replicas_to_stop:
@@ -2361,7 +2374,7 @@ class DeploymentState:
         for replica in replicas_to_keep:
             self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
 
-    def update(self) -> DeploymentStateUpdateResult:
+    def update(self, *, allow_active_compaction: bool) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
@@ -2381,7 +2394,15 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             self._check_and_update_replicas()
 
-            self._migrate_replicas_on_draining_nodes()
+            draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
+            if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and allow_active_compaction:
+                (
+                    node,
+                    deadline,
+                ) = self._deployment_scheduler.detect_compact_opportunities()
+                if node and node not in draining_nodes:
+                    draining_nodes[node] = deadline
+            self._migrate_replicas_on_draining_nodes(draining_nodes=draining_nodes)
 
             upscale, downscale = self._scale_deployment_replicas()
 
@@ -2737,6 +2758,7 @@ class DeploymentStateManager:
             return None
         else:
             status_info = statuses[0]
+            deployment_state = self._deployment_states[id]
             return DeploymentDetails(
                 name=id.name,
                 status=status_info.status,
@@ -2745,7 +2767,8 @@ class DeploymentStateManager:
                 deployment_config=_deployment_info_to_schema(
                     id.name, self.get_deployment(id)
                 ),
-                replicas=self._deployment_states[id].list_replica_details(),
+                target_num_replicas=deployment_state._target_state.target_num_replicas,
+                replicas=deployment_state.list_replica_details(),
             )
 
     def get_deployment_statuses(
@@ -2805,11 +2828,24 @@ class DeploymentStateManager:
         upscales = {}
         downscales = {}
 
+        # NOTE(zcin): If the deployment status is healthy, it should mean
+        # that the number of running replicas at target version is at
+        # the target number. Adding an extra check to be defensive.
+        # TODO(zcin): Make sure that status should never be healthy if
+        # the number of running replicas at target version is not at
+        # target number, so we can remove this defensive check.
+        allow_active_compaction = all(
+            ds.curr_status_info.status == DeploymentStatus.HEALTHY
+            and ds.get_num_running_replicas(ds.target_version) == ds.target_num_replicas
+            for ds in self._deployment_states.values()
+        )
         for deployment_id, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
                 deployment_state.autoscale()
 
-            deployment_state_update_result = deployment_state.update()
+            deployment_state_update_result = deployment_state.update(
+                allow_active_compaction=allow_active_compaction
+            )
             if deployment_state_update_result.upscale:
                 upscales[deployment_id] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:
