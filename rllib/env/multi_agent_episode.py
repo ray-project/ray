@@ -661,7 +661,7 @@ class MultiAgentEpisode:
         Each of these leaf numpy arrays will have the same length (batch dimension)
         as the length of the original lists.
 
-        Note that SampleBatch.INFOS are NEVER numpy'ized and will remain a list
+        Note that Columns.INFOS are NEVER numpy'ized and will remain a list
         (normally, a list of the original, env-returned dicts). This is due to the
         herterogenous nature of INFOS returned by envs, which would make it unwieldy to
         convert this information to numpy arrays.
