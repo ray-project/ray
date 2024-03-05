@@ -251,10 +251,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
-            app_msg = f" in application '{self.app_name}'" if self.app_name else ""
             logger.info(
-                f"Got updated replicas for deployment '{self._deployment_id.name}'"
-                f"{app_msg}: {new_replica_id_set}.",
+                f"Got updated replicas for {repr(self._deployment_id)}: "
+                f"{new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
