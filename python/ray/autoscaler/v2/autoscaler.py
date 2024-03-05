@@ -59,23 +59,23 @@ class Autoscaler:
         logger.info(f"Using Autoscaling Config: \n{config.dump()}")
 
         self._gcs_client = gcs_client
-        self._cloud_provider = None
+        self._cloud_instance_provider = None
         self._instance_manager = None
         self._ray_stop_errors_queue = Queue()
         self._ray_install_errors_queue = Queue()
         self._event_logger = event_logger
         self._metrics_reporter = metrics_reporter
 
-        self._init_cloud_provider(config, config_reader)
+        self._init_cloud_instance_provider(config, config_reader)
         self._init_instance_manager(
             session_name=session_name,
             config=config,
-            cloud_provider=self._cloud_provider,
+            cloud_provider=self._cloud_instance_provider,
             gcs_client=self._gcs_client,
         )
         self._scheduler = ResourceDemandScheduler(self._event_logger)
 
-    def _init_cloud_provider(
+    def _init_cloud_instance_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
     ):
         """
@@ -89,7 +89,7 @@ class Autoscaler:
         provider_config = config.get_provider_config()
         if config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address
-            self._cloud_provider = ReadOnlyProvider(
+            self._cloud_instance_provider = ReadOnlyProvider(
                 provider_config=provider_config,
             )
         else:
@@ -98,7 +98,7 @@ class Autoscaler:
                 config.get_config("cluster_name"),
             )
 
-            self._cloud_provider = NodeProviderAdapter(
+            self._cloud_instance_provider = NodeProviderAdapter(
                 v1_provider=node_provider_v1,
                 config_reader=config_reader,
             )
@@ -171,12 +171,12 @@ class Autoscaler:
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
-                cloud_provider=self._cloud_provider,
+                cloud_provider=self._cloud_instance_provider,
                 ray_cluster_resource_state=ray_cluster_resource_state,
                 non_terminated_cloud_instances=(
-                    self._cloud_provider.get_non_terminated()
+                    self._cloud_instance_provider.get_non_terminated()
                 ),
-                cloud_provider_errors=self._cloud_provider.poll_errors(),
+                cloud_provider_errors=self._cloud_instance_provider.poll_errors(),
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
                 autoscaling_config=self._config_reader.get_autoscaling_config(),

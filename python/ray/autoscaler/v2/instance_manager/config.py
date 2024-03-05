@@ -135,25 +135,17 @@ class AutoscalingConfig:
         self,
         configs: Dict[str, Any],
         skip_content_hash: bool = False,
-        skip_prepare=False,
     ) -> None:
         """
         Args:
             configs : The raw configs dict.
             skip_content_hash :
                 Whether to skip file mounts/ray command hash calculation.
-            skip_prepare:
-                Whether to skip the config preparation and validation.
         """
         self._sync_continuously = False
-        self.update_configs(configs, skip_content_hash, skip_prepare)
+        self.update_configs(configs, skip_content_hash)
 
-    def update_configs(
-        self, configs: Dict[str, Any], skip_content_hash: bool, skip_prepare
-    ) -> None:
-        if skip_prepare:
-            self._configs = configs
-            return
+    def update_configs(self, configs: Dict[str, Any], skip_content_hash: bool) -> None:
         self._configs = prepare_config(configs)
         validate_config(self._configs)
         if skip_content_hash:
@@ -483,6 +475,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
                 "resources": dict(node_state.total_resources),
                 "min_workers": 0,
                 "max_workers": 0 if is_head_node(node_state) else 1,
+                "node_config": {},
             }
         if available_node_types:
             self._configs["available_node_types"].update(available_node_types)
@@ -493,6 +486,4 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         # Don't idle terminated nodes in read-only mode.
         self._configs.pop("idle_timeout_minutes", None)
 
-        return AutoscalingConfig(
-            self._configs, skip_content_hash=True, skip_prepare=True
-        )
+        return AutoscalingConfig(self._configs, skip_content_hash=True)
