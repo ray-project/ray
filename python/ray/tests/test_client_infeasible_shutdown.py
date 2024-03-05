@@ -3,15 +3,12 @@ import os
 import time
 import sys
 import subprocess
-from ray._private.test_utils import (
-    convert_actor_state,
-    make_global_state_accessor,
-    wait_for_condition,
-)
+from ray._private.test_utils import make_global_state_accessor
 import ray._private.gcs_utils as gcs_utils
 import pytest
 
 CLIENT_SERVER_PORT = 25555
+
 
 # Tests that if a client has infesible tasks when shutting down, the demands from tasks
 # are removed from the resource usage.
@@ -49,8 +46,6 @@ time.sleep(10)
 
 
 if __name__ == "__main__":
-    import sys
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
