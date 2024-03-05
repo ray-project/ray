@@ -17,7 +17,7 @@ from ray.train import ScalingConfig
 
 
 @pytest.mark.parametrize(
-    "trainer_resources", [None, {"memory": 40 * 1024**3}, {"CPU": 10}]
+    "trainer_resources", [None, {"memory": 30 * 1024**3}, {"CPU": 10}]
 )
 @pytest.mark.parametrize(
     "resources_per_worker_and_use_gpu",
