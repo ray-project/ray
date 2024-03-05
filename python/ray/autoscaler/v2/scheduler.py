@@ -1067,6 +1067,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         ], "Other termination causes don't have to select nodes for termination."
 
         for node in terminated_nodes:
+            logger.info(
+                "Terminating node {}(ray={}) due to {}.".format(
+                    node.im_instance_id,
+                    node.ray_node_id,
+                    TerminationRequest.Cause.Name(cause),
+                )
+            )
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
                 id=str(uuid.uuid4()),

@@ -15,7 +15,6 @@ from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
-from ray.data.exceptions import omit_traceback_stdout
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 
@@ -464,7 +463,6 @@ class ExecutionPlan:
         else:
             return None
 
-    @omit_traceback_stdout
     def execute_to_iterator(
         self,
         allow_clear_input_blocks: bool = True,
@@ -522,7 +520,6 @@ class ExecutionPlan:
         self._snapshot_stats = executor.get_stats()
         return block_iter, self._snapshot_stats, executor
 
-    @omit_traceback_stdout
     def execute(
         self,
         allow_clear_input_blocks: bool = True,

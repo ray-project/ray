@@ -61,7 +61,6 @@ class _HandleOptions:
     multiplexed_model_id: str = ""
     stream: bool = False
     _prefer_local_routing: bool = False
-    _router_cls: str = ""
     _request_protocol: str = RequestProtocol.UNDEFINED
 
     def copy_and_update(
@@ -70,7 +69,6 @@ class _HandleOptions:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
         _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "_HandleOptions":
         return _HandleOptions(
@@ -86,9 +84,6 @@ class _HandleOptions:
             _prefer_local_routing=self._prefer_local_routing
             if _prefer_local_routing == DEFAULT.VALUE
             else _prefer_local_routing,
-            _router_cls=self._router_cls
-            if _router_cls == DEFAULT.VALUE
-            else _router_cls,
             _request_protocol=self._request_protocol
             if _request_protocol == DEFAULT.VALUE
             else _request_protocol,
@@ -155,7 +150,6 @@ class _DeploymentHandleBase:
                 availability_zone,
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
-                _router_cls=self.handle_options._router_cls,
             )
 
         return self._router, self._router._event_loop
@@ -203,7 +197,6 @@ class _DeploymentHandleBase:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         if stream is True and inside_ray_client_context():
             raise RuntimeError(
@@ -216,21 +209,16 @@ class _DeploymentHandleBase:
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
-            _router_cls=_router_cls,
         )
 
-        if (
-            self._router is None
-            and _router_cls == DEFAULT.VALUE
-            and _prefer_local_routing == DEFAULT.VALUE
-        ):
+        if self._router is None and _prefer_local_routing == DEFAULT.VALUE:
             self._get_or_create_router()
 
         return DeploymentHandle(
             self.deployment_name,
             self.app_name,
             handle_options=new_handle_options,
-            _router=None if _router_cls != DEFAULT.VALUE else self._router,
+            _router=self._router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
         )
@@ -711,7 +699,6 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -735,7 +722,6 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
-            _router_cls=_router_cls,
         )
 
     def remote(

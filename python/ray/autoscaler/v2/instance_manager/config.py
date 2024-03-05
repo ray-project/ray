@@ -23,6 +23,8 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.util import (
     format_readonly_node_type,
+)
+from ray.autoscaler._private.util import (
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,

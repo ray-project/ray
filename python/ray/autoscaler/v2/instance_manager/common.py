@@ -356,6 +356,52 @@ class InstanceUtil:
 
     @staticmethod
     def get_status_transitions(
+<<<<<<< HEAD
+=======
+        instance: Instance,
+        select_instance_status: Optional["Instance.InstanceStatus"] = None,
+    ) -> List["Instance.StatusHistory"]:
+        """
+        Returns the status history of the instance.
+
+        Args:
+            instance: The instance.
+            select_instance_status: The go-to status to search for, i.e. select
+                only status history when the instance transitions into the status.
+                If None, returns all status updates.
+        """
+        history = []
+        for status_update in instance.status_history:
+            if (
+                select_instance_status
+                and status_update.instance_status != select_instance_status
+            ):
+                continue
+            history.append(status_update)
+        return history
+
+    @staticmethod
+    def get_last_status_transition(
+        instance: Instance,
+        select_instance_status: Optional["Instance.InstanceStatus"] = None,
+    ) -> Optional["Instance.StatusHistory"]:
+        """
+        Returns the last status transition of the instance.
+
+        Args:
+            instance: The instance.
+            instance_status: The status to search for. If None, returns the last
+                status update.
+        """
+        history = InstanceUtil.get_status_transitions(instance, select_instance_status)
+        history.sort(key=lambda x: x.timestamp_ns)
+        if history:
+            return history[-1]
+        return None
+
+    @staticmethod
+    def get_status_transition_times_ns(
+>>>>>>> f283b2c0a96b4eb4d9ff150c7a39bf5c4d0d11af
         instance: Instance,
         select_instance_status: Optional["Instance.InstanceStatus"] = None,
     ) -> List["Instance.StatusHistory"]:
@@ -367,6 +413,7 @@ class InstanceUtil:
             instance_status: The status to search for. If None, returns all
                 status updates.
         """
+<<<<<<< HEAD
         history = []
         for status_update in instance.status_history:
             if (
@@ -412,6 +459,8 @@ class InstanceUtil:
         Returns:
             The list of timestamps of the instance status updates.
         """
+=======
+>>>>>>> f283b2c0a96b4eb4d9ff150c7a39bf5c4d0d11af
         return [
             e.timestamp_ns
             for e in InstanceUtil.get_status_transitions(
