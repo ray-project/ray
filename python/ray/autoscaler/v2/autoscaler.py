@@ -67,10 +67,10 @@ class Autoscaler:
         self._gcs_client = gcs_client
         self._cloud_provider = None
         self._instance_manager = None
-        self._event_logger = event_logger
-        self._metrics_reporter = metrics_reporter
         self._ray_stop_errors_queue = Queue()
         self._ray_install_errors_queue = Queue()
+        self._event_logger = event_logger
+        self._metrics_reporter = metrics_reporter
 
         self._init_cloud_provider(config, config_reader)
         self._init_instance_manager(
@@ -79,7 +79,6 @@ class Autoscaler:
             cloud_provider=self._cloud_provider,
             gcs_client=self._gcs_client,
         )
-        self._event_logger = event_logger
         self._scheduler = ResourceDemandScheduler(self._event_logger)
 
     def _init_cloud_provider(
@@ -124,14 +123,13 @@ class Autoscaler:
         config: AutoscalingConfig,
     ):
         """
-        Initialize the instance manager, and its dependencies:
+        Initialize the instance manager, and its dependencies.
         """
 
         instance_storage = InstanceStorage(
             cluster_id=session_name,
             storage=InMemoryStorage(),
         )
-
         subscribers: List[InstanceUpdatedSubscriber] = []
         subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
         subscribers.append(

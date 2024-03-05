@@ -365,6 +365,7 @@ class SchedulingNode:
         Args:
             node_config: The node config.
             status: The status of the node.
+            node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
             node_kind: The node kind.
         """
@@ -1066,6 +1067,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         ], "Other termination causes don't have to select nodes for termination."
 
         for node in terminated_nodes:
+            logger.info(
+                "Terminating node {}(ray={}) due to {}.".format(
+                    node.im_instance_id,
+                    node.ray_node_id,
+                    TerminationRequest.Cause.Name(cause),
+                )
+            )
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
                 id=str(uuid.uuid4()),

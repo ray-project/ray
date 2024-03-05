@@ -97,8 +97,8 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
-DEFAULT_MAX_CONCURRENT_QUERIES = 100
-NEW_DEFAULT_MAX_CONCURRENT_QUERIES = 5
+DEFAULT_MAX_ONGOING_REQUESTS = 100
+NEW_DEFAULT_MAX_ONGOING_REQUESTS = 5
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = (
@@ -167,6 +167,10 @@ RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
 # Jsonify the log messages. This constant is deprecated and will be removed in the
 # future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+
+# Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
+# Also, redirect them to serve's log files.
+RAY_SERVE_LOG_TO_STDERR = os.environ.get("RAY_SERVE_LOG_TO_STDERR", "1") == "1"
 
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
@@ -268,10 +272,10 @@ RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
     os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "1") == "1"
 )
 
-# Feature flag for strictly enforcing max_concurrent_queries (replicas will reject
+# Feature flag for strictly enforcing max_ongoing_requests (replicas will reject
 # requests).
-RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES = (
-    os.environ.get("RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES", "0") == "1"
+RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS = (
+    os.environ.get("RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS", "0") == "1"
     # Strict enforcement path must be enabled for the queue length cache.
     or RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
 )
@@ -315,3 +319,13 @@ RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
 
 # Timeout for gracefully shutting down metrics pusher, e.g. in routers or replicas
 METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
+
+# Feature flag to set `enable_task_events=True` on Serve-managed actors.
+RAY_SERVE_ENABLE_TASK_EVENTS = (
+    os.environ.get("RAY_SERVE_ENABLE_TASK_EVENTS", "0") == "1"
+)
+
+# Use compact instead of spread scheduling strategy
+RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
+)

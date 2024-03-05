@@ -24,6 +24,8 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.util import (
     format_readonly_node_type,
+)
+from ray.autoscaler._private.util import (
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
@@ -552,3 +554,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
 
         # Don't idle terminated nodes in read-only mode.
         self._configs.pop("idle_timeout_minutes", None)
+
+        return AutoscalingConfig(
+            self._configs, skip_content_hash=True, skip_prepare=True
+        )

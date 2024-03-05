@@ -91,6 +91,12 @@ class MockAutoscalingConfig:
     def provider(self):
         return Provider.UNKNOWN
 
+    def disable_launch_config_check(self):
+        return self._configs.get("disable_launch_config_check", False)
+
+    def get_idle_timeout_s(self):
+        return self._configs.get("idle_timeout_s", 999)
+
 
 class MockScheduler(IResourceScheduler):
     def __init__(self, to_launch=None, to_terminate=None):
