@@ -322,7 +322,6 @@ class KubeRayProvider(ICloudInstanceProvider):
             # No patch required.
             return
 
-        logger.info(f"Patched: {patch_payload}")
         self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
     def _add_launch_errors(

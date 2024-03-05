@@ -34,7 +34,6 @@ from ray.tests.kuberay.scripts import (
 )
 
 logger = logging.getLogger(__name__)
-logger.info = print
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
@@ -51,7 +50,6 @@ logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 logger.info(f"Using autoscaler v2: {AUTOSCALER_V2}")
 
 # Path to example config inside the rayci container.
-# EXAMPLE_CLUSTER_PATH = "/data/home/rickyx/ray-2/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
 EXAMPLE_CLUSTER_PATH = (
     "rayci/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
 )
@@ -271,17 +269,14 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
-        try:
-            kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
-                script_name="scale_up.py",
-                pod=head_pod,
-                container="ray-head",
-                namespace="default",
-            )
-        finally:
-            # Check that stdout autoscaler logging is working.
-            logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
-            print(logs)
+        kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
+            script_name="scale_up.py",
+            pod=head_pod,
+            container="ray-head",
+            namespace="default",
+        )
+        # Check that stdout autoscaler logging is working.
+        logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
         assert "Adding 1 node(s) of type small-group." in logs
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)

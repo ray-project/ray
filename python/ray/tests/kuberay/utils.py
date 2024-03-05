@@ -288,6 +288,7 @@ def kubectl_exec(
     kubectl_exec_command = (
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
+    # Print for debugging convenience.
     try:
         out = subprocess.check_output(kubectl_exec_command).decode().strip()
     except subprocess.CalledProcessError as e:

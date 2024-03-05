@@ -1562,16 +1562,6 @@ class Reconciler:
             return
 
         # Update the IM with TERMINATING status for the leaked cloud instances.
-        # Update those instances to be ALLOCATED,
-        # if these are extra leaks:
-        #   1. They would be temrinated if they violate node type configs (e.g.
-        #  max workers) OR
-        #   2. They would not become RAY_RUNNING, and would be terminated
-        #   when reconciling stuck instances.
-        # if these are not extra leaks:
-        #   Some node providers would launch instances before the instance manager
-        #   become aware of them. We would just mark them as ALLOCATED and let the
-        #   reconciler to handle their lifecycles later.
         updates = {}
 
         for cloud_instance_id, cloud_instance in extra_cloud_instances.items():

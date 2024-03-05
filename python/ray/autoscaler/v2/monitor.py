@@ -9,16 +9,6 @@ import logging
 import os
 import sys
 import time
-import traceback
-from collections import Counter
-from dataclasses import asdict
-from typing import Any, Callable, Dict, Optional, Union
-from ray.autoscaler.v2.autoscaler import Autoscaler
-from ray.autoscaler.v2.instance_manager.config import (
-    FileConfigReader,
-    IConfigReader,
-)
-from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from typing import Optional
 
 import ray

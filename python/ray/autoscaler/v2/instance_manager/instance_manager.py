@@ -1,7 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from ray._private.protobuf_compat import message_to_dict
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
@@ -268,10 +267,5 @@ class InstanceManager:
             f"{Instance.InstanceStatus.Name(update.new_instance_status)}"
         )
         InstanceManager._apply_update(instance, update)
-        logger.info(
-            "Updating instance {instance_id} with {update}".format(
-                instance_id=instance.instance_id, update=message_to_dict(update)
-            )
-        )
 
         return instance
