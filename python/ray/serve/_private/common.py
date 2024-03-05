@@ -28,6 +28,15 @@ class DeploymentID:
     name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
 
+    def __repr__(self):
+        s = f"Deployment('{self.name}'"
+        if not self.app_name or self.app_name == SERVE_DEFAULT_APP_NAME:
+            s += ")"
+        else:
+            s += f", app='{self.app_name}')"
+
+        return s
+
     def __str__(self):
         return f"{self.app_name}_{self.name}"
 

@@ -1311,10 +1311,7 @@ class DeploymentState:
     def recover_target_state_from_checkpoint(
         self, target_state_checkpoint: DeploymentTargetState
     ):
-        logger.info(
-            f"Recovering target state for deployment {self.deployment_name} in "
-            f"application {self.app_name} from checkpoint."
-        )
+        logger.info(f"Recovering target state for {repr(self._id)} from checkpoint.")
         self._target_state = target_state_checkpoint
         self._deployment_scheduler.on_deployment_deployed(
             self._id, self._target_state.info.replica_config
@@ -1330,9 +1327,8 @@ class DeploymentState:
             "recovering current state from replica actor names."
         )
         logger.info(
-            f"Recovering current state for deployment '{self.deployment_name}' "
-            f"in application '{self.app_name}' from {len(replica_actor_names)} total "
-            "actors."
+            f"Recovering current state for {repr(self._id)} "
+            f"from {len(replica_actor_names)} live actors."
         )
         # All current states use default value, only attach running replicas.
         for replica_actor_name in replica_actor_names:
@@ -1488,9 +1484,8 @@ class DeploymentState:
         self._curr_status_info = self._curr_status_info.handle_transition(
             trigger=DeploymentStatusInternalTrigger.DELETE
         )
-        app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
-            f"Deleting deployment {self.deployment_name}{app_msg}",
+            f"Deleting {repr(self._id)}",
             extra={"log_to_stderr": False},
         )
 
@@ -1632,9 +1627,8 @@ class DeploymentState:
             )
 
         logger.info(
-            f"Deploying new version of deployment {self.deployment_name} in "
-            f"application '{self.app_name}'. Setting initial target number of "
-            f"replicas to {target_num_replicas}."
+            f"Deploying new version of {repr(self._id)} "
+            f"(initial target replicas: {target_num_replicas})."
         )
         self._replica_constructor_retry_counter = 0
         self._backoff_time_s = 1
@@ -1700,10 +1694,9 @@ class DeploymentState:
             return
 
         logger.info(
-            f"Autoscaling replicas for deployment '{self.deployment_name}' in "
-            f"application '{self.app_name}' to {decision_num_replicas}. "
-            f"Current number of requests: {total_num_requests}. Current number of "
-            f"running replicas: {num_running_replicas}."
+            f"Autoscaling {repr(self._id)} to {decision_num_replicas} replicas. "
+            f"Current num requests: {total_num_requests}, "
+            f"current num running replicas: {num_running_replicas}."
         )
 
         new_info = copy(self._target_state.info)
@@ -1818,16 +1811,14 @@ class DeploymentState:
 
         if code_version_changes > 0:
             logger.info(
-                f"Stopping {code_version_changes} replicas of deployment "
-                f"'{self.deployment_name}' in application '{self.app_name}' with "
-                "outdated versions."
+                f"Stopping {code_version_changes} replicas of {repr(self._id)} "
+                "with outdated versions."
             )
 
         if reconfigure_changes > 0:
             logger.info(
-                f"Updating {reconfigure_changes} replicas of deployment "
-                f"'{self.deployment_name}' in application '{self.app_name}' with "
-                "outdated deployment configs."
+                f"Updating {reconfigure_changes} replicas of {repr(self._id)} "
+                "with outdated deployment configs."
             )
             # Record user config lightweight update
             ServeUsageTag.USER_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
@@ -1941,10 +1932,8 @@ class DeploymentState:
                         return upscale, downscale
 
                 self._last_retry = time.time()
-                logger.info(
-                    f"Adding {to_add} replica{'s' if to_add > 1 else ''} to deployment "
-                    f"'{self.deployment_name}' in application '{self.app_name}'."
-                )
+                added_replicas = f"{to_add} replica{'s' if to_add > 1 else ''}"
+                logger.info(f"Adding {added_replicas} to {repr(self._id)}.")
                 for _ in range(to_add):
                     replica_name = ReplicaName(
                         self.app_name, self.deployment_name, get_random_string()
@@ -1959,18 +1948,11 @@ class DeploymentState:
                     )
 
                     self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-                    logger.debug(
-                        f"Adding STARTING to replica_tag: {replica_name}, deployment: "
-                        f"'{self.deployment_name}', application: '{self.app_name}'"
-                    )
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
-            logger.info(
-                f"Removing {to_remove} replica{'s' if to_remove > 1 else ''} "
-                f"from deployment '{self.deployment_name}' in application "
-                f"'{self.app_name}'."
-            )
+            removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
+            logger.info(f"Removing {removed_replicas} from {repr(self._id)}.")
             downscale = DeploymentDownscaleRequest(
                 deployment_id=self._id, num_to_stop=to_remove
             )
