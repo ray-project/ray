@@ -380,8 +380,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Confirming Ray pods are gone.")
         wait_for_pods(goal_num_pods=0, namespace=RAY_CLUSTER_NAMESPACE)
 
-        raise RuntimeError("Test complete.")
-
 
 if __name__ == "__main__":
     import pytest

@@ -42,6 +42,14 @@ echo "--- Run bazel tests"
 
 # Needs to send in the kubeconfig file in base64 encoding.
 
+bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
+    --build-name k8sbuild \
+    --network host \
+    --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
+    --test-env=PULL_POLICY=Never \
+    --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
+    "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"
+
 # Test for autoscaler v2.
 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --build-name k8sbuild \
@@ -49,13 +57,5 @@ bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
     --test-env=PULL_POLICY=Never \
     --test-env=AUTOSCALER_V2=True \
-    --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
-    "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"
-
-bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
-    --build-name k8sbuild \
-    --network host \
-    --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
-    --test-env=PULL_POLICY=Never \
     --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
     "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"

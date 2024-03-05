@@ -15,8 +15,6 @@ from ray.core.generated.instance_manager_pb2 import LaunchRequest, TerminationRe
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 
 class AutoscalerEventLogger:
     """

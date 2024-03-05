@@ -38,14 +38,6 @@ from ray.autoscaler.v2.schema import NodeType
 logger = logging.getLogger(__name__)
 
 
-def _worker_groups(raycluster: Dict[str, Any]):
-    """Extract worker group index from RayCluster."""
-    group_names = [
-        spec["groupName"] for spec in raycluster["spec"].get("workerGroupSpecs", [])
-    ]
-    return group_names
-
-
 class KubeRayProvider(ICloudInstanceProvider):
     """
     This class is a thin wrapper around the Kubernetes API client. It modifies
