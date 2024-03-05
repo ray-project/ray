@@ -5,10 +5,10 @@ This file holds framework-agnostic components for PPO's RLModules.
 import abc
 from typing import Any, Type
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 
@@ -48,11 +48,11 @@ class PPORLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def input_specs_exploration(self):
@@ -69,8 +69,8 @@ class PPORLModule(RLModule, abc.ABC):
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
         return [
-            SampleBatch.VF_PREDS,
-            SampleBatch.ACTION_DIST_INPUTS,
+            Columns.VF_PREDS,
+            Columns.ACTION_DIST_INPUTS,
         ]
 
     @abc.abstractmethod
