@@ -54,7 +54,7 @@ class FakeReplica(ReplicaWrapper):
         replica_id: ReplicaID,
         *,
         queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
-        is_cross_language: bool = False
+        is_cross_language: bool = False,
     ):
         self._replica_id = replica_id
         self._is_cross_language = is_cross_language
@@ -246,10 +246,7 @@ class TestAssignRequest:
         assert obj_ref_gen.replica_id == r1_id
 
         if router._enable_queue_len_cache:
-            assert (
-                fake_replica_scheduler.replica_queue_len_cache.get(r1_id)
-                == 10
-            )
+            assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -303,14 +300,8 @@ class TestAssignRequest:
         assert obj_ref.replica_id == r2_id
 
         if router._enable_queue_len_cache:
-            assert (
-                fake_replica_scheduler.replica_queue_len_cache.get(r1_id)
-                == 10
-            )
-            assert (
-                fake_replica_scheduler.replica_queue_len_cache.get(r2_id)
-                == 20
-            )
+            assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
+            assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 20
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -367,8 +358,7 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(100)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == r1_id
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
@@ -425,8 +415,7 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(5)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == r1_id
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
@@ -496,8 +485,7 @@ class TestAssignRequest:
         assert len(pending) == 5
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == r1_id
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*done)
             ]
         )
@@ -513,18 +501,15 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(5)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == r1_id
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
 
 
-def running_replica_info(replica_id: str) -> RunningReplicaInfo:
+def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(
-        replica_id=ReplicaID(
-            unique_id=replica_id, deployment_id=DeploymentID(name="test-deployment")
-        ),
+        replica_id=replica_id,
         node_id="node_id",
         availability_zone="some-az",
         actor_handle=Mock(),
@@ -591,7 +576,8 @@ class TestRouterMetricsManager:
         replica_ids = [
             ReplicaID(
                 unique_id=f"test-replica-{i}", deployment_id=DeploymentID(name="test")
-            ) for i in range(1, 5)
+            )
+            for i in range(1, 5)
         ]
         r1, r2, r3, r4 = replica_ids
 
