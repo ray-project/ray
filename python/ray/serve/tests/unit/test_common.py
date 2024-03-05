@@ -3,6 +3,7 @@ import time
 import pytest
 
 from ray.serve._private.common import (
+    REPLICA_ID_FULL_ID_STR_PREFIX,
     ApplicationStatus,
     ApplicationStatusInfo,
     DeploymentID,
@@ -12,7 +13,6 @@ from ray.serve._private.common import (
     ReplicaID,
     RunningReplicaInfo,
     StatusOverview,
-    REPLICA_ID_FULL_ID_STR_PREFIX,
 )
 from ray.serve._private.utils import get_random_string
 from ray.serve.generated.serve_pb2 import (
