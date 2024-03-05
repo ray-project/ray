@@ -214,7 +214,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             # into max_seq_len chunks.
             for column, column_data in data.copy().items():
                 for key, item_list in column_data.items():
-                    if column != SampleBatch.INFOS:
+                    if column != Columns.INFOS:
                         column_data[key] = split_and_zero_pad_list(
                             item_list, T=self.max_seq_len
                         )
@@ -244,7 +244,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if self.max_seq_len is None:
                     raise ValueError(
                         "You are using a stateful RLModule and are not providing "
-                        "custom '{STATE_IN}' data through your connector(s)! "
+                        f"custom '{Columns.STATE_IN}' data through your connector(s)! "
                         "Therefore, you need to provide the 'max_seq_len' key inside "
                         "your model config dict. You can set this dict and/or override "
                         "keys in it via `config.training(model={'max_seq_len': x})`."
