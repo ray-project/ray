@@ -744,17 +744,11 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # Check out_stream once a second until the timeout.
 
                 # Raise a RuntimeError if we timeout.
-                def verify():
-                    actual = out_stream.getvalue()
-                    print(actual)
-                    for string in strings_to_match:
-                        if string not in actual:
-                            return False
-                    return True
-
                 wait_for_condition(
                     # Does redirected stdout contain all of the expected strings?
-                    verify,
+                    lambda: all(
+                        string in out_stream.getvalue() for string in strings_to_match
+                    ),
                     timeout=timeout_s,
                     retry_interval_ms=1000,
                 )
