@@ -55,7 +55,7 @@ class DockerContainer(LinuxContainer):
 
         if branch == "master":
             formatted_date = datetime.now().strftime("%y%m%d")
-            return [sha_tag, f"nightly.{formatted_date}"]
+            return ["nightly", f"nightly.{formatted_date}"]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
