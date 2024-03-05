@@ -55,8 +55,10 @@ class Autoscaler:
         """
 
         self._config_reader = config_reader
-        config = config_reader.get_autoscaling_config()
+
+        config = config_reader.get_cached_autoscaling_config()
         logger.info(f"Using Autoscaling Config: \n{config.dump()}")
+
 
         self._gcs_client = gcs_client
         self._cloud_instance_provider = None
@@ -168,6 +170,9 @@ class Autoscaler:
             # Get the current state of the ray cluster resources.
             ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
+            # Refresh the config from the source
+            self._config_reader.refresh_cached_autoscaling_config()
+
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
@@ -179,7 +184,7 @@ class Autoscaler:
                 cloud_provider_errors=self._cloud_instance_provider.poll_errors(),
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
-                autoscaling_config=self._config_reader.get_autoscaling_config(),
+                autoscaling_config=self._config_reader.get_cached_autoscaling_config(),
                 metrics_reporter=self._metrics_reporter,
             )
         except Exception as e:
