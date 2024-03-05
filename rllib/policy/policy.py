@@ -27,7 +27,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.train import Checkpoint
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -1651,13 +1651,13 @@ class Policy(metaclass=ABCMeta):
                 elif k == SampleBatch.SEQ_LENS:
                     # sequence lengths have no time dimension
                     ret[k] = v
-                elif k == STATE_IN:
+                elif k == Columns.STATE_IN:
                     # Assume that batch_repeat_value is max seq len.
-                    # This is commonly the case for STATE_IN
+                    # This is commonly the case for Columns.STATE_IN
                     # Values should already have correct batch and time dimension
                     assert self.view_requirements[k].batch_repeat_value != 1
                     ret[k] = v
-                elif k == STATE_OUT:
+                elif k == Columns.STATE_OUT:
                     # Assume that batch_repeat_value is 1
                     # This is commonly the case for STATE_OUT
                     assert self.view_requirements[k].batch_repeat_value == 1

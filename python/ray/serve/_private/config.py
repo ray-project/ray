@@ -266,6 +266,8 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None
             if not data["autoscaling_config"].get("downscale_smoothing_factor"):
                 data["autoscaling_config"]["downscale_smoothing_factor"] = None
+            if not data["autoscaling_config"].get("target_ongoing_requests"):
+                data["autoscaling_config"]["target_ongoing_requests"] = None
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
