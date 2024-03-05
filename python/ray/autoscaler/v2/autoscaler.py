@@ -8,15 +8,11 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-<<<<<<< HEAD
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
     IConfigReader,
     Provider,
 )
-=======
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
->>>>>>> 1a77f83e1c10a7440b16048052cc8940bd9a1705
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceManager,
     InstanceUpdatedSubscriber,
