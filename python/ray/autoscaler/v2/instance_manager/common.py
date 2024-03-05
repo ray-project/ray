@@ -43,21 +43,6 @@ class InstanceUtil:
         return instance
 
     @staticmethod
-    def is_launch_requested(instance) -> bool:
-        """
-        Returns True if the instance is in a status where a launch request is
-        made to the cloud provider.
-        """
-        if instance.status == Instance.REQUESTED:
-            return True
-
-        if instance.status == Instance.QUEUED and instance.launch_request_id:
-            # The instance launch request was retried thus it had a launch request id.
-            return True
-
-        return False
-
-    @staticmethod
     def random_instance_id() -> str:
         """
         Returns a random instance id.

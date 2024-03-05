@@ -26,6 +26,7 @@ from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.sdk import is_head_node
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -589,7 +590,9 @@ class Reconciler:
                 updates[instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_INSTALL_FAILED,
-                    details=f"failed to install ray with errors: {install_error.details}",
+                    details=(
+                        f"failed to install ray with errors: {install_error.details}"
+                    ),
                 )
                 logger.debug(
                     "Updating {}({}) with {}".format(
@@ -1558,15 +1561,20 @@ class Reconciler:
                 the cloud provider.
             ray_nodes: The ray cluster's states of ray nodes.
         """
-        instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
 
-        cloud_instance_ids_managed_by_im = {
-            instance.cloud_instance_id
-            for instance in instances
-            if instance.cloud_instance_id
-        }
+        def _get_cloud_instance_ids_managed_by_im_and_version():
+            instances, version = Reconciler._get_im_instances(instance_manager)
+            return {
+                instance.cloud_instance_id
+                for instance in instances
+                if instance.cloud_instance_id
+            }, version
 
+        (
+            cloud_instance_ids_managed_by_im,
+            version,
+        ) = _get_cloud_instance_ids_managed_by_im_and_version()
         # Find the extra cloud instances that are not managed by the instance manager.
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
@@ -1583,6 +1591,10 @@ class Reconciler:
 
         # Find the extra cloud instances reported by Ray but not managed by the instance
         # manager.
+        (
+            cloud_instance_ids_managed_by_im,
+            version,
+        ) = _get_cloud_instance_ids_managed_by_im_and_version()
         for ray_node in ray_nodes:
             if not ray_node.instance_id:
                 continue
@@ -1591,14 +1603,12 @@ class Reconciler:
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
                 continue
 
+            is_head = is_head_node(ray_node)
             updates[cloud_instance_id] = IMInstanceUpdateEvent(
                 instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
                 cloud_instance_id=cloud_instance_id,
                 new_instance_status=IMInstance.ALLOCATED,
-                # This could only be a worker node. Since we require a head node to
-                # have the correct cloud instance id to be set so that
-                # autoscaler V2 actually works.
-                node_kind=NodeKind.WORKER,
+                node_kind=NodeKind.HEAD if is_head else NodeKind.WORKER,
                 instance_type=ray_node.ray_node_type_name,
                 details=(
                     "allocated unmanaged worker cloud instance from ray node: "
