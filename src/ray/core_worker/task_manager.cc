@@ -809,14 +809,29 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
     num_pending_tasks_--;
 
-    // A finished task can only be re-executed if it has some number of
-    // retries left and returned at least one object that is still in use and
-    // stored in plasma.
-    bool task_retryable = it->second.num_retries_left != 0 &&
-                          !it->second.reconstructable_return_ids.empty();
-    if (task_retryable) {
+    if (spec.IsStreamingGenerator()) {
+      // NOTE(swang): Streaming generator tasks have task metadata and
+      // per-stream metadata.  We can only erase the per-stream metadata once
+      // the generator ref and all dynamic return refs have gone out of scope.
+      // Therefore, if any of these refs are still in scope, we keep the task
+      // metadata around even if the task cannot be retried. The task and
+      // per-stream metadata will later be GCed in a ReferenceCounter callback,
+      // once all refs have gone out of scope.
+      release_lineage = it->second.reconstructable_return_ids.empty();
+    } else {
+      // A finished task can only be re-executed if it has some number of
+      // retries left and returned at least one object that is still in use and
+      // stored in plasma.
+      bool task_retryable = it->second.num_retries_left != 0 &&
+                            !it->second.reconstructable_return_ids.empty();
+      release_lineage = !task_retryable;
+    }
+
+    if (release_lineage) {
+      RAY_LOG(DEBUG) << "Erase task " << it->first;
+      submissible_tasks_.erase(it);
+    } else {
       // Pin the task spec if it may be retried again.
-      release_lineage = false;
       it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
       total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes;
       if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
@@ -826,9 +841,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         min_lineage_bytes_to_evict =
             total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
       }
-    } else {
-      RAY_LOG(DEBUG) << "Erase task " << it->first;
-      submissible_tasks_.erase(it);
     }
   }
 

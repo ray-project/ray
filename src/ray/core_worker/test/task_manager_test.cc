@@ -1333,9 +1333,6 @@ TEST_F(TaskManagerLineageTest, TestObjectRefStreamDynamicReturnGC) {
   // Task completed.
   CompletePendingStreamingTask(spec, addr_, 1, /*set_in_plasma=*/false);
   ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
-  //// Dynamic return ref created and returned to caller.
-  // auto dynamic_return_id = ReportGeneratorItemReturns(generator_id,
-  //    0, /*set_in_plasma=*/true);
   reference_counter_->AddLocalReference(dynamic_return_id, "");
   // Three refs in scope: generator ref, one dynamic return, and EOS sentinel
   // ref.
@@ -1380,112 +1377,118 @@ TEST_F(TaskManagerLineageTest, TestObjectRefStreamDynamicReturnGC) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
   ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 
-  //// Test in the reverse order:
-  //// 1. Generator ref goes out of scope.
-  //// 2. Task completes.
-  //// Submit task.
-  // manager_.AddPendingTask(addr_, spec, "", 1);
-  // ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
-  // ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  //// Generator ref out of scope.
-  // reference_counter_->RemoveLocalReference(generator_id, &removed);
-  // ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
-  // ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
-  //// Task completed.
-  // CompletePendingStreamingTask(spec, addr_, 0);
-  //// Task metadata deleted.
-  // ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
+  // Test: Dynamic return and generator refs go out of scope before the task
+  // completes. Dynamic return is not stored in plasma (so it is not
+  // reconstructable) but we keep the task metadata around until the task is
+  // complete.
+  // 1. Dynamic return ref returned directly (so it is not reconstructable) and
+  // returned to caller.
+  // 2. Generator ref goes out of scope.
+  // 3. Dynamic return ref goes out of scope.
+  // 3. Task completes -> task metadata GCed.
+  //
+  // Submit task.
+  manager_.AddPendingTask(addr_, spec, "", 1);
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  // Dynamic return ref created and returned to caller.
+  dynamic_return_id = ReportGeneratorItemReturns(generator_id, 0, /*set_in_plasma=*/false);
+  reference_counter_->AddLocalReference(dynamic_return_id, "");
+  // Two refs in scope: generator ref and one dynamic return.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+  // Generator ref out of scope.
+  reference_counter_->RemoveLocalReference(generator_id, &removed);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+  // Dynamic return ref out of scope.
+  reference_counter_->RemoveLocalReference(dynamic_return_id, &removed);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+  // Task completed.
+  CompletePendingStreamingTask(spec, addr_, 1, /*set_in_plasma=*/true);
+  // Task metadata deleted.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id)); }
+
+TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
+  /**
+   * Test that after generator out of scope and task complete, all subsequent
+   * Writes are ignored.
+   * CREATE DELETE WRITE READ
+   */
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  auto dynamic_return_id = spec.ReturnId(1);
+  std::vector<ObjectID> removed;
+
+  // Submit task.
+  manager_.AddPendingTask(addr_, spec, "", 1);
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  // Generator ref out of scope.
+  reference_counter_->RemoveLocalReference(generator_id, &removed);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  // Task completed.
+  CompletePendingStreamingTask(spec, addr_, 1, /*set_in_plasma=*/true);
+  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
+
+  // Dynamic return ref created.
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  // Ignored because generator already out of scope and task complete.
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
 }
 
-// TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
-//  /**
-//   * Test that when DELETE is called, all subsequent Writes are ignored.
-//   * CREATE DELETE WRITE READ
-//   */
-//  auto spec =
-//      CreateTaskHelper(1, {}, /*dynamic_returns=*/true,
-//      /*is_streaming_generator=*/true);
-//  auto generator_id = spec.ReturnId(0);
-//  rpc::Address caller_address;
-//  manager_.AddPendingTask(caller_address, spec, "", 0);
-//  manager_.DelObjectRefStream(generator_id);
-//  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
-//
-//  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
-//  auto data = GenerateRandomBuffer();
-//
-//  // WRITE
-//  auto req = GetIntermediateTaskReturn(
-//      /*idx*/ 0,
-//      generator_id,
-//      /*dynamic_return_id*/ dynamic_return_id,
-//      /*data*/ data,
-//      /*set_in_plasma*/ false);
-//  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
-//      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
-//  CompletePendingStreamingTask(spec, caller_address, 0);
-//}
-//
-// TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
-//  /**
-//   * Test the basic cases (write -> read).
-//   * CREATE WRITE, WRITE, WRITEEoF, READ, READ, KeyERROR DELETE
-//   */
-//  auto spec =
-//      CreateTaskHelper(1, {}, /*dynamic_returns=*/true,
-//      /*is_streaming_generator=*/true);
-//  auto generator_id = spec.ReturnId(0);
-//  rpc::Address caller_address;
-//  manager_.AddPendingTask(caller_address, spec, "", 0);
-//
-//  auto last_idx = 2;
-//  std::vector<ObjectID> dynamic_return_ids;
-//  std::vector<std::shared_ptr<Buffer>> datas;
-//  for (auto i = 0; i < last_idx; i++) {
-//    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
-//    dynamic_return_ids.push_back(dynamic_return_id);
-//    auto data = GenerateRandomBuffer();
-//    datas.push_back(data);
-//
-//    auto req = GetIntermediateTaskReturn(
-//        /*idx*/ i,
-//        generator_id,
-//        /*dynamic_return_id*/ dynamic_return_id,
-//        /*data*/ data,
-//        /*set_in_plasma*/ false);
-//    // WRITE * 2
-//    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
-//        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
-//  }
-//
-//  // Finish the task.
-//  rpc::PushTaskReply reply;
-//  auto return_object = reply.add_return_objects();
-//  return_object->set_object_id(generator_id.Binary());
-//  auto data = GenerateRandomBuffer();
-//  return_object->set_data(data->Data(), data->Size());
-//  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
-//
-//  // Verify PeekObjectRefStream is idempotent and doesn't consume indexes.
-//  for (auto i = 0; i < 10; i++) {
-//    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
-//    ASSERT_EQ(obj_id, dynamic_return_ids[0]);
-//  }
-//
-//  ObjectID obj_id;
-//  for (auto i = 0; i < last_idx; i++) {
-//    // READ * 2
-//    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-//    ASSERT_TRUE(status.ok());
-//    ASSERT_EQ(obj_id, dynamic_return_ids[i]);
-//  }
-//  // READ (EoF)
-//  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-//  ASSERT_TRUE(status.IsObjectRefEndOfStream());
-//  // DELETE
-//  manager_.DelObjectRefStream(generator_id);
-//}
-//
+TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
+  /**
+   * Test the basic cases (write -> read).
+   * CREATE WRITE, WRITE, WRITEEoF, READ, READ, KeyERROR DELETE
+   */
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true,
+      /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto last_idx = 2;
+  std::vector<ObjectID> dynamic_return_ids;
+  std::vector<std::shared_ptr<Buffer>> datas;
+  for (auto i = 0; i < last_idx; i++) {
+    auto dynamic_return_id = ReportGeneratorItemReturns(generator_id, i, /*set_in_plasma=*/false);
+    dynamic_return_ids.push_back(dynamic_return_id);
+  }
+
+  CompletePendingStreamingTask(spec, addr_, 2, /*set_in_plasma=*/false);
+
+  // Verify PeekObjectRefStream is idempotent and doesn't consume indexes.
+  for (auto i = 0; i < 10; i++) {
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_EQ(obj_id, dynamic_return_ids[0]);
+  }
+
+  ObjectID obj_id;
+  for (auto i = 0; i < last_idx; i++) {
+    // READ * 2
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(obj_id, dynamic_return_ids[i]);
+  }
+  // READ (EoF)
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+
+  // DELETE
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+}
+
 // TEST_F(TaskManagerTest, TestPeekObjectReady) {
 //  auto spec =
 //      CreateTaskHelper(1, {}, /*dynamic_returns=*/true,
