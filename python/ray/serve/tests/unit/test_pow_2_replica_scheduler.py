@@ -42,7 +42,8 @@ class FakeReplicaWrapper(ReplicaWrapper):
         max_ongoing_requests: int = DEFAULT_MAX_ONGOING_REQUESTS,
     ):
         self._replica_id = ReplicaID(
-            unique_id=replica_unique_id, deployment_id=DeploymentID(name="TEST_DEPLOYMENT")
+            unique_id=replica_unique_id,
+            deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
         )
         self._node_id = node_id
         self._availability_zone = availability_zone
@@ -1377,18 +1378,22 @@ async def test_queue_len_cache():
         staleness_timeout_s=staleness_timeout_s, get_curr_time_s=TIMER.time
     )
 
-    d_id=DeploymentID(name="TEST_DEPLOYMENT")
+    d_id = DeploymentID(name="TEST_DEPLOYMENT")
     replica_id_1 = ReplicaID(
-        "r1", deployment_id=d_id,
+        "r1",
+        deployment_id=d_id,
     )
     replica_id_2 = ReplicaID(
-        "r2", deployment_id=d_id,
+        "r2",
+        deployment_id=d_id,
     )
     replica_id_3 = ReplicaID(
-        "r3", deployment_id=d_id,
+        "r3",
+        deployment_id=d_id,
     )
     replica_id_4 = ReplicaID(
-        "r4", deployment_id=d_id,
+        "r4",
+        deployment_id=d_id,
     )
 
     # Get nonexistent key.
@@ -1443,7 +1448,7 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
     r1 = FakeReplicaWrapper("r1")
     s.update_replicas([r1])
-    s.replica_queue_len_cache.update("r1", 0)
+    s.replica_queue_len_cache.update(r1.replica_id, 0)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)

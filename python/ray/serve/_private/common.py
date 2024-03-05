@@ -73,26 +73,21 @@ class ReplicaID:
             deployment_id=DeploymentID(name=deployment_name, app_name=app_name),
         )
 
+    def __repr__(self) -> str:
+        return str(self)
+
     def __str__(self) -> str:
         """Returns a human-readable string.
 
         This is used in user-facing log messages, so take care when updating it.
         """
-        if self.deployment_id.app_name:
-            return (
-                "Replica("
-                f"id='{self.unique_id}', "
-                f"deployment='{self.deployment_id.name}', "
-                f"app='{self.deployment_id.app_name}'"
-                ")"
-            )
+        s = f"Replica(id='{self.unique_id}', deployment='{self.deployment_id.name}'"
+        if (self.deployment_id.app_name and self.deployment_id.app_name != SERVE_DEFAULT_APP_NAME):
+            s += f", app='{self.deployment_id.app_name}')"
         else:
-            return (
-                "Replica("
-                f"id='{self.unique_id}', "
-                f"deployment='{self.deployment_id.name}'"
-                ")"
-            )
+            s += ")"
+
+        return s
 
 
 NodeId = str
