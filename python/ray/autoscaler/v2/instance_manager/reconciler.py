@@ -660,14 +660,16 @@ class Reconciler:
                 ray_nodes_by_cloud_instance_id[n.instance_id] = n
             else:
                 if autoscaling_config.provider == Provider.READ_ONLY:
-                    # We will use the node id as the cloud instance id for read-only provider.
+                    # We will use the node id as the cloud instance id for read-only
+                    # provider.
                     ray_nodes_by_cloud_instance_id[binary_to_hex(n.node_id)] = n
                 else:
                     # This should only happen to a ray node that's not managed by us.
                     logger.warning(
                         f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
-                        "This only happens to a ray node that's not managed by autoscaler. "
-                        "If not, please file a bug at https://github.com/ray-project/ray"
+                        "This only happens to a ray node not managed by autoscaler. "
+                        "If not, please file a bug at "
+                        "https://github.com/ray-project/ray"
                     )
 
         for cloud_instance_id, ray_node in ray_nodes_by_cloud_instance_id.items():
@@ -1497,7 +1499,8 @@ class Reconciler:
                 node_kind=cloud_instance.node_kind,
                 instance_type=cloud_instance.node_type,
                 details=(
-                    f"allocated unmanaged cloud instance {cloud_instance.cloud_instance_id} "
+                    "allocated unmanaged cloud instance :"
+                    f"{cloud_instance.cloud_instance_id} "
                     f"({NodeKind.Name(cloud_instance.node_kind)}) from cloud provider"
                 ),
                 upsert=True,

@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
-from ray._raylet import GcsClient
 from ray._private.utils import binary_to_hex
+from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeAvailabilityRecord,
@@ -45,7 +45,7 @@ from ray.core.generated.autoscaler_pb2 import (
 from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount as ResourceRequestByCountProto,
 )
-from ray.experimental.internal_kv import _internal_kv_get, internal_kv_get_gcs_client
+from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:

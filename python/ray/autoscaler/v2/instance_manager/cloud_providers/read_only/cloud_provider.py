@@ -12,7 +12,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.autoscaler.v2.utils import is_head_node
-from ray.core.generated.autoscaler_pb2 import GetClusterResourceStateReply, NodeStatus
+from ray.core.generated.autoscaler_pb2 import NodeStatus
 
 
 class ReadOnlyProvider(ICloudInstanceProvider):
