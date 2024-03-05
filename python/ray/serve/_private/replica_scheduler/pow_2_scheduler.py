@@ -252,7 +252,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         if self._replica_id_set != new_replica_id_set:
             logger.info(
-                f"Got updated replicas for {repr(self._deployment_id)}: "
+                f"Got updated replicas for {self._deployment_id}: "
                 f"{new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
@@ -345,7 +345,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 while len(self._replicas) == 0:
                     logger.info(
                         "No replicas are currently available for "
-                        f"{repr(self._deployment_id)}.",
+                        f"{self._deployment_id}.",
                         extra={"log_to_stderr": False},
                     )
                     self._replicas_updated_event.clear()

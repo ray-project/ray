@@ -1311,7 +1311,7 @@ class DeploymentState:
     def recover_target_state_from_checkpoint(
         self, target_state_checkpoint: DeploymentTargetState
     ):
-        logger.info(f"Recovering target state for {repr(self._id)} from checkpoint.")
+        logger.info(f"Recovering target state for {self._id} from checkpoint.")
         self._target_state = target_state_checkpoint
         self._deployment_scheduler.on_deployment_deployed(
             self._id, self._target_state.info.replica_config
@@ -1327,7 +1327,7 @@ class DeploymentState:
             "recovering current state from replica actor names."
         )
         logger.info(
-            f"Recovering current state for {repr(self._id)} "
+            f"Recovering current state for {self._id} "
             f"from {len(replica_actor_names)} live actors."
         )
         # All current states use default value, only attach running replicas.
@@ -1485,7 +1485,7 @@ class DeploymentState:
             trigger=DeploymentStatusInternalTrigger.DELETE
         )
         logger.info(
-            f"Deleting {repr(self._id)}",
+            f"Deleting {self._id}",
             extra={"log_to_stderr": False},
         )
 
@@ -1627,7 +1627,7 @@ class DeploymentState:
             )
 
         logger.info(
-            f"Deploying new version of {repr(self._id)} "
+            f"Deploying new version of {self._id} "
             f"(initial target replicas: {target_num_replicas})."
         )
         self._replica_constructor_retry_counter = 0
@@ -1694,7 +1694,7 @@ class DeploymentState:
             return
 
         logger.info(
-            f"Autoscaling {repr(self._id)} to {decision_num_replicas} replicas. "
+            f"Autoscaling {self._id} to {decision_num_replicas} replicas. "
             f"Current num requests: {total_num_requests}, "
             f"current num running replicas: {num_running_replicas}."
         )
@@ -1811,13 +1811,13 @@ class DeploymentState:
 
         if code_version_changes > 0:
             logger.info(
-                f"Stopping {code_version_changes} replicas of {repr(self._id)} "
+                f"Stopping {code_version_changes} replicas of {self._id} "
                 "with outdated versions."
             )
 
         if reconfigure_changes > 0:
             logger.info(
-                f"Updating {reconfigure_changes} replicas of {repr(self._id)} "
+                f"Updating {reconfigure_changes} replicas of {self._id} "
                 "with outdated deployment configs."
             )
             # Record user config lightweight update
@@ -1933,7 +1933,7 @@ class DeploymentState:
 
                 self._last_retry = time.time()
                 added_replicas = f"{to_add} replica{'s' if to_add > 1 else ''}"
-                logger.info(f"Adding {added_replicas} to {repr(self._id)}.")
+                logger.info(f"Adding {added_replicas} to {self._id}.")
                 for _ in range(to_add):
                     replica_name = ReplicaName(
                         self.app_name, self.deployment_name, get_random_string()
@@ -1952,7 +1952,7 @@ class DeploymentState:
         elif delta_replicas < 0:
             to_remove = -delta_replicas
             removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
-            logger.info(f"Removing {removed_replicas} from {repr(self._id)}.")
+            logger.info(f"Removing {removed_replicas} from {self._id}.")
             downscale = DeploymentDownscaleRequest(
                 deployment_id=self._id, num_to_stop=to_remove
             )
