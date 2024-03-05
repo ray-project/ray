@@ -352,6 +352,12 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
+  if (is_shutdown_) {
+    RAY_LOG(INFO) << "Ignoring request for new worker because the core worker is "
+                     "shutting down.";
+    return;
+  }
+
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   const size_t kMaxPendingLeaseRequestsPerSchedulingCategory =

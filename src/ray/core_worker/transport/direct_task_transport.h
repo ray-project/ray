@@ -142,6 +142,12 @@ class CoreWorkerDirectTaskSubmitter {
   /// we avoid double counting backlogs in autoscaler.
   void ReportWorkerBacklog();
 
+  // Stops. After this, the class won't retry any scheduling tasks.
+  void Stop() {
+    absl::MutexLock lock(&mu_);
+    is_shutdown_ = true;
+  }
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -379,6 +385,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   int64_t num_tasks_submitted_ = 0;
   int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;
+
+  bool is_shutdown_ ABSL_GUARDED_BY(mu_) = false;
 };
 
 }  // namespace core

@@ -685,6 +685,8 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
+  direct_task_submitter_->Stop();
+
   task_event_buffer_->Stop();
 
   if (gcs_client_) {
