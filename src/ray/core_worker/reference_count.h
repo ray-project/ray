@@ -192,12 +192,19 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Add an owned object that was dynamically created by a task as the task
   /// executes. These are objects that were created by a (streaming generator)
-  /// task that we called.
+  /// task that we called. This method is idempotent.
   ///
   /// Initially, the object will get added with no local references because the
-  /// caller has not yet consumed it from the generator. Intially, the object
-  /// will stay in scope because we register it as contained in the generator
-  /// object. Once the caller consumes the ObjectRef from the generator, a
+  /// caller has not yet consumed it from the generator. If the generator
+  /// object ref is in scope at this time, then the object will stay in scope
+  /// even though it ha sno local references, because we register it as
+  /// contained in the generator object.
+  ///
+  /// If the generator object ref is already out of scope, then the inner
+  /// object ref is out of scope. Then, this function will immediately delete
+  /// the object's reference and release the object's lineage.
+  ///
+  /// Once the caller consumes the ObjectRef from the generator, a
   /// local reference is added through the normal ref counting protocol. Thus,
   /// the object will go out of scope once the generator object ref has gone
   /// out of scope AND, if the object's ref was consumed by the caller, once
@@ -208,7 +215,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// created object ref. This should be an object that we own, and we will
   /// update its ref count info to show that it contains the dynamically
   /// created ObjectID.
-  void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
+  void AddDynamicReturnAndReleaseLineageIfOutOfScope(const ObjectID &object_id,
+                                                     const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.

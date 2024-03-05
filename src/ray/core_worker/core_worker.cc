@@ -3524,7 +3524,8 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
       // "streaming".
       task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
     } else {
-      reference_counter_->AddDynamicReturn(object_id, generator_id);
+      reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(object_id,
+                                                                        generator_id);
     }
   }
 
@@ -3663,7 +3664,8 @@ void CoreWorker::AddSpilledObjectLocationOwner(
       // "streaming".
       task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, *generator_id);
     } else {
-      reference_counter_->AddDynamicReturn(object_id, *generator_id);
+      reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(object_id,
+                                                                        *generator_id);
     }
   }
 
@@ -3700,7 +3702,8 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
     } else {
       // The task is a generator and may not have finished yet. Add the internal
       // ObjectID so that we can update its location.
-      reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+      reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(
+          object_id, maybe_generator_id);
     }
     RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
   }

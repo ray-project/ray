@@ -516,18 +516,27 @@ bool TaskManager::IsFinished(const ObjectID &generator_id) const {
 }
 
 std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
-  ObjectID next_object_id;
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "PeekObjectRefStream API can be used only when the stream has been "
-         "created and not removed.";
-  const auto &result = stream_it->second.PeekNextItem();
+  std::pair<ObjectID, bool> result({ObjectID::Nil(), false});
+  bool inserted = false;
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    RAY_CHECK(stream_it != object_ref_streams_.end())
+        << "PeekObjectRefStream API can be used only when the stream has been "
+           "created and not removed.";
+    result = stream_it->second.PeekNextItem();
 
-  // Temporarily own the ref since the corresponding reference is probably
-  // not reported yet.
-  TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
-                                                   generator_id);
+    // Temporarily own the ref since the corresponding reference is probably
+    // not reported yet.
+    inserted = stream_it->second.TemporarilyInsertToStreamIfNeeded(result.first);
+  }
+
+  // Do not hold the lock while calling ref counter methods.
+  if (inserted) {
+    reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(result.first,
+                                                                      generator_id);
+  }
+
   return result;
 }
 
@@ -539,21 +548,24 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
 
 void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                                   int64_t end_of_stream_index) {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   ObjectID last_object_id;
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
 
-  auto stream_it = object_ref_streams_.find(generator_id);
-  if (stream_it == object_ref_streams_.end()) {
-    // Stream has been already deleted. Do not handle it.
-    return;
+    auto stream_it = object_ref_streams_.find(generator_id);
+    if (stream_it == object_ref_streams_.end()) {
+      // Stream has been already deleted. Do not handle it.
+      return;
+    }
+
+    stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
+                   << ". Last object id: " << last_object_id;
   }
 
-  stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
-                 << ". Last object id: " << last_object_id;
-
   if (!last_object_id.IsNil()) {
-    reference_counter_->AddDynamicReturn(last_object_id, generator_id);
+    reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(last_object_id,
+                                                                      generator_id);
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
     // Put a dummy object at the end of the stream. We don't need to check if
     // the object should be stored in plasma because the end of the stream is a
@@ -591,11 +603,21 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
   }
 
+  // Do not hold the lock while calling ref counter methods.
+  for (const auto &return_object : request.dynamic_return_objects()) {
+    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+    reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(object_id,
+                                                                      generator_id);
+    // When an object is reported, the object is ready to be fetched.
+    reference_counter_->UpdateObjectReady(object_id);
+  }
+
   // NOTE: If it is the first execution (e.g., CompletePendingTask has never been called),
   // it is always empty.
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  size_t num_objects_written = 0;
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
@@ -604,23 +626,14 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // TODO(sang): Support the regular return values as well.
-  size_t num_objects_written = 0;
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
-
-    // If the ref was written to a stream, we should also
-    // own the dynamically generated task return.
-    // NOTE: If we call this method while holding a lock, it can deadlock.
-    if (index_not_used_yet) {
-      reference_counter_->AddDynamicReturn(object_id, generator_id);
-      num_objects_written += 1;
+    if (stream_it->second.InsertToStream(object_id, item_index)) {
+      num_objects_written++;
     }
-    // When an object is reported, the object is ready to be fetched.
-    reference_counter_->UpdateObjectReady(object_id);
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
@@ -656,29 +669,24 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
                                                            const ObjectID &generator_id) {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  return TemporarilyOwnGeneratorReturnRefIfNeededInternal(object_id, generator_id);
-}
+  bool inserted = false;
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    if (stream_it == object_ref_streams_.end()) {
+      return false;
+    }
 
-bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(
-    const ObjectID &object_id, const ObjectID &generator_id) {
-  bool inserted_to_stream = false;
-  auto stream_it = object_ref_streams_.find(generator_id);
-  if (stream_it == object_ref_streams_.end()) {
-    return false;
+    auto &stream = stream_it->second;
+    inserted = stream.TemporarilyInsertToStreamIfNeeded(object_id);
   }
 
-  auto &stream = stream_it->second;
-  inserted_to_stream = stream.TemporarilyInsertToStreamIfNeeded(object_id);
-
-  // We shouldn't hold a lock when calling refernece counter API.
-  if (inserted_to_stream) {
-    RAY_LOG(DEBUG) << "Added streaming ref " << object_id;
-    reference_counter_->AddDynamicReturn(object_id, generator_id);
-    return true;
+  // Do not hold the lock while calling ref counter methods.
+  if (inserted) {
+    reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(object_id,
+                                                                      generator_id);
   }
-
-  return false;
+  return inserted;
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -700,7 +708,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     for (const auto &return_object : reply.dynamic_return_objects()) {
       const auto object_id = ObjectID::FromBinary(return_object.object_id());
       if (first_execution) {
-        reference_counter_->AddDynamicReturn(object_id, generator_id);
+        reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(object_id,
+                                                                          generator_id);
         dynamic_return_ids.push_back(object_id);
       }
       if (!HandleTaskReturn(object_id,
@@ -727,7 +736,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   TaskSpecification spec;
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;
-  ObjectID generator_id_to_remove;
+  std::vector<ObjectID> streaming_generator_return_ids;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -760,9 +769,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                          << " has " << spec.NumStreamingGeneratorReturns()
                          << " return objects.";
           for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
+            const auto &return_id = ObjectID::FromBinary(return_id_info.object_id());
+            streaming_generator_return_ids.push_back(return_id);
             if (return_id_info.is_plasma_object()) {
-              it->second.reconstructable_return_ids.insert(
-                  ObjectID::FromBinary(return_id_info.object_id()));
+              it->second.reconstructable_return_ids.insert(return_id);
             }
           }
         }
@@ -817,18 +827,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
       }
     } else {
-      if (it->second.spec.ReturnsDynamic()) {
-        generator_id_to_remove = it->second.spec.ReturnId(0);
-      }
       RAY_LOG(DEBUG) << "Erase task " << it->first;
       submissible_tasks_.erase(it);
     }
   }
-
-  if (!generator_id_to_remove.IsNil()) {
-    DelObjectRefStream(generator_id_to_remove);
-  }
-
 
   // If it is a streaming generator, mark the end of stream since the task is finished.
   // We handle this logic here because the lock shouldn't be held while calling
@@ -838,6 +840,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (first_execution) {
       ObjectID last_ref_in_stream;
       MarkEndOfStream(generator_id, reply.streaming_generator_return_ids_size());
+      for (const auto &return_id : streaming_generator_return_ids) {
+        reference_counter_->AddDynamicReturnAndReleaseLineageIfOutOfScope(return_id,
+                                                                          generator_id);
+      }
     } else {
       // The end of the stream should already have been marked on the first
       // successful execution.
@@ -859,6 +865,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                            store_in_plasma_ids.count(generator_return_id));
         }
       }
+    }
+
+    // Generator ref and all of its returned refs are no longer in scope or
+    // reconstructible. Release the object ref stream along with the task
+    // metadata.
+    if (release_lineage) {
+      DelObjectRefStream(generator_id);
     }
   }
 
@@ -1186,7 +1199,8 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
       submissible_tasks_.erase(it);
     }
 
-    num_lineage_bytes_removed = total_lineage_footprint_bytes_prev - total_lineage_footprint_bytes_;
+    num_lineage_bytes_removed =
+        total_lineage_footprint_bytes_prev - total_lineage_footprint_bytes_;
   }
 
   if (!generator_id_to_remove.IsNil()) {

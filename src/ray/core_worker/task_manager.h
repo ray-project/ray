@@ -785,11 +785,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
-  bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
-                                                        const ObjectID &generator_id)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
-
   /// Delete the object ref stream.
   ///
   /// Once the stream is deleted, it will clean up all unconsumed
@@ -812,6 +807,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Used for reference counting objects.
   /// The task manager is responsible for managing all references related to
   /// submitted tasks (dependencies and return objects).
+  /// NOTE(swang): Do not hold mu_ when calling methods on the
+  /// ReferenceCounter. The ReferenceCounter can callback into TaskManager when
+  /// releasing lineage. This can cause a deadlock if TaskManager holds mu_
+  /// when calling ReferenceCounter methods.
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
   /// Mapping from a streaming generator task id -> object ref stream.

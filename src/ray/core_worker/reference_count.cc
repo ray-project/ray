@@ -210,33 +210,45 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
-void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
-                                        const ObjectID &generator_id) {
+void ReferenceCounter::AddDynamicReturnAndReleaseLineageIfOutOfScope(
+    const ObjectID &object_id, const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
+                 << " contained in generator object " << generator_id;
+
+  std::string call_site = "";
+  bool is_reconstructable = false;
+
   auto outer_it = object_id_refs_.find(generator_id);
-  if (outer_it == object_id_refs_.end()) {
+  if (outer_it != object_id_refs_.end()) {
+    RAY_CHECK(outer_it->second.owned_by_us);
+    RAY_CHECK(outer_it->second.owner_address.has_value());
+    call_site = outer_it->second.call_site;
+    is_reconstructable = outer_it->second.is_reconstructable;
+  }
+
+  RAY_UNUSED(AddOwnedObjectInternal(object_id,
+                                    {},
+                                    rpc_address_,
+                                    call_site,
+                                    /*object_size=*/-1,
+                                    is_reconstructable,
+                                    /*add_local_ref=*/false,
+                                    absl::optional<NodeID>()));
+
+  if (outer_it != object_id_refs_.end()) {
+    AddNestedObjectIdsInternal(generator_id, {object_id}, rpc_address_);
+  } else {
     // Outer object already went out of scope. Either:
     // 1. The inner object was never deserialized and has already gone out of
     // scope.
     // 2. The inner object was deserialized and we already added it as a
     // dynamic return.
     // Either way, we shouldn't add the inner object to the ref count.
-    return;
+    auto it = object_id_refs_.find(object_id);
+    RAY_CHECK(it != object_id_refs_.end());
+    DeleteReferenceInternal(it, nullptr);
   }
-  RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
-                 << " contained in generator object " << generator_id;
-  RAY_CHECK(outer_it->second.owned_by_us);
-  RAY_CHECK(outer_it->second.owner_address.has_value());
-  rpc::Address owner_address(outer_it->second.owner_address.value());
-  RAY_UNUSED(AddOwnedObjectInternal(object_id,
-                                    {},
-                                    owner_address,
-                                    outer_it->second.call_site,
-                                    /*object_size=*/-1,
-                                    outer_it->second.is_reconstructable,
-                                    /*add_local_ref=*/false,
-                                    absl::optional<NodeID>()));
-  AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
 bool ReferenceCounter::AddOwnedObjectInternal(
