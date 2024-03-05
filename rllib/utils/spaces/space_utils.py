@@ -8,27 +8,20 @@ from typing import Any, List, Optional, Union
 
 @DeveloperAPI
 class BatchedNdArray(np.ndarray):
-    """A simple ndarray-wrapped adding the _has_batch_dim boolean flag.
+    """A ndarray-wrapper the usage of which indicates that there a batch dim exists.
 
-    This is such that our `batch` utility can distinguish between having to
+    This is such that our `batch()` utility can distinguish between having to
     stack n individual batch items (each one w/o any batch dim) vs having to
     concatenate n already batched items (each one possibly with a different batch
     dim, but definitely with some batch dim).
+
+    TODO (sven): Maybe replace this by a list-override instead.
     """
 
     def __new__(cls, input_array):
         # Use __new__ to create a new instance of our subclass.
         obj = np.asarray(input_array).view(cls)
-        # Set the _has_batch_dim property.
-        obj._has_batch_dim = True
         return obj
-
-    def __array_finalize__(self, obj):
-        # __array_finalize__ is called automatically when a new instance is created.
-        if obj is None:
-            return
-        # Copy or set the custom attribute from the parent object if it exists
-        self._has_batch_dim = getattr(obj, "_has_batch_dim", None)
 
 
 @DeveloperAPI
@@ -296,6 +289,8 @@ def batch(
     if not list_of_structs:
         raise ValueError("Input `list_of_structs` does not contain any items.")
 
+    # TODO (sven): Maybe replace this by a list-override (usage of which indicated
+    #  this method that concatenate should be used (not stack)).
     if individual_items_already_have_batch_dim == "auto":
         flat = tree.flatten(list_of_structs[0])
         individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)

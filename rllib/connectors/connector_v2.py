@@ -132,7 +132,7 @@ class ConnectorV2(abc.ABC):
         this parent method implementation untouched.
 
         Returns:
-            The new observation space (after data has passed through this ConenctorV2
+            The new observation space (after data has passed through this ConnectorV2
             piece).
         """
         return self.input_observation_space
@@ -466,6 +466,12 @@ class ConnectorV2(abc.ABC):
                 batch["test_col"],
                 [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
             )
+            # In a new column (test_col_2), store some already batched items.
+            # This way, you may avoid having to disassemble an already batched item
+            # (e.g. a numpy array of shape (10, 2)) into its individual items (e.g.
+            # split the array into a list of len=10) and then adding these individually.
+            # The performance gains may be quite large when providing already batched
+            # items (such as numpy arrays with a batch dim):
             ConnectorV2.add_n_batch_items(
                 batch,
                 "test_col_2",
@@ -473,11 +479,18 @@ class ConnectorV2(abc.ABC):
                 {"a": np.array([3, 5]), "b": np.array([4, 6])},
                 num_items=2,
             )
+            # Add more already batched items (this time with a different batch size)
+            ConnectorV2.add_n_batch_items(
+                batch,
+                "test_col_2",
+                {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
+                num_items=3,  # <- in this case, this must be the batch size
+            )
             check(
                 batch["test_col_2"],
                 [
-                    {"a": np.array(3), "b": np.array(4)},
-                    {"a": np.array(5), "b": np.array(6)},
+                    {"a": np.array([3, 5]), "b": np.array([4, 6])},
+                    {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
                 ],
             )
 
@@ -594,14 +607,6 @@ class ConnectorV2(abc.ABC):
             item_to_add=tree.map_structure(_tag, items_to_add),
             single_agent_episode=single_agent_episode,
         )
-
-    # @staticmethod
-    # def get_batch_item(batch, column, episode_id, agent_id, module_id):
-    #    if isinstance(batch[column], list):
-    #        assert agent_id is None and module_id is None
-    #        return batch[column][(episode_id,)]
-    #    else:
-    #        return batch[column][(episode_id, agent_id, module_id)]
 
     @staticmethod
     def foreach_batch_item_change_in_place(
