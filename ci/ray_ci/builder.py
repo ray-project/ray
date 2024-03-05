@@ -137,12 +137,7 @@ def build_docker(
     BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(
-            python_version,
-            p,
-            image_type,
-            architecture,
-            canonical_tag,
-            upload,
+            python_version, p, image_type, architecture, canonical_tag, upload
         ).run()
 
 
