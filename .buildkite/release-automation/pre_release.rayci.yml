@@ -39,3 +39,27 @@ steps:
       env:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "nightly"
+
+  - label: "Trigger Release nightly-3x test"
+    trigger: "release"
+    depends_on: check-commit-hash
+    if: build.env("DAY") == "monday" || build.env("DAY") == "wednesday" || build.env("DAY") == "friday"
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Nightly-3x test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly-3x"
+
+  - label: "Trigger Release weekly test"
+    trigger: "release"
+    depends_on: check-commit-hash
+    if: build.env("DAY") == "friday"
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Weekly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "weekly"
