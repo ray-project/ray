@@ -3,7 +3,6 @@ from typing import Any, List, Optional
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 
@@ -121,21 +120,16 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     single_agent_episode=sa_episode,
                 )
         # Extra model outputs (except for STATE_OUT, which will be handled by another
-        # default connector piece).
-        ref_sa_eps = (
-            episodes[0]
-            if isinstance(episodes[0], SingleAgentEpisode)
-            else next(iter(episodes[0].agent_episodes.values()))
-        )
-        for column in ref_sa_eps.extra_model_outputs.keys():
-            if (
-                column not in [Columns.STATE_IN, Columns.STATE_OUT]
-                and column not in data
-            ):
-                for sa_episode in self.single_agent_episode_iterator(
-                    episodes,
-                    agents_that_stepped_only=False,
-                ):
+        # default connector piece). Also, like with all the fields above, skip
+        # those that the user already seemed to have populated via custom connector
+        # pieces.
+        skip_columns = set(data.keys()) | {Columns.STATE_IN, Columns.STATE_OUT}
+        for sa_episode in self.single_agent_episode_iterator(
+            episodes,
+            agents_that_stepped_only=False,
+        ):
+            for column in sa_episode.extra_model_outputs.keys():
+                if column not in skip_columns:
                     self.add_n_batch_items(
                         data,
                         column,
