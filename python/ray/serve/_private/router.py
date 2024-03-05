@@ -5,12 +5,17 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    RequestMetadata,
+    RunningReplicaInfo,
+)
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
@@ -49,8 +54,8 @@ class RouterMetricsManager:
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
     ):
-        self._deployment_id = deployment_id
         self._handle_id = handle_id
+        self._deployment_id = deployment_id
         self._controller_handle = controller_handle
 
         # Exported metrics
@@ -66,7 +71,9 @@ class RouterMetricsManager:
         )
 
         # Track queries sent to replicas for the autoscaling algorithm.
-        self.num_requests_sent_to_replicas = defaultdict(int)
+        self.num_requests_sent_to_replicas: DefaultDict[ReplicaID, int] = defaultdict(
+            int
+        )
         # We use Ray object ref callbacks to update state when tracking
         # number of requests running on replicas. The callbacks will be
         # called from a C++ thread into the router's async event loop,
@@ -115,9 +122,7 @@ class RouterMetricsManager:
         in memory as the deployment upscales and downscales over time.
         """
 
-        running_replica_set = {
-            replica.replica_id.unique_id for replica in running_replicas
-        }
+        running_replica_set = {replica.replica_id for replica in running_replicas}
         with self._queries_lock:
             self.num_requests_sent_to_replicas = defaultdict(
                 int,
@@ -189,11 +194,11 @@ class RouterMetricsManager:
         self.num_queued_requests -= 1
         self.num_queued_requests_gauge.set(self.num_queued_requests)
 
-    def inc_num_running_requests_for_replica(self, replica_id: str):
+    def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] += 1
 
-    def process_finished_request(self, replica_id: str, *args):
+    def process_finished_request(self, replica_id: ReplicaID, *args):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
 
@@ -395,7 +400,7 @@ class Router:
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], str]:
+    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], ReplicaID]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the

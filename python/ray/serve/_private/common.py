@@ -22,6 +22,7 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.grpc_util import RayServegRPCContext
 
+REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
 @dataclass(frozen=True)
 class DeploymentID:
@@ -39,24 +40,23 @@ class DeploymentID:
 class ReplicaID:
     unique_id: str
     deployment_id: DeploymentID
-    full_id_str_prefix: str = "SERVE_REPLICA::"
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"
         if self.deployment_id.app_name:
             s = f"{self.deployment_id.app_name}#{s}"
 
-        return f"{self.full_id_str_prefix}{s}"
+        return f"{REPLICA_ID_FULL_ID_STR_PREFIX}{s}"
 
-    @classmethod
-    def is_full_id_str(cls, s: str) -> bool:
-        return s.startswith(cls.full_id_str_prefix)
+    @staticmethod
+    def is_full_id_str(s: str) -> bool:
+        return s.startswith(REPLICA_ID_FULL_ID_STR_PREFIX)
 
     @classmethod
     def from_full_id_str(cls, s: str):
         assert cls.is_full_id_str(s)
 
-        parsed = s[len(cls.full_id_str_prefix) :].split("#")
+        parsed = s[len(REPLICA_ID_FULL_ID_STR_PREFIX) :].split("#")
         if len(parsed) == 3:
             app_name, deployment_name, unique_id = parsed
         elif len(parsed) == 2:
@@ -82,7 +82,10 @@ class ReplicaID:
         This is used in user-facing log messages, so take care when updating it.
         """
         s = f"Replica(id='{self.unique_id}', deployment='{self.deployment_id.name}'"
-        if (self.deployment_id.app_name and self.deployment_id.app_name != SERVE_DEFAULT_APP_NAME):
+        if (
+            self.deployment_id.app_name
+            and self.deployment_id.app_name != SERVE_DEFAULT_APP_NAME
+        ):
             s += f", app='{self.deployment_id.app_name}')"
         else:
             s += ")"

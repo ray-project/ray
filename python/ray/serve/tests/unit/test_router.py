@@ -30,11 +30,11 @@ from ray.serve.exceptions import BackPressureError
 
 
 class FakeObjectRefOrGen:
-    def __init__(self, replica_id: str):
+    def __init__(self, replica_id: ReplicaID):
         self._replica_id = replica_id
 
     @property
-    def replica_id(self) -> str:
+    def replica_id(self) -> ReplicaID:
         return self._replica_id
 
 
@@ -51,7 +51,7 @@ class FakeObjectRefGen(FakeObjectRefOrGen):
 class FakeReplica(ReplicaWrapper):
     def __init__(
         self,
-        replica_id: str,
+        replica_id: ReplicaID,
         *,
         queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
         is_cross_language: bool = False
@@ -61,7 +61,7 @@ class FakeReplica(ReplicaWrapper):
         self._queue_len_info = queue_len_info
 
     @property
-    def replica_id(self) -> str:
+    def replica_id(self) -> ReplicaID:
         return self._replica_id
 
     @property
@@ -187,7 +187,10 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
@@ -200,7 +203,7 @@ class TestAssignRequest:
             assert isinstance(obj_ref, FakeObjectRefGen)
         else:
             assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == "test-replica-1"
+        assert obj_ref.replica_id == r1_id
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -222,8 +225,11 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
         replica = FakeReplica(
-            "test-replica-1",
+            r1_id,
             queue_len_info=ReplicaQueueLengthInfo(
                 accepted=True, num_ongoing_requests=10
             ),
@@ -237,11 +243,11 @@ class TestAssignRequest:
         )
         obj_ref_gen = await router.assign_request(request_metadata)
         assert isinstance(obj_ref_gen, FakeObjectRefGen)
-        assert obj_ref_gen.replica_id == "test-replica-1"
+        assert obj_ref_gen.replica_id == r1_id
 
         if router._enable_queue_len_cache:
             assert (
-                fake_replica_scheduler.replica_queue_len_cache.get("test-replica-1")
+                fake_replica_scheduler.replica_queue_len_cache.get(r1_id)
                 == 10
             )
 
@@ -265,15 +271,22 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
         replica1 = FakeReplica(
-            "test-replica-1",
+            r1_id,
             queue_len_info=ReplicaQueueLengthInfo(
                 accepted=False, num_ongoing_requests=10
             ),
         )
         fake_replica_scheduler.set_replica_to_return(replica1)
+
+        r2_id = ReplicaID(
+            unique_id="test-replica-2", deployment_id=DeploymentID(name="test")
+        )
         replica2 = FakeReplica(
-            "test-replica-2",
+            r2_id,
             queue_len_info=ReplicaQueueLengthInfo(
                 accepted=True, num_ongoing_requests=20
             ),
@@ -287,15 +300,15 @@ class TestAssignRequest:
         )
         obj_ref = await router.assign_request(request_metadata)
         assert isinstance(obj_ref, FakeObjectRefGen)
-        assert obj_ref.replica_id == "test-replica-2"
+        assert obj_ref.replica_id == r2_id
 
         if router._enable_queue_len_cache:
             assert (
-                fake_replica_scheduler.replica_queue_len_cache.get("test-replica-1")
+                fake_replica_scheduler.replica_queue_len_cache.get(r1_id)
                 == 10
             )
             assert (
-                fake_replica_scheduler.replica_queue_len_cache.get("test-replica-2")
+                fake_replica_scheduler.replica_queue_len_cache.get(r2_id)
                 == 20
             )
 
@@ -309,7 +322,10 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
-        replica = FakeReplica("test-replica-1", is_cross_language=True)
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id, is_cross_language=True)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
@@ -318,7 +334,7 @@ class TestAssignRequest:
         )
         obj_ref = await router.assign_request(request_metadata)
         assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == "test-replica-1"
+        assert obj_ref.replica_id == r1_id
 
     async def test_max_queued_requests_no_limit(
         self, setup_router: Tuple[Router, FakeReplicaScheduler]
@@ -327,7 +343,10 @@ class TestAssignRequest:
         fake_replica_scheduler.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=-1))
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
@@ -349,7 +368,7 @@ class TestAssignRequest:
         assert all(
             [
                 isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
@@ -361,7 +380,10 @@ class TestAssignRequest:
         fake_replica_scheduler.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=5))
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
@@ -389,7 +411,7 @@ class TestAssignRequest:
         assert len(done) == 1
         obj_ref = await done.pop()
         assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == "test-replica-1"
+        assert obj_ref.replica_id == r1_id
 
         # One more task should be allowed to be queued.
         assign_request_tasks = list(pending) + [
@@ -404,7 +426,7 @@ class TestAssignRequest:
         assert all(
             [
                 isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
@@ -416,7 +438,10 @@ class TestAssignRequest:
         fake_replica_scheduler.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=5))
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
@@ -472,7 +497,7 @@ class TestAssignRequest:
         assert all(
             [
                 isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*done)
             ]
         )
@@ -489,7 +514,7 @@ class TestAssignRequest:
         assert all(
             [
                 isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
@@ -563,7 +588,11 @@ class TestRouterMetricsManager:
         # r2: number requests -> 0, remains on list of running replicas -> don't prune
         # r3: number requests > 0, removed from list of running replicas -> don't prune
         # r4: number requests > 0, remains on list of running replicas -> don't prune
-        replica_ids = [get_random_string() for _ in range(4)]
+        replica_ids = [
+            ReplicaID(
+                unique_id=f"test-replica-{i}", deployment_id=DeploymentID(name="test")
+            ) for i in range(1, 5)
+        ]
         r1, r2, r3, r4 = replica_ids
 
         # ri has i requests
