@@ -185,8 +185,8 @@ class TestMARLModule(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
-            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            checkpoint = module.save(path=tmpdir)
+            module2 = MultiAgentRLModule.from_checkpoint(checkpoint)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test", "test2", DEFAULT_POLICY_ID})

@@ -372,7 +372,9 @@ def get_ray_mosaic_dataset(mosaic_data_root):
 
 def get_ray_parquet_dataset(parquet_data_root, parallelism=None):
     if parallelism is not None:
-        ray_dataset = ray.data.read_parquet(parquet_data_root, parallelism=parallelism)
+        ray_dataset = ray.data.read_parquet(
+            parquet_data_root, override_num_blocks=parallelism
+        )
     else:
         ray_dataset = ray.data.read_parquet(parquet_data_root)
     ray_dataset = ray_dataset.map(decode_image_crop_and_flip)

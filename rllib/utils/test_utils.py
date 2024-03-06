@@ -154,7 +154,7 @@ def add_rllib_example_script_args(
         "--checkpoint-at-end",
         action="store_true",
         help=(
-            "Whether to create a checkpoint at the end of the experiment. "
+            "Whether to create a checkpoint at the very end of the experiment. "
             "Note that if --wandb-key is provided and --no-tune is NOT set, all "
             "checkpoints will automatically be uploaded to WandB."
         ),

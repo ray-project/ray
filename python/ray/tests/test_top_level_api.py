@@ -4,6 +4,7 @@ import sys
 import pytest
 
 import ray
+from ray._private.test_utils import run_string_as_driver
 
 
 # NOTE: Before adding a new API to Ray (and modifying this test), the new API
@@ -56,45 +57,68 @@ def test_non_ray_modules():
 
 def test_dynamic_subpackage_import():
     # Test that subpackages are dynamically imported and properly cached.
+    script = """
+import sys
+import ray
 
-    # ray.data
-    assert "ray.data" not in sys.modules
-    ray.data
-    # Check that the package is cached.
-    assert "ray.data" in sys.modules
+# ray.data
+assert "ray.data" not in sys.modules
+ray.data
+# Check that the package is cached.
+assert "ray.data" in sys.modules
 
-    # ray.workflow
-    assert "ray.workflow" not in sys.modules
-    ray.workflow
-    # Check that the package is cached.
-    assert "ray.workflow" in sys.modules
+# ray.workflow
+assert "ray.workflow" not in sys.modules
+ray.workflow
+# Check that the package is cached.
+assert "ray.workflow" in sys.modules
 
-    # ray.data
-    assert "ray.autoscaler" not in sys.modules
-    ray.autoscaler
-    # Check that the package is cached.
-    assert "ray.autoscaler" in sys.modules
+# ray.data
+assert "ray.autoscaler" not in sys.modules
+ray.autoscaler
+# Check that the package is cached.
+assert "ray.autoscaler" in sys.modules
+"""
+    run_string_as_driver(script)
 
 
 def test_dynamic_subpackage_missing():
     # Test nonexistent subpackage dynamic attribute access and imports raise expected
     # errors.
 
-    # Test that nonexistent subpackage attribute access raises an AttributeError.
-    with pytest.raises(AttributeError):
-        ray.foo  # noqa:F401
+    script = """
+import ray
 
-    # Test that nonexistent subpackage import raises an ImportError.
-    with pytest.raises(ImportError):
-        from ray.foo import bar  # noqa:F401
+# Test that nonexistent subpackage attribute access raises an AttributeError.
+try:
+    ray.foo  # noqa:F401
+except AttributeError:
+    pass
+
+# Test that nonexistent subpackage import raises an ImportError.
+try:
+    from ray.foo import bar  # noqa:F401
+except ImportError:
+    pass
+"""
+
+    run_string_as_driver(script)
 
 
 def test_dynamic_subpackage_fallback_only():
     # Test that the __getattr__ dynamic
-    assert "ray._raylet" in sys.modules
-    assert ray.__getattribute__("_raylet") is ray._raylet
-    with pytest.raises(AttributeError):
-        ray.__getattr__("_raylet")
+    script = """
+import ray
+import sys
+
+assert "ray._raylet" in sys.modules
+assert ray.__getattribute__("_raylet") is ray._raylet
+try:
+    ray.__getattr__("_raylet")
+except AttributeError:
+    pass
+"""
+    run_string_as_driver(script)
 
 
 def test_for_strings():

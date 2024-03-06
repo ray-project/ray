@@ -53,13 +53,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ray.rllib")
 
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
-RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
-RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
-RLMODULE_STATE_FILE_NAME = "module_state.pt"
-RLMODULE_SPEC_FILE_NAME = "rl_module_spec.pkl"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
 RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
+RLMODULE_SPEC_FILE_NAME = "rl_module_spec.pkl"
+RLMODULE_STATE_FILE_OR_DIR_NAME = "rl_module_state"
 
 
 @ExperimentalAPI
@@ -457,7 +455,7 @@ class RLModule(abc.ABC):
             json.dump(metadata, f)
 
         # Write the RLModule state to file.
-        self._save_state(path / RLMODULE_STATE_FILE_NAME)
+        self._save_state(path / (RLMODULE_STATE_FILE_OR_DIR_NAME + ".pt"))
         return Checkpoint(path)
 
     def restore(self, checkpoint_path: Union[str, pathlib.Path, Checkpoint]) -> None:
@@ -467,7 +465,7 @@ class RLModule(abc.ABC):
             checkpoint_path: The directory to load the checkpoint from.
         """
         path = self._checkpoint_to_path(checkpoint_path)
-        module_state_file = path / RLMODULE_STATE_FILE_NAME
+        module_state_file = path / (RLMODULE_STATE_FILE_OR_DIR_NAME + ".pt")
         self._load_state(module_state_file)
 
     @staticmethod
@@ -779,33 +777,6 @@ class RLModule(abc.ABC):
         `state`.
         """
         pass
-
-    @classmethod
-    def _from_metadata_file(cls, metadata_path: Union[str, pathlib.Path]) -> "RLModule":
-        """Constructs a module from the metadata.
-
-        Args:
-            metadata_path: The path to the metadata json file for a module.
-
-        Returns:
-            The module.
-        """
-        metadata_path = pathlib.Path(metadata_path)
-        if not metadata_path.exists():
-            raise ValueError(
-                "While constructing the module from the metadata, the "
-                f"metadata file was not found at {str(metadata_path)}"
-            )
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
-        module_spec_class = deserialize_type(metadata[RLMODULE_METADATA_SPEC_CLASS_KEY])
-        module_spec = module_spec_class.from_dict(metadata[RLMODULE_METADATA_SPEC_KEY])
-        module = module_spec.build()
-        return module
-
-    def _module_state_file_name(self) -> pathlib.Path:
-        """The name of the file to save the module state to while checkpointing."""
-        raise NotImplementedError
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""

@@ -12,7 +12,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import (
     RLModuleConfig,
     RLMODULE_SPEC_FILE_NAME,
-    RLMODULE_STATE_FILE_NAME,
+    RLMODULE_STATE_FILE_OR_DIR_NAME,
     RLMODULE_METADATA_FILE_NAME,
 )
 from ray.rllib.core.rl_module.torch import TorchRLModule
@@ -39,7 +39,6 @@ class TestRLModule(unittest.TestCase):
         self.assertIsInstance(module, TorchRLModule)
 
     def test_forward_train(self):
-
         bsize = 1024
         module = self._get_module()
 
@@ -64,9 +63,8 @@ class TestRLModule(unittest.TestCase):
         for param in module.parameters():
             self.assertIsNotNone(param.grad)
 
-    def test_forward(self):
-        """Test forward inference and exploration of"""
-
+    def test_forward_inference_and_exploration(self):
+        """Test forward inference and exploration methods of RLModule."""
         module = self._get_module()
 
         obs_shape = module.config.observation_space.shape
@@ -77,7 +75,7 @@ class TestRLModule(unittest.TestCase):
         module.forward_exploration({"obs": obs})
 
     def test_get_state_and_set_state(self):
-
+        """Test get/set_state() APIs of RLModule."""
         module = self._get_module()
         state = module.get_state()
         self.assertIsInstance(state, dict)
@@ -97,13 +95,15 @@ class TestRLModule(unittest.TestCase):
         check(state, state2_after)
 
     def test_save_restore_and_from_checkpoint(self):
+        """Test save/restore/from_checkpoint APIs of RLModule."""
         module = self._get_module()
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = module.save(path=tmpdir)
             # Make sure all expected files are in the directory.
             p = pathlib.Path(tmpdir)
             self.assertTrue(os.path.isfile(p / RLMODULE_SPEC_FILE_NAME))
-            self.assertTrue(os.path.isfile(p / RLMODULE_STATE_FILE_NAME))
+            # For torch, expect state to be stored in a single file.
+            self.assertTrue(os.path.isfile(p / RLMODULE_STATE_FILE_OR_DIR_NAME + ".pt"))
             self.assertTrue(os.path.isfile(p / RLMODULE_METADATA_FILE_NAME))
             new_module = DiscreteBCTorchModule.from_checkpoint(checkpoint)
 

@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Mapping, Tuple, Type, Union
 
 from packaging import version
 
-from ray.rllib.core.rl_module.rl_module import RLMODULE_STATE_FILE_NAME, RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
@@ -107,12 +107,13 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def get_state(self) -> Dict[str, Any]:
-        # Make sure reliably return numpy arrays from this method.
+        # Make sure to reliably return numpy arrays from this method.
         torch_state = self.state_dict()
         return convert_to_numpy(torch_state)
 
     @override(RLModule)
     def set_state(self, state: Dict[str, Any]) -> None:
+        # Make sure to convert possible numpy arrays in `state to torch tensors first.
         torch_state = convert_to_torch_tensor(state)
         self.load_state_dict(torch_state)
 

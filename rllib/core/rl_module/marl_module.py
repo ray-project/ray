@@ -346,7 +346,7 @@ class MultiAgentRLModule(RLModule):
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
         for module_id, module in self._rl_modules.items():
-            module.save_to_checkpoint(str(path / module_id))
+            module.save(path / module_id)
 
     @override(RLModule)
     def load_state(
