@@ -986,6 +986,10 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   bool first_execution = false;
   const auto store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
+  // Streaming generator metadata stays in scope as long as the task is
+  // retryable OR if any of the generator or returned ObjectRefs are still in
+  // scope. Set this ID to non-nil if both conditions are met so that we can GC
+  // the streaming generator metadata outside of the lock.
   ObjectID generator_id_to_remove;
   {
     absl::MutexLock lock(&mu_);
@@ -1010,12 +1014,14 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                : *ray_error_info));
     }
 
-    if (it->second.spec.ReturnsDynamic()) {
-      generator_id_to_remove = it->second.spec.ReturnId(0);
+    if (!spec.IsStreamingGenerator() || it->second.reconstructable_return_ids.empty()) {
+      if (spec.IsStreamingGenerator()) {
+        generator_id_to_remove = it->second.spec.ReturnId(0);
+      }
+      RAY_LOG(DEBUG) << "Erase task " << it->first;
+      submissible_tasks_.erase(it);
     }
 
-    RAY_LOG(DEBUG) << "Erase task " << it->first;
-    submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
     // Throttled logging of task failure errors.
