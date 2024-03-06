@@ -4874,9 +4874,9 @@ cdef class CoreWorker:
                 make_optional[ObjectIDIndexType](
                     <int>1 + <int>return_size + <int>generator_index))
 
-    def try_read_next_object_ref_stream(self, ObjectRef generator_id):
+    def try_read_next_object_ref_stream(self, ObjectRef generator_ref):
         cdef:
-            CObjectID c_generator_id = generator_id.native()
+            CObjectID c_generator_id = generator_ref.native()
             CObjectReference c_object_ref
 
         with nogil:
@@ -4888,8 +4888,14 @@ cdef class CoreWorker:
             c_object_ref.object_id(),
             c_object_ref.owner_address().SerializeAsString(),
             "",
-            # Already added when the ref is updated.
-            skip_adding_local_ref=True)
+            # Increment the local ref count for the dynamic return.
+            # NOTE(swang): This is only safe to do if we know that the ref is
+            # already in the ref count table, otherwise we won't have the
+            # ownership info for the object ref. In this case, we know that the
+            # ref is already already in the ref count table because it is
+            # nested inside generator_ref, which must be in scope to call this
+            # function.
+            skip_adding_local_ref=False)
 
     def is_object_ref_stream_finished(self, ObjectRef generator_id):
         cdef:
