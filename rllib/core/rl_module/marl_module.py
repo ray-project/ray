@@ -1,9 +1,16 @@
+import copy
 from dataclasses import dataclass, field
+import datetime
+import json
+import logging
+import os
 import pathlib
 import pprint
+import tempfile
 from typing import (
     Any,
     Callable,
+    Collection,
     Dict,
     KeysView,
     List,
@@ -14,15 +21,20 @@ from typing import (
     Union,
 )
 
+import ray
+import ray.cloudpickle as pickle
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     RLMODULE_METADATA_FILE_NAME,
+    RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY,
+    RLMODULE_METADATA_RAY_COMMIT_HASH_KEY,
+    RLMODULE_METADATA_RAY_VERSION_KEY,
+    RLMODULE_SPEC_FILE_NAME,
     SingleAgentRLModuleSpec,
 )
-
-# TODO (Kourosh): change this to module_id later to enforce consistency
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -32,8 +44,11 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, T
+from ray.train import Checkpoint
 from ray.util.annotations import PublicAPI
 
+
+logger = logging.getLogger("ray.rllib")
 
 # TODO (sven): This will replace all occurrences of DEFAULT_POLICY_ID on the new API
 #  stack.
@@ -335,21 +350,102 @@ class MultiAgentRLModule(RLModule):
         for module_id, state in state_dict.items():
             self._rl_modules[module_id].set_state(state)
 
+    @classmethod
     @override(RLModule)
-    def save_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Saves the weights of this MultiAgentRLModule to dir.
+    def from_checkpoint(
+        cls,
+        checkpoint: Union[str, pathlib.Path, Checkpoint],
+        *,
+        rl_module_spec: Optional["MultiAgentRLModuleSpec"] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
+    ) -> "MultiAgentRLModule":
+        path = MultiAgentRLModule._checkpoint_to_path(checkpoint)
+
+        # Load and log metadata.
+        metadata_path = path / RLMODULE_METADATA_FILE_NAME
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+            logger.info(f"Loading checkpoint with metadata: {metadata}")
+
+        # If not provided, try to load the spec (class, spaces, config).
+        if rl_module_spec is None:
+            marl_module_spec_file = path / RLMODULE_SPEC_FILE_NAME
+            with open(marl_module_spec_file, "rb") as f:
+                rl_module_spec = pickle.load(f)
+
+        rl_module_spec = rl_module_spec.filter_by_module_ids(module_ids)
+
+        # Build a new RLModule that matches the saved one.
+        marl_module: MultiAgentRLModule = rl_module_spec.build()
+        # Overwrite the new Module's state with the checkpointed one.
+        marl_module.restore(checkpoint_path=path)
+
+        return marl_module
+
+    @override(RLModule)
+    def save(
+        self,
+        path: Optional[Union[str, pathlib.Path]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
+    ) -> Checkpoint:
+        if path is not None:
+            os.makedirs(path, exist_ok=True)
+        else:
+            path = tempfile.mkdtemp()
+        path = pathlib.Path(path)
+
+        # Write the spec to file.
+        marl_module_spec = MultiAgentRLModuleSpec.from_module(
+            self, module_ids=module_ids
+        )
+        marl_module_spec = marl_module_spec.filter_by_module_ids(module_ids)
+        with open(path / RLMODULE_SPEC_FILE_NAME, "wb") as f:
+            pickle.dump(marl_module_spec, f)
+
+        # Write the metadata to file.
+        metadata = {
+            RLMODULE_METADATA_RAY_VERSION_KEY: ray.__version__,
+            RLMODULE_METADATA_RAY_COMMIT_HASH_KEY: ray.__commit__,
+            RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY: (
+                datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
+            ),
+        }
+        metadata_file = path / RLMODULE_METADATA_FILE_NAME
+        with open(metadata_file, "w") as f:
+            json.dump(metadata, f)
+
+        # Write the individual RLModule's checkpoints to file.
+        for module_id in marl_module_spec.module_specs.keys():
+            self[module_id].save(path / module_id)
+
+        return Checkpoint(path)
+
+    @override(RLModule)
+    def restore(
+        self,
+        checkpoint_path: Union[str, pathlib.Path, Checkpoint],
+        *,
+        module_ids: Optional[Collection[ModuleID]] = None,
+    ) -> None:
+        """Loads the state/weights of an RLModule from the directory dir.
 
         Args:
-            path: The path to the directory to save the checkpoint to.
-
+            checkpoint_path: The directory to load the checkpoint from.
         """
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        for module_id, module in self._rl_modules.items():
-            module.save(path / module_id)
+        path = self._checkpoint_to_path(checkpoint_path)
 
-    @override(RLModule)
-    def load_state(
+        module_ids = force_list(module_ids or list(self._rl_modules.keys()))
+        for module_id in module_ids:
+            if module_id not in self:
+                logger.warning(
+                    f"ModuleID {module_id} not found in MultiAgentRLModule ({self})! "
+                    f"Only contains: {set(self._rl_modules.keys())}."
+                )
+                continue
+            # self[module_id]._load_state(module_state_file)
+            self[module_id].restore(path / module_id)
+
+    def _load_state(
         self,
         path: Union[str, pathlib.Path],
         modules_to_load: Optional[Set[ModuleID]] = None,
@@ -369,10 +465,6 @@ class MultiAgentRLModule(RLModule):
 
 
         """
-        path = pathlib.Path(path)
-        if not modules_to_load:
-            modules_to_load = set(self._rl_modules.keys())
-        path.mkdir(parents=True, exist_ok=True)
         for submodule_id in modules_to_load:
             if submodule_id not in self._rl_modules:
                 raise ValueError(
@@ -387,22 +479,6 @@ class MultiAgentRLModule(RLModule):
                     f"{submodule_weights_dir} not found in checkpoint dir {path}."
                 )
             submodule.load_state(submodule_weights_dir)
-
-    @override(RLModule)
-    def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(checkpoint_dir_path)
-        path.mkdir(parents=True, exist_ok=True)
-        self.save_state(path)
-        self._save_module_metadata(path, MultiAgentRLModuleSpec)
-
-    @classmethod
-    @override(RLModule)
-    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(checkpoint_dir_path)
-        metadata_path = path / RLMODULE_METADATA_FILE_NAME
-        marl_module = cls._from_metadata_file(metadata_path)
-        marl_module.load_state(path)
-        return marl_module
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
@@ -446,7 +522,7 @@ class MultiAgentRLModule(RLModule):
         return outputs
 
     def _check_module_exists(self, module_id: ModuleID) -> None:
-        if module_id not in self._rl_modules:
+        if module_id not in self:
             raise KeyError(
                 f"Module with module_id {module_id} not found. "
                 f"Available modules: {set(self.keys())}"
@@ -470,6 +546,9 @@ class MultiAgentRLModuleSpec:
         module_specs: The module specs for each individual module. It can be either a
             SingleAgentRLModuleSpec used for all module_ids or a dictionary mapping
             from module IDs to SingleAgentRLModuleSpecs for each individual module.
+
+        # TODO(sven): I don't think saving a file location in the spec is a good idea.
+        #  File locations should be saved/treated on the Checkpoint level.
         load_state_path: The path to the module state to load from. NOTE: This must be
             an absolute path. NOTE: If the load_state_path of this spec is set, and
             the load_state_path of one of the SingleAgentRLModuleSpecs' is also set,
@@ -552,16 +631,23 @@ class MultiAgentRLModuleSpec:
                 self.module_specs[module_id].update(module_spec)
 
     @classmethod
-    def from_module(self, module: MultiAgentRLModule) -> "MultiAgentRLModuleSpec":
+    def from_module(
+        cls,
+        module: MultiAgentRLModule,
+        module_ids: Optional[Collection[ModuleID]] = None,
+    ) -> "MultiAgentRLModuleSpec":
         """Creates a MultiAgentRLModuleSpec from a MultiAgentRLModule.
 
         Args:
             module: The MultiAgentRLModule to create the spec from.
+            module_ids: An optional collection of ModuleIDs to filter the returned
+                MultiAgentRLModuleSpec for. If None, will include all of this
+                MultiAgentRLModule's ModuleIDs in the returned spec.
 
         Returns:
-            The MultiAgentRLModuleSpec.
+            The MultiAgentRLModuleSpec, possibly filtered for `module_ids`.
         """
-        # we want to get the spec of the underlying unwrapped module that way we can
+        # We want to get the spec of the underlying unwrapped module that way we can
         # easily reconstruct it. The only wrappers that we expect to support today are
         # wrappers that allow us to do distributed training. Those will be added back
         # by the learner if necessary.
@@ -572,7 +658,34 @@ class MultiAgentRLModuleSpec:
         marl_module_class = module.__class__
         return MultiAgentRLModuleSpec(
             marl_module_class=marl_module_class, module_specs=module_specs
-        )
+        ).filter_by_module_ids(module_ids)
+
+    def filter_by_module_ids(
+        self,
+        module_ids: Optional[Collection[ModuleID]] = None,
+    ):
+        """Returns a new MultiAgentRLModuleSpec filtered by the provided `module_ids`.
+
+        Args:
+            module_ids: An optional collection of ModuleIDs to filter this
+                MultiAgentRLModuleSpec for. If None, will return a copy of `self`.
+
+        Returns:
+            A new MultiAgentRLModuleSpec with only the given `module_ids` in it.
+        """
+        marl_module_spec = copy.deepcopy(self)
+        # Filter for module_ids, if provided.
+        module_ids = force_list(module_ids or list(self.module_specs.keys()))
+        for module_id in module_ids:
+            if module_id not in self.module_specs:
+                logger.warning(
+                    f"ModuleID {module_id} not found in MultiAgentRLModule ({self})! "
+                    f"Only contains: {set(self.module_specs.keys())}."
+                )
+        for module_id in self.module_specs.keys():
+            if module_id not in module_ids:
+                del marl_module_spec.module_specs[module_id]
+        return marl_module_spec
 
     def _check_before_build(self):
         if not isinstance(self.module_specs, dict):

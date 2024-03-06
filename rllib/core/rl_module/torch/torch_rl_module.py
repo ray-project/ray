@@ -1,5 +1,4 @@
-import pathlib
-from typing import Any, Dict, List, Mapping, Tuple, Type, Union
+from typing import Any, Dict, List, Mapping, Tuple, Type
 
 from packaging import version
 
@@ -17,7 +16,6 @@ from ray.rllib.utils.torch_utils import (
     TORCH_COMPILE_REQUIRED_VERSION,
 )
 from ray.rllib.utils.typing import NetworkType
-from ray.train import Checkpoint
 
 torch, nn = try_import_torch()
 

@@ -8,26 +8,26 @@ from ray.rllib.core.rl_module.marl_module import (
 )
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.utils import DEFAULT_POLICY_ID
-from ray.rllib.env.multi_agent_env import make_multi_agent
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import check
 
 
 class TestMARLModule(unittest.TestCase):
+    ENV = MultiAgentCartPole({"num_agents": 2})
+
     def test_from_config(self):
         """Tests whether a MultiAgentRLModule can be constructed from a config."""
-        env_class = make_multi_agent("CartPole-v0")
-        env = env_class({"num_agents": 2})
         module1 = SingleAgentRLModuleSpec(
             module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=self.ENV.observation_space[0],
+            action_space=self.ENV.action_space[0],
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
         module2 = SingleAgentRLModuleSpec(
             module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=self.ENV.observation_space[0],
+            action_space=self.ENV.action_space[0],
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
@@ -42,13 +42,10 @@ class TestMARLModule(unittest.TestCase):
 
     def test_as_multi_agent(self):
 
-        env_class = make_multi_agent("CartPole-v0")
-        env = env_class({"num_agents": 2})
-
         marl_module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                self.ENV.observation_space[0],
+                self.ENV.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -63,13 +60,10 @@ class TestMARLModule(unittest.TestCase):
 
     def test_get_set_state(self):
 
-        env_class = make_multi_agent("CartPole-v0")
-        env = env_class({"num_agents": 2})
-
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                self.ENV.observation_space[0],
+                self.ENV.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -84,8 +78,8 @@ class TestMARLModule(unittest.TestCase):
 
         module2 = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                self.ENV.observation_space[0],
+                self.ENV.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -100,12 +94,10 @@ class TestMARLModule(unittest.TestCase):
         # TODO (Avnish): Modify this test to make sure that the distributed
         # functionality won't break the add / remove.
 
-        env_class = make_multi_agent("CartPole-v0")
-        env = env_class({"num_agents": 2})
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                self.ENV.observation_space[0],
+                self.ENV.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -114,8 +106,8 @@ class TestMARLModule(unittest.TestCase):
             "test",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    self.ENV.observation_space[0],
+                    self.ENV.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -131,8 +123,8 @@ class TestMARLModule(unittest.TestCase):
                 DEFAULT_POLICY_ID,
                 DiscreteBCTorchModule(
                     config=RLModuleConfig(
-                        env.observation_space[0],
-                        env.action_space[0],
+                        self.ENV.observation_space[0],
+                        self.ENV.action_space[0],
                         model_config_dict={"fcnet_hiddens": [32]},
                     )
                 ),
@@ -143,8 +135,8 @@ class TestMARLModule(unittest.TestCase):
             DEFAULT_POLICY_ID,
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    self.ENV.observation_space[0],
+                    self.ENV.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -153,12 +145,10 @@ class TestMARLModule(unittest.TestCase):
 
     def test_save_to_from_checkpoint(self):
         """Test saving and loading from checkpoint after adding / removing modules."""
-        env_class = make_multi_agent("CartPole-v0")
-        env = env_class({"num_agents": 2})
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                self.ENV.observation_space[0],
+                self.ENV.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_agent()
@@ -167,8 +157,8 @@ class TestMARLModule(unittest.TestCase):
             "test",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    self.ENV.observation_space[0],
+                    self.ENV.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -177,13 +167,14 @@ class TestMARLModule(unittest.TestCase):
             "test2",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    self.ENV.observation_space[0],
+                    self.ENV.action_space[0],
                     model_config_dict={"fcnet_hiddens": [128]},
                 )
             ),
         )
 
+        # Check, whether saving and restoring from checkpoint works as expected.
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = module.save(path=tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(checkpoint)
@@ -192,33 +183,60 @@ class TestMARLModule(unittest.TestCase):
             self.assertEqual(module.keys(), {"test", "test2", DEFAULT_POLICY_ID})
             self.assertNotEqual(id(module), id(module2))
 
-        module.remove_module("test")
-
-        # check that after removing a module, the checkpoint is correct
+        # Check, whether saving/restoring partial MultiAgentRLModules works as expected.
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
-            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            # Only save "test".
+            checkpoint = module.save(path=tmpdir, module_ids="test")
+            module2 = MultiAgentRLModule.from_checkpoint(checkpoint)
+            check(module.get_state()["test"], module2.get_state()["test"])
+            self.assertTrue("test2" not in module2 and DEFAULT_POLICY_ID not in module2)
+            self.assertNotEqual(module.keys(), module2.keys())
+            self.assertEqual(module.keys(), {"test", "test2", DEFAULT_POLICY_ID})
+            self.assertEqual(module2.keys(), {"test"})
+            self.assertNotEqual(id(module), id(module2))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Save test and test2 ...
+            checkpoint = module.save(path=tmpdir, module_ids={"test", "test2"})
+            # But only load "test".
+            module2 = MultiAgentRLModule.from_checkpoint(checkpoint, module_ids="test")
+            check(module.get_state()["test"], module2.get_state()["test"])
+            self.assertTrue("test2" not in module2 and DEFAULT_POLICY_ID not in module2)
+            self.assertNotEqual(module.keys(), module2.keys())
+            self.assertEqual(module.keys(), {"test", "test2", DEFAULT_POLICY_ID})
+            self.assertEqual(module2.keys(), {"test"})
+            self.assertNotEqual(id(module), id(module2))
+            # Test loading a non-existent module ID, which should only produce a
+            # warning.
+            MultiAgentRLModule.from_checkpoint(
+                checkpoint,
+                module_ids=["test", "blabla_xyz"],
+            )
+
+        # Check that after removing a module, the checkpoint is correct.
+        module.remove_module("test")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = module.save(path=tmpdir)
+            module2 = MultiAgentRLModule.from_checkpoint(checkpoint)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test2", DEFAULT_POLICY_ID})
             self.assertNotEqual(id(module), id(module2))
 
-        # check that after adding a new module, the checkpoint is correct
+        # Check that after adding a new module, the checkpoint is correct.
         module.add_module(
             "test3",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    self.ENV.observation_space[0],
+                    self.ENV.action_space[0],
                     model_config_dict={"fcnet_hiddens": [120]},
                 )
             ),
         )
-        # check that after adding a module, the checkpoint is correct
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = "/tmp/test_marl_module"
-            module.save_to_checkpoint(tmpdir)
-            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            checkpoint = module.save(path=tmpdir)
+            module2 = MultiAgentRLModule.from_checkpoint(checkpoint)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test2", "test3", DEFAULT_POLICY_ID})

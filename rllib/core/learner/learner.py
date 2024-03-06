@@ -14,7 +14,6 @@ from typing import (
     Hashable,
     Optional,
     Sequence,
-    Set,
     Tuple,
     TYPE_CHECKING,
     Union,
@@ -41,8 +40,8 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.framework import convert_to_tensor, try_import_tf, try_import_torch
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_TRAINED,
@@ -191,10 +190,10 @@ class Learner:
             learner.set_state(state)
 
             # Get the weights of the underly multi-agent RLModule.
-            weights = learner.get_module_state()
+            weights = learner.module.get_state()
 
             # Set the weights of the underly multi-agent RLModule.
-            learner.set_module_state(weights)
+            learner.module.set_state(weights)
 
 
     Extension pattern:
@@ -1239,6 +1238,7 @@ class Learner:
 
         """
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self, components: Optional[List[str]] = None) -> Dict[str, Any]:
         """Returns the state of this Learner.
 
@@ -1249,10 +1249,12 @@ class Learner:
         components = force_list(components)
         state = {"modules_to_train": self.config.policies_to_train}
         if "module_state" in components:
-            state["module_state"] = self.get_module_state()
+            state["module_state"] = self.module.get_state()
         if "optimizer_state" in components:
             state["optimizer_state"] = self.get_optimizer_state()
+        return state
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of this Learner.
 
@@ -1264,7 +1266,7 @@ class Learner:
         self._check_is_built()
 
         if "module_state" in state:
-            self.set_module_state(state["module_state"])
+            self.module.set_state(state["module_state"])
         if "optimizer_state" in state:
             self.set_optimizer_state(state["optimizer_state"])
         # If provided in state, update our trainable Modules information/function via
@@ -1272,30 +1274,6 @@ class Learner:
         # If None (explicitly set in state), all Modules will be trained by default.
         if "modules_to_train" in state:
             self.config.multi_agent(policies_to_train=state["modules_to_train"])
-
-    @OverrideToImplementCustomLogic
-    def get_module_state(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule.
-
-        The output should be numpy-friendly for easy serialization, not framework
-        specific tensors.
-
-        Args:
-            module_ids: The ids of the modules to get the weights for. If None, all
-                modules will be returned.
-
-        Returns:
-            A dictionary that holds the state of the modules in a numpy-friendly
-            format.
-        """
-        module_states = self.module.get_state(module_ids)
-        return convert_to_numpy({k: v for k, v in module_states.items()})
-
-    @OverrideToImplementCustomLogic
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
-        state = convert_to_tensor(state, framework=self.framework, device=self._device)
-        return self.module.set_state(state)
 
     @OverrideToImplementCustomLogic
     def get_optimizer_state(self) -> Dict[str, Any]:
@@ -1467,6 +1445,27 @@ class Learner:
             "optimizer_state_dir": "optimizer_state",
         }
         return metadata
+
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        """Save the state of the optimizer to path
+
+        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
+        will be appended to.
+
+        Args:
+            path: The path to the directory to save the state to.
+
+        """
+        pass
+
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        """Load the state of the optimizer from path
+
+        Args:
+            path: The path to the directory to load the state from.
+
+        """
+        pass
 
     def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Save the state of the learner to path

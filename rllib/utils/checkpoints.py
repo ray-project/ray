@@ -34,10 +34,10 @@ logger = logging.getLogger(__name__)
 CHECKPOINT_VERSION = version.Version("1.1")
 CHECKPOINT_VERSION_LEARNER = version.Version("1.2")
 
-#CHECKPOINT_DIR_RLMODULE = "rl_modules"
-#CHECKPOINT_DIR_OPTIMIZERS = "optimizers"
-#CHECKPOINT_DIR_ENV_RUNNER = "env_runner"
-#CHECKPOINT_DIR_CONNECTORS = "connectors"
+# CHECKPOINT_DIR_RLMODULE = "rl_modules"
+# CHECKPOINT_DIR_OPTIMIZERS = "optimizers"
+# CHECKPOINT_DIR_ENV_RUNNER = "env_runner"
+# CHECKPOINT_DIR_CONNECTORS = "connectors"
 
 
 @PublicAPI(stability="alpha")

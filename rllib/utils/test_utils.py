@@ -1217,9 +1217,8 @@ def run_rllib_example_script_experiment(
             results = algo.train()
             print(f"R={results['episode_reward_mean']}")
             # Save a checkpoint?
-            if (
-                (args.checkpoint_at_end and iter == args.stop_iters - 1)
-                or (args.checkpoint_freq > 0 and iter % args.checkpoint_freq == 0)
+            if (args.checkpoint_at_end and iter == args.stop_iters - 1) or (
+                args.checkpoint_freq > 0 and iter % args.checkpoint_freq == 0
             ):
                 print("Saving a checkpoint ...")
                 chkpt = algo.save()

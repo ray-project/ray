@@ -421,7 +421,7 @@ module = module_spec.build()
 
 # Create the checkpoint
 module_ckpt_path = tempfile.mkdtemp()
-module.save_to_checkpoint(module_ckpt_path)
+checkpoint = module.save(path=module_ckpt_path)
 
 # Create a new RL Module from the checkpoint
 module_to_load_spec = SingleAgentRLModuleSpec(

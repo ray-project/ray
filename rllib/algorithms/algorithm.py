@@ -2475,8 +2475,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # if we are using the learner API, save the learner group state
         if self.config._enable_new_api_stack:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            os.makedirs(learner_state_dir, exist_ok=True)
-            learner_group_state = self.learner_group.get_state()
+            self.learner_group.save_state(learner_state_dir)
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:

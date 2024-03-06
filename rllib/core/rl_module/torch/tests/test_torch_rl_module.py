@@ -23,7 +23,6 @@ from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 
 class TestRLModule(unittest.TestCase):
-
     def _get_module(self):
         env = gym.make("CartPole-v1")
         return DiscreteBCTorchModule(

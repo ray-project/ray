@@ -541,12 +541,12 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            state = self._learner.get_module_state(module_ids)
+            state = self._learner.module.get_state(module_ids)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             state = self._worker_manager.foreach_actor(
-                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
+                lambda w: w.module.get_state(module_ids), remote_actor_ids=[worker]
             )
             state = self._get_results(state)[0]
 
@@ -563,10 +563,10 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            self._learner.set_module_state(weights)
+            self._learner.module.set_state(weights)
         else:
             results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_module_state(weights)
+                lambda w: w.module.set_state(weights)
             )
             # raise errors if any
             self._get_results(results_or_errors)
@@ -622,7 +622,7 @@ class LearnerGroup:
             return [func(self._learner, **kwargs)]
         return self._worker_manager.foreach_actor(partial(func, **kwargs))
 
-    #def save_state(self, path: str) -> None:
+    # def save_state(self, path: str) -> None:
     #    """Saves the state of this LearnerGroup to a path on disk.
 
     #    Args:
@@ -675,7 +675,7 @@ class LearnerGroup:
     #                remove_dir, remote_actor_ids=[worker]
     #            )
 
-    #def load_state(self, path: str) -> None:
+    # def load_state(self, path: str) -> None:
     #    """Loads the state of the LearnerGroup.
 
     #    Args:
@@ -808,7 +808,7 @@ class LearnerGroup:
             if rl_module_ckpt_dirs:
                 # load the RLModule if they were specified
                 for module_id, path in rl_module_ckpt_dirs.items():
-                    self._learner.module[module_id].load_state(path)
+                    self._learner.module[module_id].restore(path)
         else:
             self._distributed_load_module_state(
                 marl_module_ckpt_dir=marl_module_ckpt_dir,

@@ -382,21 +382,8 @@ class RLModule(abc.ABC):
             rl_module_spec: An optional RLModuleSpec (single- or multi-agent) to use
                 instead of the saved/pickled one in `rl_module_spec`.
         """
-        # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
-        if isinstance(checkpoint, Checkpoint):
-            checkpoint: str = checkpoint.to_directory()
+        path = RLModule._checkpoint_to_path(checkpoint)
 
-        path = pathlib.Path(checkpoint)
-        if not path.exists():
-            raise ValueError(
-                "While running `from_checkpoint()` there was no directory found at "
-                f"{path}!"
-            )
-        if not path.is_dir():
-            raise ValueError(
-                f"While running `from_checkpoint()` the provided path ({path}) was not "
-                "a directory!"
-            )
         # Load and log metadata.
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         with open(metadata_path, "r") as f:
@@ -417,7 +404,11 @@ class RLModule(abc.ABC):
         # Return the new Module.
         return module
 
-    def save(self, path: Optional[Union[str, pathlib.Path]] = None) -> Checkpoint:
+    def save(
+        self,
+        path: Optional[Union[str, pathlib.Path]] = None,
+        **kwargs,
+    ) -> Checkpoint:
         """Saves this RLModule's entire state to the given `path` dir as a Checkpoint.
 
         With the created checkpoint dir, a new RLModule with the exact same state can
@@ -425,11 +416,15 @@ class RLModule(abc.ABC):
 
         .. testcode::
 
-
+            TODO (sven)
 
         Args:
             path: The directory to save all the information of this RLModule into and
                 return a Checkpoint object for.
+            kwargs: Forward compatibility kwargs (may be utilized by sub-classes).
+
+        Returns:
+            The Checkpoint object created by this method call.
         """
         if path is not None:
             os.makedirs(path, exist_ok=True)
@@ -448,7 +443,7 @@ class RLModule(abc.ABC):
             RLMODULE_METADATA_RAY_COMMIT_HASH_KEY: ray.__commit__,
             RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY: (
                 datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
-            )
+            ),
         }
         metadata_file = path / RLMODULE_METADATA_FILE_NAME
         with open(metadata_file, "w") as f:
@@ -458,11 +453,16 @@ class RLModule(abc.ABC):
         self._save_state(path / (RLMODULE_STATE_FILE_OR_DIR_NAME + ".pt"))
         return Checkpoint(path)
 
-    def restore(self, checkpoint_path: Union[str, pathlib.Path, Checkpoint]) -> None:
+    def restore(
+        self,
+        checkpoint_path: Union[str, pathlib.Path, Checkpoint],
+        **kwargs,
+    ) -> None:
         """Loads the state/weights of an RLModule from the directory dir.
 
         Args:
             checkpoint_path: The directory to load the checkpoint from.
+            kwargs: Forward compatibility kwargs (may be utilized by sub-classes).
         """
         path = self._checkpoint_to_path(checkpoint_path)
         module_state_file = path / (RLMODULE_STATE_FILE_OR_DIR_NAME + ".pt")
@@ -483,7 +483,7 @@ class RLModule(abc.ABC):
             raise ValueError(f"Provided path ({path}) is not a directory!")
         return path
 
-    #END common mixin class methods
+    # END common mixin class methods
 
     @OverrideToImplementCustomLogic
     def _save_state(self, state_file) -> None:
@@ -708,9 +708,7 @@ class RLModule(abc.ABC):
 
     @check_input_specs("_input_specs_exploration")
     @check_output_specs("_output_specs_exploration")
-    def forward_exploration(
-        self, batch: SampleBatchType, **kwargs
-    ) -> Dict[str, Any]:
+    def forward_exploration(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Forward-pass during exploration, called from the sampler.
 
         This method should not be overriden to implement a custom forward exploration
@@ -860,7 +858,7 @@ class RLModule(abc.ABC):
     def save_state(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="load", error=True)
+    @Deprecated(new="restore", error=True)
     def load_state(self, *args, **kwargs):
         pass
 

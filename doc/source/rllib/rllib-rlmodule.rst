@@ -18,9 +18,14 @@ RL Modules (Alpha)
 
 .. note::
 
-    This is an experimental module that serves as a general replacement for ModelV2, and is subject to change. It will eventually match the functionality of the previous stack. If you only use high-level RLlib APIs such as :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` you should not experience significant changes, except for a few new parameters to the configuration object. If you've used custom models or policies before, you'll need to migrate them to the new modules. Check the Migration guide for more information.
+    This is an experimental module that serves as a general replacement for ModelV2, and is subject to change.
+    It will eventually match the functionality of the previous stack. If you only use high-level RLlib APIs such as
+    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` you should not experience significant changes, except for a
+    few new parameters to the configuration object. If you've used custom models or policies before, you'll
+    need to migrate them to the new modules. Check the Migration guide for more information.
 
-    The table below shows the list of migrated algorithms and their current supported features, which will be updated as we progress.
+    The table below shows the list of migrated algorithms and their current supported
+    features, which will be updated as we progress.
 
     .. list-table::
        :header-rows: 1
@@ -31,33 +36,60 @@ RL Modules (Alpha)
          - Fully-connected
          - Image inputs (CNN)
          - RNN support (LSTM)
-         - Complex observations (ComplexNet)
        * - **PPO**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          -
-         - |pytorch|
        * - **Impala**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          -
-         - |pytorch|
        * - **APPO**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
-         - 
-         - 
+         -
+       * - **SAC**
+         -
+         - |pytorch|
+         -
+         -
 
 
+RL Module is a neural network container that implements three public methods:
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train`,
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`,
+and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`.
+Each method corresponds to a distinct reinforcement learning and/or production phase.
 
-RL Module is a neural network container that implements three public methods: :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train`, :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`, and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`. Each method corresponds to a distinct reinforcement learning phase.
+The :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` method computes
+actions in a purely greedy fashion. It is normally used only in production settings (after
+training has been completed) or for evaluation purposes parallel to training.
+RLlib's :py:class:`~ray.rllib.evaluation.env_runner.EnvRunner` classes will chose this method
+if the `explore` flag in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+is set to False.
 
-:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` handles acting and data collection, balancing exploration and exploitation. On the other hand, the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` serves the learned model during evaluation, often being less stochastic.
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` computes actions
+in an exploratory way, balancing exploration and exploitation. It is the method normally used
+for training data collection by RLlib's :py:class:`~ray.rllib.evaluation.env_runner.EnvRunner` classes
+(if the `explore` flag in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+is set to True, which it is by default).
+However, note that this method can also be used after training in an inference-only phase, if the user
+explicitly want the computed actions to be exploratory. Some environments - like the rock-paper-scissors game -
+can only be optimally solved by acting stochastically.
 
-:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` manages the training phase, handling calculations exclusive to computing losses, such as learning Q values in a DQN model.
+Finally, the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method is called
+during the training update phase of an Algorithm and not only should it compute actions (or action logits/probabilities),
+but anything that is relevant and needed for the algorithm's loss function, such as computing
+Q-values in a DQN model or value function predictions in a PPO model.
+
+We strongly recommend that neither :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
+nor :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` should be
+concerned with computing such loss-function-only data and should solely focus on computing actions alone
+(or action- logits/distribution inputs).
+
 
 Enabling RL Modules in the Configuration
 ----------------------------------------
@@ -408,7 +440,9 @@ There are two possible ways to extend existing RL Modules:
 Checkpointing RL Modules
 ------------------------
 
-RL Modules can be checkpointed with their two methods :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_checkpoint` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint`.
+RL Modules can be checkpointed via their :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save` method
+and can be constructed from a checkpoint via the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint` method.
+
 The following example shows how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
 
 .. literalinclude:: doc_code/rlmodule_guide.py

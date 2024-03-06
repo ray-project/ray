@@ -158,6 +158,24 @@ class TorchLearner(Learner):
             optim.step()
 
     @override(Learner)
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        optim_state = self.get_optimizer_state()
+        for name, state in optim_state.items():
+            torch.save(state, path / f"{name}.pt")
+
+    @override(Learner)
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        if not path.exists():
+            raise ValueError(f"Directory {path} does not exist.")
+        state = {}
+        for name in self._named_optimizers.keys():
+            state[name] = torch.load(path / f"{name}.pt")
+        self.set_optimizer_state(state)
+
+    @override(Learner)
     def get_optimizer_state(self) -> Dict[str, Any]:
         optimizer_name_state = {}
         for name, optim in self._named_optimizers.items():
