@@ -248,6 +248,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "app_name": request_context.app_name,
             "log_file": logger.handlers[1].baseFilename,
             "replica": serve.get_replica_context().replica_tag,
+            "actor_id": ray.get_runtime_context().get_actor_id(),
+            "worker_id": ray.get_runtime_context().get_worker_id(),
         }
 
     @serve.deployment(
@@ -263,6 +265,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "app_name": request_context.app_name,
                 "log_file": logger.handlers[1].baseFilename,
                 "replica": serve.get_replica_context().replica_tag,
+                "actor_id": ray.get_runtime_context().get_actor_id(),
+                "worker_id": ray.get_runtime_context().get_worker_id(),
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -306,21 +310,28 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         class_method_replica_id = resp2["replica"].split("#")[-1]
         if json_log_format:
             user_method_log_regex = (
-                f'.*"deployment": "{resp["app_name"]}_fn", '
+                ".*"
+                f'"actor_id": "{resp["actor_id"]}", '
+                f'"worker_id": "{resp["worker_id"]}", '
+                f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
                 f'"component_name": "replica", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
-                f'"application": "{resp["app_name"]}", "message":.* user func.*'
+                f'"application": "{resp["app_name"]}", '
+                '"message":.* user func.*'
             )
             user_class_method_log_regex = (
-                f'.*"deployment": "{resp2["app_name"]}_Model", '
+                ".*"
+                f'"actor_id": "{resp2["actor_id"]}", '
+                f'"worker_id": "{resp2["worker_id"]}", '
+                f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
                 f'"component_name": "replica", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '
-                f'"application": "{resp2["app_name"]}", "message":.* user log '
-                "message from class method.*"
+                f'"application": "{resp2["app_name"]}", '
+                '"message":.* user log message from class method.*'
             )
         else:
             user_method_log_regex = (
