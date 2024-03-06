@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
-from ray.autoscaler.v2.utils import is_head_node
 
 import yaml
 
@@ -20,6 +18,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
+from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
 from ray.autoscaler._private.util import (
     format_readonly_node_type,
@@ -30,6 +29,7 @@ from ray.autoscaler._private.util import (
 )
 from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.autoscaler.v2.utils import is_head_node
 
 logger = logging.getLogger(__name__)
 
