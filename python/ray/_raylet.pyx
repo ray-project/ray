@@ -1025,6 +1025,10 @@ cdef c_bool determine_if_retryable(
     # Python API should have converted the list of exceptions to a tuple.
     assert isinstance(exception_allowlist, tuple)
 
+    # For exceptions raised when running UDFs in Ray Data, we need to unwrap the special
+    # exception type thrown by Ray Data in order to get the underlying exception.
+    if isinstance(e, ray.exceptions.UserCodeException):
+        e = e.__cause__
     # Check that e is in allowlist.
     return isinstance(e, exception_allowlist)
 
