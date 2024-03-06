@@ -685,8 +685,6 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
-  direct_task_submitter_->Stop();
-
   task_event_buffer_->Stop();
 
   if (gcs_client_) {
@@ -748,6 +746,13 @@ void CoreWorker::Disconnect(
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
+
+    // This must happen before local_raylet_client_->Disconnect because the raylet
+    // cancels all tasks which may trigger direct_task_submitter_ to retry. We don't
+    // want any retries so we stop before the disconnect. See
+    // https://github.com/ray-project/ray/issues/43687
+    direct_task_submitter_->Stop();
+
     if (local_raylet_client_) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(
           exit_type, exit_detail, creation_task_exception_pb_bytes));
