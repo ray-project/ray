@@ -5,6 +5,21 @@ import warnings
 from functools import wraps
 
 
+from typing import TypeVar, overload, Callable
+
+_API = TypeVar("_API", bound=Callable)
+
+
+@overload
+def PublicAPI(stability: str) -> Callable[[_API], _API]:
+    ...
+
+
+@overload
+def PublicAPI(__api: _API) -> _API:
+    ...
+
+
 def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
@@ -60,6 +75,11 @@ def PublicAPI(*args, **kwargs):
     return wrap
 
 
+@overload
+def DeveloperAPI(__api: _API) -> _API:
+    ...
+
+
 def DeveloperAPI(*args, **kwargs):
     """Annotation for documenting developer APIs.
 
@@ -97,6 +117,11 @@ class RayDeprecationWarning(DeprecationWarning):
 # each module where the warning is issued (regardless of line number)
 if not sys.warnoptions:
     warnings.filterwarnings("module", category=RayDeprecationWarning)
+
+
+@overload
+def Deprecated(__api: _API) -> _API:
+    ...
 
 
 def Deprecated(*args, **kwargs):
