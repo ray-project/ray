@@ -49,7 +49,6 @@ class RayDockerContainer(DockerContainer):
                 "python .buildkite/copy_files.py --destination docker_login",
             ]
             for alias in self._get_image_names():
-                print(os.environ["RAYCI_SCHEDULE"], "nightly" in alias)
                 if os.environ["RAYCI_SCHEDULE"] != "nightly" and "nightly" in alias:
                     continue
                 cmds += [
