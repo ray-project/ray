@@ -639,7 +639,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Set the NodeID where the task is executed.
     void SetNodeId(const NodeID &node_id) { node_id_ = node_id; }
 
-    bool IsPending() const { return GetStatus() != rpc::TaskStatus::FINISHED; }
+    bool IsPending() const {
+      return GetStatus() != rpc::TaskStatus::FINISHED &&
+             GetStatus() != rpc::TaskStatus::FAILED;
+    }
 
     bool IsWaitingForExecution() const {
       return GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER;

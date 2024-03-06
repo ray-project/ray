@@ -1190,7 +1190,8 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     it->second.reconstructable_return_ids.erase(object_id);
     RAY_LOG(DEBUG) << "Task " << task_id << " now has "
                    << it->second.reconstructable_return_ids.size()
-                   << " plasma returns in scope";
+                   << " plasma returns in scope"
+                   << ", task status: " << it->second.GetStatus();
 
     if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
       // If the task can no longer be retried, decrement the lineage ref count

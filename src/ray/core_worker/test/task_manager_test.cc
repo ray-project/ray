@@ -2087,6 +2087,39 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
 
+TEST_F(TaskManagerTest, TestStreamGeneratorTaskFailed) {
+  // Submit a task.
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  // The results are reported before the task is finished.
+  auto dynamic_return_id =
+      ReportGeneratorItemReturns(generator_id, 0, /*set_in_plasma=*/false);
+
+  // NumObjectIDsInScope == Generator + intermediate result.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+
+  // Task fails.
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED);
+
+  // Make sure you can read after the task fails.
+  ObjectID obj_id;
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(obj_id, dynamic_return_id);
+
+  // Task and stream metadata GCed after generator ref removed.
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+}
+
 }  // namespace core
 }  // namespace ray
 
