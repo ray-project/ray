@@ -160,11 +160,13 @@ def _autodetect_parallelism(
         if (
             ctx.min_parallelism is not None
             and ctx.min_parallelism != DEFAULT_READ_OP_MIN_NUM_BLOCKS
+            and ctx.read_op_min_num_blocks == DEFAULT_READ_OP_MIN_NUM_BLOCKS
         ):
             logger.warning(
                 "``DataContext.min_parallelism`` is deprecated in Ray 2.10. "
                 "Please specify ``DataContext.read_op_min_num_blocks`` instead."
             )
+            ctx.read_op_min_num_blocks = ctx.min_parallelism
 
         # Start with 2x the number of cores as a baseline, with a min floor.
         if placement_group is None:
