@@ -68,7 +68,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # In case of noisy networks the parameter noise is sufficient for
         # variation in exploration.
-        if False:  # self.uses_noisy:
+        if self.uses_noisy:
             # Use the exploitation action (coming from the noisy network).
             output[Columns.ACTIONS] = exploit_actions
         # Otherwise we need epsilon greedy to support exploration.

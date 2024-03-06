@@ -34,6 +34,8 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
         # If a dueling architecture is used.
         self.is_dueling: bool = self.config.model_config_dict.get("dueling")
+        # If double Q learning is used.
+        self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
         # If we use noisy layers.
         self.uses_noisy: bool = self.config.model_config_dict.get("noisy")
         # The number of atoms for a distribution support.
@@ -44,13 +46,10 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             self.v_max: float = self.config.model_config_dict.get("v_max")
         # In case of noisy networks no need for epsilon greedy (see DQN Rainbow
         # paper).
-        if True:  # not self.uses_noisy:
+        if not self.uses_noisy:
             # The epsilon scheduler for epsilon greedy exploration.
-            # self.epsilon_schedule = Scheduler(
-            #     self.config.model_config_dict["epsilon"], framework=self.framework
-            # )
             self.epsilon_schedule = Scheduler(
-                fixed_value_or_schedule=[[0, 1.0], [10000, 0.2]],
+                fixed_value_or_schedule=self.config.model_config_dict["epsilon"],
                 framework=self.framework,
             )
 

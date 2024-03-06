@@ -496,6 +496,8 @@ class DQN(SimpleQ):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
+        self.workers.sync_env_runner_states(env_steps_sampled=current_ts)
+
         # If enough experiences have been sampled start training.
         if current_ts >= self.config.num_steps_sampled_before_learning_starts:
             # Run multiple sample-from-buffer and update iterations.

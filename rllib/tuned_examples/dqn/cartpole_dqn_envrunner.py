@@ -15,7 +15,7 @@ config = (
         model={
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
-            "epsilon": 0.2,
+            "epsilon": [(0, 1.0), (10000, 0.02)],
             "fcnet_weights_initializer": "xavier_uniform_",
             "post_fcnet_weights_initializer": "xavier_uniform_",
         },
@@ -28,7 +28,7 @@ config = (
         double_q=False,
         num_atoms=10,
         dueling=False,
-        noisy=True,
+        noisy=False,
         sigma0=0.5,
     )
 )
@@ -37,7 +37,6 @@ stop = {
     "sampler_results/episode_reward_mean": 100,
     "timesteps_total": 100000,
 }
-
 
 ray.init(local_mode=True)
 tuner = tune.Tuner(
