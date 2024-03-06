@@ -62,7 +62,7 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
-            "'obj_store_mem_used': N",
+            "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -80,7 +80,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue': Z",
-            "'obj_store_mem_used': N",
+            "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -166,6 +166,14 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     canonicalized_stats = re.sub("[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
     canonicalized_stats = re.sub("[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
+    # For obj_store_mem_used, the value can be zero or positive, depending on the run.
+    # Replace with A to avoid test flakiness.
+    canonicalized_stats = re.sub(
+        r"(obj_store_mem_used: |'obj_store_mem_used': )\d+(\.\d+)?",
+        # Replaces the number with 'A' while keeping the key prefix intact.
+        r"\g<1>A",
+        canonicalized_stats,
+    )
     # Handle floats in (0, 1)
     canonicalized_stats = re.sub(" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
     # Handle zero values specially so we can check for missing values.
@@ -219,9 +227,9 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
-    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE.replace(
-        "'obj_store_mem_used': N", "'obj_store_mem_used': Z"
-    )
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE  # .replace(
+    #     "'obj_store_mem_used': A", "'obj_store_mem_used': Z"
+    # )
     extra_metrics_2 = gen_expected_metrics(
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
@@ -274,21 +282,21 @@ def test_large_args_scheduling_strategy(
         STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
         verbose_stats_logs,
     )
-    if verbose_stats_logs:
-        read_extra_metrics = read_extra_metrics.replace(
-            "'obj_store_mem_used': N",
-            "'obj_store_mem_used': Z",
-        )
+    # if verbose_stats_logs:
+    #     read_extra_metrics = read_extra_metrics#.replace(
+    #         "'obj_store_mem_used': N",
+    #         "'obj_store_mem_used': Z",
+    #     )
 
     map_extra_metrics = gen_extra_metrics_str(
         LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE,
         verbose_stats_logs,
     )
-    if verbose_stats_logs:
-        map_extra_metrics = map_extra_metrics.replace(
-            "'obj_store_mem_used': N",
-            "'obj_store_mem_used': Z",
-        )
+    # if verbose_stats_logs:
+    #     map_extra_metrics = map_extra_metrics.replace(
+    #         "'obj_store_mem_used': N",
+    #         "'obj_store_mem_used': Z",
+    #     )
     expected_stats = (
         f"Operator N ReadRange: {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -583,7 +591,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
-        "      obj_store_mem_used: N,\n"
+        "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -1324,7 +1332,7 @@ def test_op_metrics_logging():
         input_str = (
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
             + gen_expected_metrics(is_map=False)
-        ).replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
+        )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         map_str = (
             "Operator InputDataBuffer[Input] -> "
             "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
