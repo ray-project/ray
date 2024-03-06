@@ -55,7 +55,6 @@ logger = logging.getLogger("ray.rllib")
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
 RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
 RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
-RLMODULE_STATE_DIR_NAME = "module_state_dir"
 RLMODULE_STATE_FILE_NAME = "module_state.pt"
 RLMODULE_SPEC_FILE_NAME = "rl_module_spec.pkl"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
@@ -458,9 +457,7 @@ class RLModule(abc.ABC):
             json.dump(metadata, f)
 
         # Write the RLModule state to file.
-        module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        module_state_dir.mkdir(parents=True, exist_ok=True)
-        self._save_state(module_state_dir / RLMODULE_STATE_FILE_NAME)
+        self._save_state(path / RLMODULE_STATE_FILE_NAME)
         return Checkpoint(path)
 
     def restore(self, checkpoint_path: Union[str, pathlib.Path, Checkpoint]) -> None:
@@ -470,7 +467,7 @@ class RLModule(abc.ABC):
             checkpoint_path: The directory to load the checkpoint from.
         """
         path = self._checkpoint_to_path(checkpoint_path)
-        module_state_file = path / RLMODULE_STATE_DIR_NAME / RLMODULE_STATE_FILE_NAME
+        module_state_file = path / RLMODULE_STATE_FILE_NAME
         self._load_state(module_state_file)
 
     @staticmethod

@@ -1,13 +1,20 @@
-import tempfile
-import unittest
-from typing import Mapping
 import gc
+import os
+import pathlib
+import tempfile
+from typing import Mapping
+import unittest
 
 import gymnasium as gym
 import torch
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.core.rl_module.rl_module import (
+    RLModuleConfig,
+    RLMODULE_SPEC_FILE_NAME,
+    RLMODULE_STATE_FILE_NAME,
+    RLMODULE_METADATA_FILE_NAME,
+)
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
@@ -93,6 +100,11 @@ class TestRLModule(unittest.TestCase):
         module = self._get_module()
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = module.save(path=tmpdir)
+            # Make sure all expected files are in the directory.
+            p = pathlib.Path(tmpdir)
+            self.assertTrue(os.path.isfile(p / RLMODULE_SPEC_FILE_NAME))
+            self.assertTrue(os.path.isfile(p / RLMODULE_STATE_FILE_NAME))
+            self.assertTrue(os.path.isfile(p / RLMODULE_METADATA_FILE_NAME))
             new_module = DiscreteBCTorchModule.from_checkpoint(checkpoint)
 
         # Should be the same (but not identical objects).

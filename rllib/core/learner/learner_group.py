@@ -17,10 +17,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.core.rl_module.rl_module import (
-    SingleAgentRLModuleSpec,
-    RLMODULE_STATE_DIR_NAME,
-)
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
@@ -811,9 +808,7 @@ class LearnerGroup:
             if rl_module_ckpt_dirs:
                 # load the RLModule if they were specified
                 for module_id, path in rl_module_ckpt_dirs.items():
-                    self._learner.module[module_id].load_state(
-                        path / RLMODULE_STATE_DIR_NAME
-                    )
+                    self._learner.module[module_id].load_state(path)
         else:
             self._distributed_load_module_state(
                 marl_module_ckpt_dir=marl_module_ckpt_dir,
@@ -887,7 +882,7 @@ class LearnerGroup:
             if rl_module_ckpt_dirs:
                 # load the RLModule if they were specified
                 for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                    w.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
+                    w.module[module_id].load_state(path)
 
             # remove the temporary directories on the worker if any were created
             if worker_node_ip != head_node_ip:

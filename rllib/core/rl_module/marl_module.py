@@ -19,7 +19,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     RLMODULE_METADATA_FILE_NAME,
-    RLMODULE_STATE_DIR_NAME,
     SingleAgentRLModuleSpec,
 )
 
@@ -381,7 +380,7 @@ class MultiAgentRLModule(RLModule):
                     f"{modules_to_load} not found in this MultiAgentRLModule."
                 )
             submodule = self._rl_modules[submodule_id]
-            submodule_weights_dir = path / submodule_id / RLMODULE_STATE_DIR_NAME
+            submodule_weights_dir = path / submodule_id
             if not submodule_weights_dir.exists():
                 raise ValueError(
                     f"Submodule {submodule_id}'s module state directory: "
