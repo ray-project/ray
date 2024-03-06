@@ -13,7 +13,7 @@ from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOU
 from ray.air.util.node import _get_node_id_from_node_ip
 import ray._private.services
 from ray._private.services import get_node_ip_address
-from ray.dashboard.utils import ray_address_to_api_server_url
+from ray.dashboard.modules.job.utils import ray_address_to_api_server_url
 from ray._private.test_utils import (
     get_current_unused_port,
     run_string_as_driver,

@@ -4,7 +4,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Callable, List, Tuple, Optional
 
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp.web import Response
 from abc import ABC, abstractmethod
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag

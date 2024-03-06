@@ -2,6 +2,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 from ray.dashboard.modules.healthz.utils import HealthChecker
 import ray.exceptions
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp.web import Request, Response
 
 routes = optional_utils.DashboardAgentRouteTable

@@ -1,5 +1,5 @@
 import asyncio
-import aiohttp
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 import os
 import time
 import traceback

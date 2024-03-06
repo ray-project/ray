@@ -106,7 +106,7 @@ from ray.util.state.common import (
     StateSchema,
     state_column,
 )
-from ray.dashboard.utils import ray_address_to_api_server_url
+from ray.dashboard.modules.job.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_cli import (
     AvailableFormat,

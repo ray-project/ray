@@ -5,7 +5,7 @@ import time
 import grpc
 from itertools import chain
 
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 
 import ray._private.utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS

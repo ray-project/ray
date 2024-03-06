@@ -6,7 +6,7 @@ import traceback
 from random import sample
 from typing import Iterator, Optional
 
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 from aiohttp.web import Request, Response
 from aiohttp.client import ClientResponse
 
@@ -34,10 +34,10 @@ from ray.dashboard.modules.job.pydantic_models import (
     JobType,
 )
 from ray.dashboard.modules.job.utils import (
-    parse_and_validate_request,
     get_driver_jobs,
     find_job_by_ids,
 )
+from ray.dashboard.modules.job.internal_utils import parse_and_validate_request
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,

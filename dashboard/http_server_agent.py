@@ -5,7 +5,9 @@ from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 
-from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
+from ray._private.internal_third_party import aiohttp, aiohttp_cors  # noqa: F401
+from aiohttp import hdrs
+
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardAgentRouteTable

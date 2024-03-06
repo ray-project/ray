@@ -2,23 +2,14 @@ import dataclasses
 import logging
 import os
 import re
-import traceback
-from dataclasses import dataclass
-from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
-
-try:
-    # package `aiohttp` is not in ray's minimal dependencies
-    import aiohttp
-    from aiohttp.web import Request, Response
-except Exception:
-    aiohttp = None
-    Request = None
-    Response = None
-
+from typing import Iterator, List, Optional, Any, Dict, Tuple
+import ray
+import ray._private.services as services
+from ray._raylet import GcsClient
+from ray._private.utils import split_address
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.common import (
-    validate_request_type,
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.pydantic_models import (
@@ -108,36 +99,6 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 lines = []
                 chunk_char_count = 0
                 curr_line = None
-
-
-async def parse_and_validate_request(
-    req: Request, request_type: dataclass
-) -> Union[dataclass, Response]:
-    """Parse request and cast to request type.
-
-    Remove keys with value None to allow newer client versions with new optional fields
-    to work with older servers.
-
-    If parsing failed, return a Response object with status 400 and stacktrace instead.
-
-    Args:
-        req: aiohttp request object.
-        request_type: dataclass type to cast request to.
-
-    Returns:
-        Parsed request object or Response object with status 400 and stacktrace.
-    """
-    import aiohttp
-
-    json_data = strip_keys_with_value_none(await req.json())
-    try:
-        return validate_request_type(json_data, request_type)
-    except Exception as e:
-        logger.info(f"Got invalid request type: {e}")
-        return Response(
-            text=traceback.format_exc(),
-            status=aiohttp.web.HTTPBadRequest.status_code,
-        )
 
 
 async def get_driver_jobs(
@@ -237,3 +198,92 @@ async def find_job_by_ids(
         return job
 
     return None
+
+
+def ray_address_to_api_server_url(address: Optional[str]) -> str:
+    """Parse a Ray cluster address into API server URL.
+
+    When an address is provided, it will be used to query GCS for
+    API server address from GCS, so a Ray cluster must be running.
+
+    When an address is not provided, it will first try to auto-detect
+    a running Ray instance, or look for local GCS process.
+
+    Args:
+        address: Ray cluster bootstrap address or Ray Client address.
+            Could also be `auto`.
+
+    Returns:
+        API server HTTP URL.
+    """
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        num_retries=20,
+    )
+
+    if api_server_url is None:
+        raise ValueError(
+            (
+                "Couldn't obtain the API server address from GCS. It is likely that "
+                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
+                "still alive."
+            )
+        )
+    api_server_url = f"http://{api_server_url.decode()}"
+    return api_server_url
+
+
+def ray_client_address_to_api_server_url(address: str):
+    """Convert a Ray Client address of a running Ray cluster to its API server URL.
+
+    Args:
+        address: The Ray Client address, e.g. "ray://my-cluster".
+
+    Returns:
+        str: The API server URL of the cluster, e.g. "http://<head-node-ip>:8265".
+    """
+    with ray.init(address=address) as client_context:
+        dashboard_url = client_context.dashboard_url
+
+    return f"http://{dashboard_url}"
+
+
+def get_address_for_submission_client(address: Optional[str]) -> str:
+    """Get Ray API server address from Ray bootstrap or Client address.
+
+    If None, it will try to auto-detect a running Ray instance, or look
+    for local GCS process.
+
+    `address` is always overridden by the RAY_ADDRESS environment
+    variable, just like the `address` argument in `ray.init()`.
+
+    Args:
+        address: Ray cluster bootstrap address or Ray Client address.
+            Could also be "auto".
+
+    Returns:
+        API server HTTP URL, e.g. "http://<head-node-ip>:8265".
+    """
+    if os.environ.get("RAY_ADDRESS"):
+        logger.debug(f"Using RAY_ADDRESS={os.environ['RAY_ADDRESS']}")
+        address = os.environ["RAY_ADDRESS"]
+
+    if address and "://" in address:
+        module_string, _ = split_address(address)
+        if module_string == "ray":
+            logger.debug(
+                f"Retrieving API server address from Ray Client address {address}..."
+            )
+            address = ray_client_address_to_api_server_url(address)
+    else:
+        # User specified a non-Ray-Client Ray cluster address.
+        address = ray_address_to_api_server_url(address)
+    logger.debug(f"Using API server address {address}.")
+    return address

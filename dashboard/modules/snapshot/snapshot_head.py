@@ -6,7 +6,7 @@ import json
 import os
 from typing import Optional
 
-import aiohttp.web
+from ray._private.internal_third_party import aiohttp  # noqa: F401
 
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 import ray.dashboard.optional_utils as dashboard_optional_utils
