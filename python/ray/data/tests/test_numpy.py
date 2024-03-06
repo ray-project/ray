@@ -74,7 +74,7 @@ def test_from_numpy_variable_shaped(ray_start_regular_shared):
 
 def test_to_numpy_refs(ray_start_regular_shared):
     # Tensor Dataset
-    ds = ray.data.range_tensor(10, parallelism=2)
+    ds = ray.data.range_tensor(10, override_num_blocks=2)
     arr = np.concatenate(extract_values("data", ray.get(ds.to_numpy_refs())))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
@@ -111,7 +111,7 @@ def test_to_numpy_refs(ray_start_regular_shared):
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
-    ds = ray.data.range_tensor(10, parallelism=2)
+    ds = ray.data.range_tensor(10, override_num_blocks=2)
     ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
@@ -126,7 +126,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(path, parallelism=1)
+    ds = ray.data.read_numpy(path, override_num_blocks=1)
     assert str(ds) == (
         "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
     )
@@ -138,7 +138,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     with open(os.path.join(path, "foo.txt"), "w") as f:
         f.write("foobar")
 
-    ds = ray.data.read_numpy(path, parallelism=1)
+    ds = ray.data.read_numpy(path, override_num_blocks=1)
     assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
@@ -175,7 +175,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     path = os.path.join(path, "test.npy")
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(
-        path, meta_provider=FastFileMetadataProvider(), parallelism=1
+        path, meta_provider=FastFileMetadataProvider(), override_num_blocks=1
     )
     assert str(ds) == (
         "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
@@ -257,7 +257,7 @@ def test_numpy_read_partitioned_with_filter(
     ],
 )
 def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
-    ds = ray.data.range_tensor(10, parallelism=2)
+    ds = ray.data.range_tensor(10, override_num_blocks=2)
     ds._set_uuid("data")
     ds.write_numpy(data_path, filesystem=fs, column="data")
     file_path1 = os.path.join(data_path, "data_000000_000000.npy")
@@ -281,7 +281,7 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 
 @pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
 def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
-    ray.data.range(100, parallelism=20).write_numpy(
+    ray.data.range(100, override_num_blocks=20).write_numpy(
         tmp_path, column="id", num_rows_per_file=num_rows_per_file
     )
 

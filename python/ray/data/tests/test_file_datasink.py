@@ -154,7 +154,7 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
             for _ in range(block.num_rows()):
                 file.write(b"row\n")
 
-    ds = ray.data.range(100, parallelism=20)
+    ds = ray.data.range(100, override_num_blocks=20)
 
     ds.write_datasink(
         MockFileDatasink(path=tmp_path, num_rows_per_file=num_rows_per_file)

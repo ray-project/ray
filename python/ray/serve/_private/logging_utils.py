@@ -14,6 +14,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_TO_STDERR,
+    SERVE_LOG_ACTOR_ID,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
@@ -26,6 +27,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
+    SERVE_LOG_WORKER_ID,
     SERVE_LOGGER_NAME,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
@@ -47,6 +49,12 @@ class ServeJSONFormatter(logging.Formatter):
     based on the field of record.
     """
 
+    ADD_IF_EXIST_FIELDS = [
+        SERVE_LOG_REQUEST_ID,
+        SERVE_LOG_ROUTE,
+        SERVE_LOG_APPLICATION,
+    ]
+
     def __init__(
         self,
         component_name: str,
@@ -57,6 +65,19 @@ class ServeJSONFormatter(logging.Formatter):
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
         }
+        try:
+            runtime_context = ray.get_runtime_context()
+            actor_id = runtime_context.get_actor_id()
+            if actor_id:
+                self.component_log_fmt[SERVE_LOG_ACTOR_ID] = actor_id
+            worker_id = runtime_context.get_worker_id()
+            if worker_id:
+                self.component_log_fmt[SERVE_LOG_WORKER_ID] = worker_id
+        except Exception:
+            # If get_runtime_context() fails for any reason, do nothing (no adding
+            # actor_id and/or worker_id to the fmt)
+            pass
+
         if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
             self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
@@ -83,17 +104,9 @@ class ServeJSONFormatter(logging.Formatter):
         record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
         record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
 
-        if SERVE_LOG_REQUEST_ID in record_attributes:
-            record_format[SERVE_LOG_REQUEST_ID] = record_attributes[
-                SERVE_LOG_REQUEST_ID
-            ]
-        if SERVE_LOG_ROUTE in record_attributes:
-            record_format[SERVE_LOG_ROUTE] = record_attributes[SERVE_LOG_ROUTE]
-
-        if SERVE_LOG_APPLICATION in record_attributes:
-            record_format[SERVE_LOG_APPLICATION] = record_attributes[
-                SERVE_LOG_APPLICATION
-            ]
+        for field in ServeJSONFormatter.ADD_IF_EXIST_FIELDS:
+            if field in record_attributes:
+                record_format[field] = record_attributes[field]
 
         record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
 

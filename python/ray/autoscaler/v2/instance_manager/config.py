@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from ray._private.ray_constants import env_integer
+from ray._private.utils import binary_to_hex
+from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
@@ -16,13 +18,17 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
+from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
 from ray.autoscaler._private.util import (
+    format_readonly_node_type,
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
     validate_config,
 )
 from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
+from ray.autoscaler.v2.utils import is_head_node
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +41,41 @@ class Provider(Enum):
     GCP = 4
     KUBERAY = 5
     LOCAL = 6
+    READ_ONLY = 7
 
 
 class IConfigReader(ABC):
     """An interface for reading Autoscaling config.
 
-    A utility class that converts the raw autoscaling configs into
-    various data structures that are used by the autoscaler.
+    A utility class that reads autoscaling configs from various sources:
+        - File
+        - In-memory dict
+        - Remote config service (e.g. KubeRay's config)
+
+    Example:
+        reader = FileConfigReader("path/to/config.yaml")
+        # Get the recently cached config.
+        config = reader.get_cached_autoscaling_config()
+
+        ...
+        # Refresh the cached config.
+        reader.refresh_cached_autoscaling_config()
+        config = reader.get_cached_autoscaling_config()
+
     """
 
     @abstractmethod
-    def get_autoscaling_config(self) -> "AutoscalingConfig":
-        """Returns the autoscaling config."""
+    def get_cached_autoscaling_config(self) -> "AutoscalingConfig":
+        """Returns the recently read autoscaling config.
+
+        Returns:
+            AutoscalingConfig: The recently read autoscaling config.
+        """
+        pass
+
+    @abstractmethod
+    def refresh_cached_autoscaling_config(self):
+        """Read the config from the source."""
         pass
 
 
@@ -125,7 +154,9 @@ class AutoscalingConfig:
     """
 
     def __init__(
-        self, configs: Dict[str, Any], skip_content_hash: bool = False
+        self,
+        configs: Dict[str, Any],
+        skip_content_hash: bool = False,
     ) -> None:
         """
         Args:
@@ -356,8 +387,12 @@ class AutoscalingConfig:
         provider_config = self._configs.get("provider", {})
         return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
 
-    def get_idle_timeout_s(self) -> float:
-        return self.get_config("idle_timeout_minutes", 0) * 60
+    def get_idle_timeout_s(self) -> Optional[float]:
+        """
+        Returns the idle timeout in seconds if present in config, otherwise None.
+        """
+        idle_timeout_s = self.get_config("idle_timeout_minutes", None)
+        return idle_timeout_s * 60 if idle_timeout_s is not None else None
 
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
@@ -394,6 +429,8 @@ class AutoscalingConfig:
             return Provider.ALIYUN
         elif provider_str == "kuberay":
             return Provider.KUBERAY
+        elif provider_str == "readonly":
+            return Provider.READ_ONLY
         else:
             return Provider.UNKNOWN
 
@@ -418,16 +455,65 @@ class FileConfigReader(IConfigReader):
         """
         self._config_file_path = Path(config_file).resolve()
         self._skip_content_hash = skip_content_hash
+        self._cached_config = self._read()
 
-    def get_autoscaling_config(self) -> AutoscalingConfig:
+    def _read(self) -> AutoscalingConfig:
+        with open(self._config_file_path) as f:
+            config = yaml.safe_load(f.read())
+            return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
+
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         """
         Reads the configs from the file and returns the autoscaling config.
 
-        This reads from the file every time to pick up changes.
+        Args:
 
         Returns:
             AutoscalingConfig: The autoscaling config.
         """
-        with open(self._config_file_path) as f:
-            config = yaml.safe_load(f.read())
-            return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
+        return self._cached_config
+
+    def refresh_cached_autoscaling_config(self):
+        self._cached_config = self._read()
+
+
+class ReadOnlyProviderConfigReader(IConfigReader):
+    """A class that reads cluster config for a read-only provider.
+
+    This is used for laptop mode / manual cluster setup modes, in order to
+    provide status reporting in the same way for users."""
+
+    def __init__(self, gcs_address: str):
+        self._configs = BASE_READONLY_CONFIG
+        self._gcs_client = GcsClient(address=gcs_address)
+
+    def refresh_cached_autoscaling_config(self) -> AutoscalingConfig:
+        # Update the config with node types from GCS.
+        ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
+
+        # Format each node type's config from the running nodes.
+        available_node_types = {}
+
+        head_node_type = None
+        for node_state in ray_cluster_resource_state.node_states:
+            node_type = format_readonly_node_type(binary_to_hex(node_state.node_id))
+            if is_head_node(node_state):
+                head_node_type = node_type
+
+            available_node_types[node_type] = {
+                "resources": dict(node_state.total_resources),
+                "min_workers": 0,
+                "max_workers": 0 if is_head_node(node_state) else 1,
+                "node_config": {},
+            }
+        if available_node_types:
+            self._configs["available_node_types"].update(available_node_types)
+            self._configs["max_workers"] = len(available_node_types)
+            assert head_node_type, "Head node type should be found."
+            self._configs["head_node_type"] = head_node_type
+
+        # Don't idle terminated nodes in read-only mode.
+        self._configs.pop("idle_timeout_minutes", None)
+
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
+        return AutoscalingConfig(self._configs, skip_content_hash=True)
