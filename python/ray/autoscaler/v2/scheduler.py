@@ -1550,6 +1550,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     id=str(time.time_ns()),
                     instance_id=node.im_instance_id,
                     ray_node_id=node.ray_node_id,
+                    instance_type=node.node_type,
                     cause=TerminationRequest.Cause.OUTDATED,
                     details=f"node from {node.node_type} has outdated config",
                 )
@@ -1606,6 +1607,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 instance_id=node.im_instance_id,
                 ray_node_id=node.ray_node_id,
                 cause=TerminationRequest.Cause.IDLE,
+                instance_type=node.node_type,
                 idle_duration_ms=node.idle_duration_ms,
                 details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
                 f"timeout={idle_timeout_s} secs",
