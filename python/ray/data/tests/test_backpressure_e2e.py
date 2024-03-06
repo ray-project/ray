@@ -1,4 +1,5 @@
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -183,7 +184,17 @@ def test_no_deadlock_on_resource_contention(
         block_size=block_size,
         insert_limit_op=insert_limit_op,
     )
-    assert len(ds.take_all()) == num_blocks
+
+    from ray.data._internal.execution.resource_manager import (
+        ReservationOpResourceAllocator,
+    )
+
+    with patch.object(
+        ReservationOpResourceAllocator.IdleDetector,
+        "DETECTION_INTERVAL_S",
+        0.1,
+    ):
+        assert len(ds.take_all()) == num_blocks
 
 
 def test_no_deadlock_with_preserve_order(
