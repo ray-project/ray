@@ -1,43 +1,13 @@
 group: Upload & Validate wheels
 steps:
+  - name: windowsbuild
+    wanda: ci/docker/windows.build.wanda.yaml
+    instance_type: builder-windows
+
   - label: "Windows"
     job_env: WINDOWS
     instance_type: windows
     commands:
-      - docker run -it --rm --volume 
-        C:\\buildkite-agent\\builds\\${BUILDKITE_AGENT_NAME}\\ray-project\\release-automation:C\\workdir
-        -- volume \\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine 
-        --workdir C:\\workdir --env CI --env BUILDKITE_BUILD_NUMBER 
-        --env BUILDKITE_BUILD_URL 
-        --env BUILDKITE_JOB_ID 
-        --env BUILDKITE_PARALLEL_JOB 
-        --env BUILDKITE_PARALLEL_JOB_COUNT 
-        --env BUILDKITE_PULL_REQUEST 
-        --env BUILDKITE_MESSAGE 
-        --env BUILDKITE_ARTIFACT_UPLOAD_DESTINATION 
-        --env BUILDKITE_BAZEL_CACHE_URL 
-        --env RAYCI_BUILD_ID 
-        --env BUILDKITE 
-        --env RAYCI_FORGE_PREFIX 
-        --env RAYCI_SKIP_UPLOAD 
-        --env RAYCI_TEMP 
-        --env RAYCI_WORK_REPO 
-        --env BUILDKITE_BRANCH 
-        --env BUILDKITE_COMMIT 
-        --env BUILDKITE_HOOK_WORKING_DIR 
-        --env BUILDKITE_LABEL 
-        --env BUILDKITE_RETRY_COUNT 
-        --env BUILDKITE_PIPELINE_ID 
-        --env BUILDKITE_PIPELINE_SLUG 
-        --env BUILDKITE_BUILD_ID 
-        --shm-size 2.5gb 
-        --label com.buildkite.job-id=${BUILDKITE_JOB_ID}
-        --label com.buildkite.pipeline_name=${BUILDKITE_PIPELINE_NAME} 
-        --label com.buildkite.pipeline_slug=${BUILDKITE_PIPELINE_SLUG}
-        --label com.buildkite.build_number=${BUILDKITE_BUILD_NUMER} 
-        --label com.buildkite.job_id=${BUILDKITE_JOB_ID} 
-        --label com.buildkite.job_label=Windows 
-        --label com.buildkite.step_key= 
-        --label com.buildkite.agent_name=${BUILDKITE_AGENT_NAME} 
-        --label com.buildkite.agent_id=${BUILDKITE_AGENT_ID} rayproject/buildenv:windows
-        bash -eo pipefail -c bash\ -i\ /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
+      - docker run -it --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-windowsbuild /bin/bash -iecuo pipefail 
+        "./.buildkite/release-automation/verify-windows-wheels.sh"
