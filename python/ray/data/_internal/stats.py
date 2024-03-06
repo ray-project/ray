@@ -39,7 +39,7 @@ def fmt(seconds: float) -> str:
 
 
 def leveled_indent(lvl: int = 0, spaces_per_indent: int = 3) -> str:
-    """Returns a  string of spaces which contains `level` indents,
+    """Returns a string of spaces which contains `level` indents,
     each indent containing `spaces_per_indent` spaces. For example:
     >>> leveled_indent(2, 3)
     '      '
