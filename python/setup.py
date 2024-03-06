@@ -338,6 +338,7 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
+        "debugpy",
     ]
 
 

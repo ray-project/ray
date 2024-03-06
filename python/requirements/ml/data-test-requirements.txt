@@ -9,3 +9,5 @@ soundfile
 google-cloud-bigquery
 google-cloud-bigquery-storage
 webdataset
+decord
+openai-whisper
