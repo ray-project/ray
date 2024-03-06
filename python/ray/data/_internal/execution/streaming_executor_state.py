@@ -406,7 +406,7 @@ def process_completed_tasks(
         ready_tasks_by_op = defaultdict(list)
         for ref in ready:
             state, task = active_tasks[ref]
-            if max_bytes_to_read_per_op[state] == 1:
+            if max_bytes_to_read_per_op.get(state, 0) == 1:
                 if task.task_index() != first_task_index[state.op]:
                     continue
             ready_tasks_by_op[state].append(task)
