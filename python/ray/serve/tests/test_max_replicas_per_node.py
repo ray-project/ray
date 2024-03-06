@@ -6,7 +6,10 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.constants import RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
+from ray.serve._private.constants import (
+    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+)
 from ray.util.state import list_actors
 
 
@@ -48,6 +51,10 @@ def check_alive_nodes(expected: int):
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    reason="Max replicas per node not supported for compact scheduling strategy yet.",
 )
 @pytest.mark.parametrize(
     "ray_autoscaling_cluster",
@@ -120,6 +127,10 @@ def test_basic(ray_autoscaling_cluster):
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    reason="Max replicas per node not supported for compact scheduling strategy yet.",
 )
 @pytest.mark.parametrize(
     "ray_autoscaling_cluster",

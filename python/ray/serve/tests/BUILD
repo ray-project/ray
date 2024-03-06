@@ -227,3 +227,45 @@ py_test_module_list(
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
   data = glob(["test_config_files/**/*"]),
 )
+
+# Test compact scheduling
+py_test_module_list(
+  name_suffix="_with_compact_scheduling",
+  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+  files = [
+    "test_standalone.py",
+    "test_standalone_3.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+py_test_module_list(
+  name_suffix="_with_compact_scheduling",
+  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+  files = [
+    "test_standalone_2.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
+)
+
+py_test_module_list(
+  name_suffix="_with_compact_scheduling",
+  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+  files = [
+    "test_deployment_scheduler.py",
+    "test_cluster.py",
+    "test_max_replicas_per_node.py",
+    "test_replica_placement_group.py",
+    "test_gcs_failure.py",
+    "test_controller_recovery.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
+)
