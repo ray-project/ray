@@ -271,7 +271,6 @@ class OpRuntimeMetrics:
         metadata={
             "description": "Byte size of used memory in object store.",
             "metrics_group": "object_store_memory",
-            "map_only": True,
         },
     )
 

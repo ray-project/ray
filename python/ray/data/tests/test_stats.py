@@ -62,7 +62,7 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
-            "'obj_store_mem_used': N,",
+            "'obj_store_mem_used': N",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -80,6 +80,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_used': N",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -218,7 +219,10 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
-    extra_metrics = gen_expected_metrics(
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE.replace(
+        "'obj_store_mem_used': N", "'obj_store_mem_used': Z"
+    )
+    extra_metrics_2 = gen_expected_metrics(
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
@@ -233,12 +237,12 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE}
+* Extra metrics: {extra_metrics_1}
 
 Operator N split(N, equal=False): \n"""
         # Workaround to preserve trailing whitespace in the above line without
         # causing linter failures.
-        f"""* Extra metrics: {extra_metrics}\n"""
+        f"""* Extra metrics: {extra_metrics_2}\n"""
         """
 Dataset iterator time breakdown:
 * Total time overall: T
@@ -267,10 +271,21 @@ def test_large_args_scheduling_strategy(
         STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
         verbose_stats_logs,
     )
+    if verbose_stats_logs:
+        read_extra_metrics = read_extra_metrics.replace(
+            "'obj_store_mem_used': N",
+            "'obj_store_mem_used': Z",
+        )
+
     map_extra_metrics = gen_extra_metrics_str(
         LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE,
         verbose_stats_logs,
     )
+    if verbose_stats_logs:
+        map_extra_metrics = map_extra_metrics.replace(
+            "'obj_store_mem_used': N",
+            "'obj_store_mem_used': Z",
+        )
     expected_stats = (
         f"Operator N ReadRange: {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -524,6 +539,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
+        "      obj_store_mem_used: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -1209,7 +1225,7 @@ def test_op_metrics_logging():
         input_str = (
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
             + gen_expected_metrics(is_map=False)
-        )
+        ).replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         map_str = (
             "Operator InputDataBuffer[Input] -> "
             "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
@@ -1217,7 +1233,7 @@ def test_op_metrics_logging():
         ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
 
         # Check that these strings are logged exactly once.
-        assert sum([log == input_str for log in logs]) == 1
+        assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
         assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
 
 
