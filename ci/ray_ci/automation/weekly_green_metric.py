@@ -50,8 +50,7 @@ def main(production: bool, check: bool) -> None:
 
     if check and blockers.totalCount != 0:
         print(
-            f"Found {blockers.totalCount} release blockers. "
-            "Please fix before proceeding.",
+            f"Found {blockers.totalCount} release blockers.",
             file=sys.stderr,
         )
         sys.exit(42)  # Not retrying the check on Buildkite jobs
