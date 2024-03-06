@@ -52,7 +52,6 @@ class DockerContainer(LinuxContainer):
         branch = os.environ.get("BUILDKITE_BRANCH")
         sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        print("SHA: ", sha_tag)
         if branch == "master":
             formatted_date = datetime.now().strftime("%y%m%d")
             return [f"nightly.{formatted_date}.{sha_tag}", "nightly"]
