@@ -286,7 +286,6 @@ class OpRuntimeMetrics:
             output_size,
         )
 
-
     def on_toggle_task_submission_backpressure(self, in_backpressure):
         if in_backpressure and self._task_submission_backpressure_start_time == -1:
             # backpressure starting, start timer
