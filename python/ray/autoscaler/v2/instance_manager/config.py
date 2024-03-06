@@ -5,11 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-<<<<<<< HEAD
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler.v2.utils import is_head_node
-=======
->>>>>>> pr-auto-main
 
 import yaml
 
@@ -26,8 +23,6 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
 from ray.autoscaler._private.util import (
     format_readonly_node_type,
-)
-from ray.autoscaler._private.util import (
     hash_launch_conf,
     hash_runtime_conf,
     prepare_config,
@@ -35,7 +30,6 @@ from ray.autoscaler._private.util import (
 )
 from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
-from ray.autoscaler.v2.utils import is_head_node
 
 logger = logging.getLogger(__name__)
 
@@ -172,14 +166,18 @@ class AutoscalingConfig:
             skip_content_hash :
                 Whether to skip file mounts/ray command hash calculation.
             skip_prepare :
-                Whether to skip the config validation and prepare step.
+                Whether to skip the config prep step from loading.
         """
         self._sync_continuously = False
-        if not skip_prepare:
-            self.update_configs(configs, skip_content_hash)
+        self.update_configs(configs, skip_content_hash, skip_prepare)
 
-    def update_configs(self, configs: Dict[str, Any], skip_content_hash: bool) -> None:
-        self._configs = prepare_config(configs)
+    def update_configs(
+        self, configs: Dict[str, Any], skip_content_hash: bool, skip_prepare: bool
+    ) -> None:
+        if skip_prepare:
+            self._configs = configs
+        else:
+            self._configs = prepare_config(configs)
         validate_config(self._configs)
         if skip_content_hash:
             return
