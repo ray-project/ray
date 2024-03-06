@@ -842,12 +842,13 @@ void CoreWorker::Exit(
          creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
           KillChildProcs();
-          // Disconnect should be put close to Shutdown
-          // https://github.com/ray-project/ray/pull/34883
+          // Disconnect sends messages to raylet which may sends callbacks to this worker
+          // that we don't want to handle, so we call Shutdown() first to stop
+          // io_service_.
           // TODO (iycheng) Improve the Process.h and make it able to monitor
           // process liveness
-          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
+          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
         },
         "CoreWorker.Shutdown");
   };
