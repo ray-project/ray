@@ -20,8 +20,10 @@ RANDOM_SEED = 123
 
 
 def test_zip(ray_start_regular_shared):
-    ds1 = ray.data.range(5, parallelism=5)
-    ds2 = ray.data.range(5, parallelism=5).map(column_udf("id", lambda x: x + 1))
+    ds1 = ray.data.range(5, override_num_blocks=5)
+    ds2 = ray.data.range(5, override_num_blocks=5).map(
+        column_udf("id", lambda x: x + 1)
+    )
     ds = ds1.zip(ds2)
     assert ds.schema().names == ["id", "id_1"]
     assert ds.take() == named_values(
@@ -39,8 +41,8 @@ def test_zip_different_num_blocks_combinations(
     ray_start_regular_shared, num_blocks1, num_blocks2
 ):
     n = 12
-    ds1 = ray.data.range(n, parallelism=num_blocks1)
-    ds2 = ray.data.range(n, parallelism=num_blocks2).map(
+    ds1 = ray.data.range(n, override_num_blocks=num_blocks1)
+    ds2 = ray.data.range(n, override_num_blocks=num_blocks2).map(
         column_udf("id", lambda x: x + 1)
     )
     ds = ds1.zip(ds2)
@@ -70,11 +72,11 @@ def test_zip_different_num_blocks_split_smallest(
     num_blocks1 = 4
     num_blocks2 = 2
     ds1 = ray.data.from_items(
-        [{str(i): i for i in range(num_cols1)}] * n, parallelism=num_blocks1
+        [{str(i): i for i in range(num_cols1)}] * n, override_num_blocks=num_blocks1
     )
     ds2 = ray.data.from_items(
         [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
-        parallelism=num_blocks2,
+        override_num_blocks=num_blocks2,
     )
     ds = ds1.zip(ds2).materialize()
     num_blocks = ds._plan._snapshot_blocks.executed_num_blocks()
@@ -129,8 +131,8 @@ def test_zip_preserve_order(ray_start_regular_shared):
 
     num_items = 10
     items = list(range(num_items))
-    ds1 = ray.data.from_items(items, parallelism=num_items)
-    ds2 = ray.data.from_items(items, parallelism=num_items)
+    ds1 = ray.data.from_items(items, override_num_blocks=num_items)
+    ds2 = ray.data.from_items(items, override_num_blocks=num_items)
     ds2 = ds2.map_batches(foo, batch_size=1)
     result = ds1.zip(ds2).take_all()
     assert result == named_values(
@@ -139,7 +141,7 @@ def test_zip_preserve_order(ray_start_regular_shared):
 
 
 def test_empty_shuffle(ray_start_regular_shared):
-    ds = ray.data.range(100, parallelism=100)
+    ds = ray.data.range(100, override_num_blocks=100)
     ds = ds.filter(lambda x: x)
     ds = ds.map_batches(lambda x: x)
     ds = ds.random_shuffle()  # Would prev. crash with AssertionError: pyarrow.Table.
@@ -147,7 +149,7 @@ def test_empty_shuffle(ray_start_regular_shared):
 
 
 def test_repartition_shuffle(ray_start_regular_shared):
-    ds = ray.data.range(20, parallelism=10)
+    ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
@@ -162,13 +164,13 @@ def test_repartition_shuffle(ray_start_regular_shared):
     assert ds3.sum() == 190
     assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
-    large = ray.data.range(10000, parallelism=10)
+    large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
     assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_noshuffle(ray_start_regular_shared):
-    ds = ray.data.range(20, parallelism=10)
+    ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
@@ -194,13 +196,13 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     assert ds5._plan.initial_num_blocks() == 4
     assert ds5._block_num_rows() == [5, 6, 5, 6]
 
-    large = ray.data.range(10000, parallelism=10)
+    large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20)
     assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
-    ds = ray.data.range(20, parallelism=10)
+    ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 20
     assert ds._block_num_rows() == [2] * 10
@@ -215,7 +217,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert ds3.count() == 20
     assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
-    large = ray.data.range(10000, parallelism=10)
+    large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
     assert large._block_num_rows() == [500] * 20
 
@@ -1132,7 +1134,7 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
-    lazy_blocklist_ds = ray.data.range(12, parallelism=4)
+    lazy_blocklist_ds = ray.data.range(12, override_num_blocks=4)
     lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
     lazy_blocklist_results = lazy_blocklist_ds.take()
     lazy_blocklist_expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
@@ -1148,8 +1150,8 @@ def test_random_shuffle(shutdown_only, use_push_based_shuffle):
     r2 = ray.data.range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
-    r1 = ray.data.range(100, parallelism=1).random_shuffle().take(999)
-    r2 = ray.data.range(100, parallelism=1).random_shuffle().take(999)
+    r1 = ray.data.range(100, override_num_blocks=1).random_shuffle().take(999)
+    r2 = ray.data.range(100, override_num_blocks=1).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
     assert (
@@ -1160,22 +1162,22 @@ def test_random_shuffle(shutdown_only, use_push_based_shuffle):
     r2 = ray.data.range(100).random_shuffle().repartition(1).take(999)
     assert r1 != r2, (r1, r2)
 
-    r0 = ray.data.range(100, parallelism=5).take(999)
-    r1 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r2 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r3 = ray.data.range(100, parallelism=5).random_shuffle(seed=12345).take(999)
+    r0 = ray.data.range(100, override_num_blocks=5).take(999)
+    r1 = ray.data.range(100, override_num_blocks=5).random_shuffle(seed=0).take(999)
+    r2 = ray.data.range(100, override_num_blocks=5).random_shuffle(seed=0).take(999)
+    r3 = ray.data.range(100, override_num_blocks=5).random_shuffle(seed=12345).take(999)
     assert r1 == r2, (r1, r2)
     assert r1 != r0, (r1, r0)
     assert r1 != r3, (r1, r3)
 
-    r0 = ray.data.range(100, parallelism=5).take(999)
-    r1 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r2 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r0 = ray.data.range(100, override_num_blocks=5).take(999)
+    r1 = ray.data.range(100, override_num_blocks=5).random_shuffle(seed=0).take(999)
+    r2 = ray.data.range(100, override_num_blocks=5).random_shuffle(seed=0).take(999)
     assert r1 == r2, (r1, r2)
     assert r1 != r0, (r1, r0)
 
     # Test move.
-    ds = ray.data.range(100, parallelism=2)
+    ds = ray.data.range(100, override_num_blocks=2)
     r1 = ds.random_shuffle().take(999)
     ds = ds.map(lambda x: x).take(999)
     r2 = ray.data.range(100).random_shuffle().take(999)
@@ -1193,7 +1195,7 @@ def test_random_shuffle_check_random(shutdown_only):
     num_files = 10
     num_rows = 100
     items = [i for i in range(num_files) for _ in range(num_rows)]
-    ds = ray.data.from_items(items, parallelism=num_files)
+    ds = ray.data.from_items(items, override_num_blocks=num_files)
     out = ds.random_shuffle().take(num_files * num_rows)
     for i in range(num_files):
         part = out[i * num_rows : (i + 1) * num_rows]
@@ -1220,7 +1222,7 @@ def test_random_shuffle_check_random(shutdown_only):
     num_files = 10
     num_rows = 100
     items = [j for i in range(num_files) for j in range(num_rows)]
-    ds = ray.data.from_items(items, parallelism=num_files)
+    ds = ray.data.from_items(items, override_num_blocks=num_files)
     out = ds.random_shuffle().take(num_files * num_rows)
     for i in range(num_files):
         part = out[i * num_rows : (i + 1) * num_rows]
@@ -1252,7 +1254,7 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_s
     # Run dataset in "bar" nodes.
     ds = ray.data.read_parquet(
         "example://parquet_images_mini",
-        parallelism=2,
+        override_num_blocks=2,
         ray_remote_args={"resources": {"bar": 1}},
     )
     ds = ds.random_shuffle(resources={"bar": 1}).materialize()
@@ -1279,7 +1281,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    ds = ray.data.range(100, override_num_blocks=2).random_shuffle()
     blocks = ds.get_internal_block_refs()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
