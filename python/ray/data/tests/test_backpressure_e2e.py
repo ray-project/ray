@@ -185,8 +185,11 @@ def test_no_deadlock_on_resource_contention(
         insert_limit_op=insert_limit_op,
     )
 
+    from ray.data._internal.execution.resource_manager import \
+        ReservationOpResourceAllocator
+
     with patch.object(
-        ray.data._internal.execution.resource_manager.ReservationOpResourceAllocator.IdleDetector,
+        ReservationOpResourceAllocator.IdleDetector,
         "DETECTION_INTERVAL_S",
         0.1,
     ):
