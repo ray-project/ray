@@ -543,7 +543,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -554,7 +554,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -725,7 +725,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 
     # 1 block/read task
 
-    ds = ray.data.read_parquet(str(tmp_path), parallelism=1, _block_udf=_block_udf)
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=1, _block_udf=_block_udf
+    )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     check_num_computed(ds, 0)
@@ -733,7 +735,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 
     # 2 blocks/read tasks
 
-    ds = ray.data.read_parquet(str(tmp_path), parallelism=2, _block_udf=_block_udf)
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=2, _block_udf=_block_udf
+    )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     check_num_computed(ds, 0)
@@ -743,7 +747,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_parquet(
         str(tmp_path),
-        parallelism=2,
+        override_num_blocks=2,
         filter=(pa.dataset.field("two") == "a"),
         _block_udf=_block_udf,
     )
@@ -776,7 +780,9 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
         pq.write_table(table, path, filesystem=fs)
 
     parallelism = 8
-    ds = ray.data.read_parquet(data_path, filesystem=fs, parallelism=parallelism)
+    ds = ray.data.read_parquet(
+        data_path, filesystem=fs, override_num_blocks=parallelism
+    )
 
     # Test metadata-only parquet ops.
     check_num_computed(ds, 0)
@@ -1058,7 +1064,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     else:
         fs.create_dir(_unwrap_protocol(path))
     ds.write_parquet(path, filesystem=fs)
-    ds2 = ray.data.read_parquet(path, parallelism=2, filesystem=fs)
+    ds2 = ray.data.read_parquet(path, override_num_blocks=2, filesystem=fs)
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
@@ -1190,7 +1196,7 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
 def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
     import pyarrow.parquet as pq
 
-    ray.data.range(100, parallelism=20).write_parquet(
+    ray.data.range(100, override_num_blocks=20).write_parquet(
         tmp_path, num_rows_per_file=num_rows_per_file
     )
 
