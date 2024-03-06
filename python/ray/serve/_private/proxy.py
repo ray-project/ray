@@ -1124,6 +1124,18 @@ class ProxyActor:
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
+        self.host = host
+        self.port = port
+        self.grpc_port = self.grpc_options.port
+        self.root_path = root_path
+        self.keep_alive_timeout_s = (
+            RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
+        )
+        self._uvicorn_server = None
+        self.node_ip_address = node_ip_address
+
+        self.http_setup_complete = asyncio.Event()
+        self.grpc_setup_complete = asyncio.Event()
 
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
@@ -1139,12 +1151,15 @@ class ProxyActor:
             component_id=node_ip_address,
             logging_config=logging_config,
         )
-        logger.info(
-            f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
-            f"starting on node {node_id}."
-        )
+
+        startup_msg = f"Proxy starting on node {node_id} (HTTP port: {port}"
+        if self.should_start_grpc_service():
+            startup_msg += f", gRPC port: {self.grpc_options.port})."
+        else:
+            startup_msg += ")."
+        logger.info(startup_msg)
         logger.debug(
-            f"Congiure Porxy actor {ray.get_runtime_context().get_actor_id()} "
+            f"Configure Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"logger with logging config: {logging_config}"
         )
 
@@ -1163,7 +1178,7 @@ class ProxyActor:
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
-                f" {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
+                f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
             )
             middlewares = validate_http_proxy_callback_return(
                 call_function_from_import_path(
@@ -1172,19 +1187,6 @@ class ProxyActor:
             )
 
             http_middlewares.extend(middlewares)
-
-        self.host = host
-        self.port = port
-        self.grpc_port = self.grpc_options.port
-        self.root_path = root_path
-        self.keep_alive_timeout_s = (
-            RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
-        )
-        self._uvicorn_server = None
-        self.node_ip_address = node_ip_address
-
-        self.http_setup_complete = asyncio.Event()
-        self.grpc_setup_complete = asyncio.Event()
 
         self.http_proxy = HTTPProxy(
             node_id=node_id,
@@ -1347,6 +1349,7 @@ class ProxyActor:
             loop=_determine_target_loop(),
             root_path=self.root_path,
             lifespan="off",
+            log_level="warning",
             access_log=False,
             timeout_keep_alive=self.keep_alive_timeout_s,
         )
@@ -1356,7 +1359,7 @@ class ProxyActor:
         # the main thread and uvicorn doesn't expose a way to configure it.
         self._uvicorn_server.install_signal_handlers = lambda: None
 
-        logger.info(
+        logger.debug(
             "Starting HTTP server on node: "
             f"{ray.get_runtime_context().get_node_id()} "
             f"listening on port {self.port}"
@@ -1389,7 +1392,7 @@ class ProxyActor:
             grpc_servicer_function(dummy_servicer, grpc_server)
 
         await grpc_server.start()
-        logger.info(
+        logger.debug(
             "Starting gRPC server on node: "
             f"{ray.get_runtime_context().get_node_id()} "
             f"listening on port {self.grpc_port}"

@@ -51,9 +51,9 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Minimum amount of parallelism to auto-detect for a dataset. Note that the min
+# Minimum number of read output blocks for a dataset. Note that the min
 # block size config takes precedence over this.
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 # Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -252,6 +252,8 @@ class DataContext:
         self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
         # The reservation ratio for ReservationOpResourceAllocator.
         self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+        # Minimum number of read output blocks for a dataset.
+        self.read_op_min_num_blocks = DEFAULT_READ_OP_MIN_NUM_BLOCKS
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -285,7 +287,8 @@ class DataContext:
                     use_polars=DEFAULT_USE_POLARS,
                     eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
-                    min_parallelism=DEFAULT_MIN_PARALLELISM,
+                    # NOTE: This parameter is deprecated. Use `read_op_min_num_blocks`.
+                    min_parallelism=DEFAULT_READ_OP_MIN_NUM_BLOCKS,
                     enable_tensor_extension_casting=(
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),

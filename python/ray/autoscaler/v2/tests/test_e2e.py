@@ -20,7 +20,8 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
     return False
 
 
-def test_autoscaler_no_churn():
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_autoscaler_no_churn(autoscaler_v2):
     num_cpus_per_node = 4
     expected_nodes = 6
     cluster = AutoscalingCluster(
@@ -33,6 +34,7 @@ def test_autoscaler_no_churn():
                 "max_workers": 2 * expected_nodes,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     driver_script = f"""
@@ -102,7 +104,8 @@ print("end")
 #  node B: 0 pending task, but **CPU used = 1**
 #
 @pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
-def test_scheduled_task_no_pending_demand(mode):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_scheduled_task_no_pending_demand(mode, autoscaler_v2):
 
     # So that head node will need to dispatch tasks to worker node.
     num_head_cpu = 0 if mode == "multi_node" else 1
@@ -117,6 +120,7 @@ def test_scheduled_task_no_pending_demand(mode):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     driver_script = """
@@ -168,7 +172,8 @@ while True:
         cluster.shutdown()
 
 
-def test_placement_group_consistent():
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_placement_group_consistent(autoscaler_v2):
     # Test that continuously creating and removing placement groups
     # does not leak pending resource requests.
     import time
@@ -183,6 +188,7 @@ def test_placement_group_consistent():
                 "max_workers": 2,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
     driver_script = """
 
@@ -236,7 +242,8 @@ while True:
         cluster.shutdown()
 
 
-def test_placement_group_removal_idle_node():
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_placement_group_removal_idle_node(autoscaler_v2):
     # Test that nodes become idle after placement group removal.
     cluster = AutoscalingCluster(
         head_resources={"CPU": 2},
@@ -248,6 +255,7 @@ def test_placement_group_removal_idle_node():
                 "max_workers": 2,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
     try:
         cluster.start()
@@ -315,7 +323,8 @@ def test_object_store_memory_idle_node(shutdown_only):
     wait_for_condition(verify)
 
 
-def test_serve_num_replica_idle_node():
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_serve_num_replica_idle_node(autoscaler_v2):
     # Test that nodes become idle after serve scaling down.
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
@@ -328,6 +337,7 @@ def test_serve_num_replica_idle_node():
             },
         },
         idle_timeout_minutes=999,
+        autoscaler_v2=autoscaler_v2,
     )
 
     from ray import serve
@@ -391,8 +401,14 @@ def test_serve_num_replica_idle_node():
         ray.shutdown()
         cluster.shutdown()
 
+        # Need this so that the next test can run.
+        from ray.serve.context import _set_global_client
 
-def test_non_corrupted_resources():
+        _set_global_client(None)
+
+
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_non_corrupted_resources(autoscaler_v2):
     """
     Test that when node's local gc happens due to object store pressure,
     the message doesn't corrupt the resource view on the gcs.
@@ -409,6 +425,8 @@ def test_non_corrupted_resources():
                 "max_workers": num_worker_nodes,
             },
         },
+        idle_timeout_minutes=999,
+        autoscaler_v2=autoscaler_v2,
     )
 
     driver_script = """
@@ -446,7 +464,8 @@ while True:
 
         def nodes_up():
             cluster_state = get_cluster_status(gcs_address)
-            return len(cluster_state.idle_nodes) == num_worker_nodes + 1
+            assert len(cluster_state.idle_nodes) == num_worker_nodes + 1
+            return True
 
         wait_for_condition(nodes_up)
 
