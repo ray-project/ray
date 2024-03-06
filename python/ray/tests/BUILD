@@ -149,8 +149,8 @@ py_test_module_list(
     "test_nested_task.py",
     "test_metrics.py",
     "test_task_events.py",
-    "test_worker_state.py",
     "test_task_events_2.py",
+    "test_task_events_3.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -186,6 +186,7 @@ py_test_module_list(
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
+    "test_worker_state.py",
     "test_multi_tenancy.py",
     "test_namespace.py",
     "test_scheduling.py",
@@ -271,7 +272,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
-    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
@@ -332,6 +332,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
+    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],

@@ -20,6 +20,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
+    ReplicaID,
     ReplicaState,
 )
 from ray.serve._private.constants import (
@@ -33,91 +34,118 @@ from ray.serve._private.test_utils import (
     check_num_replicas_eq,
     check_num_replicas_gte,
     check_num_replicas_lte,
-    get_num_running_replicas,
+    get_num_alive_replicas,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.schema import ServeDeploySchema
 
 
-def get_running_replica_tags(name: str, controller: ServeController) -> List:
+def get_running_replica_ids(name: str, controller: ServeController) -> List[ReplicaID]:
     """Get the replica tags of running replicas for given deployment"""
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(
-            DeploymentID(name, SERVE_DEFAULT_APP_NAME)
-        )
+        controller._dump_replica_states_for_testing.remote(DeploymentID(name=name))
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
-    return [replica.replica_tag for replica in running_replicas]
+    return [replica.replica_id for replica in running_replicas]
 
 
 def get_deployment_start_time(controller: ServeController, name: str):
     """Return start time for given deployment"""
     deployments = ray.get(controller.list_deployments_internal.remote())
-    deployment_info, _ = deployments[DeploymentID(name, SERVE_DEFAULT_APP_NAME)]
+    deployment_info, _ = deployments[DeploymentID(name=name)]
     return deployment_info.start_time_ms
 
 
 def assert_no_replicas_deprovisioned(
-    replica_tags_1: Iterable[str], replica_tags_2: Iterable[str]
+    replica_ids_1: Iterable[ReplicaID], replica_ids_2: Iterable[ReplicaID]
 ) -> None:
     """
-    Checks whether any replica tags from replica_tags_1 are absent from
-    replica_tags_2. Assumes that this indicates replicas were de-provisioned.
+    Checks whether any replica ids from replica_ids_1 are absent from
+    replica_ids_2. Assumes that this indicates replicas were de-provisioned.
 
-    replica_tags_1: Replica tags of running replicas at the first timestep
-    replica_tags_2: Replica tags of running replicas at the second timestep
+    replica_ids_1: Replica ids of running replicas at the first timestep
+    replica_ids_2: Replica ids of running replicas at the second timestep
     """
 
-    replica_tags_1, replica_tags_2 = set(replica_tags_1), set(replica_tags_2)
-    num_matching_replicas = len(replica_tags_1.intersection(replica_tags_2))
+    replica_ids_1, replica_ids_2 = set(replica_ids_1), set(replica_ids_2)
+    num_matching_replicas = len(replica_ids_1.intersection(replica_ids_2))
 
     print(
         f"{num_matching_replicas} replica(s) stayed provisioned between "
-        f"both deployments. All {len(replica_tags_1)} replica(s) were "
+        f"both deployments. All {len(replica_ids_1)} replica(s) were "
         f"expected to stay provisioned. "
-        f"{len(replica_tags_1) - num_matching_replicas} replica(s) were "
+        f"{len(replica_ids_1) - num_matching_replicas} replica(s) were "
         f"de-provisioned."
     )
 
-    assert len(replica_tags_1) == num_matching_replicas
+    assert len(replica_ids_1) == num_matching_replicas
 
 
 def test_assert_no_replicas_deprovisioned():
-    replica_tags_1 = ["a", "b", "c"]
-    replica_tags_2 = ["a", "b", "c", "d", "e"]
+    deployment_id = DeploymentID(name="hi")
+    replica_ids_1 = [
+        ReplicaID("a", deployment_id=deployment_id),
+        ReplicaID("b", deployment_id=deployment_id),
+        ReplicaID("c", deployment_id=deployment_id),
+    ]
 
-    assert_no_replicas_deprovisioned(replica_tags_1, replica_tags_2)
+    replica_ids_2 = [
+        ReplicaID("a", deployment_id=deployment_id),
+        ReplicaID("b", deployment_id=deployment_id),
+        ReplicaID("c", deployment_id=deployment_id),
+        ReplicaID("d", deployment_id=deployment_id),
+        ReplicaID("e", deployment_id=deployment_id),
+    ]
+
+    assert_no_replicas_deprovisioned(replica_ids_1, replica_ids_2)
     with pytest.raises(AssertionError):
-        assert_no_replicas_deprovisioned(replica_tags_2, replica_tags_1)
+        assert_no_replicas_deprovisioned(replica_ids_2, replica_ids_1)
 
 
-def test_autoscaling_metrics(serve_instance):
+@pytest.mark.parametrize(
+    "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+    [(True, True), (True, False), (False, True)],
+)
+def test_autoscaling_metrics(
+    serve_instance,
+    use_target_num_ongoing_requests_per_replica,
+    use_target_ongoing_requests,
+):
     """Test that request metrics are sent correctly to the controller."""
 
     signal = SignalActor.remote()
 
+    autoscaling_config = {
+        "metrics_interval_s": 0.1,
+        "min_replicas": 1,
+        "max_replicas": 10,
+        "upscale_delay_s": 0,
+        "downscale_delay_s": 0,
+        "look_back_period_s": 1,
+    }
+    if use_target_ongoing_requests and not use_target_num_ongoing_requests_per_replica:
+        autoscaling_config["target_ongoing_requests"] = 10
+    elif use_target_ongoing_requests and use_target_num_ongoing_requests_per_replica:
+        autoscaling_config["target_ongoing_requests"] = 10
+        # Random setting, should get ignored
+        autoscaling_config["target_num_ongoing_requests_per_replica"] = 234
+    else:
+        autoscaling_config["target_num_ongoing_requests_per_replica"] = 10
+
     @serve.deployment(
-        autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 2,
-            "target_num_ongoing_requests_per_replica": 1,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-            "look_back_period_s": 1,
-        },
+        autoscaling_config=autoscaling_config,
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=25,
+        max_ongoing_requests=25,
         version="v1",
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
-    dep_id = DeploymentID("A", "default")
+    dep_id = DeploymentID(name="A")
     [handle.remote() for _ in range(50)]
 
     # Wait for metrics to propagate
@@ -134,24 +162,19 @@ def test_autoscaling_metrics(serve_instance):
     # Many queries should be inflight.
     def last_timestamp_value_high():
         metrics = get_data()
-        assert metrics > 40
+        assert metrics > 45
         return True
 
     wait_for_condition(last_timestamp_value_high)
-    print("Confirmed there are metrics from 2 replicas, and many queries are inflight.")
+    print("Confirmed many queries are inflight.")
+
+    wait_for_condition(check_num_replicas_eq, name="A", target=5)
+    print("Confirmed deployment scaled to 5 replicas.")
     print("Releasing signal.")
     signal.send.remote()
 
-    def check_running_replicas(expected):
-        replicas = ray.get(
-            serve_instance._controller._dump_replica_states_for_testing.remote(dep_id)
-        )
-        running_replicas = replicas.get([ReplicaState.RUNNING])
-        assert len(running_replicas) == expected
-        return True
-
     # After traffic stops, num replica should drop to 1
-    wait_for_condition(check_running_replicas, expected=1, timeout=15)
+    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=15)
     print("Num replicas dropped to 1.")
 
     # Request metrics should drop to 0
@@ -177,7 +200,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
     )
     class A:
         def __call__(self):
@@ -234,7 +257,7 @@ def test_e2e_scale_up_down_with_0_replica(
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
         version="v1",
     )
     class A:
@@ -351,7 +374,7 @@ def test_e2e_bursty(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
         version="v1",
     )
     class A:
@@ -371,7 +394,7 @@ def test_e2e_bursty(serve_instance):
 
     wait_for_condition(check_num_replicas_gte, name="A", target=2)
 
-    num_replicas = get_num_running_replicas("A")
+    num_replicas = get_num_alive_replicas("A")
     signal.send.remote()
 
     # Execute a bursty workload that issues 100 requests every 0.05 seconds
@@ -417,7 +440,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
-        max_concurrent_queries=1000,
+        max_ongoing_requests=1000,
     )
     class A:
         def __call__(self):
@@ -470,7 +493,7 @@ def test_downscaling_with_fractional_smoothing_factor(
                     "downscale_delay_s": 5,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -526,7 +549,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
                     "upscale_delay_s": 0.2,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -545,7 +568,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     wait_for_condition(check_num_replicas_gte, name="A", target=10)
     print("Scaled to 10 replicas.")
-    first_deployment_replicas = get_running_replica_tags("A", controller)
+    first_deployment_replicas = get_running_replica_ids("A", controller)
 
     check_num_replicas_lte("A", 20)
 
@@ -560,7 +583,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     wait_for_condition(check_num_replicas_gte, name="A", target=20)
     print("Scaled up to 20 requests.")
-    second_deployment_replicas = get_running_replica_tags("A", controller)
+    second_deployment_replicas = get_running_replica_ids("A", controller)
 
     # Confirm that none of the original replicas were de-provisioned
     assert_no_replicas_deprovisioned(
@@ -615,7 +638,7 @@ def test_e2e_raise_min_replicas(serve_instance):
                     "upscale_delay_s": 0.2,
                 },
                 "graceful_shutdown_timeout_s": 1,
-                "max_concurrent_queries": 1000,
+                "max_ongoing_requests": 1000,
             }
         ],
     }
@@ -636,7 +659,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=2)
     print("Scaled up to 1 replica.")
 
-    first_deployment_replicas = get_running_replica_tags("A", controller)
+    first_deployment_replicas = get_running_replica_ids("A", controller)
 
     app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
@@ -650,7 +673,7 @@ def test_e2e_raise_min_replicas(serve_instance):
         wait_for_condition(check_num_replicas_gte, name="A", target=3, timeout=5)
     print("Autoscaled to 2 without issuing any new requests.")
 
-    second_deployment_replicas = get_running_replica_tags("A", controller)
+    second_deployment_replicas = get_running_replica_ids("A", controller)
 
     # Confirm that none of the original replicas were de-provisioned
     assert_no_replicas_deprovisioned(
@@ -695,7 +718,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=5,
+        max_ongoing_requests=5,
         # The config makes the deployment scale up really quickly and then
         # wait nearly forever to downscale.
         autoscaling_config=AutoscalingConfig(
@@ -713,7 +736,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
         return os.getpid()
 
     handle = serve.run(scaler.bind())
-    dep_id = DeploymentID("scaler", SERVE_DEFAULT_APP_NAME)
+    dep_id = DeploymentID(name="scaler")
     responses = [handle.remote() for _ in range(10)]
 
     wait_for_condition(
@@ -883,12 +906,17 @@ app = g.bind()
     not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     reason="Only works when collecting request metrics at handle.",
 )
-def test_max_concurrent_queries_set_to_one(serve_instance):
+@pytest.mark.parametrize(
+    "use_max_concurrent_queries,use_max_ongoing_requests",
+    [(True, True), (True, False), (False, True)],
+)
+def test_max_ongoing_requests_set_to_one(
+    serve_instance, use_max_concurrent_queries, use_max_ongoing_requests
+):
     assert RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
     signal = SignalActor.remote()
 
     @serve.deployment(
-        max_concurrent_queries=1,
         autoscaling_config=AutoscalingConfig(
             min_replicas=1,
             max_replicas=5,
@@ -904,7 +932,12 @@ def test_max_concurrent_queries_set_to_one(serve_instance):
         await signal.wait.remote()
         return os.getpid()
 
+    if use_max_concurrent_queries:
+        f = f.options(max_concurrent_queries=1)
+    if use_max_ongoing_requests:
+        f = f.options(max_ongoing_requests=1)
     h = serve.run(f.bind())
+
     check_num_replicas_eq("f", 1)
 
     # Repeatedly (5 times):

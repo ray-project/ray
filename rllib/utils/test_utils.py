@@ -30,7 +30,10 @@ import yaml
 import ray
 from ray import air, tune
 from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
+from ray.rllib.train import load_experiments_from_file
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
@@ -143,7 +146,16 @@ def add_rllib_example_script_args(
         default=0,
         help=(
             "The frequency (in training iterations) with which to create checkpoints. "
-            "Note that if --wandb-key is provided, these checkpoints will "
+            "Note that if --wandb-key is provided, all checkpoints will "
+            "automatically be uploaded to WandB."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-at-end",
+        action="store_true",
+        help=(
+            "Whether to create a checkpoint at the very end of the experiment. "
+            "Note that if --wandb-key is provided, all checkpoints will "
             "automatically be uploaded to WandB."
         ),
     )
@@ -854,6 +866,7 @@ def framework_iterator(
             sess.__exit__(None, None, None)
 
 
+@Deprecated(new="run_learning_tests_from_yaml_or_py(config_files=...)", error=False)
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
@@ -861,13 +874,30 @@ def run_learning_tests_from_yaml(
     max_num_repeats: int = 2,
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
+):
+    return run_learning_tests_from_yaml_or_py(
+        yaml_files,
+        framework=framework,
+        max_num_repeats=max_num_repeats,
+        use_pass_criteria_as_stop=use_pass_criteria_as_stop,
+        smoke_test=smoke_test,
+    )
+
+
+def run_learning_tests_from_yaml_or_py(
+    config_files: List[str],
+    *,
+    framework: Optional[str] = None,
+    max_num_repeats: int = 2,
+    use_pass_criteria_as_stop: bool = True,
+    smoke_test: bool = False,
 ) -> Dict[str, Any]:
-    """Runs the given experiments in yaml_files and returns results dict.
+    """Runs the given experiments in config_files and returns results dict.
 
     Args:
         framework: The framework to use for running this test. If None,
             run the test on all frameworks.
-        yaml_files: List of yaml file names.
+        config_files: List of yaml or py config file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
         use_pass_criteria_as_stop: Configure the Trial so that it stops
@@ -880,9 +910,9 @@ def run_learning_tests_from_yaml(
         A results dict mapping strings (e.g. "time_taken", "stats", "passed") to
             the respective stats/values.
     """
-    print("Will run the following yaml files:")
-    for yaml_file in yaml_files:
-        print("->", yaml_file)
+    print("Will run the following config files:")
+    for config_file in config_files:
+        print("->", config_file)
 
     # All trials we'll ever run in this test script.
     all_trials = []
@@ -903,8 +933,21 @@ def run_learning_tests_from_yaml(
 
     # Loop through all collected files and gather experiments.
     # Set correct framework(s).
-    for yaml_file in yaml_files:
-        tf_experiments = yaml.safe_load(open(yaml_file).read())
+    for config_file in config_files:
+        # For python files, need to make sure, we only deliver the module name into the
+        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
+        if config_file.endswith(".py"):
+            if config_file.endswith(
+                "__init__.py"
+            ):  # weird CI learning test (BAZEL) case
+                continue
+            tf_experiments = load_experiments_from_file(
+                config_file, SupportedFileType.python
+            )
+        else:
+            tf_experiments = load_experiments_from_file(
+                config_file, SupportedFileType.yaml
+            )
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
@@ -1202,6 +1245,7 @@ def run_rllib_example_script_experiment(
             callbacks=callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
+                checkpoint_at_end=args.checkpoint_at_end,
             ),
         ),
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
