@@ -86,12 +86,6 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 neginf=0.0,
             )
 
-        # Choose the requested loss function. Note, in case of the Huber loss
-        # we fall back to the default of `delta=1.0`.
-        loss_fn = (
-            nn.HuberLoss if self.config.td_error_loss_fn == "huber" else nn.MSELoss
-        )
-
         # If we learn a Q-distribution.
         if self.config.num_atoms > 1:
             # Extract the Q-logits evaluated at the selected actions.
@@ -185,6 +179,11 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 + self.config.gamma ** batch["n_steps"] * q_next_best_masked
             ).detach()
 
+            # Choose the requested loss function. Note, in case of the Huber loss
+            # we fall back to the default of `delta=1.0`.
+            loss_fn = (
+                nn.HuberLoss if self.config.td_error_loss_fn == "huber" else nn.MSELoss
+            )
             # Compute the TD error.
             td_error = torch.abs(q_selected - q_selected_target)
             # Compute the weighted loss (importance sampling weights).
@@ -211,19 +210,39 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 module_id,
                 {
                     ATOMS: z,
-                    "dist_diff": torch.mean(
+                    # The absolute difference in expectation between the actions
+                    # should (at least mildly) rise.
+                    "expectations_abs_diff": torch.mean(
                         torch.abs(
                             torch.diff(
                                 torch.sum(fwd_out[QF_PROBS].mean(dim=0) * z, dim=1)
-                            )
+                            ).mean(dim=0)
                         )
                     ),
-                    "dist_total_variation_distance": torch.diff(
+                    # The total variation distance should measure the distance between
+                    # return distributions of different actions. This should (at least
+                    # mildly) increase during training when the agent differentiates
+                    # more between actions.
+                    "dist_total_variation_dist": torch.diff(
                         fwd_out[QF_PROBS].mean(dim=0), dim=0
                     )
                     .abs()
                     .sum()
                     * 0.5,
+                    # The maximum distance between the action distributions. This metric
+                    # should increase over the course of training.
+                    "dist_max_abs_distance": torch.max(
+                        torch.diff(fwd_out[QF_PROBS].mean(dim=0), dim=0).abs()
+                    ),
+                    # Mean shannon entropy of action distributions. This should decrease
+                    # over the course of training.
+                    "action_dist_mean_entropy": torch.mean(
+                        (
+                            fwd_out[QF_PROBS].mean(dim=0)
+                            * torch.log(fwd_out[QF_PROBS].mean(dim=0))
+                        ).sum(dim=1),
+                        dim=0,
+                    ),
                 },
             )
 
