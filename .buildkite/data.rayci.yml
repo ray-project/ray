@@ -54,7 +54,6 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data15build
         --except-tags data_integration,doctest
-      - sleep 36000
     depends_on: data15build
 
   - label: ":database: data: python {{matrix.python}} tests ({{matrix.worker_id}})"
