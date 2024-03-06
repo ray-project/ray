@@ -40,6 +40,7 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data6build
         --except-tags data_integration,doctest
+      - sleep 7200
     depends_on: data6build
 
   - label: ":database: data: arrow 15 tests"
