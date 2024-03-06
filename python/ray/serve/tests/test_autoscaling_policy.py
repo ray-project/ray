@@ -33,7 +33,7 @@ from ray.serve._private.test_utils import (
     check_num_replicas_eq,
     check_num_replicas_gte,
     check_num_replicas_lte,
-    get_num_running_replicas,
+    get_num_alive_replicas,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.schema import ServeDeploySchema
@@ -381,7 +381,7 @@ def test_e2e_bursty(serve_instance):
 
     wait_for_condition(check_num_replicas_gte, name="A", target=2)
 
-    num_replicas = get_num_running_replicas("A")
+    num_replicas = get_num_alive_replicas("A")
     signal.send.remote()
 
     # Execute a bursty workload that issues 100 requests every 0.05 seconds
