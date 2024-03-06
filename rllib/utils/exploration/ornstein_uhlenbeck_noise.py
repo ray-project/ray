@@ -268,6 +268,8 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             self.ou_state = state["ou_state"]
         elif torch and torch.is_tensor(self.ou_state):
             self.ou_state = torch.from_numpy(state["ou_state"])
+            if self.device is not None:
+                self.ou_state.to(self.device)
         else:
             self.ou_state.assign(state["ou_state"])
         super().set_state(state, sess=sess)
