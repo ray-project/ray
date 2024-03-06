@@ -531,7 +531,7 @@ class _MetricTask:
         self.interval_s: float = interval_s
         self.callback_func: Callable[[Any, float]] = callback_func
         self.last_ref: Optional[ray.ObjectRef] = None
-        self.last_call_succeeded_time: Optional[float] = time.time()
+        self.last_call_time: Optional[float] = time.time()
 
 
 class MetricsPusher:
@@ -546,6 +546,9 @@ class MetricsPusher:
         self.tasks: List[_MetricTask] = []
         self.pusher_thread: Union[threading.Thread, None] = None
         self.stop_event = threading.Event()
+        self.minimum_sleep_time_s = float(os.environ.get(
+            "RAY_SERVE_MIN_METRIC_TASK_SLEEP_TIME_S", "0.1"
+        ))
 
     def register_task(self, task_func, interval_s, process_func=None):
         self.tasks.append(_MetricTask(task_func, interval_s, process_func))
@@ -566,18 +569,19 @@ class MetricsPusher:
                 start = time.time()
                 for task in self.tasks:
                     try:
-                        if start - task.last_call_succeeded_time >= task.interval_s:
+                        if start - task.last_call_time >= task.interval_s:
                             if task.last_ref:
                                 ready_refs, _ = ray.wait([task.last_ref], timeout=0)
                                 if len(ready_refs) == 0:
                                     continue
                             data = task.task_func()
-                            task.last_call_succeeded_time = time.time()
+                            task.last_call_time = time.time()
                             if task.callback_func and ray.is_initialized():
                                 task.last_ref = task.callback_func(
                                     data, send_timestamp=time.time()
                                 )
                     except Exception as e:
+                        task.last_call_time = time.time()
                         logger.warning(
                             f"MetricsPusher thread failed to run metric task: {e}"
                         )
@@ -587,11 +591,11 @@ class MetricsPusher:
                 least_interval_s = math.inf
                 for task in self.tasks:
                     time_until_next_push = task.interval_s - (
-                        time.time() - task.last_call_succeeded_time
+                        time.time() - task.last_call_time
                     )
                     least_interval_s = min(least_interval_s, time_until_next_push)
 
-                time.sleep(max(least_interval_s, 0))
+                time.sleep(max(least_interval_s, self.minimum_sleep_time_s))
 
         if len(self.tasks) == 0:
             raise ValueError("MetricsPusher has zero tasks registered.")
