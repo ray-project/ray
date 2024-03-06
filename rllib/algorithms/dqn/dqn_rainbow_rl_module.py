@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Any, Dict, Type, Union
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -9,7 +10,6 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -97,27 +97,27 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return [SampleBatch.OBS, SampleBatch.T]
+        return [Columns.OBS, Columns.T]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
         return [
-            SampleBatch.OBS,
-            SampleBatch.ACTIONS,
-            SampleBatch.NEXT_OBS,
+            Columns.OBS,
+            Columns.ACTIONS,
+            Columns.NEXT_OBS,
         ]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return [SampleBatch.ACTIONS]
+        return [Columns.ACTIONS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return [SampleBatch.ACTIONS]
+        return [Columns.ACTIONS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:

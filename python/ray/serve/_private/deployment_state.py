@@ -37,7 +37,9 @@ from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -468,6 +470,7 @@ class ActorReplicaWrapper:
             "name": self._actor_name,
             "namespace": SERVE_NAMESPACE,
             "lifetime": "detached",
+            "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
@@ -1308,11 +1311,11 @@ class DeploymentState:
     def recover_target_state_from_checkpoint(
         self, target_state_checkpoint: DeploymentTargetState
     ):
-        logger.info(
-            f"Recovering target state for deployment {self.deployment_name} in "
-            f"application {self.app_name} from checkpoint."
-        )
+        logger.info(f"Recovering target state for {self._id} from checkpoint.")
         self._target_state = target_state_checkpoint
+        self._deployment_scheduler.on_deployment_deployed(
+            self._id, self._target_state.info.replica_config
+        )
 
     def recover_current_state_from_replica_actor_names(
         self, replica_actor_names: List[str]
@@ -1324,9 +1327,8 @@ class DeploymentState:
             "recovering current state from replica actor names."
         )
         logger.info(
-            f"Recovering current state for deployment '{self.deployment_name}' "
-            f"in application '{self.app_name}' from {len(replica_actor_names)} total "
-            "actors."
+            f"Recovering current state for {self._id} "
+            f"from {len(replica_actor_names)} live actors."
         )
         # All current states use default value, only attach running replicas.
         for replica_actor_name in replica_actor_names:
@@ -1363,6 +1365,14 @@ class DeploymentState:
         return self._target_state.info
 
     @property
+    def target_version(self) -> DeploymentVersion:
+        return self._target_state.version
+
+    @property
+    def target_num_replicas(self) -> int:
+        return self._target_state.target_num_replicas
+
+    @property
     def curr_status_info(self) -> DeploymentStatusInfo:
         return self._curr_status_info
 
@@ -1381,6 +1391,9 @@ class DeploymentState:
                 [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
             )
         ]
+
+    def get_num_running_replicas(self, version: DeploymentVersion = None) -> int:
+        return self._replicas.count(states=[ReplicaState.RUNNING], version=version)
 
     def get_active_node_ids(self) -> Set[str]:
         """Get the node ids of all running replicas in this deployment.
@@ -1471,9 +1484,8 @@ class DeploymentState:
         self._curr_status_info = self._curr_status_info.handle_transition(
             trigger=DeploymentStatusInternalTrigger.DELETE
         )
-        app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
-            f"Deleting deployment {self.deployment_name}{app_msg}",
+            f"Deleting {self._id}",
             extra={"log_to_stderr": False},
         )
 
@@ -1589,6 +1601,9 @@ class DeploymentState:
 
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
+        self._deployment_scheduler.on_deployment_deployed(
+            self._id, deployment_info.replica_config
+        )
 
         # Determine if the updated target state simply scales the current state.
         if self._target_state.is_scaled_copy_of(old_target_state):
@@ -1612,9 +1627,8 @@ class DeploymentState:
             )
 
         logger.info(
-            f"Deploying new version of deployment {self.deployment_name} in "
-            f"application '{self.app_name}'. Setting initial target number of "
-            f"replicas to {target_num_replicas}."
+            f"Deploying new version of {self._id} "
+            f"(initial target replicas: {target_num_replicas})."
         )
         self._replica_constructor_retry_counter = 0
         self._backoff_time_s = 1
@@ -1680,10 +1694,9 @@ class DeploymentState:
             return
 
         logger.info(
-            f"Autoscaling replicas for deployment '{self.deployment_name}' in "
-            f"application '{self.app_name}' to {decision_num_replicas}. "
-            f"Current number of requests: {total_num_requests}. Current number of "
-            f"running replicas: {num_running_replicas}."
+            f"Autoscaling {self._id} to {decision_num_replicas} replicas. "
+            f"Current num requests: {total_num_requests}, "
+            f"current num running replicas: {num_running_replicas}."
         )
 
         new_info = copy(self._target_state.info)
@@ -1798,16 +1811,14 @@ class DeploymentState:
 
         if code_version_changes > 0:
             logger.info(
-                f"Stopping {code_version_changes} replicas of deployment "
-                f"'{self.deployment_name}' in application '{self.app_name}' with "
-                "outdated versions."
+                f"Stopping {code_version_changes} replicas of {self._id} "
+                "with outdated versions."
             )
 
         if reconfigure_changes > 0:
             logger.info(
-                f"Updating {reconfigure_changes} replicas of deployment "
-                f"'{self.deployment_name}' in application '{self.app_name}' with "
-                "outdated deployment configs."
+                f"Updating {reconfigure_changes} replicas of {self._id} "
+                "with outdated deployment configs."
             )
             # Record user config lightweight update
             ServeUsageTag.USER_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
@@ -1921,10 +1932,8 @@ class DeploymentState:
                         return upscale, downscale
 
                 self._last_retry = time.time()
-                logger.info(
-                    f"Adding {to_add} replica{'s' if to_add > 1 else ''} to deployment "
-                    f"'{self.deployment_name}' in application '{self.app_name}'."
-                )
+                added_replicas = f"{to_add} replica{'s' if to_add > 1 else ''}"
+                logger.info(f"Adding {added_replicas} to {self._id}.")
                 for _ in range(to_add):
                     replica_name = ReplicaName(
                         self.app_name, self.deployment_name, get_random_string()
@@ -1939,18 +1948,11 @@ class DeploymentState:
                     )
 
                     self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-                    logger.debug(
-                        f"Adding STARTING to replica_tag: {replica_name}, deployment: "
-                        f"'{self.deployment_name}', application: '{self.app_name}'"
-                    )
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
-            logger.info(
-                f"Removing {to_remove} replica{'s' if to_remove > 1 else ''} "
-                f"from deployment '{self.deployment_name}' in application "
-                f"'{self.app_name}'."
-            )
+            removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
+            logger.info(f"Removing {removed_replicas} from {self._id}.")
             downscale = DeploymentDownscaleRequest(
                 deployment_id=self._id, num_to_stop=to_remove
             )
@@ -2069,7 +2071,6 @@ class DeploymentState:
                 logger.info(
                     f"Replica {replica.replica_tag} started successfully "
                     f"on node '{replica.actor_node_id}'.",
-                    extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
@@ -2311,12 +2312,11 @@ class DeploymentState:
 
         return to_stop, remaining
 
-    def _migrate_replicas_on_draining_nodes(self):
-        draining_node_deadlines = self._cluster_node_info_cache.get_draining_nodes()
+    def _migrate_replicas_on_draining_nodes(self, draining_nodes: Dict[str, int]):
         for replica in self._replicas.pop(
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING, ReplicaState.STARTING]
         ):
-            if replica.actor_node_id in draining_node_deadlines:
+            if replica.actor_node_id in draining_nodes:
                 # For RUNNING replicas, migrate them safely by starting
                 # a replacement replica first.
                 if replica.actor_details.state == ReplicaState.RUNNING:
@@ -2341,7 +2341,7 @@ class DeploymentState:
             replicas_to_keep,
         ) = self._choose_pending_migration_replicas_to_stop(
             self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]),
-            draining_node_deadlines,
+            draining_nodes,
             num_pending_migration_replicas_to_stop,
         )
         for replica in replicas_to_stop:
@@ -2355,7 +2355,7 @@ class DeploymentState:
         for replica in replicas_to_keep:
             self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
 
-    def update(self) -> DeploymentStateUpdateResult:
+    def update(self, *, allow_active_compaction: bool) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
@@ -2375,7 +2375,15 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             self._check_and_update_replicas()
 
-            self._migrate_replicas_on_draining_nodes()
+            draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
+            if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and allow_active_compaction:
+                (
+                    node,
+                    deadline,
+                ) = self._deployment_scheduler.detect_compact_opportunities()
+                if node and node not in draining_nodes:
+                    draining_nodes[node] = deadline
+            self._migrate_replicas_on_draining_nodes(draining_nodes=draining_nodes)
 
             upscale, downscale = self._scale_deployment_replicas()
 
@@ -2731,6 +2739,7 @@ class DeploymentStateManager:
             return None
         else:
             status_info = statuses[0]
+            deployment_state = self._deployment_states[id]
             return DeploymentDetails(
                 name=id.name,
                 status=status_info.status,
@@ -2739,7 +2748,8 @@ class DeploymentStateManager:
                 deployment_config=_deployment_info_to_schema(
                     id.name, self.get_deployment(id)
                 ),
-                replicas=self._deployment_states[id].list_replica_details(),
+                target_num_replicas=deployment_state._target_state.target_num_replicas,
+                replicas=deployment_state.list_replica_details(),
             )
 
     def get_deployment_statuses(
@@ -2799,11 +2809,24 @@ class DeploymentStateManager:
         upscales = {}
         downscales = {}
 
+        # NOTE(zcin): If the deployment status is healthy, it should mean
+        # that the number of running replicas at target version is at
+        # the target number. Adding an extra check to be defensive.
+        # TODO(zcin): Make sure that status should never be healthy if
+        # the number of running replicas at target version is not at
+        # target number, so we can remove this defensive check.
+        allow_active_compaction = all(
+            ds.curr_status_info.status == DeploymentStatus.HEALTHY
+            and ds.get_num_running_replicas(ds.target_version) == ds.target_num_replicas
+            for ds in self._deployment_states.values()
+        )
         for deployment_id, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
                 deployment_state.autoscale()
 
-            deployment_state_update_result = deployment_state.update()
+            deployment_state_update_result = deployment_state.update(
+                allow_active_compaction=allow_active_compaction
+            )
             if deployment_state_update_result.upscale:
                 upscales[deployment_id] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:

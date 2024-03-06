@@ -23,6 +23,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     NEW_DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deploy_utils import (
@@ -416,7 +417,8 @@ class ApplicationState:
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
-                runtime_env=config.runtime_env
+                runtime_env=config.runtime_env,
+                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
                 config.import_path,
                 config.deployment_names,
@@ -1123,12 +1125,12 @@ def override_deployment_info(
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_ongoing_requests
-            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
+            < deployment_config.autoscaling_config.get_target_ongoing_requests()
         ):
             logger.warning(
                 "Autoscaling will never happen, "
                 "because 'max_ongoing_requests' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
+                "'target_ongoing_requests' now."
             )
 
     # Overwrite ingress route prefix

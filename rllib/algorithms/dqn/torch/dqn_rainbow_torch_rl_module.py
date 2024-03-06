@@ -9,13 +9,13 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     QF_TARGET_NEXT_PROBS,
 )
 from ray.rllib.algorithms.sac.sac_rl_module import QF_PREDS
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import NetworkType, TensorType, TensorStructType
@@ -44,7 +44,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         exploit_actions = action_dist.to_deterministic().sample()
 
         # In inference we only need the exploitation actions.
-        output[SampleBatch.ACTIONS] = exploit_actions
+        output[Columns.ACTIONS] = exploit_actions
 
         return output
 
@@ -70,7 +70,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # variation in exploration.
         if False:  # self.uses_noisy:
             # Use the exploitation action (coming from the noisy network).
-            output[SampleBatch.ACTIONS] = exploit_actions
+            output[Columns.ACTIONS] = exploit_actions
         # Otherwise we need epsilon greedy to support exploration.
         else:
             # TODO (simon): Implement sampling for nested spaces.
@@ -87,7 +87,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 ),
                 dim=1,
             )
-            output[SampleBatch.ACTIONS] = torch.where(
+            output[Columns.ACTIONS] = torch.where(
                 torch.rand((B,)) < epsilon,
                 random_actions,
                 exploit_actions,
@@ -102,8 +102,8 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         output = {}
 
         # DQN needs the Q-values for the current and the next observation.
-        batch_curr = {SampleBatch.OBS: batch[SampleBatch.OBS]}
-        batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
+        batch_curr = {Columns.OBS: batch[Columns.OBS]}
+        batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Q-network forward passes.
         qf_outs = self._qf(batch_curr)

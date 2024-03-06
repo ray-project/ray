@@ -512,9 +512,9 @@ def run(
 
     if _entrypoint == AirEntrypoint.TRAINER:
         error_message_map = {
-            "entrypoint": "Trainer(...)",
+            "entrypoint": "<FrameworkTrainer>(...)",
             "search_space_arg": "param_space",
-            "restore_entrypoint": 'Trainer.restore(path="{path}", ...)',
+            "restore_entrypoint": '<FrameworkTrainer>.restore(path="{path}", ...)',
         }
     elif _entrypoint == AirEntrypoint.TUNER:
         error_message_map = {
@@ -978,7 +978,7 @@ def run(
                 )
                 break
 
-    experiment_local_path = runner._storage.experiment_local_path
+    experiment_local_path = runner._storage.experiment_driver_staging_path
     experiment_dir_name = runner._storage.experiment_dir_name
 
     if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
