@@ -1,5 +1,6 @@
-from typing import Optional
+from typing import Callable, Optional
 
+import ray
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -25,9 +26,15 @@ def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCach
 def create_deployment_scheduler(
     cluster_node_info_cache: ClusterNodeInfoCache,
     head_node_id_override: Optional[str] = None,
+    create_placement_group_fn_override: Optional[Callable] = None,
 ) -> DeploymentScheduler:
     head_node_id = head_node_id_override or get_head_node_id()
-    return DefaultDeploymentScheduler(cluster_node_info_cache, head_node_id)
+    return DefaultDeploymentScheduler(
+        cluster_node_info_cache,
+        head_node_id,
+        create_placement_group_fn=create_placement_group_fn_override
+        or ray.util.placement_group,
+    )
 
 
 # Anyscale overrides
@@ -46,6 +53,7 @@ def create_cluster_node_info_cache(  # noqa: F811
 def create_deployment_scheduler(  # noqa: F811
     cluster_node_info_cache: ClusterNodeInfoCache,
     head_node_id_override: Optional[str] = None,
+    create_placement_group_fn_override: Optional[Callable] = None,
 ) -> DeploymentScheduler:
     head_node_id = head_node_id_override or get_head_node_id()
     from ray.anyscale.serve._private.constants import (
@@ -60,4 +68,9 @@ def create_deployment_scheduler(  # noqa: F811
         deployment_scheduler_class = AnyscaleDeploymentScheduler
     else:
         deployment_scheduler_class = DefaultDeploymentScheduler
-    return deployment_scheduler_class(cluster_node_info_cache, head_node_id)
+    return deployment_scheduler_class(
+        cluster_node_info_cache,
+        head_node_id,
+        create_placement_group_fn=create_placement_group_fn_override
+        or ray.util.placement_group,
+    )
