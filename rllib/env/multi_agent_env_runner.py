@@ -8,6 +8,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -33,6 +34,15 @@ class MultiAgentEnvRunner(EnvRunner):
         """
         super().__init__(config=config)
 
+        # Raise an Error, if the provided config is not a multi-agent one.
+        if not self.config.is_multi_agent():
+            raise ValueError(
+                f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
+                "setup is nt multi-agent! Try adding multi-agent information to your "
+                "AlgorithmConfig via calling the `config.multi_agent(policies=..., "
+                "policy_mapping_fn=...)`."
+            )
+
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
 
@@ -40,41 +50,13 @@ class MultiAgentEnvRunner(EnvRunner):
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
         # Create the vectorized gymnasium env.
-
-        # Register env for the local context.
-        # Note, `gym.register` has to be called on each worker.
-        if isinstance(self.config.env, str) and _global_registry.contains(
-            ENV_CREATOR, self.config.env
-        ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                self.config.env_config,
-            )
-
-        else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_context=self.config.env_config,
-                env_descriptor=self.config.env,
-            )
-        gym.register(
-            "rllib-multi-agent-env-runner-v0",
-            entry_point=entry_point,
-            disable_env_checker=True,
-        )
-
-        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
-        self.env = gym.make("rllib-multi-agent-env-runner-v0")
+        self.env: Optional[gym.Wrapper] = None
+        self.num_envs: int = 0
+        self._make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
         self.global_num_env_steps_sampled = 0
-
-        # Create the vectorized gymnasium env.
-        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
-            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
-            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
-        )
 
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
@@ -674,6 +656,49 @@ class MultiAgentEnvRunner(EnvRunner):
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
+
+    def _make_env(self):
+        """Creates a MultiAgentEnv (is-a gymnasium env)."""
+        env_ctx = self.config.env_config
+        if not isinstance(env_ctx, EnvContext):
+            env_ctx = EnvContext(
+                env_ctx,
+                worker_index=self.worker_index,
+                num_workers=self.config.num_rollout_workers,
+                remote=self.config.remote_worker_envs,
+            )
+
+        # Register env for the local context.
+        # Note, `gym.register` has to be called on each worker.
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
+        ):
+            entry_point = partial(
+                _global_registry.get(ENV_CREATOR, self.config.env),
+                env_ctx,
+            )
+
+        else:
+            entry_point = partial(
+                _gym_env_creator,
+                env_descriptor=self.config.env,
+                env_context=env_ctx,
+            )
+        gym.register(
+            "rllib-multi-agent-env-v0",
+            entry_point=entry_point,
+            disable_env_checker=True,
+        )
+
+        # Perform actual gym.make call.
+        self.env = gym.make("rllib-multi-agent-env-v0")
+        self.num_envs = 1
+
+        # Create the MultiAgentEnv (is-a gymnasium env).
+        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
+            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
+            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
+        )
 
     def _make_module(self):
         # Create our own instance of the (single-agent) `RLModule` (which

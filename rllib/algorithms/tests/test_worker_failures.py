@@ -8,11 +8,14 @@ import ray
 from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
+from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.env.multi_agent_env import make_multi_agent
+from ray.rllib.env.multi_agent_env import make_multi_agent
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
@@ -228,14 +231,44 @@ class TestWorkerFailures(unittest.TestCase):
     def setUpClass(cls) -> None:
         ray.init()
 
-        register_env("fault_env", lambda c: FaultInjectEnv(c))
+        obs_space = gym.spaces.Box(0, 1, (2,), np.float32)
+
         register_env(
-            "multi_agent_fault_env", lambda c: make_multi_agent(FaultInjectEnv)(c)
+            "fault_env",
+            lambda c: FaultInjectEnv(dict(c, **{"observation_space": obs_space}))
         )
+
+        def _ma(ctx):
+            ctx.update({"observation_space": obs_space})
+            return make_multi_agent(FaultInjectEnv)(ctx)
+
+        register_env("multi_agent_fault_env", _ma)
 
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def _do_test_fault_fatal(self, config, fail_eval=False):
+        """Test raises real error when out of workers."""
+        config.num_rollout_workers = 2
+        config.env = "multi_agent_fault_env" if config.is_multi_agent() else "fault_env"
+        # Make both worker idx=1 and 2 fail.
+        config.env_config = {"bad_indices": [1, 2]}
+        if fail_eval:
+            config.evaluation_num_workers = 2
+            config.evaluation_interval = 1
+            config.evaluation_config = {
+                # Make eval worker (index 1) fail.
+                "env_config": {
+                    "bad_indices": [1],
+                    "evaluation": True,
+                },
+            }
+
+        for _ in framework_iterator(config, frameworks="torch"):
+            a = config.build()
+            self.assertRaises(Exception, lambda: a.train())
+            a.stop()
 
     def _do_test_fault_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
@@ -276,32 +309,10 @@ class TestWorkerFailures(unittest.TestCase):
 
             algo.stop()
 
-    def _do_test_fault_fatal(self, config, fail_eval=False):
-        # Test raises real error when out of workers.
-        config.num_rollout_workers = 2
-        config.env = "fault_env"
-        # Make both worker idx=1 and 2 fail.
-        config.env_config = {"bad_indices": [1, 2]}
-        if fail_eval:
-            config.evaluation_num_workers = 2
-            config.evaluation_interval = 1
-            config.evaluation_config = {
-                # Make eval worker (index 1) fail.
-                "env_config": {
-                    "bad_indices": [1],
-                    "evaluation": True,
-                },
-            }
-
-        for _ in framework_iterator(config, frameworks="torch"):
-            a = config.build()
-            self.assertRaises(Exception, lambda: a.train())
-            a.stop()
-
-    def _do_test_fault_fatal_but_recreate(self, config, multi_agent=False):
+    def _do_test_fault_fatal_recreate(self, config, multi_agent=False):
         # Counter that will survive restarts.
         COUNTER_NAME = (
-            f"_do_test_fault_fatal_but_recreate{'_ma' if multi_agent else ''}"
+            f"_do_test_fault_fatal_recreate{'_ma' if multi_agent else ''}"
         )
         counter = Counter.options(name=COUNTER_NAME).remote()
 
@@ -364,22 +375,45 @@ class TestWorkerFailures(unittest.TestCase):
                     self.assertEqual(test[0], "This is the eval mapping fn")
             a.stop()
 
-    def test_fatal(self):
+    def test_fatal_single_agent(self):
         # Test the case where all workers fail (w/o recovery).
-        self._do_test_fault_fatal(PPOConfig().training(optimizer={}))
-
-    def test_async_samples(self):
-        self._do_test_fault_ignore(
-            ImpalaConfig()
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
-            .resources(num_gpus=0)
+        self._do_test_fault_fatal(
+            PPOConfig()
+            .experimental(_enable_new_api_stack=True)
+            .rollouts(
+                env_runner_cls=SingleAgentEnvRunner,
+                env_to_module_connector=lambda env: FlattenObservations()
+            )
         )
+
+    def test_fatal_multi_agent(self):
+        # Test the case where all workers fail (w/o recovery).
+        self._do_test_fault_fatal(
+            PPOConfig()
+            .experimental(_enable_new_api_stack=True)
+            .rollouts(env_runner_cls=MultiAgentEnvRunner)
+            .multi_agent(policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"),
+        )
+
+    # TODO (sven): Reinstate once Impala/APPO support EnvRunners.
+    # def test_async_samples(self):
+    #    self._do_test_fault_ignore(
+    #        ImpalaConfig()
+    #        .experimental(_enable_new_api_stack=True)
+    #        .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+    #        .resources(num_gpus=0)
+    #    )
 
     def test_sync_replay(self):
         self._do_test_fault_ignore(
-            DQNConfig()
+            SACConfig()
+            .experimental(_enable_new_api_stack=True)
+            .environment(
+                env_config={"action_space": gym.spaces.Box(0, 1, (1,), np.float32)}
+            )
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .reporting(min_sample_timesteps_per_iteration=1)
+            .training(replay_buffer_config={"type": "EpisodeReplayBuffer"})
         )
 
     def test_multi_gpu(self):
@@ -398,6 +432,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_sync_samples(self):
         self._do_test_fault_ignore(
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(optimizer={})
         )
@@ -425,7 +460,7 @@ class TestWorkerFailures(unittest.TestCase):
             .training(model={"fcnet_hiddens": [4]})
         )
 
-        self._do_test_fault_fatal_but_recreate(config)
+        self._do_test_fault_fatal_recreate(config)
 
     def test_recreate_eval_workers_parallel_to_training_w_actor_manager_and_multi_agent(
         self,
@@ -455,7 +490,7 @@ class TestWorkerFailures(unittest.TestCase):
             .training(model={"fcnet_hiddens": [4]})
         )
 
-        self._do_test_fault_fatal_but_recreate(config, multi_agent=True)
+        self._do_test_fault_fatal_recreate(config, multi_agent=True)
 
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
