@@ -40,3 +40,4 @@ steps:
         --label com.buildkite.step_key= 
         --label com.buildkite.agent_name=${BUILDKITE_AGENT_NAME} 
         --label com.buildkite.agent_id=${BUILDKITE_AGENT_ID} rayproject/buildenv:windows
+        bash -eo pipefail -c bash\ -i\ /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
