@@ -121,6 +121,13 @@ def test_zip_arrow(ray_start_regular_shared):
     assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
 
 
+def test_zip_multiple_block_types(ray_start_regular_shared):
+    df = pd.DataFrame({"spam": [0]})
+    ds_pd = ray.data.from_pandas(df)
+    ds2_arrow = ray.data.from_items([{"ham": [0]}])
+    assert ds_pd.zip(ds2_arrow).take_all() == [{"spam": 0, "ham": [0]}]
+
+
 def test_zip_preserve_order(ray_start_regular_shared):
     def foo(x):
         import time

@@ -209,9 +209,19 @@ class TableBlockAccessor(BlockAccessor):
     def zip(self, other: "Block") -> "Block":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
-            raise ValueError(
-                "Cannot zip {} with block of type {}".format(type(self), type(other))
-            )
+            if isinstance(self, TableBlockAccessor) and isinstance(
+                acc, TableBlockAccessor
+            ):
+                # If block types are different, but still both of TableBlock type, try
+                # converting both to default block type before zipping.
+                self_default, other_default = self.to_default(), acc.to_default()
+                return BlockAccessor.for_block(self_default).zip(other_default)
+            else:
+                raise ValueError(
+                    "Cannot zip {} with block of type {}".format(
+                        type(self), type(other)
+                    )
+                )
         if acc.num_rows() != self.num_rows():
             raise ValueError(
                 "Cannot zip self (length {}) with block of length {}".format(
