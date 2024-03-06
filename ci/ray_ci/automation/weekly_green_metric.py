@@ -49,6 +49,7 @@ def main(production: bool, check: bool) -> None:
         logger.info("Weekly green metric updated successfully")
 
     if check and blockers.totalCount != 0:
+        logger.error(f"Found {blockers.totalCount} release blockers")
         sys.exit(42)  # Not retrying the check on Buildkite jobs
 
 
