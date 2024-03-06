@@ -28,6 +28,7 @@ from ray.tests.conftest import *  # noqa
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
+    task_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
 ):
     if is_map:
@@ -49,12 +50,19 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
+            "'block_generation_time': N",
+            (
+                "'task_submission_backpressure_time': "
+                f"{'N' if task_backpressure else 'Z'}"
+            ),
+            "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_pending_task_inputs': Z",
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
-            "'block_generation_time': N",
+            "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -64,8 +72,15 @@ def gen_expected_metrics(
             "'bytes_inputs_received': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
+            (
+                "'task_submission_backpressure_time': "
+                f"{'N' if task_backpressure else 'Z'}"
+            ),
+            "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -86,6 +101,15 @@ STANDARD_EXTRA_METRICS = gen_expected_metrics(
     ],
 )
 
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
 LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=False,
@@ -94,10 +118,27 @@ LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
     ],
 )
 
+LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
+    ],
+)
 
 MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
+MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
+    is_map=True,
+    spilled=True,
+    task_backpressure=True,
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
@@ -125,6 +166,14 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     canonicalized_stats = re.sub("[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
     canonicalized_stats = re.sub("[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
+    # For obj_store_mem_used, the value can be zero or positive, depending on the run.
+    # Replace with A to avoid test flakiness.
+    canonicalized_stats = re.sub(
+        r"(obj_store_mem_used: |'obj_store_mem_used': )\d+(\.\d+)?",
+        # Replaces the number with 'A' while keeping the key prefix intact.
+        r"\g<1>A",
+        canonicalized_stats,
+    )
     # Handle floats in (0, 1)
     canonicalized_stats = re.sub(" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
     # Handle zero values specially so we can check for missing values.
@@ -178,7 +227,10 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
-    extra_metrics = gen_expected_metrics(
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE  # .replace(
+    #     "'obj_store_mem_used': A", "'obj_store_mem_used': Z"
+    # )
+    extra_metrics_2 = gen_expected_metrics(
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
@@ -196,12 +248,12 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Operator throughput:
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
-* Extra metrics: {STANDARD_EXTRA_METRICS}
+* Extra metrics: {extra_metrics_1}
 
 Operator N split(N, equal=False): \n"""
         # Workaround to preserve trailing whitespace in the above line without
         # causing linter failures.
-        f"""* Extra metrics: {extra_metrics}\n"""
+        f"""* Extra metrics: {extra_metrics_2}\n"""
         """
 Dataset iterator time breakdown:
 * Total time overall: T
@@ -226,6 +278,25 @@ def test_large_args_scheduling_strategy(
     ds = ray.data.range_tensor(100, shape=(100000,), override_num_blocks=1)
     ds = ds.map_batches(dummy_map_batches, num_cpus=0.9).materialize()
     stats = ds.stats()
+    read_extra_metrics = gen_extra_metrics_str(
+        STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
+        verbose_stats_logs,
+    )
+    # if verbose_stats_logs:
+    #     read_extra_metrics = read_extra_metrics#.replace(
+    #         "'obj_store_mem_used': N",
+    #         "'obj_store_mem_used': Z",
+    #     )
+
+    map_extra_metrics = gen_extra_metrics_str(
+        LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE,
+        verbose_stats_logs,
+    )
+    # if verbose_stats_logs:
+    #     map_extra_metrics = map_extra_metrics.replace(
+    #         "'obj_store_mem_used': N",
+    #         "'obj_store_mem_used': Z",
+    #     )
     expected_stats = (
         f"Operator N ReadRange: {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -239,7 +310,7 @@ def test_large_args_scheduling_strategy(
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
+        f"{read_extra_metrics}\n"
         f"Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
@@ -252,7 +323,7 @@ def test_large_args_scheduling_strategy(
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_extra_metrics_str(LARGE_ARGS_EXTRA_METRICS, verbose_stats_logs)}"
+        f"{map_extra_metrics}"
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
@@ -297,7 +368,7 @@ def test_dataset_stats_basic(
                 f"* Operator throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
-                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
+                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
@@ -321,7 +392,7 @@ def test_dataset_stats_basic(
                 f"* Operator throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
-                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
+                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
@@ -331,6 +402,11 @@ def test_dataset_stats_basic(
     for batch in ds.iter_batches():
         pass
     stats = canonicalize(ds.materialize().stats())
+
+    extra_metrics = gen_extra_metrics_str(
+        STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
+        verbose_stats_logs,
+    )
 
     assert stats == (
         f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
@@ -345,7 +421,7 @@ def test_dataset_stats_basic(
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
+        f"{extra_metrics}\n"
         f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
@@ -358,7 +434,7 @@ def test_dataset_stats_basic(
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
+        f"{extra_metrics}\n"
         f"Dataset iterator time breakdown:\n"
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
@@ -506,12 +582,16 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
+        "      block_generation_time: N,\n"
+        "      task_submission_backpressure_time: N,\n"
+        "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
+        "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
-        "      block_generation_time: N,\n"
+        "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -1092,6 +1172,11 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     ray.init(object_store_memory=100e6)
     # The size of dataset is 1000*80*80*4*8B, about 200MB.
     ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    extra_metrics = gen_extra_metrics_str(
+        MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE,
+        verbose_stats_logs,
+    )
     expected_stats = (
         f"Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -1105,7 +1190,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"* Operator throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_extra_metrics_str(MEM_SPILLED_EXTRA_METRICS, verbose_stats_logs)}\n"
+        f"{extra_metrics}\n"
         f"Cluster memory:\n"
         f"* Spilled to disk: M\n"
         f"* Restored from disk: M\n"
@@ -1247,16 +1332,16 @@ def test_op_metrics_logging():
         input_str = (
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
             + gen_expected_metrics(is_map=False)
-        )
+        )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         map_str = (
             "Operator InputDataBuffer[Input] -> "
             "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS
+        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
 
         # Check that these strings are logged exactly once.
-        assert sum([log == input_str for log in logs]) == 1
-        assert sum([log == map_str for log in logs]) == 1
+        assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
+        assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
 
 
 def test_op_state_logging():
