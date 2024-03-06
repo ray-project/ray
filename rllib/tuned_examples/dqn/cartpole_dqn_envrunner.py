@@ -3,6 +3,11 @@ from ray import train, tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
+# from ray.rllib.utils.framework import try_import_torch
+
+# torch, _ = try_import_torch()
+# torch.autograd.set_detect_anomaly(True)
+
 config = (
     DQNConfig()
     .environment(env="CartPole-v1")
@@ -42,7 +47,7 @@ config = (
 
 stop = {
     "sampler_results/episode_reward_mean": 100,
-    "timesteps_total": 100000,
+    "timesteps_total": 10000,
 }
 
 ray.init(local_mode=True)
@@ -53,6 +58,9 @@ tuner = tune.Tuner(
         stop=stop,
         name="test_rainbow",
     ),
+    # tune_config=tune.TuneConfig(
+    #     num_samples=10,
+    # )
 )
 tuner.fit()
 

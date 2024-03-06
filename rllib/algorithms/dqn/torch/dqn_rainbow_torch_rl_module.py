@@ -231,6 +231,8 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             else []
         )
 
+    # TODO (simon): Test, if providing the function with a `return_probs`
+    # improves performance significantly.
     @override(DQNRainbowRLModule)
     def _qf_forward_helper(
         self,

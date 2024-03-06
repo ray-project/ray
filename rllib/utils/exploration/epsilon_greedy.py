@@ -185,6 +185,7 @@ class EpsilonGreedy(Exploration):
         if explore:
             # Get the current epsilon.
             epsilon = self.epsilon_schedule(self.last_timestep)
+            print(f"-------------EPSILON: {epsilon}")
             if isinstance(action_distribution, TorchMultiActionDistribution):
                 exploit_action = tree.flatten(exploit_action)
                 for i in range(batch_size):

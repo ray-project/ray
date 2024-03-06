@@ -489,6 +489,10 @@ class DQN(SimpleQ):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
 
+            self.workers.sync_env_runner_states(
+                env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
+            )
+
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
             NUM_AGENT_STEPS_SAMPLED
@@ -563,7 +567,7 @@ class DQN(SimpleQ):
                 modules_to_update = set(train_results.keys()) - {ALL_MODULES}
                 additional_results = self.learner_group.additional_update(
                     module_ids_to_update=modules_to_update,
-                    timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+                    timestep=current_ts,
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
                 for pid, res in additional_results.items():
