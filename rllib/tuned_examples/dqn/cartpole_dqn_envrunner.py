@@ -10,14 +10,20 @@ config = (
     .experimental(_enable_new_api_stack=True)
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
+        num_rollout_workers=0,
+    )
+    .resources(
+        num_learner_workers=0,
     )
     .training(
         model={
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
-            "epsilon": [(0, 1.0), (10000, 0.02)],
-            "fcnet_weights_initializer": "xavier_uniform_",
-            "post_fcnet_weights_initializer": "xavier_uniform_",
+            "epsilon": [(0, 1.0), (5000, 0.02)],
+            # "fcnet_weights_initializer": "xavier_uniform_",
+            # "post_fcnet_weights_initializer": "xavier_uniform_",
+            "fcnet_bias_initializer": "zeros_",
+            "post_fcnet_bias_initializer": "zeros_",
         },
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
@@ -30,6 +36,7 @@ config = (
         dueling=False,
         noisy=False,
         sigma0=0.5,
+        lr=1.0,
     )
 )
 
@@ -48,3 +55,10 @@ tuner = tune.Tuner(
     ),
 )
 tuner.fit()
+
+# algo = config.build()
+
+# for i in range(30):
+#     results = algo.train()
+
+# results

@@ -496,10 +496,12 @@ class DQN(SimpleQ):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
+        # TODO (simon): Check, if this can be managed differently or even needs to be
+        # put into the sampling loop above.
         self.workers.sync_env_runner_states(env_steps_sampled=current_ts)
 
         # If enough experiences have been sampled start training.
-        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
+        if current_ts > self.config.num_steps_sampled_before_learning_starts:
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
@@ -569,6 +571,8 @@ class DQN(SimpleQ):
                         self._counters[LAST_TARGET_UPDATE_TS] = res[
                             LAST_TARGET_UPDATE_TS
                         ]
+                    if NUM_TARGET_UPDATES in res:
+                        self._counters[NUM_TARGET_UPDATES] += res[NUM_TARGET_UPDATES]
                     train_results[pid].update(res)
 
             # Update weights and global_vars - after learning on the local worker -

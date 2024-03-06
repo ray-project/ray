@@ -443,7 +443,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         for idx, priority in zip(self._last_sampled_indices, priorities):
             # Note, TD-errors come in as absolute values or results from
             # cross-entropy loss calculations.
-            assert priority > 0
+            # assert priority > 0, f"priority was {priority}"
+            priority = max(priority, 1e-12)
             assert 0 <= idx < self._sum_segment.capacity
             # TODO (simon): Create metrics.
             # delta = priority**self._alpha - self._sum_segment[idx]

@@ -82,7 +82,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             B = qf_outs[QF_PREDS].shape[0]
             random_actions = torch.squeeze(
                 torch.multinomial(
-                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0).float(),
+                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0.0).float(),
                     num_samples=1,
                 ),
                 dim=1,
