@@ -547,7 +547,6 @@ def run(
             # This should not block if reload is true so the watchfiles can be triggered
             should_block = blocking and not reload
             serve.run(app, blocking=should_block, name=name, route_prefix=route_prefix)
-            cli_logger.success("Deployed app successfully.")
 
         if reload:
             if not blocking:
@@ -576,7 +575,6 @@ def run(
                     serve.run(
                         target=app, blocking=True, name=name, route_prefix=route_prefix
                     )
-                    cli_logger.success("Redeployed app successfully.")
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

@@ -43,7 +43,7 @@ def main(args):
     print(f"Running GPU batch prediction with data from {data_url}")
 
     # Largest batch that can fit on a T4.
-    BATCH_SIZE = 1000
+    BATCH_SIZE = 900
 
     device = "cpu" if smoke_test else "cuda"
 

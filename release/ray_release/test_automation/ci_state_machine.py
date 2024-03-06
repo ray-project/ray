@@ -61,6 +61,7 @@ class CITestStateMachine(TestStateMachine):
             "ci-test",
             "ray-test-bot",
             "flaky-tracker",
+            "stability",
             "triage",
             self.test.get_oncall(),
             WEEKLY_RELEASE_BLOCKER_TAG,

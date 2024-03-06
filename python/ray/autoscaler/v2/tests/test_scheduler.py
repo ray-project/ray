@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 # coding: utf-8
 from typing import Dict, List, Optional, Tuple
@@ -7,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 import pytest
 
 import ray
+from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.scheduler import (
     NodeTypeConfig,
     ResourceDemandScheduler,
@@ -18,7 +20,7 @@ from ray.autoscaler.v2.scheduler import (
     logger,
 )
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
-from ray.autoscaler.v2.tests.util import make_autoscaler_instance
+from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
@@ -36,6 +38,8 @@ from ray.core.generated.instance_manager_pb2 import (
 ResourceMap = Dict[str, float]
 
 logger.setLevel("DEBUG")
+
+event_logger = AutoscalerEventLogger(MockEventLogger(logger))
 
 
 def sched_request(
@@ -63,13 +67,17 @@ def sched_request(
         gang_resource_requests=[
             GangResourceRequest(requests=reqs) for reqs in gang_resource_requests
         ],
-        cluster_resource_constraints=[
-            ClusterResourceConstraint(
-                min_bundles=ResourceRequestUtil.group_by_count(
-                    cluster_resource_constraints
+        cluster_resource_constraints=(
+            [
+                ClusterResourceConstraint(
+                    min_bundles=ResourceRequestUtil.group_by_count(
+                        cluster_resource_constraints
+                    )
                 )
-            )
-        ],
+            ]
+            if cluster_resource_constraints
+            else []
+        ),
         current_instances=instances,
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
@@ -87,6 +95,61 @@ def _launch_and_terminate(
     ]
 
     return actual_to_launch, actual_to_terminate
+
+
+def schedule(
+    node_type_configs: Dict[NodeType, NodeTypeConfig],
+    current_nodes_available_count: Dict,
+    resource_requests: List[Dict],
+    anti_affinity: bool = False,
+    max_nodes: Optional[int] = None,
+) -> SchedulingReply:
+
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+    instances: List[AutoscalerInstance] = []
+    for node_type, count in current_nodes_available_count.items():
+        for i in range(count):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type=node_type,
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"{node_type}-{i}",
+                        node_id=f"r{i}{node_type}",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}{node_type}".encode("utf-8"),
+                        ray_node_type_name=node_type,
+                        available_resources=node_type_configs[node_type].resources,
+                        total_resources=node_type_configs[node_type].resources,
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-{node_type}-{i}",
+                )
+            )
+
+    if anti_affinity:
+        gang_requests = [
+            [
+                ResourceRequestUtil.make(r, [(ANTI_AFFINITY, "af", "af")])
+                for r in resource_requests
+            ]
+        ]
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            gang_resource_requests=gang_requests,
+            max_num_nodes=max_nodes,
+            instances=instances,
+        )
+    else:
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make(r) for r in resource_requests],
+            instances=instances,
+            max_num_nodes=max_nodes,
+        )
+    return ResourceDemandScheduler(event_logger).schedule(request)
 
 
 class TestSchedulingNode:
@@ -219,9 +282,59 @@ class TestSchedulingNode:
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "foo"}
 
+    @staticmethod
+    def test_new_head_node():
+        # An allocated head node.
+        node_type_configs = {
+            "head": NodeTypeConfig(
+                name="head",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=1,
+            ),
+        }
+        instance = make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_kind=NodeKind.HEAD,
+            )
+        )
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check=False
+        )
+        assert node is not None
+        # It's important to check if the node is a head node
+        assert node.node_kind == NodeKind.HEAD
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+
+        # An running head node.
+        instance = make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="head",
+                available_resources={"CPU": 0},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="head",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
+                node_kind=NodeKind.HEAD,
+            ),
+        )
+        node = SchedulingNode.new(
+            instance, node_type_configs, disable_launch_config_check=False
+        )
+        assert node is not None
+        assert node.node_kind == NodeKind.HEAD
+        assert node.status == SchedulingNodeStatus.SCHEDULABLE
+
 
 def test_min_worker_nodes():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -303,8 +416,56 @@ def test_min_worker_nodes():
     assert actual_to_launch == expected_to_launch
 
 
-def test_max_workers_per_type():
+def test_max_workers_head_node_type():
     scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "head_type": NodeTypeConfig(
+            name="head_type",
+            resources={},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+        )
+    }
+    instances = [
+        # A head node
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head_type",
+                status=Instance.ALLOCATED,
+                instance_id="0",
+                node_kind=NodeKind.HEAD,
+            ),
+        ),
+        # A worker node
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head_type",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_kind=NodeKind.WORKER,
+            ),
+        ),
+        # A worker node
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="head_type",
+                status=Instance.ALLOCATED,
+                instance_id="2",
+                node_kind=NodeKind.WORKER,
+            ),
+        ),
+    ]
+
+    request = sched_request(node_type_configs=node_type_configs, instances=instances)
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert len(actual_to_terminate) == 1
+    assert actual_to_terminate[0][0] in ["1", "2"]
+    assert actual_to_terminate[0][2] == TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE
+
+
+def test_max_workers_per_type():
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -403,7 +564,7 @@ def test_max_workers_per_type():
 
 
 def test_max_num_nodes():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -569,7 +730,7 @@ def test_max_num_nodes():
 
 
 def test_single_resources():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -666,7 +827,7 @@ def test_single_resources():
 
 
 def test_implicit_resources():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -716,7 +877,7 @@ def test_implicit_resources():
 
 
 def test_max_worker_num_enforce_with_resource_requests():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -758,7 +919,7 @@ def test_multi_requests_fittable():
     """
     Test multiple requests can be fit into a single node.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -855,7 +1016,7 @@ def test_multi_node_types_score():
     1. The number of resources utilized.
     2. The amount of utilization.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_large": NodeTypeConfig(
             name="type_large",
@@ -902,7 +1063,7 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
     Test that when multiple node types are possible, choose the best scoring ones:
     - The GPU scoring.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_gpu": NodeTypeConfig(
             name="type_gpu",
@@ -934,7 +1095,7 @@ def test_multi_node_types_score_with_gpu(monkeypatch):
 
 
 def test_resource_constrains():
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
@@ -999,7 +1160,7 @@ def test_outdated_nodes(disable_launch_config_check):
     """
     Test that nodes with outdated node configs are terminated.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
@@ -1090,7 +1251,7 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
     """
     Test that idle nodes are terminated.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
@@ -1192,7 +1353,7 @@ def test_gang_scheduling():
     """
     Test that gang scheduling works.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
     ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
 
@@ -1261,7 +1422,7 @@ def test_gang_scheduling_with_others():
     - min/max worker counts
     - existing nodes.
     """
-    scheduler = ResourceDemandScheduler()
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_1": NodeTypeConfig(
             name="type_1",
@@ -1380,6 +1541,523 @@ def test_gang_scheduling_with_others():
     assert sorted(to_launch) == sorted(expected_to_launch)
     assert len(reply.infeasible_gang_resource_requests) == 1
     assert len(reply.infeasible_resource_requests) == 0
+
+
+def test_bin_pack():
+    def bin_pack_residual(
+        node_resources: Dict[NodeType, Dict],
+        resource_requests: List[Dict],
+        anti_affinity: bool = False,
+    ) -> List[Dict]:
+        node_type_configs = {}
+        for type_name, node_resource_dict in node_resources.items():
+            node_type_configs[type_name] = NodeTypeConfig(
+                name=type_name,
+                resources=node_resource_dict,
+                min_worker_nodes=0,
+                max_worker_nodes=1,  # we only care about bin packing. Just allow 1
+            )
+
+        reply = schedule(node_type_configs, {}, resource_requests, anti_affinity)
+        if anti_affinity:
+            infeasible = []
+            for r in reply.infeasible_gang_resource_requests:
+                infeasible.append(ResourceRequestUtil.to_resource_maps(r.requests))
+            return infeasible
+        else:
+            return ResourceRequestUtil.to_resource_maps(
+                reply.infeasible_resource_requests
+            )
+
+    assert bin_pack_residual({"type_1": {"CPU": 0}}, [{"GPU": 2}, {"GPU": 2}]) == [
+        {"GPU": 2},
+        {"GPU": 2},
+    ]
+    assert bin_pack_residual({"type_1": {"GPU": 2}}, [{"GPU": 2}, {"GPU": 2}]) == [
+        {"GPU": 2}
+    ]
+    assert bin_pack_residual({"type_1": {"GPU": 4}}, [{"GPU": 2}, {"GPU": 2}]) == []
+
+    assert (
+        bin_pack_residual(
+            {"type_1": {"GPU": 2}, "type_2": {"GPU": 2, "CPU": 2}},
+            [{"GPU": 2}, {"GPU": 2}],
+        )
+        == []
+    )
+    assert bin_pack_residual(
+        {"type_1": {"GPU": 2}, "type_2": {"CPU": 2}},
+        [{"GPU": 2}, {"GPU": 2}],
+    ) == [{"GPU": 2}]
+
+    assert bin_pack_residual(
+        {"type_1": {"GPU": 2}, "type_2": {"CPU": 2}},
+        [{"GPU": 2}, {"GPU": 2}],
+    ) == [{"GPU": 2}]
+
+    assert bin_pack_residual(
+        {"type_1": {"GPU": 3}},
+        [{"GPU": 1}, {"GPU": 1}],
+        anti_affinity=True,
+    ) == [[{"GPU": 1.0}, {"GPU": 1.0}]]
+
+    assert (
+        bin_pack_residual(
+            {"type_1": {"GPU": 3}},
+            [{"GPU": 1}, {"GPU": 1}],
+            anti_affinity=False,
+        )
+        == []
+    )
+
+    implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+    assert (
+        bin_pack_residual(
+            {"type_1": {"CPU": 1}},
+            [{implicit_resource: 0.5}, {implicit_resource: 0.5}],
+        )
+        == []
+    )
+    assert bin_pack_residual(
+        {"type_1": {"CPU": 1}},
+        [{implicit_resource: 1}, {implicit_resource: 0.5}],
+    ) == [{implicit_resource: 0.5}]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        ResourceRequestSource.PENDING_DEMAND,
+        ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT,
+    ],
+    ids=["demand", "cluster_resource_constraint"],
+)
+def test_node_schedule_score(source):
+    def try_schedule(node_resources: Dict, requests: List[Dict]) -> Tuple:
+        node_type_config = NodeTypeConfig(
+            name="type_1",
+            resources=node_resources,
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        )
+        node = SchedulingNode.from_node_config(
+            node_config=node_type_config,
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+        requests = [ResourceRequestUtil.make(r) for r in requests]
+        infeasible, score = node.try_schedule(requests, source)
+        return ResourceRequestUtil.to_resource_maps(infeasible), score
+
+    assert try_schedule({"CPU": 1}, [{"CPU": 1}]) == ([], (True, 1, 1.0, 1.0))
+
+    assert try_schedule({"GPU": 4}, [{"GPU": 2}]) == ([], (True, 1, 0.5, 0.5))
+    assert try_schedule({"GPU": 4}, [{"GPU": 1}, {"GPU": 1}]) == (
+        [],
+        (True, 1, 0.5, 0.5),
+    )
+    assert try_schedule({"GPU": 2}, [{"GPU": 2}]) == ([], (True, 1, 2, 2))
+    assert try_schedule({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == ([], (True, 1, 2, 2))
+    assert try_schedule({"GPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
+        [{"GPU": 1, "CPU": 1}],
+        (True, 1, 1, 1),
+    )
+    assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
+        [{"GPU": 1}],
+        (True, 2, 1, 1),
+    )
+    assert try_schedule({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == ([], (True, 1, 0, 1))
+    assert try_schedule({"CPU": 64}, [{"CPU": 64}]) == ([], (True, 1, 64, 64))
+    assert try_schedule({"CPU": 64}, [{"CPU": 32}]) == ([], (True, 1, 8, 8))
+    assert try_schedule({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}]) == (
+        [],
+        (True, 1, 8, 8),
+    )
+
+    # GPU Scores
+    assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) == (
+        [],
+        (False, 1, 0.0, 0.5),
+    )
+    assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) == (
+        [],
+        (True, 2, 1.0, 1.0),
+    )
+    assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (
+        [],
+        (True, 1, 0.0, 0.5),
+    )
+
+    # Zero resources
+    assert try_schedule({"CPU": 0, "custom": 1}, [{"custom": 1}]) == (
+        [],
+        (True, 1, 1, 1),
+    )
+    assert try_schedule({"CPU": 0, "custom": 1}, [{"CPU": 1}]) == (
+        [{"CPU": 1}],
+        (True, 0, 0.0, 0.0),
+    )
+
+    # Implicit resources
+    implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+    assert try_schedule({"CPU": 1}, [{implicit_resource: 1}]) == (
+        [],
+        (True, 0, 0.0, 0.0),
+    )
+    assert try_schedule({"CPU": 1}, [{implicit_resource: 1}] * 2) == (
+        [{implicit_resource: 1}],
+        (True, 0, 0.0, 0.0),
+    )
+
+
+def test_get_nodes_packing_heuristic():
+    node_type_configs = {
+        "m4.large": NodeTypeConfig(
+            name="m4.large",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "m4.4xlarge": NodeTypeConfig(
+            name="m4.4xlarge",
+            resources={"CPU": 16},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+        ),
+        "m4.16xlarge": NodeTypeConfig(
+            name="m4.16xlarge",
+            resources={"CPU": 64},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+        ),
+        "p2.xlarge": NodeTypeConfig(
+            name="p2.xlarge",
+            resources={"CPU": 16, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "p2.8xlarge": NodeTypeConfig(
+            name="p2.8xlarge",
+            resources={"CPU": 32, "GPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+        ),
+    }
+
+    def get_nodes_for(
+        resource_requests,
+        anti_affinity=False,
+        max_nodes: Optional[int] = None,
+        current_nodes: Optional[Dict] = None,
+    ):
+        reply = schedule(
+            node_type_configs,
+            current_nodes or {},
+            resource_requests,
+            anti_affinity=anti_affinity,
+            max_nodes=max_nodes,
+        )
+        to_launch, _ = _launch_and_terminate(reply)
+        return to_launch
+
+    assert get_nodes_for([{"GPU": 8}]) == {"p2.8xlarge": 1}
+    assert get_nodes_for([{"GPU": 1}] * 6) == {"p2.8xlarge": 1}
+    assert get_nodes_for([{"GPU": 1}] * 4) == {"p2.xlarge": 4}
+    assert get_nodes_for([{"CPU": 32, "GPU": 1}] * 3) == {"p2.8xlarge": 3}
+    assert get_nodes_for([{"CPU": 64, "GPU": 1}] * 3) == {}
+    assert get_nodes_for([{"CPU": 64}] * 3) == {"m4.16xlarge": 3}
+    assert get_nodes_for([{"CPU": 64}, {"CPU": 1}]) == {
+        "m4.16xlarge": 1,
+        "m4.large": 1,
+    }
+    assert get_nodes_for([{"CPU": 64}, {"CPU": 9}, {"CPU": 9}]) == {
+        "m4.16xlarge": 1,
+        "m4.4xlarge": 2,
+    }
+
+    assert get_nodes_for([{"CPU": 16}] * 5) == {
+        "m4.16xlarge": 1,
+        "m4.4xlarge": 1,
+    }
+    assert get_nodes_for([{"CPU": 8}] * 10) == {
+        "m4.16xlarge": 1,
+        "m4.4xlarge": 1,
+    }
+    assert get_nodes_for([{"CPU": 1}] * 100) == {
+        "m4.16xlarge": 1,
+        "m4.4xlarge": 2,
+        "m4.large": 2,
+    }
+
+    assert get_nodes_for([{"GPU": 1}] + ([{"CPU": 1}] * 64)) == {
+        "m4.16xlarge": 1,
+        "p2.xlarge": 1,
+    }
+    assert get_nodes_for(([{"GPU": 1}] * 8) + ([{"CPU": 1}] * 64)) == {
+        "m4.4xlarge": 2,
+        "p2.8xlarge": 1,
+    }
+    assert get_nodes_for([{"GPU": 1}] * 8, anti_affinity=False) == {"p2.8xlarge": 1}
+    assert get_nodes_for([{"GPU": 1}] * 8, anti_affinity=True) == {"p2.xlarge": 8}
+
+    # GPU/CPU scheduling
+    node_type_configs = {
+        "cpu": NodeTypeConfig(
+            name="cpu",
+            resources={"CPU": 16},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "gpu": NodeTypeConfig(
+            name="gpu",
+            resources={"CPU": 16, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    assert get_nodes_for([{"CPU": 16}]) == {"cpu": 1}
+    assert get_nodes_for([{"CPU": 1}] * 30 + [{"GPU": 1, "CPU": 1}]) == {
+        "cpu": 1,
+        "gpu": 1,
+    }
+    assert get_nodes_for([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 30) == {
+        "cpu": 1,
+        "gpu": 1,
+    }
+    assert get_nodes_for([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 15) == {
+        "gpu": 1,
+    }
+
+    # GPU should be avoided
+    node_type_configs = {
+        "cpu": NodeTypeConfig(
+            name="cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "gpu": NodeTypeConfig(
+            name="gpu",
+            resources={"CPU": 100, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    assert get_nodes_for([{"CPU": 1}] * 100, max_nodes=10) == {"cpu": 10}
+    # max_to_add eleven nodes allowed. First ten chosen to be "cpu",
+    # last chosen to be "gpu" due max_workers constraint on "cpu".
+    assert get_nodes_for([{"CPU": 1}] * 100, max_nodes=11) == {"cpu": 10, "gpu": 1}
+    assert get_nodes_for([{"CPU": 1}] * 100 + [{"GPU": 1}], max_nodes=100) == {"gpu": 1}
+    assert get_nodes_for([{"GPU": 1}] * 4 + [{"CPU": 1}] * 404, max_nodes=100) == {
+        "gpu": 4,
+        "cpu": 4,
+    }
+
+    # Max limit should be respected
+    node_type_configs = {
+        "m4.large": NodeTypeConfig(
+            name="m4.large",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    assert get_nodes_for([{"CPU": 1}] * 10, max_nodes=2) == {"m4.large": 2}
+    assert (
+        get_nodes_for([{"CPU": 1}] * 10, max_nodes=10, current_nodes={"m4.large": 10})
+        == {}
+    )
+    assert get_nodes_for([{"CPU": 1}] * 10, max_nodes=10) == {"m4.large": 5}
+    assert get_nodes_for([{"CPU": 1}] * 40) == {"m4.large": 10}
+
+    # Min workers should be respected
+    node_type_configs = {
+        "m2.large": NodeTypeConfig(
+            name="m2.large",
+            resources={"CPU": 1},
+            min_worker_nodes=5,
+            max_worker_nodes=10,
+        ),
+        "m4.large": NodeTypeConfig(
+            name="m4.large",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "gpu": NodeTypeConfig(
+            name="gpu",
+            resources={"GPU": 2},
+            min_worker_nodes=2,
+            max_worker_nodes=2,
+        ),
+        "gpubla": NodeTypeConfig(
+            name="gpubla", resources={"GPU": 1}, min_worker_nodes=0, max_worker_nodes=0
+        ),
+    }
+
+    assert get_nodes_for([{"CPU": 2}] * 5) == {"m2.large": 5, "m4.large": 5, "gpu": 2}
+    assert get_nodes_for(
+        [{"CPU": 2}] * 5, current_nodes={"m2.large": 1, "m4.large": 1}
+    ) == {"m2.large": 4, "m4.large": 4, "gpu": 2}
+    assert get_nodes_for([{"GPU": 1}] * 5) == {"m2.large": 5, "gpu": 2}
+
+
+def test_min_workers_and_others():
+    node_type_configs = {
+        "p2.8xlarge": NodeTypeConfig(
+            name="p2.8xlarge",
+            resources={"CPU": 32, "GPU": 8},
+            min_worker_nodes=2,
+            max_worker_nodes=4,
+        ),
+        "p2.xlarge": NodeTypeConfig(
+            name="p2.xlarge",
+            resources={"CPU": 16, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    def get_nodes_for(resource_requests, current_nodes=None, max_nodes=None):
+        reply = schedule(
+            node_type_configs,
+            current_nodes or {},
+            resource_requests,
+            max_nodes=max_nodes,
+        )
+        to_launch, _ = _launch_and_terminate(reply)
+        infeasible = ResourceRequestUtil.to_resource_maps(
+            reply.infeasible_resource_requests
+        )
+        return to_launch, infeasible
+
+    assert get_nodes_for([{"GPU": 8}]) == ({"p2.8xlarge": 2}, [])
+    assert get_nodes_for([{"GPU": 8}] * 2) == ({"p2.8xlarge": 2}, [])
+    assert get_nodes_for([{"GPU": 8}] * 4) == ({"p2.8xlarge": 4}, [])
+    assert get_nodes_for([{"GPU": 8}] * 8) == ({"p2.8xlarge": 4}, [{"GPU": 8}] * 4)
+
+    assert get_nodes_for(
+        [{"GPU": 8}] * 3 + [{"GPU": 1}], current_nodes={"p2.8xlarge": 1}
+    ) == ({"p2.xlarge": 1, "p2.8xlarge": 2}, [])
+    assert get_nodes_for(
+        [{"GPU": 8}] * 3 + [{"GPU": 1}], current_nodes={"p2.8xlarge": 2}
+    ) == ({"p2.xlarge": 1, "p2.8xlarge": 1}, [])
+    assert get_nodes_for(
+        [{"GPU": 8}] * 3 + [{"GPU": 1}], current_nodes={"p2.8xlarge": 3}
+    ) == ({"p2.xlarge": 1}, [])
+    assert get_nodes_for(
+        [{"GPU": 8}] * 5 + [{"GPU": 1}], current_nodes={"p2.8xlarge": 3}
+    ) == ({"p2.xlarge": 1, "p2.8xlarge": 1}, [{"GPU": 8}])
+
+    node_type_configs = {
+        "p2.xlarge": NodeTypeConfig(
+            name="p2.xlarge",
+            resources={"CPU": 16, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    assert get_nodes_for([{"GPU": 1}] * 4, max_nodes=1) == (
+        {"p2.xlarge": 1},
+        [{"GPU": 1}] * 3,
+    )
+    assert get_nodes_for([{"GPU": 1}] * 4, max_nodes=2) == (
+        {"p2.xlarge": 2},
+        [{"GPU": 1}] * 2,
+    )
+    assert get_nodes_for([{"GPU": 1}] * 4, max_nodes=4) == ({"p2.xlarge": 4}, [])
+
+
+def test_gang_scheduling_complex():
+    node_type_configs = {
+        "m4.large": NodeTypeConfig(
+            name="m4.large",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "p2.8xlarge": NodeTypeConfig(
+            name="p2.8xlarge",
+            resources={"CPU": 32, "GPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+        ),
+    }
+
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+    AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+
+    def get_nodes_for(gang_resource_requests) -> Tuple[Dict, List[List[Dict]]]:
+        scheduler = ResourceDemandScheduler(event_logger)
+        gang_requests = []
+        for resource_requests, placement_constraint in gang_resource_requests:
+            key = f"PG_{str(time.time())}"
+            gang_requests.append(
+                [
+                    ResourceRequestUtil.make(
+                        r,
+                        [(placement_constraint, key, key)]
+                        if placement_constraint
+                        else [],
+                    )
+                    for r in resource_requests
+                ]
+            )
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            gang_resource_requests=gang_requests,
+        )
+        reply = scheduler.schedule(request)
+
+        to_launch, _ = _launch_and_terminate(reply)
+        infeasible = []
+        for r in reply.infeasible_gang_resource_requests:
+            infeasible.append(ResourceRequestUtil.to_resource_maps(r.requests))
+
+        return to_launch, infeasible
+
+    # Test various constraints.
+    get_nodes_for([([{"CPU": 16}, {"CPU": 16}], ANTI_AFFINITY)]) == (
+        {"p2.8xlarge": 2},
+        [],
+    )
+    get_nodes_for([([{"CPU": 16}, {"CPU": 16}], None)]) == (
+        {"p2.8xlarge": 1},
+        [],
+    )
+    get_nodes_for([([{"CPU": 2}, {"CPU": 2}], AFFINITY)]) == (
+        {"p2.8xlarge": 1},
+        [],
+    )
+    get_nodes_for([([{"CPU": 2}, {"CPU": 2}], None)]) == (
+        {"m4.large": 2},
+        [],
+    )
+    get_nodes_for([([{"CPU": 32}, {"CPU": 32}], AFFINITY)]) == (
+        {},
+        [[{"CPU": 32}, {"CPU": 32}]],
+    )
+
+    # Test many anti-affinity
+    get_nodes_for(
+        [
+            ([{"CPU": 4}, {"CPU": 4}], ANTI_AFFINITY),
+            ([{"CPU": 4}, {"CPU": 4}], ANTI_AFFINITY),
+            ([{"CPU": 4}, {"CPU": 4}], ANTI_AFFINITY),
+            ([{"CPU": 4}, {"CPU": 4}], ANTI_AFFINITY),
+        ]
+    ) == ({"p2.8xlarge": 2}, [])
+
+    # Test multiple affinity
+    get_nodes_for(
+        [
+            ([{"CPU": 16}, {"CPU": 16}], AFFINITY),
+            ([{"GPU": 4}, {"GPU": 4}], AFFINITY),
+        ]
+    ) == ({"p2.8xlarge": 1}, [])
 
 
 if __name__ == "__main__":

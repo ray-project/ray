@@ -12,7 +12,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -176,7 +176,7 @@ class EagerTFPolicyV2(Policy):
                 )
 
             for k, v in input_dict.items():
-                if k not in (STATE_IN, STATE_OUT):
+                if k not in (Columns.STATE_IN, Columns.STATE_OUT):
                     ret[k] = tree.map_structure(fold_mapping, v)
                 else:
                     # state in already has time dimension.
