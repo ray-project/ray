@@ -15,6 +15,7 @@ from ray_release.test import TestResult, Test
 
 
 PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
+PIPELINE_MACOS_POSTMERGE = "018e0f94-ccb6-45c2-b072-1e624fe9a404"
 
 
 class TesterContainer(Container):

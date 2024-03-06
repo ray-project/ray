@@ -16,7 +16,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -55,7 +55,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -152,9 +152,6 @@ def get_replica_context() -> ReplicaContext:
                 def __init__(self):
                     # Prints "MyDeployment"
                     print(serve.get_replica_context().deployment)
-
-                    # Prints "MyDeployment#<replica_tag>"
-                    print(serve.get_replica_context().replica_tag)
 
     """
     internal_replica_context = _get_internal_replica_context()
@@ -573,6 +570,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
     )
+    logger.info(f"Deployed app '{name}' successfully.")
 
     if blocking:
         try:
@@ -580,7 +578,7 @@ def run(
                 # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
         except KeyboardInterrupt:
-            logger.info("Got KeyboardInterrupt, release blocking...")
+            logger.warning("Got KeyboardInterrupt, exiting...")
     return handle
 
 
