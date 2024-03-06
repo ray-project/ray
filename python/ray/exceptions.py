@@ -353,8 +353,9 @@ class RaySystemError(RayError):
 @DeveloperAPI
 class UserCodeException(RayError):
     """Indicates that an exception occurred while executing user code.
-    Used to catch user code exceptions which arise from executing
-    Ray Data code."""
+    For example, this exception can be used to wrap user code exceptions
+    from a remote task or actor. The `retry_exceptions` parameter will
+    still respect the underlying cause of this exception."""
 
     pass
 
