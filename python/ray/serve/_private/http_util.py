@@ -242,7 +242,13 @@ class ASGIReceiveProxy:
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
                         self._disconnect_message = message
                         return
+            except KeyError:
+                # KeyError can be raised if the request is no longer active in the proxy
+                # (e.g., the user disconnects). This is expected behavior and we should
+                # not log an error: https://github.com/ray-project/ray/issues/43290.
+                return
             except Exception as e:
+                # Raise unexpected exceptions in the next `__call__`.
                 self._queue.put_nowait(e)
                 return
 
