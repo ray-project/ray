@@ -24,11 +24,12 @@ class TestRayDockerContainer(RayCITestBase):
         ), mock.patch(
             "ci.ray_ci.docker_container.LinuxContainer.run_script",
             side_effect=_mock_run_script,
-        ), mock.patch.dict(
-            os.environ, {"BUILDKITE_COMMIT": "abc123def456"}
         ):
             formatted_date = datetime.now().strftime("%y%m%d")
-            sha = os.environ["BUILDKITE_COMMIT"][:6]
+            sha = "123456"
+            ray_ci_build_id = "123"
+
+            # Run with default python version and ray image
             self.cmds = []
             v = DEFAULT_PYTHON_VERSION
             cv = self.get_cpp_version(v)
@@ -39,12 +40,13 @@ class TestRayDockerContainer(RayCITestBase):
             assert cmd == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:123-ray-py{v}-cu11.8.0-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-cu11.8.0-base "
                 "requirements_compiled.txt "
                 f"rayproject/ray:nightly.{formatted_date}.{sha}-{pv}-cu118 "
                 f"ray:nightly.{formatted_date}.{sha}-{pv}-cu118_pip-freeze.txt"
             )
 
+            # Run with non-default python version and ray-ml image
             v = self.get_non_default_python()
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
@@ -54,7 +56,7 @@ class TestRayDockerContainer(RayCITestBase):
             assert cmd == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:123-ray-ml-py{v}-cpu-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
                 "requirements_compiled.txt "
                 f"rayproject/ray-ml:nightly.{formatted_date}.{sha}-{pv}-cpu "
                 f"ray-ml:nightly.{formatted_date}.{sha}-{pv}-cpu_pip-freeze.txt"
@@ -75,23 +77,23 @@ class TestRayDockerContainer(RayCITestBase):
             return_value=True,
         ), mock.patch.dict(
             os.environ, {"RAYCI_SCHEDULE": "nightly"}
-        ), mock.patch.dict(
-            os.environ, {"BUILDKITE_COMMIT": "abc123def456"}
         ):
             formatted_date = datetime.now().strftime("%y%m%d")
-            sha = os.environ["BUILDKITE_COMMIT"][:6]
+            sha = "123456"
+            ray_ci_build_id = "123"
+
+            # Run with default python version and ray image
             self.cmds = []
             v = DEFAULT_PYTHON_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
-
             container = RayDockerContainer(v, "cu11.8.0", "ray")
             container.run()
             assert len(self.cmds) == 19
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:123-ray-py{v}-cu11.8.0-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-cu11.8.0-base "
                 "requirements_compiled.txt "
                 f"rayproject/ray:nightly.{formatted_date}.{sha}-{pv}-cu118 "
                 f"ray:nightly.{formatted_date}.{sha}-{pv}-cu118_pip-freeze.txt"
@@ -101,12 +103,12 @@ class TestRayDockerContainer(RayCITestBase):
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
             )
-            for i in range(3, 11):  # check nightly alias
+            for i in range(3, 11):  # check nightly.date.sha alias
                 assert f"nightly.{formatted_date}.{sha}" in self.cmds[i]
-            for i in range(11, len(self.cmds)):  # check nightly date alias
+            for i in range(11, len(self.cmds)):  # check nightly alias
                 assert "nightly-" in self.cmds[i]
 
-            # Run with ray-ml
+            # Run with non-default python version and ray-ml image
             self.cmds = []
             v = self.get_non_default_python()
             cv = self.get_cpp_version(v)
@@ -117,7 +119,7 @@ class TestRayDockerContainer(RayCITestBase):
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:123-ray-ml-py{v}-cpu-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
                 "requirements_compiled.txt "
                 f"rayproject/ray-ml:nightly.{formatted_date}.{sha}-{pv}-cpu "
                 f"ray-ml:nightly.{formatted_date}.{sha}-{pv}-cpu_pip-freeze.txt"
@@ -127,9 +129,9 @@ class TestRayDockerContainer(RayCITestBase):
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
             )
-            for i in range(3, 5):  # check nightly alias
+            for i in range(3, 5):  # check nightly.date.sha alias
                 assert f"nightly.{formatted_date}.{sha}" in self.cmds[i]
-            for i in range(5, len(self.cmds)):  # check nightly date alias
+            for i in range(5, len(self.cmds)):  # check nightly alias
                 assert "nightly-" in self.cmds[i]
 
     def test_run_daytime(self) -> None:
@@ -147,23 +149,23 @@ class TestRayDockerContainer(RayCITestBase):
             return_value=True,
         ), mock.patch.dict(
             os.environ, {"RAYCI_SCHEDULE": "daytime"}
-        ), mock.patch.dict(
-            os.environ, {"BUILDKITE_COMMIT": "abc123def456"}
         ):
             formatted_date = datetime.now().strftime("%y%m%d")
-            sha = os.environ["BUILDKITE_COMMIT"][:6]
+            sha = "123456"
+            ray_ci_build_id = "123"
+
+            # Run with default python version and ray image
             self.cmds = []
             v = DEFAULT_PYTHON_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, "cu11.8.0", "ray")
             container.run()
-
             assert len(self.cmds) == 3
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:123-ray-py{v}-cu11.8.0-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-cu11.8.0-base "
                 "requirements_compiled.txt "
                 f"rayproject/ray:nightly.{formatted_date}.{sha}-{pv}-cu118 "
                 f"ray:nightly.{formatted_date}.{sha}-{pv}-cu118_pip-freeze.txt"
@@ -174,7 +176,7 @@ class TestRayDockerContainer(RayCITestBase):
                 == "python .buildkite/copy_files.py --destination docker_login"
             )
 
-            # Run with ray-ml
+            # Run with non-default python version and ray-ml image
             self.cmds = []
             v = self.get_non_default_python()
             cv = self.get_cpp_version(v)
@@ -185,7 +187,7 @@ class TestRayDockerContainer(RayCITestBase):
             assert self.cmds[0] == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:123-ray-ml-py{v}-cpu-base "
+                f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
                 "requirements_compiled.txt "
                 f"rayproject/ray-ml:nightly.{formatted_date}.{sha}-{pv}-cpu "
                 f"ray-ml:nightly.{formatted_date}.{sha}-{pv}-cpu_pip-freeze.txt"
@@ -198,7 +200,7 @@ class TestRayDockerContainer(RayCITestBase):
 
     def test_canonical_tag(self) -> None:
         formatted_date = datetime.now().strftime("%y%m%d")
-        sha = os.environ["BUILDKITE_COMMIT"][:6]
+        sha = "123456"
         v = DEFAULT_PYTHON_VERSION
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cpu", "ray", canonical_tag="abc")
@@ -223,18 +225,18 @@ class TestRayDockerContainer(RayCITestBase):
 
         with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
             container = RayDockerContainer(v, "cpu", "ray")
-            assert container._get_canonical_tag() == f"1.0.0.123456-{pv}-cpu"
+            assert container._get_canonical_tag() == f"1.0.0.{sha}-{pv}-cpu"
 
         with mock.patch.dict(
             os.environ, {"BUILDKITE_BRANCH": "abc", "BUILDKITE_PULL_REQUEST": "123"}
         ):
             container = RayDockerContainer(v, "cpu", "ray")
-            assert container._get_canonical_tag() == f"pr-123.123456-{pv}-cpu"
+            assert container._get_canonical_tag() == f"pr-123.{sha}-{pv}-cpu"
 
     def test_get_image_tags(self) -> None:
         # bulk logic of _get_image_tags is tested in its callers (get_image_name and
         # get_canonical_tag), so we only test the basic cases here
-        sha = os.environ["BUILDKITE_COMMIT"][:6]
+        sha = "123456"
         v = DEFAULT_PYTHON_VERSION
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cpu", "ray")
@@ -251,7 +253,7 @@ class TestRayDockerContainer(RayCITestBase):
         ]
 
     def test_get_image_name(self) -> None:
-        sha = os.environ["BUILDKITE_COMMIT"][:6]
+        sha = "123456"
         v = DEFAULT_PYTHON_VERSION
         pv = self.get_python_version(v)
         formatted_date = datetime.now().strftime("%y%m%d")
@@ -279,15 +281,18 @@ class TestRayDockerContainer(RayCITestBase):
             f"rayproject/ray-ml:nightly-{pv}",
         ]
 
-        with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
+        release_version = "1.0.0"
+        with mock.patch.dict(
+            os.environ, {"BUILDKITE_BRANCH": f"releases/{release_version}"}
+        ):
             v = DEFAULT_PYTHON_VERSION
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, "cpu", "ray")
             assert container._get_image_names() == [
-                f"rayproject/ray:1.0.0.123456-{pv}-cpu",
-                "rayproject/ray:1.0.0.123456-cpu",
-                f"rayproject/ray:1.0.0.123456-{pv}",
-                "rayproject/ray:1.0.0.123456",
+                f"rayproject/ray:{release_version}.{sha}-{pv}-cpu",
+                f"rayproject/ray:{release_version}.{sha}-cpu",
+                f"rayproject/ray:{release_version}.{sha}-{pv}",
+                f"rayproject/ray:{release_version}.{sha}",
             ]
 
     def test_get_python_version_tag(self) -> None:
