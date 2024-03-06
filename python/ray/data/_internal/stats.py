@@ -2,7 +2,7 @@ import collections
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from uuid import uuid4
 
@@ -159,52 +159,91 @@ class _StatsActor:
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
         op_tags_keys = ("dataset", "operator")
-        self.bytes_spilled = Gauge(
+
+        # TODO(scottjlee): move these overvie metrics as fields in a
+        # separate dataclass, similar to OpRuntimeMetrics.
+        self.spilled_bytes = Gauge(
             "data_spilled_bytes",
             description="""Bytes spilled by dataset operators.
                 DataContext.enable_get_object_locations_for_metrics
                 must be set to True to report this metric""",
             tag_keys=op_tags_keys,
         )
-        self.bytes_allocated = Gauge(
+        self.allocated_bytes = Gauge(
             "data_allocated_bytes",
             description="Bytes allocated by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.bytes_freed = Gauge(
+        self.freed_bytes = Gauge(
             "data_freed_bytes",
             description="Bytes freed by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.bytes_current = Gauge(
+        self.current_bytes = Gauge(
             "data_current_bytes",
             description="Bytes currently in memory store used by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.cpu_usage = Gauge(
+        self.cpu_usage_cores = Gauge(
             "data_cpu_usage_cores",
             description="CPUs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.gpu_usage = Gauge(
+        self.gpu_usage_cores = Gauge(
             "data_gpu_usage_cores",
             description="GPUs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.bytes_outputted = Gauge(
+        self.output_bytes = Gauge(
             "data_output_bytes",
             description="Bytes outputted by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.rows_outputted = Gauge(
+        self.output_rows = Gauge(
             "data_output_rows",
             description="Rows outputted by dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.block_generation_time = Gauge(
-            "data_block_generation_seconds",
-            description="Time spent generating blocks.",
-            tag_keys=op_tags_keys,
+
+        # === Metrics from OpRuntimeMetrics ===
+        # Inputs-related metrics
+        self.execution_metrics_inputs = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="inputs",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Outputs-related metrics
+        self.execution_metrics_outputs = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="outputs",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Task-related metrics
+        self.execution_metrics_tasks = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="tasks",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Object store memory-related metrics
+        self.execution_metrics_obj_store_memory = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="obj_store_memory",
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Miscellaneous metrics
+        self.execution_metrics_misc = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group="misc",
+                tag_keys=op_tags_keys,
+            )
         )
 
         iter_tag_keys = ("dataset",)
@@ -223,6 +262,22 @@ class _StatsActor:
             description="Seconds spent in iterator initialization code",
             tag_keys=iter_tag_keys,
         )
+
+    def _create_prometheus_metrics_for_execution_metrics(
+        self, metrics_group: str, tag_keys: Tuple[str, ...]
+    ) -> Dict[str, Gauge]:
+        metrics = {}
+        for field in fields(OpRuntimeMetrics):
+            if not field.metadata.get("metrics_group") == metrics_group:
+                continue
+            metric_name = f"data_{field.name}"
+            metric_description = field.metadata.get("description")
+            metrics[field.name] = Gauge(
+                metric_name,
+                description=metric_description,
+                tag_keys=tag_keys,
+            )
+        return metrics
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
@@ -279,13 +334,32 @@ class _StatsActor:
     ):
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
-            self.bytes_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
-            self.bytes_freed.set(stats.get("obj_store_mem_freed", 0), tags)
-            self.bytes_outputted.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.rows_outputted.set(stats.get("rows_task_outputs_generated", 0), tags)
-            self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
-            self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
-            self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
+
+            self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)
+            self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
+            self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
+            self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
+            self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
+            self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
+            self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_inputs.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_outputs.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_tasks.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for (
+                field_name,
+                prom_metric,
+            ) in self.execution_metrics_obj_store_memory.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_misc.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -304,15 +378,29 @@ class _StatsActor:
     def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
         for operator_tag in operator_tags:
             tags = self._create_tags(dataset_tag, operator_tag)
-            self.bytes_spilled.set(0, tags)
-            self.bytes_allocated.set(0, tags)
-            self.bytes_freed.set(0, tags)
-            self.bytes_current.set(0, tags)
-            self.bytes_outputted.set(0, tags)
-            self.rows_outputted.set(0, tags)
-            self.cpu_usage.set(0, tags)
-            self.gpu_usage.set(0, tags)
-            self.block_generation_time.set(0, tags)
+            self.spilled_bytes.set(0, tags)
+            self.allocated_bytes.set(0, tags)
+            self.freed_bytes.set(0, tags)
+            self.current_bytes.set(0, tags)
+            self.output_bytes.set(0, tags)
+            self.output_rows.set(0, tags)
+            self.cpu_usage_cores.set(0, tags)
+            self.gpu_usage_cores.set(0, tags)
+
+            for prom_metric in self.execution_metrics_inputs.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_outputs.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_tasks.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_obj_store_memory.values():
+                prom_metric.set(0, tags)
+
+            for prom_metric in self.execution_metrics_misc.values():
+                prom_metric.set(0, tags)
 
     def clear_iteration_metrics(self, dataset_tag: str):
         tags = self._create_tags(dataset_tag)
