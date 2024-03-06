@@ -174,7 +174,7 @@ def patch_update_stats_actor_iter():
 def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     context = DataContext.get_current()
     context.verbose_stats_logs = True
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
@@ -193,6 +193,9 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
+* Operator throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 * Extra metrics: {STANDARD_EXTRA_METRICS}
 
 Operator N split(N, equal=False): \n"""
@@ -220,7 +223,7 @@ def test_large_args_scheduling_strategy(
 ):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
-    ds = ray.data.range_tensor(100, shape=(100000,), parallelism=1)
+    ds = ray.data.range_tensor(100, shape=(100000,), override_num_blocks=1)
     ds = ds.map_batches(dummy_map_batches, num_cpus=0.9).materialize()
     stats = ds.stats()
     expected_stats = (
@@ -233,6 +236,9 @@ def test_large_args_scheduling_strategy(
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -243,7 +249,14 @@ def test_large_args_scheduling_strategy(
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(LARGE_ARGS_EXTRA_METRICS, verbose_stats_logs)}"
+        f"\n"
+        f"Dataset throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
     assert canonicalize(stats) == expected_stats
 
@@ -264,7 +277,7 @@ def test_dataset_stats_basic(
     )
 
     with patch.object(logger, "info") as mock_logger:
-        ds = ray.data.range(1000, parallelism=10)
+        ds = ray.data.range(1000, override_num_blocks=10)
         ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
@@ -281,7 +294,14 @@ def test_dataset_stats_basic(
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+                f"* Operator throughput:\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
+                f"\n"
+                f"Dataset throughput:\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
             )
 
         ds = ds.map(dummy_map_batches).materialize()
@@ -298,7 +318,14 @@ def test_dataset_stats_basic(
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+                f"* Operator throughput:\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}"  # noqa: E501
+                f"\n"
+                f"Dataset throughput:\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"    * Estimated single node throughput: N rows/s\n"
             )
 
     for batch in ds.iter_batches():
@@ -315,6 +342,9 @@ def test_dataset_stats_basic(
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -325,6 +355,9 @@ def test_dataset_stats_basic(
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Dataset iterator time breakdown:\n"
         f"* Total time overall: T\n"
@@ -335,13 +368,17 @@ def test_dataset_stats_basic(
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
+        f"\n"
+        f"Dataset throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
 
 def test_block_location_nums(ray_start_regular_shared, restore_data_context):
     context = DataContext.get_current()
     context.enable_get_object_locations_for_metrics = True
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.map_batches(dummy_map_batches).materialize()
 
     for batch in ds.iter_batches():
@@ -358,6 +395,9 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"\n"
         f"Dataset iterator time breakdown:\n"
         f"* Total time overall: T\n"
@@ -372,6 +412,10 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"    * Num blocks local: Z\n"
         f"    * Num blocks remote: Z\n"
         f"    * Num blocks unknown location: N\n"
+        f"\n"
+        f"Dataset throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
 
@@ -553,7 +597,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
     stats = canonicalize(ds.materialize().stats())
     assert (
@@ -601,33 +645,37 @@ Operator N Repartition: executed in T
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+
+Dataset throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
 
 def test_dataset_stats_repartition(ray_start_regular_shared):
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.repartition(1, shuffle=False)
     stats = ds.materialize().stats()
     assert "Repartition" in stats, stats
 
 
 def test_dataset_stats_union(ray_start_regular_shared):
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.union(ds)
     stats = ds.materialize().stats()
     assert "Union" in stats, stats
 
 
 def test_dataset_stats_zip(ray_start_regular_shared):
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.zip(ds)
     stats = ds.materialize().stats()
     assert "Zip" in stats, stats
 
 
 def test_dataset_stats_sort(ray_start_regular_shared):
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.sort("id")
     stats = ds.materialize().stats()
     assert "SortMap" in stats, stats
@@ -641,7 +689,7 @@ def test_dataset_stats_from_items(ray_start_regular_shared):
 
 
 def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(1000, parallelism=10)
+    ds = ray.data.range(1000, override_num_blocks=10)
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
     stats = canonicalize(ds.materialize().stats())
@@ -655,11 +703,20 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
+        f"\n"
+        f"Dataset throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
 
 def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(100, parallelism=10).map(column_udf("id", lambda x: x + 1))
+    ds = ray.data.range(100, override_num_blocks=10).map(
+        column_udf("id", lambda x: x + 1)
+    )
     dses = ds.split_at_indices([49])
     dses = [ds.map(column_udf("id", lambda x: x + 1)) for ds in dses]
     for ds_ in dses:
@@ -675,6 +732,9 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"* Operator throughput:\n"
+            f"    * Ray Data throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
             f"Operator N Split: {EXECUTION_STRING}\n"
             f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -685,6 +745,9 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"* Operator throughput:\n"
+            f"    * Ray Data throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
             f"Operator N Map(<lambda>): {EXECUTION_STRING}\n"
             f"* Remote wall time: T min, T max, T mean, T total\n"
@@ -695,6 +758,13 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+            f"* Operator throughput:\n"
+            f"    * Ray Data throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
+            f"\n"
+            f"Dataset throughput:\n"
+            f"    * Ray Data throughput: N rows/s\n"
+            f"    * Estimated single node throughput: N rows/s\n"
         )
 
 
@@ -864,7 +934,7 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     "See: https://github.com/ray-project/ray/pull/40173"
 )
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
-    ds = ray.data.range(5, parallelism=5).map(column_udf("id", lambda x: x + 1))
+    ds = ray.data.range(5, override_num_blocks=5).map(column_udf("id", lambda x: x + 1))
     ds.take_all()
     stats = canonicalize(ds.stats())
     assert (
@@ -878,6 +948,9 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
+* Operator throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 
 Dataset iterator time breakdown:
 * Total time overall: T
@@ -888,12 +961,16 @@ Dataset iterator time breakdown:
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
+
+Dataset throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
 
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(100, parallelism=100)
+    ds = ray.data.range(100, override_num_blocks=100)
     ds.write_parquet(str(tmp_path))
     stats = ds.stats()
 
@@ -908,12 +985,23 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
+* Operator throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
+
+Dataset throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
     assert stats == ds._write_ds.stats()
 
-    ds = ray.data.range(100, parallelism=100).map_batches(lambda x: x).materialize()
+    ds = (
+        ray.data.range(100, override_num_blocks=100)
+        .map_batches(lambda x: x)
+        .materialize()
+    )
     ds.write_parquet(str(tmp_path))
     stats = ds.stats()
 
@@ -928,6 +1016,9 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
+* Operator throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 
 Operator N Write: {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
@@ -938,6 +1029,13 @@ Operator N Write: {EXECUTION_STRING}
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
+* Operator throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
+
+Dataset throughput:
+    * Ray Data throughput: N rows/s
+    * Estimated single node throughput: N rows/s
 """
     )
 
@@ -1004,6 +1102,9 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_extra_metrics_str(MEM_SPILLED_EXTRA_METRICS, verbose_stats_logs)}\n"
         f"Cluster memory:\n"
         f"* Spilled to disk: M\n"
@@ -1011,6 +1112,10 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"\n"
         f"Dataset memory:\n"
         f"* Spilled to disk: M\n"
+        f"\n"
+        f"Dataset throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
     )
 
     assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
@@ -1030,7 +1135,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
-        ray.data.range(250 * 80 * 80 * 4, parallelism=1)
+        ray.data.range(250 * 80 * 80 * 4, override_num_blocks=1)
         .map_batches(lambda x: x)
         .materialize()
     )
@@ -1088,7 +1193,7 @@ def test_stats_actor_iter_metrics():
 
 
 def test_dataset_name():
-    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds._set_name("test_ds")
     assert ds._name == "test_ds"
     assert str(ds) == (
@@ -1124,7 +1229,7 @@ def test_dataset_name():
 
     assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
 
-    ds = ray.data.range(100, parallelism=20)
+    ds = ray.data.range(100, override_num_blocks=20)
     ds._set_name("very_loooooooong_name")
     assert (
         str(ds)
@@ -1172,7 +1277,7 @@ def test_op_state_logging():
 
 
 def test_stats_actor_datasets(ray_start_cluster):
-    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds._set_name("test_stats_actor_datasets")
     ds.materialize()
     stats_actor = _get_or_create_stats_actor()

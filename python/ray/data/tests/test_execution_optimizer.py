@@ -341,13 +341,13 @@ def test_random_sample_e2e(ray_start_regular_shared):
             r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2
         )
 
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     ensure_sample_size_close(ds)
 
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     ensure_sample_size_close(ds)
 
-    ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
+    ds = ray.data.range_tensor(5, override_num_blocks=2, shape=(2, 2))
     ensure_sample_size_close(ds)
 
     _check_usage_record(["ReadRange", "MapBatches"])
@@ -374,7 +374,7 @@ def test_random_shuffle_operator(ray_start_regular_shared):
 
 
 def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
-    ds = ray.data.range(12, parallelism=4)
+    ds = ray.data.range(12, override_num_blocks=4)
     r1 = extract_values("id", ds.random_shuffle(seed=0).take_all())
     r2 = extract_values("id", ds.random_shuffle(seed=1024).take_all())
     assert r1 != r2, (r1, r2)
@@ -426,14 +426,14 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
             assert "RepartitionSplit" in ds_stats.metadata
         assert "RepartitionReduce" in ds_stats.metadata
 
-    ds = ray.data.range(10000, parallelism=10).repartition(20, shuffle=shuffle)
+    ds = ray.data.range(10000, override_num_blocks=10).repartition(20, shuffle=shuffle)
     assert ds._plan.initial_num_blocks() == 20, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(10000))
     assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
 
     # Test num_output_blocks > num_rows to trigger empty block handling.
-    ds = ray.data.range(20, parallelism=10).repartition(40, shuffle=shuffle)
+    ds = ray.data.range(20, override_num_blocks=10).repartition(40, shuffle=shuffle)
     assert ds._plan.initial_num_blocks() == 40, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(20))
     if shuffle:
@@ -453,7 +453,7 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
     _check_repartition_usage_and_stats(ds)
 
     # Test case where we do not split on repartitioning.
-    ds = ray.data.range(10, parallelism=1).repartition(1, shuffle=shuffle)
+    ds = ray.data.range(10, override_num_blocks=1).repartition(1, shuffle=shuffle)
     assert ds._plan.initial_num_blocks() == 1, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(10))
     assert ds._block_num_rows() == [10], ds._block_num_rows()
@@ -492,7 +492,7 @@ def test_union_e2e(ray_start_regular_shared, preserve_order):
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options = execution_options
 
-    ds = ray.data.range(20, parallelism=10)
+    ds = ray.data.range(20, override_num_blocks=10)
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
@@ -935,7 +935,7 @@ def test_read_map_batches_operator_fusion_with_aggregate_operator(
 def test_read_map_chain_operator_fusion_e2e(
     ray_start_regular_shared,
 ):
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     ds = ds.filter(lambda x: x["id"] % 2 == 0)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map_batches(
@@ -963,7 +963,7 @@ def test_read_map_chain_operator_fusion_e2e(
 
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     ds.write_csv(tmp_path)
     assert "ReadRange->Write" in ds._write_ds.stats()
     _check_usage_record(["ReadRange", "WriteCSV"])
@@ -1012,7 +1012,7 @@ def test_sort_operator(
 
 
 def test_sort_e2e(ray_start_regular_shared, use_push_based_shuffle, tmp_path):
-    ds = ray.data.range(100, parallelism=4)
+    ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.random_shuffle()
     ds = ds.sort("id")
     assert extract_values("id", ds.take_all()) == list(range(100))
@@ -1086,7 +1086,7 @@ def test_aggregate_operator(ray_start_regular_shared):
 
 
 def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
-    ds = ray.data.range(100, parallelism=4)
+    ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.groupby("id").count()
     assert ds.count() == 100
     for idx, row in enumerate(ds.sort("id").iter_rows()):
@@ -1157,8 +1157,8 @@ def test_zip_operator(ray_start_regular_shared):
 )
 def test_zip_e2e(ray_start_regular_shared, num_blocks1, num_blocks2):
     n = 12
-    ds1 = ray.data.range(n, parallelism=num_blocks1)
-    ds2 = ray.data.range(n, parallelism=num_blocks2).map(
+    ds1 = ray.data.range(n, override_num_blocks=num_blocks1)
+    ds2 = ray.data.range(n, override_num_blocks=num_blocks2).map(
         column_udf("id", lambda x: x + 1)
     )
     ds = ds1.zip(ds2)
@@ -1405,7 +1405,7 @@ def test_limit_pushdown(ray_start_regular_shared):
         return x
 
     # Test basic limit pushdown past Map.
-    ds = ray.data.range(100, parallelism=100).map(f1).limit(1)
+    ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1)
     _check_valid_plan_and_result(
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
@@ -1456,7 +1456,7 @@ def test_limit_pushdown(ray_start_regular_shared):
         [{"id": i} for i in range(5)],
     )
     # Test limit pushdown between two Map operators.
-    ds5 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2)
+    ds5 = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
     # Limit operators get pushed down in the logical plan optimization,
     # then fused together.
     _check_valid_plan_and_result(
@@ -1508,7 +1508,7 @@ def test_execute_to_legacy_block_iterator(
 def test_streaming_executor(
     ray_start_regular_shared,
 ):
-    ds = ray.data.range(100, parallelism=4)
+    ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.map_batches(lambda x: x)
     ds = ds.filter(lambda x: x["id"] > 0)
     ds = ds.random_shuffle()
@@ -1536,7 +1536,7 @@ def test_schema_partial_execution(
     ds = ray.data.read_parquet(
         "example://iris.parquet",
         schema=pa.schema(fields),
-        parallelism=2,
+        override_num_blocks=2,
     ).map_batches(lambda x: x)
 
     iris_schema = ds.schema()
