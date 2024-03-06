@@ -90,7 +90,7 @@ def train(
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
-            trainer_resources={"CPU": 0},
+            # trainer_resources={"CPU": 0},
         ),
         label_column="labels",
         datasets={"train": ds},
