@@ -77,10 +77,6 @@ class MapOperator(OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
-        # When the streaming generator ref is GC'ed, the objects it generated
-        # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
-        self._finished_streaming_gens: List[ObjectRefGenerator] = []
         super().__init__(name, input_op, target_max_block_size)
 
         # If set, then all output blocks will be split into
@@ -317,7 +313,6 @@ class MapOperator(OneToOneOperator, ABC):
             )
 
             task = self._data_tasks.pop(task_index)
-            self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
             if task_done_callback:
@@ -385,7 +380,6 @@ class MapOperator(OneToOneOperator, ABC):
     def shutdown(self):
         self._data_tasks.clear()
         self._metadata_tasks.clear()
-        self._finished_streaming_gens.clear()
 
     @abstractmethod
     def current_processor_usage(self) -> ExecutionResources:
