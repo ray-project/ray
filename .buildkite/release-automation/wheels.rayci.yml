@@ -1,81 +1,44 @@
 group: Upload & Validate wheels
 steps:
-  - block: "Upload wheels from S3 to TestPyPI"
-    depends_on: 
-      - forge
-
-  - label: "Upload wheels from S3 to TestPyPI"
-    key: upload-wheels-testpypi
-    job_env: forge
-    instance_type: small_branch
+  - label: "Windows"
+    job_env: WINDOWS
+    instance_type: windows
     commands:
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION"
-        --commit_hash="$BUILDKITE_COMMIT"
-        --pypi_env=test
+      - docker run -it --rm --volume 
+        C:\\buildkite-agent\\builds\\${BUILDKITE_AGENT_NAME}\\ray-project\\release-automation:C\\workdir
+        -- volume \\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine 
+        --workdir C:\\workdir --env CI --env BUILDKITE_BUILD_NUMBER 
+        --env BUILDKITE_BUILD_URL 
+        --env BUILDKITE_JOB_ID 
+        --env BUILDKITE_PARALLEL_JOB 
+        --env BUILDKITE_PARALLEL_JOB_COUNT 
+        --env BUILDKITE_PULL_REQUEST 
+        --env BUILDKITE_MESSAGE 
+        --env BUILDKITE_ARTIFACT_UPLOAD_DESTINATION 
+        --env BUILDKITE_BAZEL_CACHE_URL 
+        --env RAYCI_BUILD_ID 
+        --env BUILDKITE 
+        --env RAYCI_FORGE_PREFIX 
+        --env RAYCI_SKIP_UPLOAD 
+        --env RAYCI_TEMP 
+        --env RAYCI_WORK_REPO 
+        --env BUILDKITE_BRANCH 
+        --env BUILDKITE_COMMIT 
+        --env BUILDKITE_HOOK_WORKING_DIR 
+        --env BUILDKITE_LABEL 
+        --env BUILDKITE_RETRY_COUNT 
+        --env BUILDKITE_PIPELINE_ID 
+        --env BUILDKITE_PIPELINE_SLUG 
+        --env BUILDKITE_BUILD_ID 
+        --shm-size 2.5gb 
+        --label com.buildkite.job-id=${BUILDKITE_JOB_ID}
+        --label com.buildkite.pipeline_name=${BUILDKITE_PIPELINE_NAME} 
+        --label com.buildkite.pipeline_slug=${BUILDKITE_PIPELINE_SLUG}
+        --label com.buildkite.build_number=${BUILDKITE_BUILD_NUMER} 
+        --label com.buildkite.job_id=${BUILDKITE_JOB_ID} 
+        --label com.buildkite.job_label=Windows 
+        --label com.buildkite.step_key= 
+        --label com.buildkite.agent_name=${BUILDKITE_AGENT_NAME} 
+        --label com.buildkite.agent_id=${BUILDKITE_AGENT_ID} rayproject/buildenv:windows
 
-  - block: "Download & validate Ray wheels from TestPyPI"
-    depends_on: 
-      - forge
-      - forge_arm64
-      - upload-wheels-testpypi
-
-  - label: "Linux x86_64 Python {{matrix}}"
-    key: validate-linux-x86_64-wheels
-    job_env: forge
-    commands:
-      - export PYTHON_VERSION={{matrix}}
-      - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_HASH="$RAY_HASH"
-      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
-    matrix:
-      - "3.8"
-      - "3.9"
-      - "3.10"
-      - "3.11"
-
-  - label: "Linux arm64 Python {{matrix}}"
-    key: validate-linux-arm64-wheels
-    instance_type: medium-arm64
-    job_env: forge-arm64
-    commands:
-      - export PYTHON_VERSION={{matrix}}
-      - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_HASH="$RAY_HASH"
-      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
-    matrix:
-      - "3.8"
-      - "3.9"
-      - "3.10"
-      - "3.11"
-
-  - label: "MacOS x86_64"
-    key: validate-macos-x86_64-wheels
-    job_env: MACOS
-    instance_type: macos
-    commands:
-      - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
-
-  - label: "MacOS arm64"
-    key: validate-macos-arm64-wheels
-    job_env: MACOS
-    instance_type: macos-arm64
-    commands:
-      - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
-  
-  - block: "Upload wheels to PyPI"
-    depends_on: 
-      - validate-linux-x86-64-wheels
-      - validate-linux-arm64-wheels
-      - validate-macos-x86-64-wheels
-      - validate-macos-arm64-wheels
-
-  - label: "Upload wheels to PyPI"
-    key: upload-wheels-pypi
-    job_env: forge
-    instance_type: small_branch
-    commands:
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION" 
-        --commit_hash="$BUILDKITE_COMMIT" 
-        --pypi_env=prod
+docker run -i --rm --volume C:\\buildkite-agent\\builds\\bk-windows-queue-pr-i-0b4f21734db09d796-1\\ray-project\\release-automation:C:\\workdir --volume \\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine --workdir C:\\workdir --env CI --env BUILDKITE_BUILD_NUMBER --env BUILDKITE_BUILD_URL --env BUILDKITE_JOB_ID --env BUILDKITE_PARALLEL_JOB --env BUILDKITE_PARALLEL_JOB_COUNT --env BUILDKITE_PULL_REQUEST --env BUILDKITE_MESSAGE --env BUILDKITE_ARTIFACT_UPLOAD_DESTINATION --env BUILDKITE_BAZEL_CACHE_URL --env RAYCI_BUILD_ID --env BUILDKITE --env RAYCI_FORGE_PREFIX --env RAYCI_SKIP_UPLOAD --env RAYCI_TEMP --env RAYCI_WORK_REPO --env BUILDKITE_BRANCH --env BUILDKITE_COMMIT --env BUILDKITE_HOOK_WORKING_DIR --env BUILDKITE_LABEL --env BUILDKITE_RETRY_COUNT --env BUILDKITE_PIPELINE_ID --env BUILDKITE_PIPELINE_SLUG --env BUILDKITE_BUILD_ID --shm-size 2.5gb --label com.buildkite.job-id=018daf59-18f8-4fc6-939c-d0ac0ec427cd --label com.buildkite.pipeline_name=release-automation --label com.buildkite.pipeline_slug=release-automation --label com.buildkite.build_number=104 --label com.buildkite.job_id=018daf59-18f8-4fc6-939c-d0ac0ec427cd --label com.buildkite.job_label=Windows --label com.buildkite.step_key= --label com.buildkite.agent_name=bk-windows-queue-pr-i-0b4f21734db09d796-1 --label com.buildkite.agent_id=018daf5d-2595-46c0-b709-26318a778f8b rayproject/buildenv:windows bash -eo pipefail -c bash\ -i\ /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
