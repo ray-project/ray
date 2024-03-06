@@ -40,7 +40,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -1248,8 +1248,8 @@ class Learner:
         self._check_is_built()
         components = force_list(components)
         state = {"modules_to_train": self.config.policies_to_train}
-        if "module_state" in components:
-            state["module_state"] = self.module.get_state()
+        if "rl_module_state" in components:
+            state["rl_module_state"] = self.module.get_state()
         if "optimizer_state" in components:
             state["optimizer_state"] = self.get_optimizer_state()
         return state
@@ -1265,8 +1265,8 @@ class Learner:
         """
         self._check_is_built()
 
-        if "module_state" in state:
-            self.module.set_state(state["module_state"])
+        if "rl_module_state" in state:
+            self.module.set_state(state["rl_module_state"])
         if "optimizer_state" in state:
             self.set_optimizer_state(state["optimizer_state"])
         # If provided in state, update our trainable Modules information/function via
@@ -1678,3 +1678,19 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
+
+    @Deprecated(
+        new="self.module.get_state(...) OR "
+        "self.get_state(components='rl_module_state')",
+        error=True,
+    )
+    def get_module_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(
+        new="self.module.set_state(...) OR "
+        "self.set_state(state={'rl_module_state': ...})",
+        error=True,
+    )
+    def set_module_state(self, *args, **kwargs):
+        pass
