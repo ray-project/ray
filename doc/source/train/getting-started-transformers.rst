@@ -216,7 +216,7 @@ This function executes on each distributed training worker.
 
 You can specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter.
 
-.. note::
+.. warning::
 
     Avoid passing large data objects through `train_loop_config` to reduce the
     serialization and deserialization overhead. Instead, it's preferred to
