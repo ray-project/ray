@@ -373,11 +373,9 @@ def process_completed_tasks(
 
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
-    first_task_index = defaultdict(lambda: float("inf"))
     for op, state in topology.items():
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
-            first_task_index[op] = min(first_task_index[op], task.task_index())
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
     if resource_manager.op_resource_allocator_enabled():
@@ -406,9 +404,6 @@ def process_completed_tasks(
         ready_tasks_by_op = defaultdict(list)
         for ref in ready:
             state, task = active_tasks[ref]
-            if max_bytes_to_read_per_op.get(state, 0) == 1:
-                if task.task_index() != first_task_index[state.op]:
-                    continue
             ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
