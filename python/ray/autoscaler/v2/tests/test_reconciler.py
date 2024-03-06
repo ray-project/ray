@@ -11,7 +11,7 @@ import mock
 from mock import MagicMock
 
 from ray._private.utils import binary_to_hex
-from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig
+from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig, Provider
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
@@ -80,6 +80,10 @@ class MockAutoscalingConfig:
 
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
+
+    @property
+    def provider(self):
+        return Provider.UNKNOWN
 
 
 class MockScheduler(IResourceScheduler):

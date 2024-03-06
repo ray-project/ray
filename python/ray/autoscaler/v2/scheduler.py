@@ -365,6 +365,7 @@ class SchedulingNode:
             status: The status of the node.
             node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
+            node_kind: The node kind.
         """
         return SchedulingNode(
             node_type=node_config.name,

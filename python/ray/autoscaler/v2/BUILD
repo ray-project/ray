@@ -40,10 +40,18 @@ py_test_module_list(
 py_test_module_list(
     files=[
         "tests/test_sdk.py",
-        "tests/test_e2e.py",
         "tests/test_autoscaler.py",
     ],
     size="medium",
+    tags=["team:core", "exclusive"],
+    deps=["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+    files=[
+        "tests/test_e2e.py",
+    ],
+    size="large",
     tags=["team:core", "exclusive"],
     deps=["//:ray_lib", ":conftest"],
 )
