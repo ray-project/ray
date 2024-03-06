@@ -27,9 +27,8 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     Duration,
     MultiplexedReplicaInfo,
-    ReplicaName,
+    ReplicaID,
     ReplicaState,
-    ReplicaTag,
     RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
@@ -57,7 +56,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
-    format_actor_name,
     get_capacity_adjusted_num_replicas,
     get_random_string,
     msgpack_deserialize,
@@ -228,15 +226,12 @@ class ActorReplicaWrapper:
 
     def __init__(
         self,
-        actor_name: str,
-        replica_tag: ReplicaTag,
-        deployment_id: DeploymentID,
+        replica_id: ReplicaID,
         version: DeploymentVersion,
     ):
-        self._actor_name = actor_name
-
-        self._replica_tag = replica_tag
-        self._deployment_id = deployment_id
+        self._replica_id = replica_id
+        self._deployment_id = replica_id.deployment_id
+        self._actor_name = replica_id.to_full_id_str()
 
         # Populated in either self.start() or self.recover()
         self._allocated_obj_ref: ObjectRef = None
@@ -274,8 +269,8 @@ class ActorReplicaWrapper:
         self._deployment_is_cross_language = False
 
     @property
-    def replica_tag(self) -> str:
-        return self._replica_tag
+    def replica_id(self) -> str:
+        return self._replica_id
 
     @property
     def deployment_name(self) -> str:
@@ -398,8 +393,7 @@ class ActorReplicaWrapper:
         )
 
         logger.info(
-            f"Starting replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} in application '{self.app_name}'.",
+            f"Starting {self.replica_id}.",
             extra={"log_to_stderr": False},
         )
 
@@ -421,8 +415,7 @@ class ActorReplicaWrapper:
                     else deployment_info.replica_config.serialized_init_args
                 )
             init_args = (
-                self._deployment_id,
-                self.replica_tag,
+                self.replica_id,
                 cloudpickle.dumps(deployment_info.replica_config.deployment_def)
                 if self._deployment_is_cross_language
                 else deployment_info.replica_config.serialized_deployment_def,
@@ -445,8 +438,8 @@ class ActorReplicaWrapper:
             init_args = (
                 # String deploymentName,
                 self.deployment_name,
-                # String replicaTag,
-                self.replica_tag,
+                # String replicaID,
+                self.replica_id.to_full_id_str(),
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
@@ -475,8 +468,7 @@ class ActorReplicaWrapper:
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
         return ReplicaSchedulingRequest(
-            deployment_id=self._deployment_id,
-            replica_name=self.replica_tag,
+            replica_id=self.replica_id,
             actor_def=actor_def,
             actor_resources=self._actor_resources,
             actor_options=actor_options,
@@ -573,10 +565,7 @@ class ActorReplicaWrapper:
             controller fetching all Serve actors in the cluster and when
             the controller tries to recover it. Otherwise, return True.
         """
-        logger.info(
-            f"Recovering replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} in application '{self.app_name}'."
-        )
+        logger.info(f"Recovering {self.replica_id}.")
         try:
             self._actor_handle = ray.get_actor(
                 self._actor_name, namespace=SERVE_NAMESPACE
@@ -646,19 +635,16 @@ class ActorReplicaWrapper:
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in replica '{self._replica_tag}', "
-                    "the replica will be stopped."
+                    f"Exception in {self._replica_id}, " "the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except RuntimeEnvSetupError as e:
-                msg = (
-                    f"Exception when allocating replica '{self._replica_tag}': {str(e)}"
-                )
+                msg = f"Exception when allocating {self._replica_id}: {str(e)}"
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
             except Exception:
                 msg = (
-                    f"Exception when allocating replica '{self._replica_tag}':\n"
+                    f"Exception when allocating {self._replica_id}:\n"
                     + traceback.format_exc()
                 )
                 logger.exception(msg)
@@ -685,8 +671,7 @@ class ActorReplicaWrapper:
                     _, self._version = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in replica '{self._replica_tag}', "
-                    "the replica will be stopped."
+                    f"Exception in {self._replica_id}, " "the replica will be stopped."
                 )
                 # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                 # here because the full details of the error is not displayed properly
@@ -694,8 +679,7 @@ class ActorReplicaWrapper:
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except Exception as e:
                 logger.exception(
-                    f"Exception in replica '{self._replica_tag}', "
-                    "the replica will be stopped."
+                    f"Exception in {self._replica_id}, " "the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, repr(e)
 
@@ -780,15 +764,13 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
                 # Health check failed due to application-level exception.
-                logger.warning(
-                    f"Health check for replica {self._replica_tag} failed: {e}"
-                )
+                logger.warning(f"Health check for {self._replica_id} failed: {e}")
                 response = ReplicaHealthCheckResponse.APP_FAILURE
         elif time.time() - self._last_health_check_time > self.health_check_timeout_s:
             # Health check hasn't returned and the timeout is up, consider it failed.
             logger.warning(
                 "Didn't receive health check response for replica "
-                f"{self._replica_tag} after "
+                f"{self._replica_id} after "
                 f"{self.health_check_timeout_s}s, marking it unhealthy."
             )
             response = ReplicaHealthCheckResponse.APP_FAILURE
@@ -852,7 +834,7 @@ class ActorReplicaWrapper:
                 >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
             ):
                 logger.warning(
-                    f"Replica {self._replica_tag} failed the health "
+                    f"Replica {self._replica_id} failed the health "
                     f"check {self._consecutive_health_check_failures} "
                     "times in a row, marking it unhealthy."
                 )
@@ -860,7 +842,7 @@ class ActorReplicaWrapper:
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.
             logger.warning(
-                f"Actor for replica {self._replica_tag} crashed, marking "
+                f"Actor for {self._replica_id} crashed, marking "
                 "it unhealthy immediately."
             )
             self._healthy = False
@@ -889,22 +871,15 @@ class DeploymentReplica(VersionedReplica):
 
     def __init__(
         self,
-        replica_tag: ReplicaTag,
-        deployment_id: DeploymentID,
+        replica_id: ReplicaID,
         version: DeploymentVersion,
     ):
-        self._actor = ActorReplicaWrapper(
-            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-            replica_tag,
-            deployment_id,
-            version,
-        )
-        self._deployment_id = deployment_id
-        self._replica_tag = replica_tag
+        self._replica_id = replica_id
+        self._actor = ActorReplicaWrapper(replica_id, version)
         self._start_time = None
         self._actor_details = ReplicaDetails(
-            actor_name=self._actor._actor_name,
-            replica_id=self._replica_tag,
+            actor_name=replica_id.to_full_id_str(),
+            replica_id=self._replica_id.unique_id,
             state=ReplicaState.STARTING,
             start_time_s=0,
         )
@@ -914,8 +889,7 @@ class DeploymentReplica(VersionedReplica):
         self, cluster_node_info_cache: ClusterNodeInfoCache
     ) -> RunningReplicaInfo:
         return RunningReplicaInfo(
-            deployment_name=self.deployment_name,
-            replica_tag=self._replica_tag,
+            replica_id=self._replica_id,
             node_id=self.actor_node_id,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
@@ -937,16 +911,16 @@ class DeploymentReplica(VersionedReplica):
         return self._actor_details
 
     @property
-    def replica_tag(self) -> ReplicaTag:
-        return self._replica_tag
+    def replica_id(self) -> ReplicaID:
+        return self._replica_id
 
     @property
     def deployment_name(self) -> str:
-        return self._deployment_id.name
+        return self._replica_id.deployment_id.name
 
     @property
     def app_name(self) -> str:
-        return self._deployment_id.app_name
+        return self._replica_id.deployment_id.app_name
 
     @property
     def version(self):
@@ -1022,9 +996,7 @@ class DeploymentReplica(VersionedReplica):
         """
         state = self._actor_details.state
         logger.info(
-            f"Stopping replica {self.replica_tag} (currently {state}) "
-            f"for deployment '{self.deployment_name}' "
-            f"in application '{self.app_name}'.",
+            f"Stopping {self.replica_id} (currently {state}).",
             extra={"log_to_stderr": False},
         )
         timeout_s = self._actor.graceful_stop()
@@ -1042,7 +1014,7 @@ class DeploymentReplica(VersionedReplica):
             # Graceful period passed, kill it forcefully.
             # This will be called repeatedly until the replica shuts down.
             logger.info(
-                f"Replica {self.replica_tag} did not shut down after grace "
+                f"{self.replica_id} did not shut down after grace "
                 "period, force-killing it. "
             )
 
@@ -1332,28 +1304,20 @@ class DeploymentState:
         )
         # All current states use default value, only attach running replicas.
         for replica_actor_name in replica_actor_names:
-            replica_name: ReplicaName = ReplicaName.from_str(replica_actor_name)
+            replica_id = ReplicaID.from_full_id_str(replica_actor_name)
             new_deployment_replica = DeploymentReplica(
-                replica_name.replica_tag,
-                replica_name.deployment_id,
+                replica_id,
                 self._target_state.version,
             )
             # If replica is no longer alive, simply don't add it to the
             # deployment state manager to track.
             if not new_deployment_replica.recover():
-                logger.warning(
-                    f"Replica {replica_name} died before controller could recover it."
-                )
+                logger.warning(f"{replica_id} died before controller could recover it.")
                 continue
 
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
-            self._deployment_scheduler.on_replica_recovering(
-                replica_name.deployment_id, replica_name.replica_tag
-            )
-            logger.debug(
-                f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
-                f"deployment: {self.deployment_name}, application: {self.app_name}."
-            )
+            self._deployment_scheduler.on_replica_recovering(replica_id)
+            logger.debug(f"RECOVERING {replica_id}.")
 
         # TODO(jiaodong): this currently halts all traffic in the cluster
         # briefly because we will broadcast a replica update with everything in
@@ -1659,12 +1623,12 @@ class DeploymentState:
             for handle_metric in self.handle_requests.values():
                 total_requests += handle_metric.queued_requests
                 for replica in running_replicas:
-                    id = replica.replica_tag
+                    id = replica.replica_id
                     if id in handle_metric.running_requests:
                         total_requests += handle_metric.running_requests[id]
         else:
             for replica in running_replicas:
-                id = replica.replica_tag
+                id = replica.replica_id
                 if id in self.replica_average_ongoing_requests:
                     total_requests += self.replica_average_ongoing_requests[id][1]
 
@@ -1800,11 +1764,6 @@ class DeploymentState:
                     self._replicas.add(ReplicaState.UPDATING, replica)
                 else:
                     self._replicas.add(ReplicaState.RUNNING, replica)
-                logger.debug(
-                    "Adding UPDATING to replica_tag: "
-                    f"{replica.replica_tag}, deployment_name: {self.deployment_name}, "
-                    f"app_name: {self.app_name}"
-                )
             # We don't allow going from STARTING, PENDING_MIGRATION to UPDATING.
             else:
                 self._replicas.add(replica.actor_details.state, replica)
@@ -1935,12 +1894,9 @@ class DeploymentState:
                 added_replicas = f"{to_add} replica{'s' if to_add > 1 else ''}"
                 logger.info(f"Adding {added_replicas} to {self._id}.")
                 for _ in range(to_add):
-                    replica_name = ReplicaName(
-                        self.app_name, self.deployment_name, get_random_string()
-                    )
+                    replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
                     new_deployment_replica = DeploymentReplica(
-                        replica_name.replica_tag,
-                        self._id,
+                        replica_id,
                         self._target_state.version,
                     )
                     upscale.append(
@@ -2066,11 +2022,12 @@ class DeploymentState:
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 self._deployment_scheduler.on_replica_running(
-                    self._id, replica.replica_tag, replica.actor_node_id
+                    replica.replica_id, replica.actor_node_id
                 )
                 logger.info(
-                    f"Replica {replica.replica_tag} started successfully "
+                    f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}'.",
+                    extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
@@ -2115,7 +2072,7 @@ class DeploymentState:
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
-            if replica.replica_tag in replicas_to_stop:
+            if replica.replica_id in replicas_to_stop:
                 self._stop_replica(replica)
             else:
                 self._replicas.add(replica.actor_details.state, replica)
@@ -2126,18 +2083,15 @@ class DeploymentState:
         2. Change the replica into stopping state.
         3. Set the health replica stats to 0.
         """
-        logger.debug(
-            f"Adding STOPPING to replica_tag: {replica}, "
-            f"deployment_name: {self.deployment_name}, app_name: {self.app_name}"
-        )
+        logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
-        self._deployment_scheduler.on_replica_stopping(self._id, replica.replica_tag)
+        self._deployment_scheduler.on_replica_stopping(replica.replica_id)
         self.health_check_gauge.set(
             0,
             tags={
                 "deployment": self.deployment_name,
-                "replica": replica.replica_tag,
+                "replica": replica.replica_id.unique_id,
                 "application": self.app_name,
             },
         )
@@ -2158,21 +2112,19 @@ class DeploymentState:
                     1,
                     tags={
                         "deployment": self.deployment_name,
-                        "replica": replica.replica_tag,
+                        "replica": replica.replica_id.unique_id,
                         "application": self.app_name,
                     },
                 )
             else:
                 logger.warning(
-                    f"Replica {replica.replica_tag} of deployment "
-                    f"{self.deployment_name} in application '{self.app_name}' failed "
-                    "health check, stopping it."
+                    f"Replica {replica.replica_id} failed health check, stopping it."
                 )
                 self.health_check_gauge.set(
                     0,
                     tags={
                         "deployment": self.deployment_name,
-                        "replica": replica.replica_tag,
+                        "replica": replica.replica_id.unique_id,
                         "application": self.app_name,
                     },
                 )
@@ -2258,12 +2210,12 @@ class DeploymentState:
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
             else:
-                logger.info(f"Replica {replica.replica_tag} is stopped.")
+                logger.info(f"{replica.replica_id} is stopped.")
                 # NOTE(zcin): We need to remove the replica from in-memory metrics store
                 # here instead of _stop_replica because the replica will continue to
                 # send metrics while it's still alive.
-                if replica.replica_tag in self.replica_average_ongoing_requests:
-                    del self.replica_average_ongoing_requests[replica.replica_tag]
+                if replica.replica_id in self.replica_average_ongoing_requests:
+                    del self.replica_average_ongoing_requests[replica.replica_id]
 
     def _choose_pending_migration_replicas_to_stop(
         self,
@@ -2346,9 +2298,8 @@ class DeploymentState:
         )
         for replica in replicas_to_stop:
             logger.info(
-                f"Stopping replica {replica.replica_tag} "
-                f"of deployment '{self.deployment_name}' in application "
-                f"'{self.app_name}' on draining node {replica.actor_node_id}."
+                f"Stopping {replica.replica_id} "
+                f"on draining node {replica.actor_node_id}."
             )
             self._stop_replica(replica, graceful_stop=True)
 
@@ -2406,15 +2357,15 @@ class DeploymentState:
         )
 
     def record_autoscaling_metrics(
-        self, replica_tag: str, window_avg: float, send_timestamp: float
+        self, replica_id: ReplicaID, window_avg: float, send_timestamp: float
     ) -> None:
         """Records average ongoing requests at replicas."""
 
         if (
-            replica_tag not in self.replica_average_ongoing_requests
-            or send_timestamp > self.replica_average_ongoing_requests[replica_tag][0]
+            replica_id not in self.replica_average_ongoing_requests
+            or send_timestamp > self.replica_average_ongoing_requests[replica_id][0]
         ):
-            self.replica_average_ongoing_requests[replica_tag] = (
+            self.replica_average_ongoing_requests[replica_id] = (
                 send_timestamp,
                 window_avg,
             )
@@ -2439,7 +2390,7 @@ class DeploymentState:
             )
 
     def record_multiplexed_model_ids(
-        self, replica_name: str, multiplexed_model_ids: List[str]
+        self, replica_id: ReplicaID, multiplexed_model_ids: List[str]
     ) -> None:
         """Records the multiplexed model IDs of a replica.
 
@@ -2449,14 +2400,12 @@ class DeploymentState:
         """
         # Find the replica
         for replica in self._replicas.get():
-            if replica.replica_tag == replica_name:
+            if replica.replica_id == replica_id:
                 replica.record_multiplexed_model_ids(multiplexed_model_ids)
                 self._multiplexed_model_ids_updated = True
                 return
-        logger.warn(
-            f"Replia {replica_name} not found in deployment {self.deployment_name} in "
-            f"application {self.app_name}"
-        )
+
+        logger.warning(f"{replica_id} not found.")
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -2511,12 +2460,11 @@ class DeploymentStateManager:
         )
 
     def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: float, send_timestamp: float
+        self, replica_id: ReplicaID, window_avg: float, send_timestamp: float
     ):
         if window_avg is not None:
-            replica_name = ReplicaName.from_replica_tag(replica_id)
             self._deployment_states[
-                replica_name.deployment_id
+                replica_id.deployment_id
             ].record_autoscaling_metrics(replica_id, window_avg, send_timestamp)
 
     def record_handle_metrics(
@@ -2561,14 +2509,13 @@ class DeploymentStateManager:
         all_replica_names = [
             actor_name
             for actor_name in all_current_actor_names
-            if ReplicaName.is_replica_name(actor_name)
+            if ReplicaID.is_full_id_str(actor_name)
         ]
         deployment_to_current_replicas = defaultdict(list)
         if len(all_replica_names) > 0:
-            # Each replica tag is formatted as "deployment_name#random_letter"
             for replica_name in all_replica_names:
-                replica_tag = ReplicaName.from_str(replica_name)
-                deployment_to_current_replicas[replica_tag.deployment_id].append(
+                replica_id = ReplicaID.from_full_id_str(replica_name)
+                deployment_to_current_replicas[replica_id.deployment_id].append(
                     replica_name
                 )
 
@@ -2593,7 +2540,7 @@ class DeploymentStateManager:
         leaked_pg_names = []
         for pg_name in all_current_placement_group_names:
             if (
-                ReplicaName.is_replica_name(pg_name)
+                ReplicaID.is_full_id_str(pg_name)
                 and pg_name not in all_current_actor_names
             ):
                 leaked_pg_names.append(pg_name)
@@ -2883,15 +2830,16 @@ class DeploymentStateManager:
             info: Multiplexed replica info including deployment name,
                 replica tag and model ids.
         """
-        if info.deployment_id not in self._deployment_states:
-            app_msg = f" in application '{info.deployment_id.app_name}'"
+        deployment_id = info.replica_id.deployment_id
+        if deployment_id not in self._deployment_states:
+            app_msg = f" in application '{deployment_id.app_name}'"
             logger.error(
-                f"Deployment {info.deployment_id.name}{app_msg} not found in state "
+                f"Deployment '{deployment_id.name}'{app_msg} not found in state "
                 "manager."
             )
             return
-        self._deployment_states[info.deployment_id].record_multiplexed_model_ids(
-            info.replica_tag, info.model_ids
+        self._deployment_states[deployment_id].record_multiplexed_model_ids(
+            info.replica_id, info.model_ids
         )
 
     def get_active_node_ids(self) -> Set[str]:

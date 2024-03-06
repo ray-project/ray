@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray._raylet import GcsClient
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
@@ -49,6 +49,9 @@ def test_spread_deployment_scheduling_policy_upscale(
 
     scheduler = DefaultDeploymentScheduler(cluster_node_info_cache, get_head_node_id())
     dep_id = DeploymentID(name="deployment1")
+    r1_id = ReplicaID(unique_id="replica1", deployment_id=dep_id)
+    r2_id = ReplicaID(unique_id="replica2", deployment_id=dep_id)
+
     scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
     replica_actor_handles = []
     replica_placement_groups = []
@@ -61,8 +64,7 @@ def test_spread_deployment_scheduling_policy_upscale(
         upscales={
             dep_id: [
                 ReplicaSchedulingRequest(
-                    deployment_id=dep_id,
-                    replica_name="replica1",
+                    replica_id=r1_id,
                     actor_def=Replica,
                     actor_resources={"CPU": 1},
                     actor_options={"name": "deployment1_replica1"},
@@ -74,8 +76,7 @@ def test_spread_deployment_scheduling_policy_upscale(
                     ),
                 ),
                 ReplicaSchedulingRequest(
-                    deployment_id=dep_id,
-                    replica_name="replica2",
+                    replica_id=r2_id,
                     actor_def=Replica,
                     actor_resources={"CPU": 1},
                     actor_options={"name": "deployment1_replica2"},
@@ -114,8 +115,8 @@ def test_spread_deployment_scheduling_policy_upscale(
             )
             == 2
         )
-    scheduler.on_replica_stopping(dep_id, "replica1")
-    scheduler.on_replica_stopping(dep_id, "replica2")
+    scheduler.on_replica_stopping(r1_id)
+    scheduler.on_replica_stopping(r2_id)
     scheduler.on_deployment_deleted(dep_id)
 
 
