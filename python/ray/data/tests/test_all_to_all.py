@@ -1071,6 +1071,30 @@ def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
     assert sorted([x["out"] for x in ds.take()]) == [1, 3]
 
 
+@pytest.mark.parametrize("num_parts", [1, 30])
+def test_groupby_map_groups_multiple_batch_formats(ray_start_regular_shared, num_parts):
+    # Reproduces https://github.com/ray-project/ray/issues/39206
+    def identity(batch):
+        return batch
+
+    xs = list(range(100))
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
+    )
+    grouped_ds = (
+        ds.groupby("A")
+        .map_groups(identity)
+        .map_batches(identity, batch_format="pandas")
+    )
+    agg_ds = grouped_ds.groupby("A").max("B")
+    assert agg_ds.count() == 3
+    assert list(agg_ds.sort("A").iter_rows()) == [
+        {"A": 0, "max(B)": 99},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
+
+
 def test_groupby_map_groups_extra_args(ray_start_regular_shared):
     ds = ray.data.from_items(
         [

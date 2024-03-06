@@ -1,5 +1,15 @@
 import collections
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Mapping, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 
@@ -248,3 +258,40 @@ class TableBlockAccessor(BlockAccessor):
             return self._empty_table()
         k = min(n_samples, self.num_rows())
         return self._sample(k, sort_key)
+
+    @classmethod
+    def normalize_block_types(
+        cls,
+        blocks: List[Block],
+        normalize_type: Optional[str] = None,
+    ) -> List[Block]:
+        """Normalize input blocks to the specified `normalize_type`. If the blocks
+        are already all of the same type, returns the original blocks.
+
+         Args:
+            blocks: A list of TableBlocks to be normalized.
+            normalize_type: The type to normalize the blocks to. If None,
+                the default block type (Arrow) is used.
+
+        Returns:
+            A list of blocks of the same type.
+        """
+        seen_types = set()
+        for block in blocks:
+            acc = BlockAccessor.for_block(block)
+            assert isinstance(acc, TableBlockAccessor), type(acc)
+            seen_types.add(type(block))
+
+        # Return original blocks if they are all of the same type.
+        if len(seen_types) <= 1:
+            return blocks
+
+        if normalize_type == "arrow":
+            results = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
+        elif normalize_type == "pandas":
+            results = [BlockAccessor.for_block(block).to_pandas() for block in blocks]
+        else:
+            results = [BlockAccessor.for_block(block).to_default() for block in blocks]
+
+        assert all(isinstance(block, type(results[0])) for block in results)
+        return results
