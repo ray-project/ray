@@ -1,3 +1,4 @@
+from collections import deque
 import math
 from typing import Any, List, Optional
 
@@ -12,7 +13,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import batch, unbatch
+from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 
 
@@ -130,9 +131,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             episodes=[episode.finalize()],
             shared_data={},
         )
-        # The output data's STATE_IN key should now contain the episode's last
-        # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
-        # fashion.
         check(
             output_data[Columns.STATE_IN],
             {
@@ -141,7 +139,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 # is NOT passed through the forward_train, b/c there is nothing to learn
                 # at that timestep, unless we need to compute e.g. bootstrap value
                 # predictions).
-                (episode.id_,): [rl_module_init_state, -3.0],
+                # Also note that the different STATE_IN timesteps are already present
+                # as one batched item per episode in the list.
+                (episode.id_,): [[rl_module_init_state, -3.0]],
             },
         )
     """
@@ -199,16 +199,24 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # Also, let module-to-env pipeline know that we had added a single timestep
         # time rank to the data (to remove it again).
         if not self._as_learner_connector:
-            data = tree.map_structure(lambda s: np.expand_dims(s, axis=0), data)
+            data = tree.map_structure(
+                # Expand on axis 0 (the to-be-time-dim) if item has not been batched'
+                # yet, otherwise axis=1 (the time-dim).
+                lambda s: np.expand_dims(
+                    s, axis=(1 if isinstance(s, BatchedNdArray) else 0)
+                ),
+                data,
+            )
             shared_data["_added_single_ts_time_rank"] = True
         else:
             # Before adding STATE_IN to the `data`, zero-pad existing data and batch
             # into max_seq_len chunks.
             for column, column_data in data.copy().items():
                 for key, item_list in column_data.items():
-                    column_data[key] = split_and_zero_pad_list(
-                        item_list, T=self.max_seq_len
-                    )
+                    if column != Columns.INFOS:
+                        column_data[key] = split_and_zero_pad_list(
+                            item_list, T=self.max_seq_len
+                        )
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -235,7 +243,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if self.max_seq_len is None:
                     raise ValueError(
                         "You are using a stateful RLModule and are not providing "
-                        "custom '{STATE_IN}' data through your connector(s)! "
+                        f"custom '{Columns.STATE_IN}' data through your connector(s)! "
                         "Therefore, you need to provide the 'max_seq_len' key inside "
                         "your model config dict. You can set this dict and/or override "
                         "keys in it via `config.training(model={'max_seq_len': x})`."
@@ -262,19 +270,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     batch=data,
                     column=Columns.STATE_IN,
                     # items_to_add.shape=(B,[state-dim])  # B=episode len // max_seq_len
-                    items_to_add=unbatch(
-                        tree.map_structure(
-                            # Explanation:
-                            # [::max_seq_len]: only keep every Tth state.
-                            # [:-1]: Shift state outs by one, ignore very last
-                            # STATE_OUT (but therefore add the lookback/init state at
-                            # the beginning).
-                            lambda i, o: np.concatenate([[i], o[:-1]])[
-                                :: self.max_seq_len
-                            ],
-                            look_back_state,
-                            state_outs,
-                        )
+                    items_to_add=tree.map_structure(
+                        # Explanation:
+                        # [::max_seq_len]: only keep every Tth state.
+                        # [:-1]: Shift state outs by one, ignore very last
+                        # STATE_OUT (but therefore add the lookback/init state at
+                        # the beginning).
+                        lambda i, o: np.concatenate([[i], o[:-1]])[:: self.max_seq_len],
+                        look_back_state,
+                        state_outs,
                     ),
                     num_items=int(math.ceil(len(sa_episode) / self.max_seq_len)),
                     single_agent_episode=sa_episode,
@@ -327,7 +331,10 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
 
 def split_and_zero_pad_list(item_list, T: int):
-    zero_element = tree.map_structure(lambda s: np.zeros_like(s), item_list[0])
+    zero_element = tree.map_structure(
+        lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
+        item_list[0],
+    )
 
     # The replacement list (to be returned) for `items_list`.
     # Items list contains n individual items.
@@ -339,18 +346,36 @@ def split_and_zero_pad_list(item_list, T: int):
     current_time_row = []
     current_t = 0
 
-    for item in item_list:
-        current_time_row.append(item)
-        current_t += 1
+    item_list = deque(item_list)
+    while len(item_list) > 0:
+        item = item_list.popleft()
+        if isinstance(item, BatchedNdArray):
+            t = T - current_t
+            current_time_row.append(item[:t])
+            if len(item) <= t:
+                current_t += len(item)
+            else:
+                current_t += t
+                item_list.appendleft(item[t:])
+        else:
+            current_time_row.append(item)
+            current_t += 1
 
         if current_t == T:
-            ret.append(batch(current_time_row))
+            ret.append(
+                batch(
+                    current_time_row,
+                    individual_items_already_have_batch_dim="auto",
+                )
+            )
             current_time_row = []
             current_t = 0
 
     if current_t > 0 and current_t < T:
         current_time_row.extend([zero_element] * (T - current_t))
-        ret.append(batch(current_time_row))
+        ret.append(
+            batch(current_time_row, individual_items_already_have_batch_dim="auto")
+        )
 
     return ret
 

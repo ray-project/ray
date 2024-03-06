@@ -119,10 +119,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
                 self.add_n_batch_items(
                     data,
                     Columns.OBS,
-                    items_to_add=[
-                        sa_episode.get_observations(indices=ts)
-                        for ts in range(len(sa_episode))
-                    ],
+                    items_to_add=sa_episode.get_observations(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )

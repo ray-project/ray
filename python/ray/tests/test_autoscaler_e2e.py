@@ -14,7 +14,7 @@ from ray.cluster_utils import AutoscalingCluster
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
-@pytest.mark.parametrize("enable_v2", [True, False])
+@pytest.mark.parametrize("enable_v2", [True, False], ids=["v2", "v1"])
 def test_ray_status_activity(shutdown_only, enable_v2):
     reset_autoscaler_v2_enabled_cache()
     cluster = AutoscalingCluster(
@@ -33,10 +33,11 @@ def test_ray_status_activity(shutdown_only, enable_v2):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=enable_v2,
     )
 
     try:
-        cluster.start(_system_config={"enable_autoscaler_v2": enable_v2})
+        cluster.start()
         ray.init(address="auto")
         if enable_v2:
             assert (
@@ -85,7 +86,7 @@ def test_ray_status_activity(shutdown_only, enable_v2):
         cluster.shutdown()
 
 
-@pytest.mark.parametrize("enable_v2", [True, False])
+@pytest.mark.parametrize("enable_v2", [True, False], ids=["v2", "v1"])
 def test_ray_status_e2e(shutdown_only, enable_v2):
     reset_autoscaler_v2_enabled_cache()
     cluster = AutoscalingCluster(
@@ -104,10 +105,11 @@ def test_ray_status_e2e(shutdown_only, enable_v2):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=enable_v2,
     )
 
     try:
-        cluster.start(_system_config={"enable_autoscaler_v2": enable_v2})
+        cluster.start()
         ray.init(address="auto")
 
         @ray.remote(num_cpus=0, resources={"fun": 2})
@@ -135,7 +137,8 @@ def test_ray_status_e2e(shutdown_only, enable_v2):
         cluster.shutdown()
 
 
-def test_metrics(shutdown_only):
+@pytest.mark.parametrize("enable_v2", [False, True], ids=["v1", "v2"])
+def test_metrics(enable_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -152,6 +155,7 @@ def test_metrics(shutdown_only):
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=enable_v2,
     )
 
     try:

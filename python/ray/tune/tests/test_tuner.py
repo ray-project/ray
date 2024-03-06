@@ -86,7 +86,7 @@ class TestDatasource(Datasource):
 
 def gen_dataset_func(do_shuffle: Optional[bool] = False) -> Dataset:
     test_datasource = TestDatasource(do_shuffle)
-    return read_datasource(test_datasource, parallelism=1)
+    return read_datasource(test_datasource, override_num_blocks=1)
 
 
 def gen_dataset_func_eager():
@@ -101,10 +101,8 @@ class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
 
     @pytest.fixture(autouse=True)
-    def local_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-        self.local_dir = str(tmp_path / "ray_results")
-        yield self.local_dir
+    def tmp_path(self, tmp_path):
+        self.tmp_path = tmp_path
 
     def setUp(self):
         ray.init()
@@ -192,7 +190,9 @@ class TunerTest(unittest.TestCase):
         tuner = Tuner(
             trainable=trainer,
             run_config=RunConfig(
-                name="test_tuner_driver_fail", callbacks=[FailureInjectionCallback()]
+                name="test_tuner_driver_fail",
+                storage_path=str(self.tmp_path),
+                callbacks=[FailureInjectionCallback()],
             ),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
@@ -204,7 +204,7 @@ class TunerTest(unittest.TestCase):
             tuner.fit()
 
         # Test resume
-        restore_path = os.path.join(self.local_dir, "test_tuner_driver_fail")
+        restore_path = os.path.join(self.tmp_path, "test_tuner_driver_fail")
         tuner = Tuner.restore(restore_path, trainable=trainer, param_space=param_space)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
@@ -448,7 +448,9 @@ def test_trainer_no_chdir_to_trial_dir(
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runtime_env):
+def test_tuner_relative_pathing_with_env_vars(
+    shutdown_only, chdir_tmpdir, tmp_path, runtime_env
+):
     """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
     relative paths to the original working directory.
     """
@@ -471,14 +473,21 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
         data_path = orig_working_dir / "read.txt"
         assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
 
-        trial_dir = Path(train.get_context().get_trial_dir())
-        # Tune should have changed the working directory to the trial directory
-        assert str(trial_dir) == os.getcwd()
+        # Tune chdirs to the trial working directory
+        storage = train.get_context().get_storage()
+        assert Path(storage.trial_working_directory).resolve() == Path.cwd().resolve()
 
-        with open(trial_dir / "write.txt", "w") as f:
+        with open("write.txt", "w") as f:
             f.write(f"{config['id']}")
 
-    tuner = Tuner(train_func, param_space={"id": tune.grid_search(list(range(4)))})
+    tuner = Tuner(
+        train_func,
+        param_space={"id": tune.grid_search(list(range(4)))},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        ),
+    )
     results = tuner.fit()
     assert not results.errors
     for result in results:
