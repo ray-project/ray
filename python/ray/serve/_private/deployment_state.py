@@ -1581,18 +1581,6 @@ class DeploymentState:
                     deployment_info.target_capacity_direction,
                 )
 
-            downscale_smoothing_factor = (
-                autoscaling_policy_manager.config.get_downscale_smoothing_factor()
-            )
-            if downscale_smoothing_factor <= 0.5:
-                logger.warning(
-                    "The downscale smoothing factor for deployment "
-                    f"'{self.deployment_name}' is set to a low value: "
-                    f"{downscale_smoothing_factor}. This means the "
-                    "deployment is unlikely to scale below "
-                    f"{int(1 / downscale_smoothing_factor)} replicas. "
-                    "The recommended minimum smoothing factor is 0.6."
-                )
         else:
             target_num_replicas = get_capacity_adjusted_num_replicas(
                 deployment_info.deployment_config.num_replicas,

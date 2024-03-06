@@ -41,7 +41,7 @@ message AutoscalingConfig {
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
   double look_back_period_s = 5;
 
-  // The multiplicative "gain" factor to limit scaling decisions.
+  // [DEPRECATED] Use `upscaling_factor` and/or `downscaling_factor` instead.
   double smoothing_factor = 6;
 
   // How long to wait before scaling down replicas.
@@ -53,10 +53,10 @@ message AutoscalingConfig {
   // Initial number of replicas deployment should start with. Must be non-negative.
   optional uint32 initial_replicas = 9;
 
-  // The multiplicative "gain" factor to limit upscale.
+  // [DEPRECATED] Use `upscaling_factor` instead.
   optional double upscale_smoothing_factor = 10;
 
-  // The multiplicative "gain" factor to limit downscale.
+  // [DEPRECATED] Use `downscaling_factor` instead.
   optional double downscale_smoothing_factor = 11;
 
   // The cloudpickled policy definition.
@@ -70,6 +70,12 @@ message AutoscalingConfig {
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
   // scales up. Must be a non-negative integer.
   double target_ongoing_requests = 14;
+
+  // The multiplicative "gain" factor to limit upscale.
+  optional double upscaling_factor = 15;
+
+  // The multiplicative "gain" factor to limit downscale.
+  optional double downscaling_factor = 16;
 }
 
 //[Begin] LOGGING CONFIG
