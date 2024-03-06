@@ -438,9 +438,15 @@ def test_serve_num_replica_idle_node(autoscaler_v2):
 
         # Need this so that the next test can run.
         from ray.serve.context import _set_global_client
+<<<<<<< HEAD
 
         _set_global_client(None)
 
+=======
+
+        _set_global_client(None)
+
+>>>>>>> c67de894a3aedf2621a118eb95236a04ab9110f1
 
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_non_corrupted_resources(autoscaler_v2):

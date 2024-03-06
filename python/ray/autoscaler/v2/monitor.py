@@ -63,7 +63,6 @@ class AutoscalerMonitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        record_autoscaler_v2_usage(self.gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
             self.gcs_client.internal_kv_put(
@@ -282,6 +281,9 @@ if __name__ == "__main__":
     gcs_address = args.gcs_address
     if gcs_address is None:
         raise ValueError("--gcs-address must be set!")
+
+    # Record v2 usage (we do this as early as possible to capture as much usage as possible)
+    record_autoscaler_v2_usage(GcsClient(gcs_address))
 
     if not args.autoscaling_config:
         logger.info("No autoscaling config provided: use read only node provider.")
