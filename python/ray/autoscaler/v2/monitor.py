@@ -282,7 +282,7 @@ if __name__ == "__main__":
     if gcs_address is None:
         raise ValueError("--gcs-address must be set!")
 
-    # Record v2 usage (we do this as early as possible to capture as much usage as possible)
+    # Record v2 usage (we do this as early as possible to capture usage)
     record_autoscaler_v2_usage(GcsClient(gcs_address))
 
     if not args.autoscaling_config:
