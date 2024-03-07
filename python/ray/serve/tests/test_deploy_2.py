@@ -330,6 +330,7 @@ def test_num_replicas_auto(serve_instance, use_options):
     assert deployment_config["max_ongoing_requests"] == 5
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
         "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,

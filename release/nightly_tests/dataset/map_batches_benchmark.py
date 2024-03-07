@@ -165,7 +165,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     # And the first one will generate multiple output blocks.
     ray.data._internal.logical.optimizers.PHYSICAL_OPTIMIZER_RULES = []
     parallelism = input_size // batch_size
-    input_ds = ray.data.range(input_size, parallelism=parallelism).materialize()
+    input_ds = ray.data.range(input_size, override_num_blocks=parallelism).materialize()
 
     def map_batches_fn(num_output_blocks, batch):
         """A map_batches function that generates num_output_blocks output blocks."""

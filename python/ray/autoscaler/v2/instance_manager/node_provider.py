@@ -455,7 +455,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         """
         # Check node type is valid.
         try:
-            config = self._config_reader.get_autoscaling_config()
+            config = self._config_reader.get_cached_autoscaling_config()
             launch_config = config.get_cloud_node_config(node_type)
             resources = config.get_node_resources(node_type)
             labels = config.get_node_labels(node_type)

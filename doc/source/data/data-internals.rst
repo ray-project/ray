@@ -187,7 +187,7 @@ The following code is a hello world example which invokes the execution with
            return x
 
    for _ in (
-       ray.data.range_tensor(5000, shape=(80, 80, 3), parallelism=200)
+       ray.data.range_tensor(5000, shape=(80, 80, 3), override_num_blocks=200)
        .map_batches(sleep, num_cpus=2)
        .map_batches(SleepClass, concurrency=(2, 4))
        .map_batches(sleep, num_cpus=1)

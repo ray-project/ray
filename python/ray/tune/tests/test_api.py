@@ -367,38 +367,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         )
 
-    def testLogdir(self):
-        logdir = os.path.join(ray._private.utils.get_user_temp_dir(), "logdir")
-
-        def train_fn(config):
-            assert logdir in os.getcwd(), os.getcwd()
-            train.report(dict(timesteps_total=1))
-
-        register_trainable("f1", train_fn)
-        with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": logdir}):
-            tune.run("f1")
-
     def testLongFilename(self):
-        logdir = os.path.join(ray._private.utils.get_user_temp_dir(), "logdir")
-
         def train_fn(config):
-            assert os.path.join(logdir, "foo") in os.getcwd(), os.getcwd()
             train.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
 
-        with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": logdir}):
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "config": {
-                            "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
-                            "b" * 50: tune.sample_from(lambda spec: "long" * 40),
-                        },
-                    }
+        run_experiments(
+            {
+                "foo": {
+                    "run": "f1",
+                    "config": {
+                        "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                        "b" * 50: tune.sample_from(lambda spec: "long" * 40),
+                    },
                 }
-            )
+            }
+        )
 
     def testBadParams(self):
         def f():
@@ -826,6 +811,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
 
     def testLotsOfStops(self):
+        tmpdir = self.tmpdir
+
         class TestTrainable(Trainable):
             def step(self):
                 result = {"name": self.trial_name, "trial_id": self.trial_id}
@@ -833,13 +820,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
             def cleanup(self):
                 time.sleep(0.3)
-                open(os.path.join(self.logdir, "marker"), "a").close()
+                open(os.path.join(tmpdir, f"marker-{self.trial_id}"), "a").close()
                 return 1
 
-        analysis = tune.run(TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
-        for trial in analysis.trials:
-            path = os.path.join(trial.local_path, "marker")
-            assert os.path.exists(path)
+        num_samples = 10
+        tune.run(TestTrainable, num_samples=num_samples, stop={TRAINING_ITERATION: 1})
+
+        markers = [m for m in os.listdir(tmpdir) if "marker" in m]
+        assert len(markers) == num_samples
 
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
@@ -1098,27 +1086,39 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Do not log to file
         [trial] = tune.run("f1", log_to_file=False).trials
-        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
+        trial_working_dir = trial.storage.trial_working_directory
+        self.assertFalse(
+            os.path.exists(
+                os.path.join(trial.storage.trial_working_directory, "stdout")
+            )
+        )
+        self.assertFalse(
+            os.path.exists(
+                os.path.join(trial.storage.trial_working_directory, "stderr")
+            )
+        )
 
         # Log to default files
         [trial] = tune.run("f1", log_to_file=True).trials
-        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "stdout")))
-        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "stderr")))
-        with open(os.path.join(trial.local_path, "stdout"), "rt") as fp:
+        trial_working_dir = trial.storage.trial_working_directory
+
+        self.assertTrue(os.path.exists(os.path.join(trial_working_dir, "stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial_working_dir, "stderr")))
+        with open(os.path.join(trial_working_dir, "stdout"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
-        with open(os.path.join(trial.local_path, "stderr"), "rt") as fp:
+        with open(os.path.join(trial_working_dir, "stderr"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)
 
         # Log to one file
         [trial] = tune.run("f1", log_to_file="combined").trials
-        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
-        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "combined")))
-        with open(os.path.join(trial.local_path, "combined"), "rt") as fp:
+        trial_working_dir = trial.storage.trial_working_directory
+        self.assertFalse(os.path.exists(os.path.join(trial_working_dir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial_working_dir, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial_working_dir, "combined")))
+        with open(os.path.join(trial_working_dir, "combined"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
             self.assertIn("PRINT_STDERR", content)
@@ -1126,15 +1126,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Log to two files
         [trial] = tune.run("f1", log_to_file=("alt.stdout", "alt.stderr")).trials
-        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
-        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "alt.stdout")))
-        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "alt.stderr")))
+        trial_working_dir = trial.storage.trial_working_directory
+        self.assertFalse(os.path.exists(os.path.join(trial_working_dir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial_working_dir, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial_working_dir, "alt.stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial_working_dir, "alt.stderr")))
 
-        with open(os.path.join(trial.local_path, "alt.stdout"), "rt") as fp:
+        with open(os.path.join(trial_working_dir, "alt.stdout"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
-        with open(os.path.join(trial.local_path, "alt.stderr"), "rt") as fp:
+        with open(os.path.join(trial_working_dir, "alt.stderr"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)

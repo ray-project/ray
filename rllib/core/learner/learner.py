@@ -40,7 +40,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -1670,7 +1670,7 @@ class Learner:
         """Returns a framework-specific tensor variable with the initial given value.
 
         This is a framework specific method that should be implemented by the
-        framework specific sub-class.
+        framework specific sub-classes.
 
         Args:
             value: The initial value for the tensor variable variable.
@@ -1706,12 +1706,3 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
-
-    @Deprecated(
-        help="Use `config` (AlgorithmConfig) everywhere where you would have used "
-        "Learner.hps instead.",
-        error=True,
-    )
-    @property
-    def hps(self):
-        pass
