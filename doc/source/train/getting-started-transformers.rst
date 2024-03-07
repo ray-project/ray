@@ -203,24 +203,7 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
 Set up a training function
 --------------------------
 
-First, update your training code to support distributed training.
-You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
-
-.. testcode::
-    :skipif: True
-
-    def train_func():
-        # Your Transformers training code here.
-
-This function executes on each distributed training worker. 
-
-You can specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter.
-
-.. warning::
-
-    Avoid passing large data objects through `train_loop_config` to reduce the
-    serialization and deserialization overhead. Instead, it's preferred to
-    initialize large objects (e.g. datasets, models) directly in `train_func`.
+.. include:: ./common/torch-configure-train_func.rst
 
 Ray Train sets up the distributed process group on each worker before entering this function. 
 Put all the logic into this function, including dataset construction and preprocessing,

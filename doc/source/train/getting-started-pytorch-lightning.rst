@@ -179,24 +179,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 Set up a training function
 --------------------------
 
-First, update your training code to support distributed training.
-Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
-
-.. testcode::
-    :skipif: True
-
-    def train_func():
-        # Your PyTorch Lightning training code here.
-
-Each distributed training worker executes this function.
-
-You can also specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter.
-
-.. warning::
-
-    Avoid passing large data objects through `train_loop_config` to reduce the
-    serialization and deserialization overhead. Instead, it's preferred to
-    initialize large objects (e.g. datasets, models) directly in `train_func`.
+.. include:: ./common/torch-configure-train_func.rst
 
 Ray Train sets up your distributed process group on each worker. You only need to
 make a few changes to your Lightning Trainer definition.
