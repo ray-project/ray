@@ -1841,7 +1841,7 @@ class DeploymentState:
 
         return self._stop_or_update_outdated_version_replicas(max_to_stop)
 
-    def _scale_deployment_replicas(
+    def scale_deployment_replicas(
         self,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas."""
@@ -1915,7 +1915,7 @@ class DeploymentState:
 
         return upscale, downscale
 
-    def _check_curr_status(self) -> Tuple[bool, bool]:
+    def check_curr_status(self) -> Tuple[bool, bool]:
         """Check the current deployment status.
 
         Checks the difference between the target vs. running replica count for
@@ -2096,7 +2096,7 @@ class DeploymentState:
             },
         )
 
-    def _check_and_update_replicas(self):
+    def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
@@ -2264,7 +2264,7 @@ class DeploymentState:
 
         return to_stop, remaining
 
-    def _migrate_replicas_on_draining_nodes(self, draining_nodes: Dict[str, int]):
+    def migrate_replicas_on_draining_nodes(self, draining_nodes: Dict[str, int]):
         for replica in self._replicas.pop(
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING, ReplicaState.STARTING]
         ):
@@ -2305,56 +2305,6 @@ class DeploymentState:
 
         for replica in replicas_to_keep:
             self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
-
-    def update(self, *, allow_active_compaction: bool) -> DeploymentStateUpdateResult:
-        """Attempts to reconcile this deployment to match its goal state.
-
-        This is an asynchronous call; it's expected to be called repeatedly.
-
-        Also updates the internal DeploymentStatusInfo based on the current
-        state of the system.
-        """
-
-        deleted, any_replicas_recovering = False, False
-        upscale = []
-        downscale = None
-        try:
-            # Add or remove DeploymentReplica instances in self._replicas.
-            # This should be the only place we adjust total number of replicas
-            # we manage.
-
-            # Check the state of existing replicas and transition if necessary.
-            self._check_and_update_replicas()
-
-            draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
-            if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and allow_active_compaction:
-                (
-                    node,
-                    deadline,
-                ) = self._deployment_scheduler.detect_compact_opportunities()
-                if node and node not in draining_nodes:
-                    draining_nodes[node] = deadline
-            self._migrate_replicas_on_draining_nodes(draining_nodes=draining_nodes)
-
-            upscale, downscale = self._scale_deployment_replicas()
-
-            deleted, any_replicas_recovering = self._check_curr_status()
-        except Exception:
-            logger.exception(
-                "Exception occurred trying to update deployment state:\n"
-                + traceback.format_exc()
-            )
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                trigger=DeploymentStatusInternalTrigger.INTERNAL_ERROR,
-                message="Failed to update deployment:" f"\n{traceback.format_exc()}",
-            )
-
-        return DeploymentStateUpdateResult(
-            deleted=deleted,
-            any_replicas_recovering=any_replicas_recovering,
-            upscale=upscale,
-            downscale=downscale,
-        )
 
     def record_autoscaling_metrics(
         self, replica_id: ReplicaID, window_avg: float, send_timestamp: float
@@ -2756,43 +2706,73 @@ class DeploymentStateManager:
         upscales = {}
         downscales = {}
 
-        # NOTE(zcin): If the deployment status is healthy, it should mean
-        # that the number of running replicas at target version is at
-        # the target number. Adding an extra check to be defensive.
-        # TODO(zcin): Make sure that status should never be healthy if
-        # the number of running replicas at target version is not at
-        # target number, so we can remove this defensive check.
-        allow_active_compaction = all(
-            ds.curr_status_info.status == DeploymentStatus.HEALTHY
-            and ds.get_num_running_replicas(ds.target_version) == ds.target_num_replicas
-            for ds in self._deployment_states.values()
-        )
-        for deployment_id, deployment_state in self._deployment_states.items():
+        # STEP 1: Update current state
+        for deployment_state in self._deployment_states.values():
             if deployment_state.should_autoscale():
                 deployment_state.autoscale()
 
-            deployment_state_update_result = deployment_state.update(
-                allow_active_compaction=allow_active_compaction
-            )
-            if deployment_state_update_result.upscale:
-                upscales[deployment_id] = deployment_state_update_result.upscale
-            if deployment_state_update_result.downscale:
-                downscales[deployment_id] = deployment_state_update_result.downscale
-            if deployment_state_update_result.deleted:
+            deployment_state.check_and_update_replicas()
+
+        # STEP 2: Check current status
+        for deployment_state in self._deployment_states.values():
+            deployment_state.check_curr_status()
+
+        # STEP 3: Drain nodes
+        allow_active_compaction = all(
+            ds.curr_status_info.status == DeploymentStatus.HEALTHY
+            # TODO(zcin): Make sure that status should never be healthy if
+            # the number of running replicas at target version is not at
+            # target number, so we can remove this defensive check.
+            and ds.get_num_running_replicas(ds.target_version) == ds.target_num_replicas
+            # To be extra conservative, only actively compact if there
+            # are no non-running replicas
+            and len(ds._replicas.get()) == ds.target_num_replicas
+            for ds in self._deployment_states.values()
+        )
+        draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
+        if (
+            not draining_nodes
+            and RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
+            and allow_active_compaction
+        ):
+            compact_opp = self._deployment_scheduler.detect_compact_opportunities()
+            if compact_opp:
+                node, deadline = compact_opp
+                draining_nodes = {node: deadline}
+
+        for deployment_id, deployment_state in self._deployment_states.items():
+            deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
+
+        # STEP 4: Scale replicas
+        for deployment_id, deployment_state in self._deployment_states.items():
+            upscale, downscale = deployment_state.scale_deployment_replicas()
+
+            if upscale:
+                upscales[deployment_id] = upscale
+            if downscale:
+                downscales[deployment_id] = downscale
+
+        # STEP 5: Update status
+        for deployment_id, deployment_state in self._deployment_states.items():
+            deleted, any_replicas_recovering = deployment_state.check_curr_status()
+
+            if deleted:
                 deleted_ids.append(deployment_id)
+            any_recovering |= any_replicas_recovering
 
-            any_recovering |= deployment_state_update_result.any_replicas_recovering
-
+        # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
         )
         for deployment_id, replicas_to_stop in deployment_to_replicas_to_stop.items():
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
 
+        # STEP 7: Broadcast long poll information
         for deployment_state in self._deployment_states.values():
             deployment_state.broadcast_running_replicas_if_changed()
             deployment_state.broadcast_deployment_config_if_changed()
 
+        # STEP 8: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             del self._deployment_states[deployment_id]
