@@ -60,12 +60,12 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
                     with open(file_path, "w") as f:
                         # Write first replica tag to local file so that it will
                         # consistently fail even retried on other actor
-                        f.write(serve.get_replica_context().replica_tag)
+                        f.write(serve.get_replica_context().replica_id.unique_id)
                     raise RuntimeError("Consistently throwing on same replica.")
                 else:
                     with open(file_path) as f:
                         content = f.read()
-                        if content == serve.get_replica_context().replica_tag:
+                        if content == serve.get_replica_context().replica_id.unique_id:
                             raise RuntimeError("Consistently throwing on same replica.")
                         else:
                             return True

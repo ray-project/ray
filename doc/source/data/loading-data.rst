@@ -942,16 +942,13 @@ datasource and pass it to :func:`~ray.data.read_datasource`.
 Performance considerations
 ==========================
 
-The dataset ``parallelism`` determines the number of blocks the base data is split
-into for parallel reads. Ray Data decides internally how many read tasks to run
-concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In
-other words, the higher the parallelism, the smaller the data blocks in the Dataset and
-hence the more opportunity for parallel execution.
+By default, the number of output blocks from all read tasks is dynamically decided
+based on input data size and available resources. It should work well in most cases.
+However, you can also override the default value by setting the ``override_num_blocks``
+argument. Ray Data decides internally how many read tasks to run concurrently to best
+utilize the cluster, ranging from ``1...override_num_blocks`` tasks. In other words,
+the higher the ``override_num_blocks``, the smaller the data blocks in the Dataset and
+hence more opportunities for parallel execution.
 
-.. image:: images/dataset-read.svg
-   :width: 650px
-   :align: center
-
-You can override the default parallelism by setting the ``parallelism`` argument. For 
-more information on how to tune the read parallelism, see 
-:ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
+For more information on how to tune the number of output blocks, see
+:ref:`Tuning output blocks for read <read_output_blocks>`.
