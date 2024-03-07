@@ -3305,7 +3305,7 @@ cdef class CoreWorker:
         self.current_runtime_env = None
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
-        self.thread_pool_for_async_event_loop = None
+        self.event_loop_executor = None
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
@@ -4614,12 +4614,16 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_thread_pool_for_async_event_loop(self):
-        if self.thread_pool_for_async_event_loop is None:
-            # Theoretically, we can use multiple threads,
-            self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
-                max_workers=1)
-        return self.thread_pool_for_async_event_loop
+    def get_event_loop_executor(self) -> ThreadPoolExecutor:
+        if self.event_loop_executor is None:
+            # NOTE: We're deliberately allocating thread-pool executor with
+            #       a single thread, provided that many of its use-cases are 
+            #       not thread-safe yet (for ex, reporting streaming generator output) 
+            self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
+        return self.event_loop_executor
+
+    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
+        self.event_loop_executor = executor
 
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
@@ -4729,8 +4733,8 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
-        if self.thread_pool_for_async_event_loop:
-            self.thread_pool_for_async_event_loop.shutdown(
+        if self.event_loop_executor:
+            self.event_loop_executor.shutdown(
                 wait=False, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
