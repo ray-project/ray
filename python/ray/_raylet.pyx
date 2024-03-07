@@ -1407,42 +1407,52 @@ async def execute_streaming_generator_async(
 
     gen = context.generator
 
-    futures = []
-
     loop = asyncio.get_running_loop()
     worker = ray._private.worker.global_worker
 
-    # NOTE: Reporting generator output in a streaming fashion,
-    #       is done in a standalone thread-pool fully *asynchronously*
-    #       to avoid blocking the event-loop and allow it to *concurrently*
-    #       make progress, since serializing and actual RPC I/O is done
-    #       with "nogil".
+    executor = worker.core_worker.get_event_loop_executor()
+
+    futures = []
     try:
-        async for output in gen:
-            # Report the output to the owner of the task.
+        try:
+            async for output in gen:
+                # NOTE: Reporting generator output in a streaming fashion,
+                #       is done in a standalone thread-pool fully *asynchronously*
+                #       to avoid blocking the event-loop and allow it to *concurrently*
+                #       make progress, since serializing and actual RPC I/O is done
+                #       with "nogil".
+                futures.append(
+                    loop.run_in_executor(
+                        executor,
+                        report_streaming_generator_output,
+                        context,
+                        output,
+                        cur_generator_index,
+                    )
+                )
+                cur_generator_index += 1
+        except Exception as e:
+            # Report the exception to the owner of the task.
             futures.append(
                 loop.run_in_executor(
-                    worker.core_worker.get_thread_pool_for_async_event_loop(),
-                    report_streaming_generator_output,
+                    executor,
+                    report_streaming_generator_exception,
                     context,
-                    output,
+                    e,
                     cur_generator_index,
                 )
             )
-            cur_generator_index += 1
-    except Exception as e:
-        # Report the exception to the owner of the task.
-        futures.append(
-            loop.run_in_executor(
-                worker.core_worker.get_thread_pool_for_async_event_loop(),
-                report_streaming_generator_exception,
-                context,
-                e,
-                cur_generator_index,
-            )
-        )
-    # Make sure all RPC I/O completes before returning
-    await asyncio.gather(*futures)
+
+        # Make sure all RPC I/O completes before returning
+        await asyncio.gather(*futures)
+
+    except BaseException as be:
+        # TODO elaborate
+        if futures:
+            executor.shutdown(wait=True, cancel_futures=True)
+            worker.core_worker.reset_event_loop_executor(None)
+
+        raise
 
 
 cdef create_generator_return_obj(
