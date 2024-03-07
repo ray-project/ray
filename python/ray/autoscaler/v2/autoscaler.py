@@ -5,6 +5,9 @@ from typing import List, Optional
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    KubeRayProvider,
+)
 from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (  # noqa
     ReadOnlyProvider,
 )
@@ -88,7 +91,13 @@ class Autoscaler:
 
         """
         provider_config = config.get_provider_config()
-        if config.provider == Provider.READ_ONLY:
+        if provider_config["type"] == "kuberay":
+            provider_config["head_node_type"] = config.get_head_node_type()
+            self._cloud_instance_provider = KubeRayProvider(
+                config.get_config("cluster_name"),
+                provider_config,
+            )
+        elif config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address
             self._cloud_instance_provider = ReadOnlyProvider(
                 provider_config=provider_config,

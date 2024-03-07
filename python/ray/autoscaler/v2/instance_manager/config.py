@@ -18,6 +18,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
+from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
 from ray.autoscaler._private.util import (
     format_readonly_node_type,
@@ -464,17 +465,40 @@ class FileConfigReader(IConfigReader):
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         """
-        Reads the configs from the file and returns the autoscaling config.
+        Returns:
+            AutoscalingConfig: The autoscaling config.
+        """
 
-        Args:
+        return self._cached_config
 
+    def refresh_cached_autoscaling_config(self):
+        self._cached_config = self._read()
+
+
+class KubeRayConfigReader(IConfigReader):
+    """A class that reads cluster config from a K8s RayCluster CR."""
+
+    def __init__(self, config_producer: AutoscalingConfigProducer):
+        self._config_producer = config_producer
+        self._cached_config = self._generate_configs_from_k8s()
+
+    def _generate_configs_from_k8s(self) -> AutoscalingConfig:
+        return AutoscalingConfig(self._config_producer())
+
+    def get_cached_autoscaling_config(self) -> AutoscalingConfig:
+        """
         Returns:
             AutoscalingConfig: The autoscaling config.
         """
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):
-        self._cached_config = self._read()
+        """
+        Reads the configs from the K8s RayCluster CR.
+
+        This reads from the K8s API server every time to pick up changes.
+        """
+        self._cached_config = self._generate_configs_from_k8s()
 
 
 class ReadOnlyProviderConfigReader(IConfigReader):
