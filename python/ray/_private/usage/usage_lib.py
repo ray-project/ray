@@ -64,7 +64,6 @@ import ray._private.usage.usage_constants as usage_constant
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
-    internal_kv_get_gcs_client,
 )
 from ray.core.generated import usage_pb2, gcs_pb2
 
