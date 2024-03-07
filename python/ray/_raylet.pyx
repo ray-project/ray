@@ -1255,12 +1255,12 @@ cdef report_streaming_generator_output(
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
         int64_t generator_index = context.generator_index
 
-    target_sleep = 1
+    #target_sleep = 1
 
-    print(f">>> {datetime.utcnow()} [report_streaming_generator_output] Entering **sleep**={target_sleep}s ({output_or_exception}) ({async_task_id.get()})")
+    #print(f">>> {datetime.utcnow()} [report_streaming_generator_output] Entering **sleep**={target_sleep}s ({output_or_exception}) ({async_task_id.get()})")
 
     # Simulate delay in execution
-    time.sleep(target_sleep)
+    #time.sleep(target_sleep)
 
     print(f">>> {datetime.utcnow()} [report_streaming_generator_output] Reporting value of ({output_or_exception}) ({async_task_id.get()})")
 
@@ -4653,7 +4653,7 @@ cdef class CoreWorker:
         threads = []
         if self.event_loop_executor:
             self.event_loop_executor.shutdown(
-                wait=False, cancel_futures=True)
+                wait=True, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
         if self.thread_for_default_cg is not None:
