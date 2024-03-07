@@ -16,6 +16,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
+from ray._private.usage.usage_lib import record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_METRIC_PORT,
@@ -32,6 +33,7 @@ from ray.autoscaler.v2.instance_manager.config import (
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
+from ray.core.generated.usage_pb2 import TagKey
 
 try:
     import prometheus_client
@@ -67,6 +69,7 @@ class AutoscalerMonitor:
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
+
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
             self.gcs_client.internal_kv_put(
@@ -177,6 +180,16 @@ class AutoscalerMonitor:
             raise
 
 
+def record_autoscaler_v2_usage(gcs_client: GcsClient) -> None:
+    """
+    Record usage for autoscaler v2.
+    """
+    try:
+        record_extra_usage_tag(TagKey.AUTOSCALER_VERSION, "v2", gcs_client)
+    except Exception:
+        logger.exception("Error recording usage for autoscaler v2.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=("Parse GCS server for the monitor to connect to.")
@@ -275,6 +288,9 @@ if __name__ == "__main__":
     gcs_address = args.gcs_address
     if gcs_address is None:
         raise ValueError("--gcs-address must be set!")
+
+    # Record v2 usage (we do this as early as possible to capture usage)
+    record_autoscaler_v2_usage(GcsClient(gcs_address))
 
     if not args.autoscaling_config:
         logger.info("No autoscaling config provided: use read only node provider.")
