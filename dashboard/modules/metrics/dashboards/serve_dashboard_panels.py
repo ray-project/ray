@@ -322,6 +322,71 @@ SERVE_GRAFANA_PANELS = [
         stack=False,
         grid_pos=GridPos(16, 5, 8, 8),
     ),
+    Panel(
+        id=20,
+        title="Ongoing HTTP Requests",
+        description="The number of ongoing HTTP requests in Ray Serve.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="ray_serve_num_ongoing_http_requests{{{global_filters}}}",
+                legend="Ongoing HTTP Requests",
+            ),
+        ],
+        grid_pos=GridPos(0, 6, 8, 8),
+    ),
+    Panel(
+        id=21,
+        title="Controller Starts",
+        description="The number of times the Ray Serve controller has started.",
+        unit="starts",
+        targets=[
+            Target(
+                expr="ray_serve_controller_num_starts{{{global_filters}}}",
+                legend="Controller Starts",
+            ),
+        ],
+        grid_pos=GridPos(8, 6, 8, 8),
+    ),
+    Panel(
+        id=22,
+        title="Scheduling Tasks",
+        description="The number of tasks currently being scheduled in Ray Serve.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="ray_serve_num_scheduling_tasks{{{global_filters}}}",
+                legend="Scheduling Tasks",
+            ),
+        ],
+        grid_pos=GridPos(16, 6, 8, 8),
+    ),
+    Panel(
+        id=23,
+        title="Scheduling Tasks in Backoff",
+        description="The number of scheduling tasks in backoff state in Ray Serve.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="ray_serve_num_scheduling_tasks_in_backoff{{{global_filters}}}",
+                legend="Scheduling Tasks in Backoff",
+            ),
+        ],
+        grid_pos=GridPos(0, 7, 8, 8),
+    ),
+    Panel(
+        id=24,
+        title="Controller Control Loop Duration",
+        description="The duration of the control loop within the Ray Serve controller.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="ray_serve_controller_control_loop_duration_s{{{global_filters}}}",
+                legend="Control Loop Duration",
+            ),
+        ],
+        grid_pos=GridPos(8, 7, 8, 8),
+    ),
 ]
 
 ids = []

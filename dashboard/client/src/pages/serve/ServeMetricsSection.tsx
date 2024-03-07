@@ -60,7 +60,7 @@ const useStyles = makeStyles((theme) =>
 );
 
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
-const METRICS_CONFIG: MetricConfig[] = [
+export const APPS_METRICS_CONFIG: MetricConfig[] = [
   {
     title: "QPS per application",
     pathParams: "orgId=1&theme=light&panelId=7",
@@ -75,11 +75,39 @@ const METRICS_CONFIG: MetricConfig[] = [
   },
 ];
 
-type ServeMetricsSectionProps = ClassNameProps;
+// NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
+export const SYSTEM_METRICS_CONFIG: MetricConfig[] = [
+  {
+    title: "Ongoing HTTP Requests",
+    pathParams: "orgId=1&theme=light&panelId=20",
+  },
+  {
+    title: "Controller Starts",
+    pathParams: "orgId=1&theme=light&panelId=21",
+  },
+  {
+    title: "Scheduling Tasks",
+    pathParams: "orgId=1&theme=light&panelId=22",
+  },
+  {
+    title: "Scheduling Tasks in Backoff",
+    pathParams: "orgId=1&theme=light&panelId=23",
+  },
+  {
+    title: "Controller Control Loop Duration",
+    pathParams: "orgId=1&theme=light&panelId=24",
+  },
+];
+
+type ServeMetricsSectionProps = ClassNameProps & {
+  metricsConfig: MetricConfig[];
+};
 
 export const ServeMetricsSection = ({
   className,
+  metricsConfig,
 }: ServeMetricsSectionProps) => {
+  console.log(metricsConfig);
   const classes = useStyles();
   const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
     useContext(GlobalContext);
@@ -131,7 +159,7 @@ export const ServeMetricsSection = ({
           </TextField>
         </Paper>
         <div className={classes.grafanaEmbedsContainer}>
-          {METRICS_CONFIG.map(({ title, pathParams }) => {
+          {metricsConfig.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
               `&refresh${timeRangeParams}&var-datasource=${dashboardDatasource}`;
