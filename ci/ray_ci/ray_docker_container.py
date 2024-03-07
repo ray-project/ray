@@ -62,12 +62,10 @@ class RayDockerContainer(DockerContainer):
             return False
         if os.environ.get("BUILDKITE_BRANCH").startswith("releases/"):
             return True
-        if (
+        return (
             os.environ.get("BUILDKITE_BRANCH") == "master"
             and os.environ.get("RAYCI_SCHEDULE") == "nightly"
-        ):
-            return True
-        return False
+        )
 
     def _get_image_names(self) -> List[str]:
         ray_repo = f"rayproject/{self.image_type}"
