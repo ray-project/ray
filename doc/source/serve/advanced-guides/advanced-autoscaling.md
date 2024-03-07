@@ -53,9 +53,13 @@ Given a steady stream of traffic and appropriately configured `min_replicas` and
 
 * **downscale_delay_s [default=600s]**: This defines how long Serve waits before scaling down the number of replicas in your deployment. In other words, this parameter controls the frequency of downscale decisions. If the replicas are *consistently* serving less requests than desired for a `downscale_delay_s` number of seconds, then Serve scales down the number of replicas based on aggregated ongoing requests metrics. For example, if your application initializes slowly, you can increase `downscale_delay_s` to make the downscaling happen more infrequently and avoid reinitialization when the application needs to upscale again in the future.
 
-* **upscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to amplify or moderate each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
+* **upscale_smoothing_factor [default_value=1.0] (DEPRECATED)**: This parameter is renamed to `upscaling_factor`. `upscale_smoothing_factor` will be removed in a future release.
 
-* **downscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to amplify or moderate each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
+* **downscale_smoothing_factor [default_value=1.0] (DEPRECATED)**: This parameter is renamed to `downscaling_factor`. `downscale_smoothing_factor` will be removed in a future release.
+
+* **upscaling_factor [default_value=1.0]**: The multiplicative factor to amplify or moderate each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscaling_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
+
+* **downscaling_factor [default_value=1.0]**: The multiplicative factor to amplify or moderate each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscaling_factor` to slow down the pace of downscaling.
 
 * **metrics_interval_s [default_value=10]**: This controls how often each replica sends reports on current ongoing requests to the autoscaler. Note that the autoscaler can't make new decisions if it doesn't receive updated metrics, so you most likely want to set `metrics_interval_s` to a value that is less than or equal to the upscale and downscale delay values. For instance, if you set `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only upscales roughly every 10 seconds.
 
@@ -99,8 +103,8 @@ First consider the following deployment configurations. Because the driver deplo
     max_replicas: 200
     upscale_delay_s: 3
     downscale_delay_s: 60
-    upscale_smoothing_factor: 0.3
-    downscale_smoothing_factor: 0.3
+    upscaling_factor: 0.3
+    downscaling_factor: 0.3
     metrics_interval_s: 2
     look_pack_period_s: 10
 ```
@@ -119,8 +123,8 @@ First consider the following deployment configurations. Because the driver deplo
     max_replicas: 200
     upscale_delay_s: 3
     downscale_delay_s: 60
-    upscale_smoothing_factor: 0.3
-    downscale_smoothing_factor: 0.3
+    upscaling_factor: 0.3
+    downscaling_factor: 0.3
     metrics_interval_s: 2
     look_pack_period_s: 10
 ```
@@ -176,8 +180,8 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     max_replicas: 10
     upscale_delay_s: 3
     downscale_delay_s: 60
-    upscale_smoothing_factor: 0.3
-    downscale_smoothing_factor: 0.3
+    upscaling_factor: 0.3
+    downscaling_factor: 0.3
     metrics_interval_s: 2
     look_pack_period_s: 10
 ```
@@ -196,8 +200,8 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     max_replicas: 200
     upscale_delay_s: 3
     downscale_delay_s: 60
-    upscale_smoothing_factor: 0.3
-    downscale_smoothing_factor: 0.3
+    upscaling_factor: 0.3
+    downscaling_factor: 0.3
     metrics_interval_s: 2
     look_pack_period_s: 10
 ```
@@ -216,8 +220,8 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     max_replicas: 200
     upscale_delay_s: 3
     downscale_delay_s: 60
-    upscale_smoothing_factor: 0.3
-    downscale_smoothing_factor: 0.3
+    upscaling_factor: 0.3
+    downscaling_factor: 0.3
     metrics_interval_s: 2
     look_pack_period_s: 10
 ```
@@ -246,7 +250,7 @@ With up to 6 `Driver` deployments to receive and distribute the incoming request
 
 If the number of replicas in your deployment keeps oscillating even though the traffic is relatively stable, try the following:
 
-* Set a smaller `upscale_smoothing_factor` and `downscale_smoothing_factor`. Setting both values smaller than one helps the autoscaler make more conservative upscale and downscale decisions. It effectively smooths out the replicas graph, and there will be less "sharp edges".
+* Set a smaller `upscaling_factor` and `downscaling_factor`. Setting both values smaller than one helps the autoscaler make more conservative upscale and downscale decisions. It effectively smooths out the replicas graph, and there will be less "sharp edges".
 * Set a `look_back_period_s` value that matches the rest of the autoscaling config. For longer upscale and downscale delay values, a longer look back period can likely help stabilize the replica graph, but for shorter upscale and downscale delay values, a shorter look back period may be more appropriate. For instance, the following replica graphs show how a deployment with `upscale_delay_s = 3` works with a longer vs shorter look back period.
 
 | `look_back_period_s = 30` | `look_back_period_s = 3` |
@@ -259,7 +263,7 @@ If the number of replicas in your deployment keeps oscillating even though the t
 If you expect your application to receive bursty traffic, and at the same time want the deployments to scale down in periods of inactivity, you are likely concerned about how quickly the deployment can scale up and respond to bursts of traffic. While an increase in latency initially during a burst in traffic may be unavoidable, you can try the following to improve latency during bursts of traffic.
 
 * Set a lower `upscale_delay_s`. The autoscaler always waits `upscale_delay_s` seconds before making a decision to upscale, so lowering this delay allows the autoscaler to react more quickly to changes, especially bursts, of traffic.
-* Set a larger `upscale_smoothing_factor`. If `upscale_smoothing_factor > 1`, then the autoscaler scales up more aggressively than normal. This setting can allow your deployment to be more sensitive to bursts of traffic.
+* Set a larger `upscaling_factor`. If `upscaling_factor > 1`, then the autoscaler scales up more aggressively than normal. This setting can allow your deployment to be more sensitive to bursts of traffic.
 * Lower the `metric_interval_s`. Always set `metric_interval_s` to be less than or equal to `upscale_delay_s`, otherwise upscaling is delayed because the autoscaler doesn't receive fresh information often enough.
 * Set a lower `max_ongoing_requests`. If `max_ongoing_requests` is too high relative to `target_ongoing_requests`, then when traffic increases, Serve might assign most or all of the requests to the existing replicas before the new replicas are started. This setting can lead to very high latencies during upscale.
 
@@ -269,8 +273,8 @@ If you expect your application to receive bursty traffic, and at the same time w
 You may observe that deployments are scaling down too quickly. Instead, you may want the downscaling to be much more conservative to maximize the availability of your service.
 
 * Set a longer `downscale_delay_s`. The autoscaler always waits `downscale_delay_s` seconds before making a decision to downscale, so by increasing this number, your system has a longer "grace period" after traffic drops before the autoscaler starts to remove replicas.
-* Set a smaller `downscale_smoothing_factor`. If `downscale_smoothing_factor < 1`, then the autoscaler removes *less replicas* than what it thinks it should remove to achieve the target number of ongoing requests. In other words, the autoscaler makes more conservative downscaling decisions.
+* Set a smaller `downscaling_factor`. If `downscaling_factor < 1`, then the autoscaler removes *less replicas* than what it thinks it should remove to achieve the target number of ongoing requests. In other words, the autoscaler makes more conservative downscaling decisions.
 
-| `downscale_smoothing_factor = 1` | `downscale_smoothing_factor = 0.5` |
+| `downscaling_factor = 1` | `downscaling_factor = 0.5` |
 | ------------------------------------------------ | ----------------------------------------------- |
 | ![downscale-smooth-before](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_before.png) | ![downscale-smooth-after](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_after.png) |
