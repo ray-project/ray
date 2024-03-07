@@ -420,6 +420,7 @@ class OpRuntimeMetrics:
     def on_input_dequeued(self, input: RefBundle):
         """Callback when the operator dequeues an input."""
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
+        input_size = input.size_bytes()
         self.obj_store_mem_internal_inqueue -= input_size
         assert self.obj_store_mem_internal_inqueue >= 0, (
             self._op,
