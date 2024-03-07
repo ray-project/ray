@@ -8,4 +8,4 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
-      - sleep 20m
+      - sleep 59m
