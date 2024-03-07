@@ -1420,18 +1420,17 @@ async def execute_streaming_generator_async(
 
         loop = asyncio.get_running_loop()
         worker = ray._private.worker.global_worker
-        # Run it in a separate thread to that we can
-        # avoid blocking the event loop when serializing
-        # the output (which has nogil).
 
         print(f">>> {datetime.utcnow()} [execute_streaming_generator_async] Scheduling report_streaming_generator_output ({async_task_id.get()})")
+
+        executor = worker.core_worker.get_event_loop_executor()
 
         try:
             # Run it in a separate thread to that we can
             # avoid blocking the event loop when serializing
             # the output (which has nogil).
             fut = loop.run_in_executor(
-                worker.core_worker.get_thread_pool_for_async_event_loop(),
+                executor,
                 report_streaming_generator_output,
                 output_or_exception,
                 context)
@@ -1440,8 +1439,11 @@ async def execute_streaming_generator_async(
 
             done = await fut
         except BaseException as e:
-            print(">>> [execute_streaming_generator_async] Exception: ", repr(e))
+            print(">>> [execute_streaming_generator_async] Exception: ", repr(e), fut.done())
             traceback.print_exc()
+
+            shutdown_event_loop_executor(e, executor, loop, worker)
+
             raise e
 
         finally:
@@ -1455,6 +1457,17 @@ async def execute_streaming_generator_async(
 
         if done:
             break
+
+def shutdown_event_loop_executor(e, executor, loop, worker):
+    print(">>> [execute_streaming_generator_async] Shutting down default executor: ", type(loop))
+    try:
+        executor.shutdown(wait=True, cancel_futures=True)
+        worker.core_worker.reset_event_loop_executor(None)
+
+        print(">>> [execute_streaming_generator_async] Default executor shutdown")
+    except BaseException as e:
+        print(">>> [execute_streaming_generator_async] Encountered exception: ", repr(e))
+        traceback.print_exc()
 
 
 cdef create_generator_return_obj(
