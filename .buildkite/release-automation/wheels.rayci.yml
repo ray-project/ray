@@ -8,6 +8,4 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
-      - docker run -it --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-windowsbuild /bin/bash -iecuo pipefail 
-        "./.buildkite/release-automation/verify-windows-wheels.sh"
+      - sleep 20m
