@@ -2969,6 +2969,7 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
 }
 
 void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
+  RAY_LOG(DEBUG) << "AsyncDelObjectRefStream " << generator_id;
   deleted_generator_ids_.insert(generator_id);
 }
 
@@ -2976,12 +2977,14 @@ void CoreWorker::TryDeleteObjectRefStreams() {
   std::vector<ObjectID> out_of_scope_generator_ids;
   for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
        it++) {
+    const auto &generator_id = *it;
+    RAY_LOG(DEBUG) << "Try DelObjectRefStream " << generator_id;
     int64_t num_objects_generated = 0;
-    if (!task_manager_->StreamingGeneratorIsFinished(*it, &num_objects_generated)) {
+    if (!task_manager_->StreamingGeneratorIsFinished(generator_id,
+                                                     &num_objects_generated)) {
       continue;
     }
 
-    const auto &generator_id = *it;
     bool can_gc = reference_counter_->CheckGeneratorRefsOutOfScope(generator_id,
                                                                    num_objects_generated);
     if (can_gc && task_manager_->DelObjectRefStream(generator_id)) {

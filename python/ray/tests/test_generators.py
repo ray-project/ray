@@ -11,15 +11,24 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
+from ray._private.test_utils import (
+    wait_for_condition,
+)
 
 
 def assert_no_leak():
-    gc.collect()
-    core_worker = ray._private.worker.global_worker.core_worker
-    ref_counts = core_worker.get_all_reference_counts()
-    for rc in ref_counts.values():
-        assert rc["local"] == 0
-        assert rc["submitted"] == 0
+    def check():
+        gc.collect()
+        core_worker = ray._private.worker.global_worker.core_worker
+        ref_counts = core_worker.get_all_reference_counts()
+        for k, rc in ref_counts.items():
+            if rc["local"] != 0:
+                return False
+            if rc["submitted"] != 0:
+                return False
+        return True
+
+    wait_for_condition(check)
 
 
 @pytest.mark.skipif(
@@ -358,6 +367,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -420,6 +430,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -509,6 +520,7 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_t
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     cluster.add_node(
@@ -579,6 +591,7 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -627,6 +640,8 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
     # We should never reconstruct an empty generator.
     assert ray.get(exec_counter.get_count.remote()) == 1
 
+    print("gen", gen._generator_ref)
+    print("refs", refs)
     del gen, refs, exec_counter
     assert_no_leak()
 
