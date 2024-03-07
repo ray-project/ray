@@ -1,7 +1,6 @@
 import random
 import sys
-from copy import copy
-from typing import Dict, List, Optional
+from typing import List
 from unittest.mock import Mock
 
 import pytest
@@ -18,7 +17,11 @@ from ray.serve._private.deployment_scheduler import (
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
-from ray.serve._private.test_utils import MockClusterNodeInfoCache
+from ray.serve._private.test_utils import (
+    MockActorClass,
+    MockClusterNodeInfoCache,
+    MockPlacementGroup,
+)
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -28,44 +31,6 @@ from ray.util.scheduling_strategies import (
 
 def dummy():
     pass
-
-
-class MockActorHandle:
-    def __init__(self, **kwargs):
-        self._options = kwargs
-
-
-class MockActorClass:
-    def __init__(self):
-        self._init_args = ()
-        self._options = dict()
-
-    def options(self, **kwargs):
-        res = copy(self)
-
-        for k, v in kwargs.items():
-            res._options[k] = v
-
-        return res
-
-    def remote(self, *args) -> MockActorHandle:
-        return MockActorHandle(init_args=args, **self._options)
-
-
-class MockPlacementGroup:
-    def __init__(
-        self,
-        bundles: List[Dict[str, float]],
-        strategy: str = "PACK",
-        name: str = "",
-        lifetime: Optional[str] = None,
-        _soft_target_node_id: Optional[str] = None,
-    ):
-        self._bundles = bundles
-        self._strategy = strategy
-        self._name = name
-        self._lifetime = lifetime
-        self._soft_target_node_id = _soft_target_node_id
 
 
 def get_random_resources(n: int) -> List[Resources]:
