@@ -47,6 +47,7 @@ def build_champagne_image(
     anyscale_image = (
         f"{get_global_config()['byod_ecr']}/{anyscale_repo}:champagne-{ray_version}"
     )
+    hello
 
     logger.info(f"Building champagne anyscale image from {ray_image}")
     with open(DATAPLANE_FILENAME, "rb") as build_file:
