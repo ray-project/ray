@@ -12,7 +12,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 try:
     import pyarrow as pa
@@ -24,8 +24,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+DEPRECATION_MESSAGE = "RandomAccessDataset is deprecated in Ray 2.10."
 
-@PublicAPI(stability="alpha")
+
+@Deprecated(message=DEPRECATION_MESSAGE)
 class RandomAccessDataset:
     """A class that provides distributed, random access to a Dataset.
 
@@ -43,7 +45,7 @@ class RandomAccessDataset:
         The constructor is a private API. Use ``ds.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
-        logger.warning("``RandomAccessDataset`` is deprecated in Ray 2.10.")
+        logger.warning(DEPRECATION_MESSAGE)
         schema = ds.schema(fetch_if_missing=True)
         if schema is None or isinstance(schema, type):
             raise ValueError("RandomAccessDataset only supports Arrow-format blocks.")

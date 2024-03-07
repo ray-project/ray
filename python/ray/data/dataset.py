@@ -4512,6 +4512,9 @@ class Dataset:
                 to provide ~3000 records / second via ``get_async()``, and
                 ~10000 records / second via ``multiget()``.
         """
+        logger.warning(
+            "``Dataset.to_random_access_dataset`` is deprecated in Ray 2.10."
+        )
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
