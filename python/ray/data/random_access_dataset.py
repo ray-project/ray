@@ -168,7 +168,7 @@ class RandomAccessDataset:
             keybatch = batches[i]
             for k, v in zip(keybatch, values):
                 results[k] = v
-        return [results.get(k) for k in keys]
+        return results.get([k for k in keys])
 
     def stats(self) -> str:
         """Returns a string containing access timing information."""
