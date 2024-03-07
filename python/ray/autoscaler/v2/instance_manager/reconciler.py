@@ -2,16 +2,15 @@ import logging
 import math
 import time
 import uuid
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.protobuf_compat import message_to_dict
 from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
     InstanceReconcileConfig,
+    Provider,
 )
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.node_provider import (
@@ -24,6 +23,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.sdk import is_head_node
@@ -50,117 +50,6 @@ from ray.core.generated.instance_manager_pb2 import (
 logger = logging.getLogger(__name__)
 
 
-class IInstanceUpdater(ABC):
-    """
-    An interface to for making instance update.
-    """
-
-    @abstractmethod
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        """
-        Make an instance update for the instance.
-
-        Args:
-            instance: The instance to make update.
-
-        Returns:
-            The instance update event if there's an update. None otherwise.
-        """
-        raise NotImplementedError
-
-
-class TimeoutInstanceUpdater(IInstanceUpdater):
-    """
-    An instance updater that updates the instance to a new status if it's stuck in the
-    current status for too long.
-    """
-
-    def __init__(
-        self,
-        cur_status: IMInstance.InstanceStatus,
-        timeout_s: int,
-        new_status: Optional["IMInstance.InstanceStatus"] = None,
-    ):
-        """
-        Args:
-            cur_status: The current status of the instance.
-            timeout_s: The timeout in seconds.
-            new_status: The new status to transition to if the instance is stuck in the
-                current status for too long.
-        """
-        self.cur_status = cur_status
-        self.timeout_s = timeout_s
-        self.new_status = new_status
-
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        if InstanceUtil.has_timeout(instance, self.timeout_s):
-            update = IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=self.new_status,
-                details=(
-                    f"Timeout={self.timeout_s}s at status "
-                    f"{IMInstance.InstanceStatus.Name(self.cur_status)}"
-                ),
-            )
-
-            # Add status specific metadata
-            if self.new_status == IMInstance.TERMINATING:
-                update.cloud_instance_id = instance.cloud_instance_id
-
-            return update
-        return None
-
-
-class StuckRequestedInstanceUpdater(IInstanceUpdater):
-    """
-    An instance updater that makes updates for instances stuck in the REQUESTED status
-    for too long.
-    """
-
-    def __init__(
-        self,
-        timeout_s: int,
-        max_num_request_to_allocate: int,
-    ):
-        """
-        Args:
-            timeout_s: The timeout in seconds.
-            max_num_request_to_allocate: The maximum number of times an instance
-                could be requested to allocate.
-        """
-        self.max_num_request_to_allocate = max_num_request_to_allocate
-        self.timeout_s = timeout_s
-
-    def make_update(self, instance: IMInstance) -> Optional[IMInstanceUpdateEvent]:
-        if not InstanceUtil.has_timeout(instance, self.timeout_s):
-            # Not timeout yet, be patient.
-            return None
-
-        all_request_times_ns = sorted(
-            InstanceUtil.get_status_transition_times_ns(
-                instance, select_instance_status=IMInstance.REQUESTED
-            )
-        )
-
-        # Fail the allocation if we have tried too many times.
-        if len(all_request_times_ns) >= self.max_num_request_to_allocate:
-            return IMInstanceUpdateEvent(
-                instance_id=instance.instance_id,
-                new_instance_status=IMInstance.ALLOCATION_FAILED,
-                details=(
-                    "Failed to allocate cloud instance after "
-                    f"{len(all_request_times_ns)} attempts"
-                ),
-            )
-
-        # Retry the allocation if we could by transitioning to QUEUED again.
-        return IMInstanceUpdateEvent(
-            instance_id=instance.instance_id,
-            new_instance_status=IMInstance.QUEUED,
-            details=f"QUEUED again after timeout={self.timeout_s}s",
-        )
-
-
 class Reconciler:
     """
     A singleton class that reconciles the instance states of the instance manager
@@ -179,6 +68,7 @@ class Reconciler:
         cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
         ray_install_errors: Optional[List[RayInstallError]] = None,
         ray_stop_errors: Optional[List[RayStopError]] = None,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
         """
@@ -204,6 +94,8 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
+            metrics_reporter: The metric reporter to report the autoscaler metrics.
+            _logger: The logger (for testing).
 
         """
         cloud_provider_errors = cloud_provider_errors or []
@@ -221,6 +113,7 @@ class Reconciler:
             cloud_provider_errors=cloud_provider_errors,
             ray_install_errors=ray_install_errors,
             ray_stop_errors=ray_stop_errors,
+            autoscaling_config=autoscaling_config,
         )
 
         Reconciler._step_next(
@@ -233,6 +126,13 @@ class Reconciler:
             autoscaling_config=autoscaling_config,
             _logger=_logger,
         )
+
+        Reconciler._report_metrics(
+            instance_manager=instance_manager,
+            autoscaling_config=autoscaling_config,
+            metrics_reporter=metrics_reporter,
+        )
+
         return autoscaling_state
 
     @staticmethod
@@ -243,6 +143,7 @@ class Reconciler:
         cloud_provider_errors: List[CloudInstanceProviderError],
         ray_install_errors: List[RayInstallError],
         ray_stop_errors: List[RayStopError],
+        autoscaling_config: AutoscalingConfig,
     ):
         """
         Reconcile the instance states of the instance manager from external states like
@@ -289,6 +190,7 @@ class Reconciler:
                 the cloud provider.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
+            ray_stop_errors: The errors from RayStopper.
 
         """
 
@@ -310,7 +212,9 @@ class Reconciler:
             instance_manager, non_terminated_cloud_instances, ray_nodes
         )
 
-        Reconciler._handle_ray_status_transition(instance_manager, ray_nodes)
+        Reconciler._handle_ray_status_transition(
+            instance_manager, ray_nodes, autoscaling_config
+        )
 
         Reconciler._handle_ray_install_failed(instance_manager, ray_install_errors)
 
@@ -356,6 +260,8 @@ class Reconciler:
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
+            autoscaling_config: The autoscaling config.
+            _logger: The logger (for testing).
 
         """
 
@@ -594,13 +500,6 @@ class Reconciler:
                         f"failed to install ray with errors: {install_error.details}"
                     ),
                 )
-                logger.debug(
-                    "Updating {}({}) with {}".format(
-                        instance_id,
-                        IMInstance.InstanceStatus.Name(instance.status),
-                        message_to_dict(updates[instance_id]),
-                    )
-                )
 
         # Update the instance manager for the events.
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -734,7 +633,9 @@ class Reconciler:
 
     @staticmethod
     def _handle_ray_status_transition(
-        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+        instance_manager: InstanceManager,
+        ray_nodes: List[NodeState],
+        autoscaling_config: AutoscalingConfig,
     ):
         """
         Handle the ray status transition for the instance manager.
@@ -758,12 +659,18 @@ class Reconciler:
             if n.instance_id:
                 ray_nodes_by_cloud_instance_id[n.instance_id] = n
             else:
-                # This should only happen to a ray node that's not managed by us.
-                logger.warning(
-                    f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
-                    "This only happens to a ray node that's not managed by autoscaler. "
-                    "If not, please file a bug at https://github.com/ray-project/ray"
-                )
+                if autoscaling_config.provider == Provider.READ_ONLY:
+                    # We will use the node id as the cloud instance id for read-only
+                    # provider.
+                    ray_nodes_by_cloud_instance_id[binary_to_hex(n.node_id)] = n
+                else:
+                    # This should only happen to a ray node that's not managed by us.
+                    logger.warning(
+                        f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
+                        "This only happens to a ray node not managed by autoscaler. "
+                        "If not, please file a bug at "
+                        "https://github.com/ray-project/ray"
+                    )
 
         for cloud_instance_id, ray_node in ray_nodes_by_cloud_instance_id.items():
             assert cloud_instance_id in im_instances_by_cloud_instance_id, (
@@ -1224,6 +1131,10 @@ class Reconciler:
             # scaling the cluster from min worker nodes constraint.
             return
 
+        if autoscaling_config.provider == Provider.READ_ONLY:
+            # We shouldn't be scaling the cluster if the provider is read-only.
+            return
+
         # Scale the clusters if needed.
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
@@ -1492,7 +1403,7 @@ class Reconciler:
         return IMInstanceUpdateEvent(
             instance_id=instance.instance_id,
             new_instance_status=IMInstance.QUEUED,
-            details=f"QUEUED again after timeout={timeout_s}s",
+            details=f"queue again to launch after timeout={timeout_s}s",
         )
 
     @staticmethod
@@ -1587,7 +1498,11 @@ class Reconciler:
                 new_instance_status=IMInstance.ALLOCATED,
                 node_kind=cloud_instance.node_kind,
                 instance_type=cloud_instance.node_type,
-                details="allocated unmanaged cloud instance from cloud provider",
+                details=(
+                    "allocated unmanaged cloud instance :"
+                    f"{cloud_instance.cloud_instance_id} "
+                    f"({NodeKind.Name(cloud_instance.node_kind)}) from cloud provider"
+                ),
                 upsert=True,
             )
 
@@ -1620,3 +1535,18 @@ class Reconciler:
             )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
+    def _report_metrics(
+        instance_manager: InstanceManager,
+        autoscaling_config: AutoscalingConfig,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
+    ):
+        if not metrics_reporter:
+            return
+
+        instances, _ = Reconciler._get_im_instances(instance_manager)
+        node_type_configs = autoscaling_config.get_node_type_configs()
+
+        metrics_reporter.report_instances(instances, node_type_configs)
+        metrics_reporter.report_resources(instances, node_type_configs)

@@ -4,7 +4,15 @@ from typing import List, Optional
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
-from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig, IConfigReader
+from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
+from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (  # noqa
+    ReadOnlyProvider,
+)
+from ray.autoscaler.v2.instance_manager.config import (
+    AutoscalingConfig,
+    IConfigReader,
+    Provider,
+)
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceManager,
     InstanceUpdatedSubscriber,
@@ -20,6 +28,7 @@ from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater impor
     CloudInstanceUpdater,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
@@ -33,34 +42,41 @@ class Autoscaler:
         session_name: str,
         config_reader: IConfigReader,
         gcs_client: GcsClient,
+        event_logger: Optional[AutoscalerEventLogger] = None,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
         """
         Args:
-            session_name: The session name of ray.
+            session_name: The name of the ray session.
             config_reader: The config reader.
             gcs_client: The GCS client.
+            event_logger: The event logger for emitting cluster events.
+            metrics_reporter: The metrics reporter for emitting cluster metrics.
         """
 
         self._config_reader = config_reader
-        config = config_reader.get_autoscaling_config()
+
+        config = config_reader.get_cached_autoscaling_config()
         logger.info(f"Using Autoscaling Config: \n{config.dump()}")
 
         self._gcs_client = gcs_client
-        self._cloud_provider = None
+        self._cloud_instance_provider = None
         self._instance_manager = None
         self._ray_stop_errors_queue = Queue()
         self._ray_install_errors_queue = Queue()
+        self._event_logger = event_logger
+        self._metrics_reporter = metrics_reporter
 
-        self._init_cloud_provider(config, config_reader)
+        self._init_cloud_instance_provider(config, config_reader)
         self._init_instance_manager(
             session_name=session_name,
             config=config,
-            cloud_provider=self._cloud_provider,
+            cloud_provider=self._cloud_instance_provider,
             gcs_client=self._gcs_client,
         )
-        self._scheduler = ResourceDemandScheduler()
+        self._scheduler = ResourceDemandScheduler(self._event_logger)
 
-    def _init_cloud_provider(
+    def _init_cloud_instance_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
     ):
         """
@@ -71,15 +87,22 @@ class Autoscaler:
             config_reader: The config reader.
 
         """
-        node_provider_v1 = _get_node_provider(
-            config.get_provider_config(),
-            config.get_config("cluster_name"),
-        )
+        provider_config = config.get_provider_config()
+        if config.provider == Provider.READ_ONLY:
+            provider_config["gcs_address"] = self._gcs_client.address
+            self._cloud_instance_provider = ReadOnlyProvider(
+                provider_config=provider_config,
+            )
+        else:
+            node_provider_v1 = _get_node_provider(
+                provider_config,
+                config.get_config("cluster_name"),
+            )
 
-        self._cloud_provider = NodeProviderAdapter(
-            v1_provider=node_provider_v1,
-            config_reader=config_reader,
-        )
+            self._cloud_instance_provider = NodeProviderAdapter(
+                v1_provider=node_provider_v1,
+                config_reader=config_reader,
+            )
 
     def _init_instance_manager(
         self,
@@ -146,18 +169,23 @@ class Autoscaler:
             # Get the current state of the ray cluster resources.
             ray_cluster_resource_state = get_cluster_resource_state(self._gcs_client)
 
+            # Refresh the config from the source
+            self._config_reader.refresh_cached_autoscaling_config()
+            autoscaling_config = self._config_reader.get_cached_autoscaling_config()
+
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
-                cloud_provider=self._cloud_provider,
+                cloud_provider=self._cloud_instance_provider,
                 ray_cluster_resource_state=ray_cluster_resource_state,
                 non_terminated_cloud_instances=(
-                    self._cloud_provider.get_non_terminated()
+                    self._cloud_instance_provider.get_non_terminated()
                 ),
-                cloud_provider_errors=self._cloud_provider.poll_errors(),
+                cloud_provider_errors=self._cloud_instance_provider.poll_errors(),
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
-                autoscaling_config=self._config_reader.get_autoscaling_config(),
+                autoscaling_config=autoscaling_config,
+                metrics_reporter=self._metrics_reporter,
             )
         except Exception as e:
             logger.exception(e)

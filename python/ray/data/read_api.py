@@ -468,7 +468,7 @@ def read_mongo(
         ...     collection="my_collection",
         ...     pipeline=[{"$match": {"col2": {"$gte": 0, "$lt": 100}}}, {"$sort": "sort_field"}], # noqa: E501
         ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}),
-        ...     parallelism=10,
+        ...     override_num_blocks=10,
         ... )
 
     Args:
@@ -1955,10 +1955,10 @@ def read_sql(
         ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
         databases, ``OFFSET`` is slow.
 
-        As a workaround, set ``parallelism=1`` to directly fetch all rows in a single
-        task. Note that this approach requires all result rows to fit in the memory of
-        single task. If the rows don't fit, your program may raise an out of memory
-        error.
+        As a workaround, set ``override_num_blocks=1`` to directly fetch all rows in a
+        single task. Note that this approach requires all result rows to fit in the
+        memory of single task. If the rows don't fit, your program may raise an out of
+        memory error.
 
     Examples:
 
