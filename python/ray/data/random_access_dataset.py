@@ -2,7 +2,7 @@ import bisect
 import logging
 import random
 import time
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
