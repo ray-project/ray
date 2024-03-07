@@ -181,6 +181,8 @@ SERVE_LOG_REPLICA = "replica"
 SERVE_LOG_COMPONENT = "component_name"
 SERVE_LOG_COMPONENT_ID = "component_id"
 SERVE_LOG_MESSAGE = "message"
+SERVE_LOG_ACTOR_ID = "actor_id"
+SERVE_LOG_WORKER_ID = "worker_id"
 # This is a reserved for python logging module attribute, it should not be changed.
 SERVE_LOG_LEVEL_NAME = "levelname"
 SERVE_LOG_TIME = "asctime"

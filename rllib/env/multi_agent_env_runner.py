@@ -350,6 +350,8 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Create a new episode instance.
                 self._episode = self._new_episode()
+                self._make_on_episode_callback("on_episode_created", self._episode)
+
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
