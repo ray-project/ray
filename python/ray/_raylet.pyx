@@ -3,6 +3,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 # cython: c_string_encoding = default
+from datetime import datetime
 
 from cpython.exc cimport PyErr_CheckSignals
 
@@ -1254,6 +1255,15 @@ cdef report_streaming_generator_output(
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
         int64_t generator_index = context.generator_index
 
+    target_sleep = 1
+
+    print(f">>> {datetime.utcnow()} [report_streaming_generator_output] Entering **sleep**={target_sleep}s ({output_or_exception}) ({async_task_id.get()})")
+
+    # Simulate delay in execution
+    time.sleep(target_sleep)
+
+    print(f">>> {datetime.utcnow()} [report_streaming_generator_output] Reporting value of ({output_or_exception}) ({async_task_id.get()})")
+
     if isinstance(output_or_exception, Exception):
         create_generator_error_object(
             output_or_exception,
@@ -1307,6 +1317,8 @@ cdef report_streaming_generator_output(
         # usage asap.
         del output_or_exception
 
+        print(f">>> {datetime.utcnow()} [report_streaming_generator_output] Pushing into vector (of size {context.streaming_generator_returns[0].size()}) ({async_task_id.get()})")
+
         context.streaming_generator_returns[0].push_back(
             c_pair[CObjectID, c_bool](
                 return_obj.first,
@@ -1324,6 +1336,9 @@ cdef report_streaming_generator_output(
                 context.attempt_number,
                 context.waiter))
         context.generator_index += 1
+
+        print(f">>> {datetime.utcnow()} [report_streaming_generator_output] Finished reporting ({async_task_id.get()})")
+
         return False
 
 
@@ -1394,8 +1409,12 @@ async def execute_streaming_generator_async(
         except StopAsyncIteration:
             break
         except AsyncioActorExit:
-            # The execute_task will handle this case.
             raise
+        # except asyncio.CancelledError:
+        #     # NOTE: To avoid use-after-free type of RCs we need to make sure
+        #     #       we cancel any pending tasks already scheduled for execution in the
+        #     #       event-loop's executor
+        #     raise
         except Exception as e:
             output_or_exception = e
 
@@ -1404,11 +1423,33 @@ async def execute_streaming_generator_async(
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
-        done = await loop.run_in_executor(
-            worker.core_worker.get_thread_pool_for_async_event_loop(),
-            report_streaming_generator_output,
-            output_or_exception,
-            context)
+
+        print(f">>> {datetime.utcnow()} [execute_streaming_generator_async] Scheduling report_streaming_generator_output ({async_task_id.get()})")
+
+        try:
+            fut = loop.run_in_executor(
+                worker.core_worker.get_thread_pool_for_async_event_loop(),
+                report_streaming_generator_output,
+                output_or_exception,
+                context)
+
+            print(f">>> {datetime.utcnow()} [execute_streaming_generator_async] Scheduled report_streaming_generator_output ({async_task_id.get()})")
+
+            done = await fut
+        except BaseException as e:
+            print(">>> [execute_streaming_generator_async] Exception: ", repr(e))
+            traceback.print_exc()
+            raise e
+
+        finally:
+            print(f">>> {datetime.utcnow()} [execute_streaming_generator_async] Completed report_streaming_generator_output ({async_task_id.get()}): ",
+                  fut.done(),
+                  fut.cancelled(),
+                  loop.is_closed())
+                  #loop._default_executor._work_queue.qsize())
+
+        print(f">>> {datetime.utcnow()} [execute_streaming_generator_async] Returning ({done}) ({async_task_id.get()})")
+
         if done:
             break
 
@@ -1765,13 +1806,15 @@ cdef void execute_task(
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
+
+                    async def deserialize_args():
+                        return (ray._private.worker.global_worker
+                        .deserialize_objects(
+                            metadata_pairs, object_refs))
+
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
-                        async def deserialize_args():
-                            return (ray._private.worker.global_worker
-                                    .deserialize_objects(
-                                        metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
                             deserialize_args, function_descriptor,
                             name_of_concurrency_group_to_execute)
@@ -1786,9 +1829,7 @@ cdef void execute_task(
                         # NOTE (Clark): Signal handlers can only be registered on the
                         # main thread.
                         with DeferSigint.create_if_main_thread():
-                            args = (ray._private.worker.global_worker
-                                    .deserialize_objects(
-                                        metadata_pairs, object_refs))
+                            args = deserialize_args()
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
@@ -2440,17 +2481,24 @@ cdef void cancel_async_task(
         const CRayFunction &ray_function,
         const c_string c_name_of_concurrency_group_to_execute) nogil:
     with gil:
-        function_descriptor = CFunctionDescriptorToPython(
-            ray_function.GetFunctionDescriptor())
-        name_of_concurrency_group_to_execute = \
-            c_name_of_concurrency_group_to_execute.decode("ascii")
+        # TODO remove
+        # function_descriptor = CFunctionDescriptorToPython(
+        #     ray_function.GetFunctionDescriptor())
+        # name_of_concurrency_group_to_execute = \
+        #     c_name_of_concurrency_group_to_execute.decode("ascii")
+
         task_id = TaskID(c_task_id.Binary())
 
         worker = ray._private.worker.global_worker
-        eventloop, _ = worker.core_worker.get_event_loop(
-            function_descriptor, name_of_concurrency_group_to_execute)
+
+        # TODO remove
+        # eventloop, _ = worker.core_worker.get_event_loop(
+        #     function_descriptor, name_of_concurrency_group_to_execute)
+
         future = worker.core_worker.get_queued_future(task_id)
         if future is not None:
+            print(f">>> {datetime.utcnow()} [cancel_async_task] Cancelling task {task_id}")
+
             future.cancel()
         # else, the task is already finished. If the task
         # wasn't finished (task is queued on a client or server side),
@@ -4551,8 +4599,16 @@ cdef class CoreWorker:
                 else:
                     coroutine = func_or_coro(*func_args, **func_kwargs)
 
-                return await coroutine
+                print(f">>> {datetime.utcnow()} [run_async_func_or_coro_in_event_loop] Before awaiting coro ({task_id}, {async_task_id.get()})")
+
+                res = await coroutine
+
+                print(f">>> {datetime.utcnow()} [run_async_func_or_coro_in_event_loop] After awaiting coro ({task_id}, {async_task_id.get()})")
+
+                return res
             finally:
+                print(f">>> {datetime.utcnow()} [run_async_func_or_coro_in_event_loop] Notifying fiber-event ({task_id}, {async_task_id.get()})")
+
                 event.Notify()
 
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
@@ -4566,6 +4622,7 @@ cdef class CoreWorker:
         try:
             result = future.result()
         except concurrent.futures.CancelledError:
+            print(f">>> {datetime.utcnow()} [run_async_func_or_coro_in_event_loop] Caught CancelledError")
             raise TaskCancelledError(task_id)
         finally:
             if task_id:

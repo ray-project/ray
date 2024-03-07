@@ -105,6 +105,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
+
+    std::cout << ">>> [CoreWorkerDirectTaskReceiver::HandleTask[accept_callback]] Left task handler: " << task_spec.DebugString() << std::endl;
+
     reply->set_is_retryable_error(is_retryable_error);
     reply->set_is_application_error(!application_error.empty());
     if (!status.ok()) {
@@ -205,6 +208,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       RAY_CHECK(objects_valid);
       send_reply_callback(status, nullptr, nullptr);
     }
+
+    std::cout << ">>> [CoreWorkerDirectTaskReceiver::HandleTask[accept_callback]] Completed" << std::endl;
   };
 
   auto cancel_callback = [reply, task_spec](const Status &status,
