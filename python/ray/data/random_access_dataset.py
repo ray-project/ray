@@ -43,6 +43,9 @@ class RandomAccessDataset:
         The constructor is a private API. Use ``ds.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
+        logger.warning(
+            "``RandomAccessDataset`` is deprecated in Ray 2.10."
+        )
         schema = ds.schema(fetch_if_missing=True)
         if schema is None or isinstance(schema, type):
             raise ValueError("RandomAccessDataset only supports Arrow-format blocks.")

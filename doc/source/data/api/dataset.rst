@@ -116,7 +116,6 @@ I/O and Conversion
    Dataset.to_pandas_refs
    Dataset.to_numpy_refs
    Dataset.to_arrow_refs
-   Dataset.to_random_access_dataset
 
 Inspecting Metadata
 -------------------
