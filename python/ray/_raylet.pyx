@@ -1447,8 +1447,21 @@ async def execute_streaming_generator_async(
         await asyncio.gather(*futures)
 
     except BaseException as be:
-        # TODO elaborate
+        # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
+        #
+        # Upon encountering any failures in reporting generator's output we have to
+        # make sure that any already scheduled (onto thread-pool executor), but not
+        # finished tasks are canceled before re-throwing the exception to avoid
+        # use-after-free failures where tasks could potential access data-structures
+        # that are already cleaned by the caller.
+        #
+        # For more details, please check out
+        # https://github.com/ray-project/ray/issues/43771
         if futures:
+            # To guarantee that all tasks are shutdown by the time
+            # we return from this method we have to shut down the executor
+            # and correspondingly flushing it from the worker to allow
+            # subsequent requests to create a new one
             executor.shutdown(wait=True, cancel_futures=True)
             worker.core_worker.reset_event_loop_executor(None)
 
