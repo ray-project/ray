@@ -108,7 +108,7 @@ Compare a PyTorch training script with and without Ray Train.
 
             import ray.train.torch
 
-            def train_func(config):
+            def train_func():
                 # Model, Loss, Optimizer
                 model = resnet18(num_classes=10)
                 model.conv1 = torch.nn.Conv2d(
@@ -189,7 +189,7 @@ Begin by wrapping your code in a :ref:`training function <train-overview-trainin
 .. testcode::
     :skipif: True
 
-    def train_func(config):
+    def train_func():
         # Your PyTorch training code here.
         ...
 
@@ -216,7 +216,7 @@ Use the :func:`ray.train.torch.prepare_model` utility function to:
     -from torch.nn.parallel import DistributedDataParallel
     +import ray.train.torch
 
-     def train_func(config):
+     def train_func():
 
          ...
 
@@ -249,7 +249,7 @@ See :ref:`data-ingest-torch`.
      from torch.utils.data import DataLoader
     +import ray.train.torch
 
-     def train_func(config):
+     def train_func():
 
          ...
 
@@ -303,7 +303,7 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
 
     +import ray.train
 
-     def train_func(config):
+     def train_func():
 
          ...
 

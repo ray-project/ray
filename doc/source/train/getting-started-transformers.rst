@@ -122,7 +122,7 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
             # [1] Encapsulate data preprocessing, training, and evaluation
             # logic in a training function
             # ============================================================
-            def train_func(config):
+            def train_func():
                 # Datasets
                 dataset = load_dataset("yelp_review_full")
                 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
@@ -209,7 +209,7 @@ You can begin by wrapping your code in a :ref:`training function <train-overview
 .. testcode::
     :skipif: True
 
-    def train_func(config):
+    def train_func():
         # Your Transformers training code here.
 
 This function executes on each distributed training worker. 
@@ -245,7 +245,7 @@ To persist your checkpoints and monitor training progress, add a
      import transformers
      from ray.train.huggingface.transformers import RayTrainReportCallback
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = transformers.Trainer(...)
     +    trainer.add_callback(RayTrainReportCallback())
@@ -269,7 +269,7 @@ your configurations and enable Ray Data Integration.
      import transformers
      import ray.train.huggingface.transformers
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = transformers.Trainer(...)
     +    trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
@@ -392,7 +392,7 @@ native Transformers training code.
 
             # [1] Define the full training function
             # =====================================
-            def train_func(config):
+            def train_func():
                 MODEL_NAME = "gpt2"
                 model_config = AutoConfig.from_pretrained(MODEL_NAME)
                 model = AutoModelForCausalLM.from_config(model_config)

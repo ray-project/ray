@@ -128,7 +128,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                     return torch.optim.Adam(self.model.parameters(), lr=0.001)
 
 
-            def train_func(config):
+            def train_func():
                 # Data
                 transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
                 data_dir = os.path.join(tempfile.gettempdir(), "data")
@@ -185,12 +185,12 @@ Begin by wrapping your code in a :ref:`training function <train-overview-trainin
 .. testcode::
     :skipif: True
 
-    def train_func(config):
+    def train_func():
         # Your PyTorch Lightning training code here.
 
 Each distributed training worker executes this function.
 
-You can specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter.
+You can also specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter.
 
 .. warning::
 
@@ -208,7 +208,7 @@ make a few changes to your Lightning Trainer definition.
     -from pl.plugins.environments import LightningEnvironment
     +import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          model = MyLightningModule(...)
          datamodule = MyLightningDataModule(...)
@@ -247,7 +247,7 @@ sampler arguments.
     -from pl.strategies import DDPStrategy
     +import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -271,7 +271,7 @@ local, global, and node rank and world size.
     -from pl.plugins.environments import LightningEnvironment
     +import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -294,7 +294,7 @@ GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
      import lightning.pytorch as pl
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -319,7 +319,7 @@ To persist your checkpoints and monitor training progress, add a
      import lightning.pytorch as pl
      from ray.train.lightning import RayTrainReportCallback
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(
              ...
@@ -345,7 +345,7 @@ your configurations.
      import lightning.pytorch as pl
      import ray.train.lightning
 
-     def train_func(config):
+     def train_func():
          ...
          trainer = pl.Trainer(...)
     +    trainer = ray.train.lightning.prepare_trainer(trainer)
@@ -465,7 +465,7 @@ control over their native Lightning code.
                 prepare_trainer
             )
 
-            def train_func(config):
+            def train_func():
                 # [1] Create a Lightning model
                 model = MyLightningModule(lr=1e-3, feature_dim=128)
 
