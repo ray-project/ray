@@ -47,16 +47,23 @@ class AutoscalerMonitor:
 
     This process periodically collects stats from the GCS and triggers
     autoscaler updates.
+
+    TODO:
+    We should also handle autoscaler failures properly in the future.
+    Right now, we don't restart autoscaler if it fails (internal reconciliation
+    however, should not fail the autoscaler process).
+    With the Reconciler able to handle extra cloud instances, we could in fact
+    recover the autoscaler process from reconciliation.
     """
 
     def __init__(
         self,
-        gcs_address: str,
+        address: str,
         config_reader: IConfigReader,
-        log_dir: str = None,
-        monitor_ip: str = None,
+        log_dir: Optional[str] = None,
+        monitor_ip: Optional[str] = None,
     ):
-        self.gcs_address = gcs_address
+        self.gcs_address = address
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
