@@ -143,6 +143,10 @@ class ResourceManager:
                 op
             ] = self._global_usage.object_store_memory
 
+            # Update operator's object store usage, which is used by
+            # DatasetStats and updated on the Ray Data dashboard.
+            op._metrics.obj_store_mem_used = op_usage.object_store_memory
+
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_usages()
 
@@ -293,7 +297,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # The interval to detect idle operators.
         # When downstream is idle, we'll allow reading at least one task output
         # per this interval,
-        DETECTION_INTERVAL_S = 1.0
+        DETECTION_INTERVAL_S = 10.0
         # Print a warning if an operator is idle for this time.
         WARN_ON_IDLE_TIME_S = 60.0
         # Whether a warning has been printed.

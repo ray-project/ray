@@ -239,15 +239,15 @@ class TestRandom(DataParallelTrainer):
 
 
 def test_per_epoch_preprocessing(ray_start_4_cpus):
-    ds = ray.data.range(100, parallelism=100).randomize_block_order()
+    ds = ray.data.range(100, override_num_blocks=100).randomize_block_order()
     test = TestRandom(2, True, datasets={"train": ds})
     test.fit()
 
-    ds = ray.data.range(100, parallelism=100).random_shuffle()
+    ds = ray.data.range(100, override_num_blocks=100).random_shuffle()
     test = TestRandom(2, True, datasets={"train": ds})
     test.fit()
 
-    ds = ray.data.range(100, parallelism=100).map(
+    ds = ray.data.range(100, override_num_blocks=100).map(
         lambda x: {"id": x["id"] * random.random()}
     )
     test = TestRandom(2, True, datasets={"train": ds})
@@ -257,7 +257,7 @@ def test_per_epoch_preprocessing(ray_start_4_cpus):
 def test_materialized_preprocessing(ray_start_4_cpus):
     # TODO(ekl) we should test all these configs with splitting enabled, but this
     # requires implementing deterministic streaming split.
-    ds = ray.data.range(100, parallelism=100).randomize_block_order()
+    ds = ray.data.range(100, override_num_blocks=100).randomize_block_order()
     ds = ds.materialize()
     test = TestRandom(
         2,
@@ -267,7 +267,7 @@ def test_materialized_preprocessing(ray_start_4_cpus):
     )
     test.fit()
 
-    ds = ray.data.range(100, parallelism=100).random_shuffle()
+    ds = ray.data.range(100, override_num_blocks=100).random_shuffle()
     ds = ds.materialize()
     test = TestRandom(
         2,
@@ -277,7 +277,7 @@ def test_materialized_preprocessing(ray_start_4_cpus):
     )
     test.fit()
 
-    ds = ray.data.range(100, parallelism=100).map(
+    ds = ray.data.range(100, override_num_blocks=100).map(
         lambda x: {"id": x["id"] * random.random()}
     )
     ds = ds.materialize()

@@ -35,17 +35,16 @@ You can also specify the input argument for `train_func` as a dictionary via the
              ...
          
          def load_model():
-             # Return a large in-memory model
+             # Return a large in-memory model instance
              ...
  
         -config = {"data": load_dataset(), "model": load_model()}
-        +config = {}
  
          def train_func(config):
         -    data = config["data"]
         -    model = config["model"]
  
-        +    data = load_datasets()
+        +    data = load_dataset()
         +    model = load_model()
              ...
  

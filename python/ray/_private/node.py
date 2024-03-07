@@ -1216,6 +1216,8 @@ class Node:
         any modification to these files may break existing
         cluster launching commands.
         """
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
         stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
@@ -1227,6 +1229,7 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             monitor_ip=self._node_ip_address,
+            autoscaler_v2=is_autoscaler_v2(fetch_from_server=True),
         )
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]

@@ -3,6 +3,7 @@ import pytest
 import ray
 from ray._raylet import GcsClient
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.test_utils import get_node_id
 from ray.tests.conftest import *  # noqa
 
 
@@ -12,10 +13,6 @@ def test_get_alive_nodes(ray_start_cluster):
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
-
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
 
     head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
     worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())

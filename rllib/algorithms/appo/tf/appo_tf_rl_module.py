@@ -2,12 +2,12 @@ from typing import List
 
 from ray.rllib.algorithms.appo.appo import OLD_ACTION_DIST_LOGITS_KEY
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -35,8 +35,8 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTfRLModule)
     def output_specs_train(self) -> List[str]:
         return [
-            SampleBatch.ACTION_DIST_INPUTS,
-            SampleBatch.VF_PREDS,
+            Columns.ACTION_DIST_INPUTS,
+            Columns.VF_PREDS,
             OLD_ACTION_DIST_LOGITS_KEY,
         ]
 
