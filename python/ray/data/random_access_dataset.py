@@ -33,10 +33,10 @@ class RandomAccessDataset:
     """
 
     def __init__(
-        self,
-        ds: "Dataset",
-        key: str,
-        num_workers: int,
+            self,
+            ds: "Dataset",
+            key: str,
+            num_workers: int,
     ):
         """Construct a RandomAccessDataset (internal API).
 
@@ -154,7 +154,7 @@ class RandomAccessDataset:
         batches = defaultdict(list)
         for k in keys:
             batches[self._find_le(k)].append(k)
-        futures = {}
+        futures = OrderedDict()
         for index, keybatch in batches.items():
             if index is None:
                 continue
@@ -162,10 +162,10 @@ class RandomAccessDataset:
                 [index] * len(keybatch), keybatch
             )
             futures[index] = fut
+        all_values = ray.get(futures.values)
         results = {}
-        for i, fut in futures.items():
+        for i, values in zip(futures.keys(), all_values):
             keybatch = batches[i]
-            values = ray.get(fut)
             for k, v in zip(keybatch, values):
                 results[k] = v
         return [results.get(k) for k in keys]
@@ -222,7 +222,7 @@ class _RandomAccessWorker:
         start = time.perf_counter()
         block = self.blocks[block_indices[0]]
         if len(set(block_indices)) == 1 and isinstance(
-            self.blocks[block_indices[0]], pa.Table
+                self.blocks[block_indices[0]], pa.Table
         ):
             # Fast path: use np.searchsorted for vectorized search on a single block.
             # This is ~3x faster than the naive case.
