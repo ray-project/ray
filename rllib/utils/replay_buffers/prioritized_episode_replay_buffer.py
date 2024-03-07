@@ -16,6 +16,104 @@ from ray.rllib.utils.typing import SampleBatchType
 
 
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
+    """Prioritized Replay Buffer that stores episodes by their ID.
+
+    This replay buffer stores episode data (more specifically `SingleAgentEpisode`
+    objects) and implements prioritized experience replay first proposed
+    in the paper by Schaul et al. (2016, https://arxiv.org/abs/1511.05952).
+
+    Implementation is based on segment trees as suggested by the authors of
+    the cited paper, i.e. we use proportional prioritization with an order
+    of O(log N) in updating and sampling.
+
+    Each "row" (a slot in a deque) in the buffer is occupied by one episode. If an
+    incomplete episode is added to the buffer and then another chunk of that episode is
+    added at a later time, the buffer will automatically concatenate the new fragment to
+    the original episode. This way, episodes can be completed via subsequent `add`
+    calls.
+
+    Sampling returns batches of size B (number of 'rows'), where each row is a tuple
+    of the form
+
+    `(o_t, a_t, sum(r_t+1:t+n), o_t+n)`
+
+    where `o_t` is the observation in `t`, `a_t` the action chosen at observation `o_t`,
+    `o_t+n` is the observation `n` timesteps later and `sum(r_t+1:t+n)` is the sum of
+    all rewards collected over the time steps between `t+1` and `t+n`. The `n`-step can
+    be chosen freely when sampling and defaults to `1`. If `n_step` is a tuple it is
+    sampled uniformly across the interval defined by the tuple (for each row in the
+    batch).
+
+    Each batch contains - in addition to the data tuples presented above - two further
+    columns, namely `n_steps` and `weigths`. The former holds the `n_step` used for each
+    row in the batch and the latter the corresponding (importance sampling) weight for
+    each row in the batch.
+
+    After sampling priorities can be updated (for the last sampled batch) with
+    `self.update_priorities`. This method assigns the new priorities automatically to
+    the last sampled timesteps. Note, this implies that sampling timesteps and updating
+    their corresponding priorities needs to alternate (e.g. sampling several times and
+    then updating the priorities would not work because tjhe buffer caches the last
+    sampled timestep indices).
+
+    .. testcode::
+
+        import gymnasium as gym
+
+        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+            PrioritizedEpisodeReplayBuffer
+        )
+
+        # Create the environment.
+        env = gym.make("CartPole-v1")
+
+        # Set up the loop variables
+        terminated = False
+        trunctaed = False
+        num_timesteps = 10000
+        episodes = []
+
+        # Initialize the first episode entries.
+        eps = SingleAgentEpisode()
+        obs, info = env.reset()
+        eps.add_env_reset(obs, info)
+
+        # Sample 10,000 timesteps.
+        for i in range(num_timesteps):
+            # If terminated we create a new episode.
+            if terminated:
+                episodes.append(eps.finalize())
+                eps = SingleAgentEpisode()
+                obs, info = env.reset()
+                eps.add_env_reset(obs, info)
+
+            action = env.action_space.sample()
+            obs, reward, terminated, truncated, info = env.step(action)
+            eps.add_env_step(
+                obs,
+                action,
+                reward,
+                info,
+                terminated=terminated,
+                truncated=truncated
+            )
+
+        # Add the last (truncated) episode to the list of episodes.
+        if not terminated or truncated:
+            episodes.append(eps)
+
+        # Create the buffer.
+        buffer = PrioritizedEpisodeReplayBuffer()
+        # Add the list of episodes sampled.
+        buffer.add(episodes)
+
+        # Pull a sample from the buffer using an `n-step` of 3.
+        sample = buffer.sample(num_items=256, gamma=0.95, n_step=3)
+
+
+    """
+
     def __init__(
         self,
         capacity: int = 10000,
@@ -24,6 +122,17 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_length_T: int = 1,
         alpha: float = 1.0,
     ):
+        """Initializes a `PrioritizedEpisodeReplayBuffer` object
+
+        Args:
+            capacity: The total number of timesteps to be storable in this buffer.
+                Will start ejecting old episodes once this limit is reached.
+            batch_size_B: The number of rows in a SampleBatch returned from `sample()`.
+            batch_length_T: The length of each row in a SampleBatch returned from
+                `sample()`.
+            alpha: The amount of prioritization to be used: `alpha=1.0` means full
+                prioritization, `alpha=0.0` means no prioritization.
+        """
         super().__init__(
             capacity=capacity, batch_size_B=batch_size_B, batch_length_T=batch_length_T
         )
@@ -72,7 +181,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         Args:
             episodes: A list of `SingleAgentEpisode`s that contain the episode data.
-            weight: A starting priority for the time steps in `episodes`.
+            weight: A starting priority for the time steps in `episodes`. If `None`
+                the maximum priority is used, i.e. 1.0 (as suggested in the original
+                paper we scale weights to the interval [0.0, 1.0])..
         """
 
         # TODO (sven, simon): Eventually allow here an array?
@@ -209,6 +320,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 buffer.
             batch_size_B: The number of rows (transitions) to return in the
                 batch
+            batch_length_T: THe sequence length to sample. At this point in time
+                only sequences of length 1 are possible.
             n_step: The n-step to apply. For the default the batch contains in
                 `"new_obs"` the observation and in `"obs"` the observation `n`
                 time steps before. The reward will be the sum of rewards
@@ -220,7 +333,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             beta: The exponent of the importance sampling weight (see Schaul et
                 al. (2016)). A `beta=0.0` does not correct for the bias introduced
                 by prioritized replay and `beta=1.0` fully corrects for it.
-            gamma: The discount factor to be used when applying n-step caluclations.
+            gamma: The discount factor to be used when applying n-step calculations.
                 The default of `0.99` should be replaced by the `Algorithm`s
                 discount factor.
             include_infos: A boolean indicating, if `info`s should be included in
@@ -244,6 +357,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Use our default values if no sizes/lengths provided.
         batch_size_B = batch_size_B or self.batch_size_B
+        # TODO (simon): Implement trajectory sampling for RNNs.
         batch_length_T = batch_length_T or self.batch_length_T
 
         # Sample the n-step if necessary.
@@ -259,8 +373,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         next_observations = [[] for _ in range(batch_size_B)]
         actions = [[] for _ in range(batch_size_B)]
         rewards = [[] for _ in range(batch_size_B)]
-        is_terminated = [[False] * batch_length_T for _ in range(batch_size_B)]
-        is_truncated = [[False] * batch_length_T for _ in range(batch_size_B)]
+        is_terminated = [[False] for _ in range(batch_size_B)]
+        is_truncated = [[False] for _ in range(batch_size_B)]
         weights = [[] for _ in range(batch_size_B)]
         n_steps = [[] for _ in range(batch_size_B)]
         # If `info` should be included, construct also a container for them.
