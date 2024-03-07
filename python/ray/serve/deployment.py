@@ -561,7 +561,7 @@ def deployment_to_schema(
         "num_replicas": None
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
-        "max_concurrent_queries": d.max_concurrent_queries,
+        "max_concurrent_queries": d.max_ongoing_requests,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,

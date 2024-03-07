@@ -1,5 +1,6 @@
 import os
 from typing import List
+from datetime import datetime
 
 from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
@@ -52,7 +53,8 @@ class DockerContainer(LinuxContainer):
         sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
         if branch == "master":
-            return [sha_tag, "nightly"]
+            formatted_date = datetime.now().strftime("%y%m%d")
+            return [f"nightly.{formatted_date}.{sha_tag}", "nightly"]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]

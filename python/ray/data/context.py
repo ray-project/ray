@@ -3,7 +3,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import env_bool, env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -144,8 +144,8 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
 # Whether to enable ReservationOpResourceAllocator by default.
-DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = bool(
-    os.environ.get("RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", "1")
+DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
+    "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
 
 # The default reservation ratio for ReservationOpResourceAllocator.
