@@ -31,6 +31,9 @@ As an example, suppose you have two replicas of a synchronous deployment that ha
 This parameter is renamed to `max_ongoing_requests`. `max_concurrent_queries` will be removed in a future release.
 
 #### **max_ongoing_requests [default=100]**
+:::{note}
+The default for `max_ongoing_requests` will be changed to 5 in an upcoming Ray release. You can continue to set it manually to override the default.
+:::
 There is also a maximum queue limit that proxies respect when assigning requests to replicas. Define the limit with `max_ongoing_requests`. Set `max_ongoing_requests` to ~20 to 50% higher than `target_ongoing_requests`. Note that `target_ongoing_requests` should always be strictly less than `max_ongoing_requests`, otherwise the deployment never scales up.
 
 - Setting it too low limits upscaling. For instance, if your target value is 50 and `max_ongoing_requests` is 51, then even if the traffic increases significantly, the requests will queue up at the proxy instead of at the replicas. As a result, the autoscaler only increases the number of replicas at most 2% at a time, which is very slow.
