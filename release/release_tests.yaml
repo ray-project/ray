@@ -2724,7 +2724,7 @@
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   cluster:
     byod:
@@ -2794,7 +2794,7 @@
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   cluster:
     byod:
