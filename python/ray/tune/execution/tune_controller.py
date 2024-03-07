@@ -17,7 +17,7 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.train import CheckpointConfig
-from ray.train._internal.session import _FutureTrainingResult
+from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
@@ -1720,7 +1720,7 @@ class TuneController:
         # actor event manager when it is ready.
         return trial.temporary_state.saving_to
 
-    def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
+    def _on_saving_result(self, trial, checkpoint_value: _TrainingResult):
         with warn_if_slow("process_trial_save"):
             self._process_trial_save(trial, checkpoint_value)
 
@@ -1731,9 +1731,7 @@ class TuneController:
 
         self._maybe_execute_queued_decision(trial, after_save=True)
 
-    def _process_trial_save(
-        self, trial: Trial, checkpoint_value: Union[ray.ObjectRef, str]
-    ):
+    def _process_trial_save(self, trial: Trial, checkpoint_value: _TrainingResult):
         """Processes a trial save.
 
         Acts on the decision cached during the last `_process_trial` call.
