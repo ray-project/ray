@@ -222,7 +222,7 @@ class _RandomAccessWorker:
         start = time.perf_counter()
         block = self.blocks[block_indices[0]]
         if len(set(block_indices)) == 1 and isinstance(
-                self.blocks[block_indices[0]], pa.Table
+            self.blocks[block_indices[0]], pa.Table
         ):
             # Fast path: use np.searchsorted for vectorized search on a single block.
             # This is ~3x faster than the naive case.
