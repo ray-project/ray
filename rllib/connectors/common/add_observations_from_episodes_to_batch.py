@@ -2,9 +2,9 @@ from typing import Any, List, Optional
 
 import gymnasium as gym
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 
@@ -105,7 +105,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         **kwargs,
     ) -> Any:
         # If "obs" already in data, early out.
-        if SampleBatch.OBS in data:
+        if Columns.OBS in data:
             return data
 
         for sa_episode in self.single_agent_episode_iterator(
@@ -118,11 +118,8 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
             if self._as_learner_connector:
                 self.add_n_batch_items(
                     data,
-                    SampleBatch.OBS,
-                    items_to_add=[
-                        sa_episode.get_observations(indices=ts)
-                        for ts in range(len(sa_episode))
-                    ],
+                    Columns.OBS,
+                    items_to_add=sa_episode.get_observations(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
@@ -130,7 +127,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
                 assert not sa_episode.is_finalized
                 self.add_batch_item(
                     data,
-                    SampleBatch.OBS,
+                    Columns.OBS,
                     item_to_add=sa_episode.get_observations(-1),
                     single_agent_episode=sa_episode,
                 )

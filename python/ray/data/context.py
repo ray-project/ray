@@ -51,9 +51,9 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Minimum amount of parallelism to auto-detect for a dataset. Note that the min
+# Minimum number of read output blocks for a dataset. Note that the min
 # block size config takes precedence over this.
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 # Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -100,6 +100,11 @@ DEFAULT_AUTO_LOG_STATS = False
 # Whether stats logs should be verbose. This will include fields such
 # as `extra_metrics` in the stats output, which are excluded by default.
 DEFAULT_VERBOSE_STATS_LOG = False
+
+# Whether to include internal Ray Data/Ray Core code stack frames
+# when logging to stdout. The full stack trace is always written to the
+# Ray Data log file.
+DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = False
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -186,6 +191,7 @@ class DataContext:
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
         verbose_stats_log: bool,
+        log_internal_stack_trace_to_stdout: bool,
         trace_allocations: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
@@ -216,6 +222,7 @@ class DataContext:
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
         self.verbose_stats_logs = verbose_stats_log
+        self.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
         self.trace_allocations = trace_allocations
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
@@ -252,6 +259,8 @@ class DataContext:
         self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
         # The reservation ratio for ReservationOpResourceAllocator.
         self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+        # Minimum number of read output blocks for a dataset.
+        self.read_op_min_num_blocks = DEFAULT_READ_OP_MIN_NUM_BLOCKS
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -285,12 +294,16 @@ class DataContext:
                     use_polars=DEFAULT_USE_POLARS,
                     eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
-                    min_parallelism=DEFAULT_MIN_PARALLELISM,
+                    # NOTE: This parameter is deprecated. Use `read_op_min_num_blocks`.
+                    min_parallelism=DEFAULT_READ_OP_MIN_NUM_BLOCKS,
                     enable_tensor_extension_casting=(
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     verbose_stats_log=DEFAULT_VERBOSE_STATS_LOG,
+                    log_internal_stack_trace_to_stdout=(
+                        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
+                    ),
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,

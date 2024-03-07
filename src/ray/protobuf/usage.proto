@@ -145,6 +145,8 @@ enum TagKey {
   NUM_DRIVERS = 308;
   // State api import usage.
   EXPERIMENTAL_STATE_API_IMPORT = 309;
+  // Autoscaler versions (v1, v2).
+  AUTOSCALER_VERSION = 310;
 
   // Data
   // Logical operators, stored in JSON format with operator name and count.
