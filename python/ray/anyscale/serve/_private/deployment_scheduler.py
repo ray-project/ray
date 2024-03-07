@@ -1,26 +1,24 @@
 # Copyright (2023 and onwards) Anyscale, Inc.
 
-import copy
 import sys
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentScheduler,
+    DeploymentSchedulingInfo,
+    LaunchingReplicaInfo,
     ReplicaSchedulingRequest,
-    SpreadDeploymentSchedulingPolicy,
+    Resources,
 )
 from ray.serve._private.utils import get_head_node_id
-from ray.util.scheduling_strategies import (
-    In,
-    NodeLabelSchedulingStrategy,
-    PlacementGroupSchedulingStrategy,
-)
+from ray.util.scheduling_strategies import In
 
 
 class AnyscaleDeploymentScheduler(DeploymentScheduler):
@@ -53,16 +51,21 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         self,
         cluster_node_info_cache: ClusterNodeInfoCache,
         head_node_id: Optional[str] = None,
+        create_placement_group_fn: Callable = None,
     ):
         # {deployment_id: scheduling_policy}
-        self._deployments = {}
+        self._deployments: Dict[DeploymentID, DeploymentSchedulingInfo] = {}
         # Replicas that are waiting to be scheduled.
         # {deployment_id: {replica_name: deployment_upscale_request}}
-        self._pending_replicas = defaultdict(dict)
+        self._pending_replicas: Dict[
+            DeploymentID, Dict[str, ReplicaSchedulingRequest]
+        ] = defaultdict(dict)
         # Replicas that are being scheduled.
         # The underlying actors have been submitted.
         # {deployment_id: {replica_name, az}}
-        self._launching_replicas = defaultdict(dict)
+        self._launching_replicas: Dict[
+            DeploymentID, Dict[str, LaunchingReplicaInfo]
+        ] = defaultdict(dict)
         # Replicas that are recovering.
         # We don't know where those replicas are running.
         # {deployment_id: {replica_name}}
@@ -75,35 +78,86 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         self._cluster_node_info_cache = cluster_node_info_cache
 
         self._head_node_id = head_node_id or get_head_node_id()
+        self._create_placement_group_fn = (
+            create_placement_group_fn or ray.util.placement_group
+        )
 
     def schedule(
         self,
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
         downscales: Dict[DeploymentID, DeploymentDownscaleRequest],
-    ) -> Dict[DeploymentID, Set[str]]:
+    ) -> Dict[DeploymentID, Set[ReplicaID]]:
         # Schedule spread deployments.
         for upscale in upscales.values():
-            for replica_scheduling_request in upscale:
-                self._pending_replicas[replica_scheduling_request.deployment_id][
-                    replica_scheduling_request.replica_name
-                ] = replica_scheduling_request
+            for scheduling_request in upscale:
+                replica_id = scheduling_request.replica_id
+                deployment_id = replica_id.deployment_id
+                self._pending_replicas[deployment_id][replica_id] = scheduling_request
 
-        for deployment_id, pending_replicas in self._pending_replicas.items():
-            if not pending_replicas:
-                continue
-
-            assert isinstance(
-                self._deployments[deployment_id].scheduling_policy,
-                SpreadDeploymentSchedulingPolicy,
+        non_strict_pack_pgs_exist = any(
+            d.is_non_strict_pack_pg() for d in self._deployments.values()
+        )
+        # Schedule replicas using compact strategy.
+        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
+            # Flatten dict of deployment replicas into all replicas,
+            # then sort by decreasing resource size
+            all_scheduling_requests = sorted(
+                [
+                    scheduling_request
+                    for replicas in self._pending_replicas.values()
+                    for scheduling_request in replicas.values()
+                ],
+                key=lambda r: r.required_resources,
+                reverse=True,
             )
-            self._schedule_spread_deployment(deployment_id)
+
+            # Schedule each replica
+            for scheduling_request in all_scheduling_requests:
+                target_node = self._find_best_available_node(
+                    scheduling_request.required_resources,
+                    self._get_available_resources_per_node(),
+                )
+
+                self._schedule_replica(
+                    scheduling_request,
+                    default_scheduling_strategy="DEFAULT",
+                    target_node_id=target_node,
+                )
+
+        else:
+            for pending_replicas in self._pending_replicas.values():
+                if not pending_replicas:
+                    continue
+
+                az_to_num_replicas = self._calculate_az_to_num_replicas_mapping(
+                    deployment_id
+                )
+                for scheduling_request in list(pending_replicas.values()):
+                    target_labels = None
+                    if az_to_num_replicas:
+                        # Prefer the AZ with fewest replicas.
+                        az, _ = min(az_to_num_replicas.items(), key=lambda r: r[1])
+                        # Use soft node label scheduling strategy so that if the AZ has
+                        # available resources, the replica will run there. Otherwise, it
+                        # will run in other AZs that have available resources, and a new
+                        # node will only upscale when there are no available resources
+                        # in the entire cluster.
+                        target_labels = {
+                            ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL: In(az)
+                        }
+                        az_to_num_replicas[az] = az_to_num_replicas[az] + 1
+
+                    self._schedule_replica(
+                        scheduling_request=scheduling_request,
+                        default_scheduling_strategy="SPREAD",
+                        target_labels=target_labels,
+                    )
 
         deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
-            deployment_to_replicas_to_stop[
-                downscale.deployment_id
-            ] = self._get_replicas_to_stop(
-                downscale.deployment_id, downscale.num_to_stop
+            deployment_id = downscale.deployment_id
+            deployment_to_replicas_to_stop[deployment_id] = self._get_replicas_to_stop(
+                deployment_id, downscale.num_to_stop
             )
 
         return deployment_to_replicas_to_stop
@@ -125,90 +179,14 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
             az = self._cluster_node_info_cache.get_node_az(node_id)
             if az is not None:
                 az_to_num_replicas[az] = az_to_num_replicas.get(az, 0) + 1
-        for _, az in self._launching_replicas[deployment_id].items():
+        for _, info in self._launching_replicas[deployment_id].items():
+            if info.target_labels is None:
+                continue
+
+            az = info.target_labels.get(ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL)
             if az is not None:
                 az_to_num_replicas[az] = az_to_num_replicas.get(az, 0) + 1
         return az_to_num_replicas
-
-    def _schedule_spread_deployment(self, deployment_id: DeploymentID):
-        """A simple implementation of trying to spread replicas across AZs
-           and across nodes within an AZ.
-
-        Spreading across AZs is best effort and assumes that nodes are
-        spreaded across AZs already.
-
-        In the future, we can evolve this scheduling algorithm to be more smart
-        and consider factors like colocation.
-        """
-        az_to_num_replicas = self._calculate_az_to_num_replicas_mapping(deployment_id)
-
-        for pending_replica_name in list(self._pending_replicas[deployment_id].keys()):
-            replica_scheduling_request = self._pending_replicas[deployment_id][
-                pending_replica_name
-            ]
-
-            placement_group = None
-            az = None
-            if replica_scheduling_request.placement_group_bundles is not None:
-                # PG is currently not AZ-aware.
-                strategy = (
-                    replica_scheduling_request.placement_group_strategy
-                    if replica_scheduling_request.placement_group_strategy
-                    else "PACK"
-                )
-                placement_group = ray.util.placement_group(
-                    replica_scheduling_request.placement_group_bundles,
-                    strategy=strategy,
-                    lifetime="detached",
-                    name=replica_scheduling_request.actor_options["name"],
-                )
-                scheduling_strategy = PlacementGroupSchedulingStrategy(
-                    placement_group=placement_group,
-                    placement_group_capture_child_tasks=True,
-                )
-            elif az_to_num_replicas:
-                # Prefer the AZ with fewest replicas.
-                az, _ = min(
-                    az_to_num_replicas.items(),
-                    key=lambda az_and_num_running_replicas: az_and_num_running_replicas[
-                        1
-                    ],
-                )
-                # Use soft node label scheduling strategy
-                # so that if the specified AZ has available resources,
-                # the replica will run there.
-                # Otherwise, it will run in other AZs that have available resources.
-                # It will only upscales a new node when
-                # there are no available resources in the entire cluster.
-                scheduling_strategy = NodeLabelSchedulingStrategy(
-                    hard={}, soft={ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL: In(az)}
-                )
-                az_to_num_replicas[az] = az_to_num_replicas[az] + 1
-            else:
-                # No AZ, fallback to SPREAD scheduling.
-                scheduling_strategy = "SPREAD"
-
-            actor_options = copy.copy(replica_scheduling_request.actor_options)
-            if replica_scheduling_request.max_replicas_per_node is not None:
-                if "resources" not in actor_options:
-                    actor_options["resources"] = {}
-                # Using implicit resource (resources that every node
-                # implicitly has and total is 1)
-                # to limit the number of replicas on a single node.
-                actor_options["resources"][
-                    f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
-                    f"{deployment_id.app_name}:{deployment_id.name}"
-                ] = (1.0 / replica_scheduling_request.max_replicas_per_node)
-            actor_handle = replica_scheduling_request.actor_def.options(
-                scheduling_strategy=scheduling_strategy,
-                **actor_options,
-            ).remote(*replica_scheduling_request.actor_init_args)
-
-            del self._pending_replicas[deployment_id][pending_replica_name]
-            self._launching_replicas[deployment_id][pending_replica_name] = az
-            replica_scheduling_request.on_scheduled(
-                actor_handle, placement_group=placement_group
-            )
 
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
@@ -285,5 +263,40 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
 
         return replicas_to_stop
 
-    def detect_compact_opportunities(self) -> Tuple[str, float]:
+    def _find_best_available_node(
+        self,
+        required_resources: Resources,
+        available_resources_per_node: Dict[str, Resources],
+    ) -> Optional[str]:
+        """Chooses best available node to schedule the required resources.
+
+        If there are available nodes, returns the node ID of the best
+        available node, minimizing fragmentation. Prefers non-idle nodes
+        over idle nodes.
+        """
+
+        node_to_running_replicas = self._get_node_to_running_replicas()
+
+        non_idle_nodes = {
+            node_id: res
+            for node_id, res in available_resources_per_node.items()
+            if len(node_to_running_replicas[node_id]) > 0
+        }
+        idle_nodes = {
+            node_id: res
+            for node_id, res in available_resources_per_node.items()
+            if len(node_to_running_replicas[node_id]) == 0
+        }
+
+        # 1. Prefer non-idle nodes
+        chosen_node = self._best_fit_node(required_resources, non_idle_nodes)
+        if chosen_node:
+            return chosen_node
+
+        # 2. Consider idle nodes last
+        chosen_node = self._best_fit_node(required_resources, idle_nodes)
+        if chosen_node:
+            return chosen_node
+
+    def detect_compact_opportunities(self) -> Optional[Tuple[str, float]]:
         return None, None
