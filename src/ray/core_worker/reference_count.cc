@@ -274,7 +274,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
 }
 
 bool ReferenceCounter::CheckGeneratorRefsOutOfScope(const ObjectID &generator_id,
-    int64_t num_objects_generated) {
+                                                    int64_t num_objects_generated) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.count(generator_id)) {
     return false;

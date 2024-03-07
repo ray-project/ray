@@ -423,7 +423,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Return True if there's no more object to read. False otherwise.
-  bool StreamingGeneratorIsFinished(const ObjectID &generator_id, int64_t *num_objects_generated = nullptr) const ABSL_LOCKS_EXCLUDED(mu_);
+  bool StreamingGeneratorIsFinished(const ObjectID &generator_id,
+                                    int64_t *num_objects_generated = nullptr) const
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
@@ -654,7 +656,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Set the NodeID where the task is executed.
     void SetNodeId(const NodeID &node_id) { node_id_ = node_id; }
 
-    bool IsPending() const { return GetStatus() != rpc::TaskStatus::FINISHED && GetStatus() != rpc::TaskStatus::FAILED; }
+    bool IsPending() const {
+      return GetStatus() != rpc::TaskStatus::FINISHED &&
+             GetStatus() != rpc::TaskStatus::FAILED;
+    }
 
     bool IsWaitingForExecution() const {
       return GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER;

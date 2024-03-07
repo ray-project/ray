@@ -642,12 +642,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       "CoreWorker.RecordMetrics");
 
   periodical_runner_.RunFnPeriodically(
-      [this] {
-        TryDeleteObjectRefStreams();
-        },
+      [this] { TryDeleteObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
-      "CoreWorker.GCStreamingGeneratorMetadata"
-      );
+      "CoreWorker.GCStreamingGeneratorMetadata");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -2977,15 +2974,16 @@ void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
 
 void CoreWorker::TryDeleteObjectRefStreams() {
   std::vector<ObjectID> out_of_scope_generator_ids;
-  for (auto it = deleted_generator_ids_.begin();
-      it != deleted_generator_ids_.end(); it++) {
+  for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
+       it++) {
     int64_t num_objects_generated = 0;
     if (!task_manager_->StreamingGeneratorIsFinished(*it, &num_objects_generated)) {
       continue;
     }
 
     const auto &generator_id = *it;
-    bool can_gc = reference_counter_->CheckGeneratorRefsOutOfScope(generator_id, num_objects_generated);
+    bool can_gc = reference_counter_->CheckGeneratorRefsOutOfScope(generator_id,
+                                                                   num_objects_generated);
     if (can_gc && task_manager_->DelObjectRefStream(generator_id)) {
       out_of_scope_generator_ids.push_back(generator_id);
     }

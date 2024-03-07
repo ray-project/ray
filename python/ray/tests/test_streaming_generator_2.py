@@ -420,7 +420,6 @@ def test_python_object_leak(shutdown_only):
     assert len(list_actors()) == 12
 
 
-
 @pytest.mark.parametrize("delay", [True, False])
 @pytest.mark.parametrize("actor_task", [True, False])
 def test_reconstruction_generator_out_of_scope(
