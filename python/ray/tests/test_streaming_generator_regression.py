@@ -34,7 +34,8 @@ class EndpointActor:
                 def submit(self, fn, /, *args, **kwargs):
                     def __slowed_fn():
                         print(
-                            f">>> [DelayedThreadPoolExecutor] Starting executing function with delay {target_delay_s}s"
+                            f">>> [DelayedThreadPoolExecutor] Starting executing "
+                            f"function with delay {target_delay_s}s"
                         )
 
                         time.sleep(target_delay_s)
@@ -67,8 +68,8 @@ class CallerActor:
                 ray.cancel(async_obj_ref_gen, recursive=False)
 
                 # NOTE: This delay is crucial to let already scheduled task to report
-                #       generated item (report_streaming_generator_output) before we will
-                #       tear down this stream
+                #       generated item (report_streaming_generator_output) before we
+                #       will tear down this stream
                 delay_after_cancellation_s = 2
 
                 print(f">>> [Caller] **Sleeping** {delay_after_cancellation_s}s")
@@ -94,8 +95,8 @@ def test_segfault_report_streaming_generator_output(
     ray_start_cluster, injected_executor_delay_s: float
 ):
     """
-    This is a "smoke" test attempting to emulate condition, when using Ray's async streaming generator,
-    that leads to worker crashing with SIGSEGV.
+    This is a "smoke" test attempting to emulate condition, when using Ray's async
+    streaming generator, that leads to worker crashing with SIGSEGV.
 
     For more details summarizing these conditions, please refer to
     https://github.com/ray-project/ray/issues/43771#issuecomment-1982301654

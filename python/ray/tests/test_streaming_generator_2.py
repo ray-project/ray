@@ -37,7 +37,8 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
         if delay:
             m.setenv(
                 "RAY_testing_asio_delay_us",
-                "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
+                "CoreWorkerService.grpc_server."
+                "ReportGeneratorItemReturns=10000:1000000",
             )
         cluster = ray_start_cluster
         # Head node with no resources.

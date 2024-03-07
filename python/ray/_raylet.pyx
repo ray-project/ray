@@ -4640,8 +4640,8 @@ cdef class CoreWorker:
     def get_event_loop_executor(self) -> ThreadPoolExecutor:
         if self.event_loop_executor is None:
             # NOTE: We're deliberately allocating thread-pool executor with
-            #       a single thread, provided that many of its use-cases are 
-            #       not thread-safe yet (for ex, reporting streaming generator output) 
+            #       a single thread, provided that many of its use-cases are
+            #       not thread-safe yet (for ex, reporting streaming generator output)
             self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
         return self.event_loop_executor
 
