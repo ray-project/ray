@@ -457,7 +457,16 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
-void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
+bool TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(generator_id.TaskId());
+    if (it->second.IsPending()) {
+      // Wait for the task to complete before we try to delete it.
+      return false;
+    }
+  }
+
   absl::MutexLock lock(&objet_ref_stream_ops_mu_);
 
   RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
@@ -467,7 +476,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
   if (it == object_ref_streams_.end()) {
     RAY_CHECK(signal_it == ref_stream_execution_signal_callbacks_.end());
-    return;
+    return true;
   }
 
   // If a stream is deleted, signal the executor to just resume.
@@ -494,6 +503,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
     // when the ref goes to 0.
     in_memory_store_->Delete(deleted);
   }
+  return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
@@ -540,13 +550,22 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
-bool TaskManager::IsFinished(const ObjectID &generator_id) const {
+bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id, int64_t *num_objects_generated) const {
   absl::MutexLock lock(&objet_ref_stream_ops_mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "IsFinished API can be used only when the stream has been "
-         "created "
-         "and not removed.";
+  if (stream_it == object_ref_streams_.end()) {
+    if (num_objects_generated) {
+      *num_objects_generated = -1;
+    }
+    return true;
+  }
+
+  if (stream_it->second.IsFinished()) {
+    if (num_objects_generated) {
+      *num_objects_generated = stream_it->second.EofIndex();
+    }
+  }
+
   return stream_it->second.IsFinished();
 }
 
@@ -797,6 +816,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                          << " return objects.";
           for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
             if (return_id_info.is_plasma_object()) {
+              // NOTE(swang): It is possible that the dynamically returned refs
+              // have already been consumed by the caller and deleted. This can
+              // cause a memory leak of the task metadata, because we will
+              // never receive a callback from the ReferenceCounter to erase
+              // the task. To work around this, the caller must periodically
+              // check whether all of the generator refs have gone out of
+              // scope, and then call DelObjectRefStream to delete both the
+              // task spec and the stream metadata.
               it->second.reconstructable_return_ids.insert(
                   ObjectID::FromBinary(return_id_info.object_id()));
             }

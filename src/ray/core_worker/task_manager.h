@@ -159,6 +159,8 @@ class ObjectRefStream {
   /// \return Index of the last consumed item, -1 if nothing is consumed yet.
   int64_t LastConsumedIndex() const { return next_index_ - 1; }
 
+  int64_t EofIndex() const { return end_of_stream_index_; }
+
   /// Total number of object that's written to the stream
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
   int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
@@ -370,7 +372,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                                 const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Delete the object ref stream.
+  /// Delete the object ref stream. If present, also deletes the task metadata
+  /// for the streaming generator task to avoid a memory leak in the edge case
+  /// where the task completes after all returned refs have already gone out of
+  /// scope.
   ///
   /// Once the stream is deleted, it will clean up all unconsumed
   /// object references, and all the future intermediate report
@@ -381,9 +386,17 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// not every langauge guarantees the destructor is called
   /// only once.
   ///
+  /// Returns false if the task metadata is present but the task is still
+  /// pending completion, because we need to wait until the task finishes or
+  /// fails to erase it. Otherwise, it is possible for the task metadata to
+  /// leak, because we have already deleted the corresponding stream metadata.
+  /// In this case, the caller should try again later.
+  ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  void DelObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
+  /// \return Whether the task metadata and stream metadata were successfully
+  /// erased.
+  bool DelObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Return true if the object ref stream exists.
   ///
@@ -410,7 +423,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Return True if there's no more object to read. False otherwise.
-  bool IsFinished(const ObjectID &generator_id) const ABSL_LOCKS_EXCLUDED(mu_);
+  bool StreamingGeneratorIsFinished(const ObjectID &generator_id, int64_t *num_objects_generated = nullptr) const ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
@@ -641,7 +654,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Set the NodeID where the task is executed.
     void SetNodeId(const NodeID &node_id) { node_id_ = node_id; }
 
-    bool IsPending() const { return GetStatus() != rpc::TaskStatus::FINISHED; }
+    bool IsPending() const { return GetStatus() != rpc::TaskStatus::FINISHED && GetStatus() != rpc::TaskStatus::FAILED; }
 
     bool IsWaitingForExecution() const {
       return GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER;

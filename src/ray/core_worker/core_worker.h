@@ -389,7 +389,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::ObjectReference *object_ref_out);
 
   /// Return True if there's no more object to read. False otherwise.
-  bool IsFinished(const ObjectID &generator_id) const;
+  bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const;
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
@@ -400,16 +400,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
-  /// Delete the ObjectRefStream that was
-  /// created upon the initial task
-  /// submission.
-  ///
-  /// It is a pass-through method. See TaskManager::DelObjectRefStream
-  /// for details.
+  /// Asynchronously delete the ObjectRefStream that was created upon the
+  /// initial task submission. This method triggers a timer. On each interval,
+  /// we check whether the generator ref and all dynamic return refs have been
+  /// removed in the ref counter. If so, we remove the stream and task
+  /// metadata, because we know that the streaming task can never be
+  /// re-executed.
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  void DelObjectRefStream(const ObjectID &generator_id);
+  void AsyncDelObjectRefStream(const ObjectID &generator_id);
+
+  void TryDeleteObjectRefStreams();
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -1898,6 +1900,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Worker's PID
   uint32_t pid_;
+
+  absl::flat_hash_set<ObjectID> deleted_generator_ids_;
 };
 
 // Lease request rate-limiter based on cluster node size.

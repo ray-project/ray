@@ -1216,16 +1216,17 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCreateDelete) {
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
   ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
-  manager_.DelObjectRefStream(generator_id);
-  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
+  // Deletion does not succeed until task is completed too.
+  ASSERT_FALSE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
   // Test DelObjectRefStream is idempotent
-  manager_.DelObjectRefStream(generator_id);
-  manager_.DelObjectRefStream(generator_id);
-  manager_.DelObjectRefStream(generator_id);
-  manager_.DelObjectRefStream(generator_id);
-  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
+  ASSERT_FALSE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
 
+  // Task completes. Deletion succeeds.
   CompletePendingStreamingTask(spec, caller_address, 0);
+  ASSERT_TRUE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
@@ -1238,6 +1239,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
+  CompletePendingStreamingTask(spec, caller_address, 0);
   manager_.DelObjectRefStream(generator_id);
   ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 
@@ -1254,7 +1256,6 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
       /*set_in_plasma*/ false);
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status, int64_t) {}));
-  CompletePendingStreamingTask(spec, caller_address, 0);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {

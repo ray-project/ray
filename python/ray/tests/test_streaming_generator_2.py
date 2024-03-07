@@ -420,6 +420,81 @@ def test_python_object_leak(shutdown_only):
     assert len(list_actors()) == 12
 
 
+
+@pytest.mark.parametrize("delay", [True, False])
+@pytest.mark.parametrize("actor_task", [True, False])
+def test_reconstruction_generator_out_of_scope(
+    monkeypatch, ray_start_cluster, delay, actor_task
+):
+    with monkeypatch.context() as m:
+        if delay:
+            m.setenv(
+                "RAY_testing_asio_delay_us",
+                "CoreWorkerService.grpc_server."
+                "ReportGeneratorItemReturns=10000:1000000",
+            )
+        cluster = ray_start_cluster
+        # Head node with no resources.
+        cluster.add_node(
+            num_cpus=0,
+            _system_config=RECONSTRUCTION_CONFIG,
+            enable_object_reconstruction=True,
+        )
+        ray.init(address=cluster.address)
+        # Node to place the initial object.
+        node_to_kill = cluster.add_node(
+            num_cpus=1, num_gpus=1, object_store_memory=10**8
+        )
+        cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=0, num_gpus=1, max_restarts=-1, max_task_retries=2)
+    class Actor:
+        def dynamic_generator(self, num_returns):
+            for i in range(num_returns):
+                print("YIELD", i)
+                yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote(num_returns="streaming", max_retries=2)
+    def dynamic_generator(num_returns):
+        for i in range(num_returns):
+            print("YIELD", i)
+            yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def dependent_task(x):
+        return x
+
+    @ray.remote
+    def fetch(x):
+        return x[0]
+
+    # Test recovery of all dynamic objects through re-execution.
+    if actor_task:
+        actor = Actor.remote()
+        gen = actor.dynamic_generator.options(num_returns="streaming").remote(1)
+    else:
+        gen = ray.get(dynamic_generator.remote(1))
+    refs = []
+
+    print("generator", gen)
+    for i in range(1):
+        ref = next(gen)
+        print("generator return", ref)
+        ref = dependent_task.remote(ref)
+        print("dependent ref", ref)
+        refs.append(ref)
+    del gen
+
+    for i, ref in enumerate(refs):
+        assert ray.get(fetch.remote(ref)) == i
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, num_gpus=1, object_store_memory=10**8)
+
+    for i, ref in enumerate(refs):
+        assert ray.get(fetch.remote(ref)) == i
+
+
 if __name__ == "__main__":
     import os
 

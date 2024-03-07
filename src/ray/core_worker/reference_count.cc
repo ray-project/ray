@@ -273,6 +273,26 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     absl::optional<NodeID>()));
 }
 
+bool ReferenceCounter::CheckGeneratorRefsOutOfScope(const ObjectID &generator_id,
+    int64_t num_objects_generated) {
+  absl::MutexLock lock(&mutex_);
+  if (object_id_refs_.count(generator_id)) {
+    return false;
+  }
+
+  auto task_id = generator_id.TaskId();
+  for (int64_t i = 0; i < num_objects_generated; i++) {
+    // Add 2 because task returns start from index 1 and the
+    // first return object is the generator ID.
+    const auto return_id = ObjectID::FromIndex(task_id, i + 2);
+    if (object_id_refs_.count(return_id)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool ReferenceCounter::AddOwnedObjectInternal(
     const ObjectID &object_id,
     const std::vector<ObjectID> &inner_ids,

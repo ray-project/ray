@@ -223,6 +223,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                         const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  bool CheckGeneratorRefsOutOfScope(const ObjectID &generator_id,
+      int64_t num_objects_generated)
+    ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.
