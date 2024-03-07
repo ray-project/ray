@@ -1427,6 +1427,9 @@ async def execute_streaming_generator_async(
         print(f">>> {datetime.utcnow()} [execute_streaming_generator_async] Scheduling report_streaming_generator_output ({async_task_id.get()})")
 
         try:
+            # Run it in a separate thread to that we can
+            # avoid blocking the event loop when serializing
+            # the output (which has nogil).
             fut = loop.run_in_executor(
                 worker.core_worker.get_thread_pool_for_async_event_loop(),
                 report_streaming_generator_output,
@@ -3296,7 +3299,7 @@ cdef class CoreWorker:
         self.current_runtime_env = None
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
-        self.thread_pool_for_async_event_loop = None
+        self.event_loop_executor = None
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
@@ -4509,12 +4512,14 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_thread_pool_for_async_event_loop(self):
-        if self.thread_pool_for_async_event_loop is None:
-            # Theoretically, we can use multiple threads,
-            self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
-                max_workers=1)
-        return self.thread_pool_for_async_event_loop
+    def get_event_loop_executor(self) -> ThreadPoolExecutor:
+        if self.event_loop_executor is None:
+            # TODO elaborate
+            self.reset_event_loop_executor(ThreadPoolExecutor(max_workers=1))
+        return self.event_loop_executor
+
+    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
+        self.event_loop_executor = executor
 
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
@@ -4633,8 +4638,8 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
-        if self.thread_pool_for_async_event_loop:
-            self.thread_pool_for_async_event_loop.shutdown(
+        if self.event_loop_executor:
+            self.event_loop_executor.shutdown(
                 wait=False, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
