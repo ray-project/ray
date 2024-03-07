@@ -47,11 +47,17 @@ class MockIssue:
         self.labels = labels or []
         self.comments = []
 
-    def edit(self, state: str = None, labels: List[MockLabel] = None):
+    def edit(
+        self, state: str = None, labels: List[MockLabel] = None, title: str = None
+    ):
         if state:
             self.state = state
         if labels:
             self.labels = labels
+        if title:
+            self.title = title
+        if state:
+            self.state = state
 
     def create_comment(self, comment: str):
         self.comments.append(comment)
@@ -190,8 +196,17 @@ def test_ci_move_from_passing_to_failing_to_flaky():
     ] * CONTINUOUS_PASSING_TO_PASSING
     CITestStateMachine(test).move()
     assert test.get_state() == TestState.PASSING
-    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) == issue.number
     assert issue.state == "closed"
+
+    # go back to failing and reuse the github issue
+    test.test_results = 3 * [
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    ]
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.CONSITENTLY_FAILING
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) == issue.number
+    assert issue.state == "open"
 
 
 def test_release_move_from_passing_to_failing():
@@ -261,7 +276,6 @@ def test_release_move_from_failing_to_passing():
     sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
-    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
     assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
     assert test.get(Test.KEY_BISECT_BLAMED_COMMIT) is None
 
@@ -305,7 +319,6 @@ def test_release_move_from_failing_to_jailed():
     sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
-    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
     assert issue.state == "closed"
 
 

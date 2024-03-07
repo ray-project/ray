@@ -78,7 +78,7 @@ class CITestStateMachine(TestStateMachine):
         # This line is to match the regex in https://shorturl.at/aiK25
         body += f"\nDataCaseName-{self.test.get_name()}-END\n"
         body += "Managed by OSS Test Policy"
-        title = f"CI test {self.test.get_name()} is {self.test.get_state().value}",
+        title = f"CI test {self.test.get_name()} is {self.test.get_state().value}"
 
         # If the issue already exists, update the issue; otherwise creating a new one
         github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
