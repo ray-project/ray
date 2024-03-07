@@ -78,12 +78,23 @@ class CITestStateMachine(TestStateMachine):
         # This line is to match the regex in https://shorturl.at/aiK25
         body += f"\nDataCaseName-{self.test.get_name()}-END\n"
         body += "Managed by OSS Test Policy"
-        issue_number = self.ray_repo.create_issue(
-            title=f"CI test {self.test.get_name()} is {self.test.get_state().value}",
-            body=body,
-            labels=labels,
-        ).number
-        self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
+        title = f"CI test {self.test.get_name()} is {self.test.get_state().value}",
+
+        # If the issue already exists, update the issue; otherwise creating a new one
+        github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if not github_issue_number:
+            issue_number = self.ray_repo.create_issue(
+                title=title,
+                body=body,
+                labels=labels,
+            ).number
+            self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
+            return
+        else:
+            issue = self.ray_repo.get_issue(github_issue_number)
+            issue.edit(title=title, state="open")
+            issue.create_comment(body)
+            return
 
     def _consistently_failing_to_jailed(self) -> bool:
         return False
