@@ -3,7 +3,7 @@ import bisect
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, DefaultDict, Dict, List, Optional
+from typing import Callable, DefaultDict, Dict, Hashable, List, Optional
 
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -120,14 +120,14 @@ class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
     def __init__(self):
-        self.data: DefaultDict[str, List[TimeStampedValue]] = defaultdict(list)
+        self.data: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
 
-    def add_metrics_point(self, data_points: Dict[str, float], timestamp: float):
+    def add_metrics_point(self, data_points: Dict[Hashable, float], timestamp: float):
         """Push new data points to the store.
 
         Args:
             data_points: dictionary containing the metrics values. The
-              key should be a string that uniquely identifies this time series
+              key should uniquely identify this time series
               and to be used to perform aggregation.
             timestamp: the unix epoch timestamp the metrics are
               collected at.
@@ -136,7 +136,9 @@ class InMemoryMetricsStore:
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
 
-    def _get_datapoints(self, key: str, window_start_timestamp_s: float) -> List[float]:
+    def _get_datapoints(
+        self, key: Hashable, window_start_timestamp_s: float
+    ) -> List[float]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -150,7 +152,7 @@ class InMemoryMetricsStore:
         return datapoints[idx:]
 
     def window_average(
-        self, key: str, window_start_timestamp_s: float, do_compact: bool = True
+        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
     ) -> Optional[float]:
         """Perform a window average operation for metric `key`
 
@@ -175,7 +177,9 @@ class InMemoryMetricsStore:
             return
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
-    def max(self, key: str, window_start_timestamp_s: float, do_compact: bool = True):
+    def max(
+        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
+    ):
         """Perform a max operation for metric `key`.
 
         Args:
