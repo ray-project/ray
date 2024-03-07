@@ -29,7 +29,13 @@ LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
 # Performance timers (keys for Algorithm._timers).
+# ------------------------------------------------
+# Duration of n `training_step()` calls making up one "iteration".
+# Note that n may be >1 if the user has set up a min time (sec) or timesteps per
+# iteration. 
 TRAINING_ITERATION_TIMER = "training_iteration"
+# Duration of a single `training_step()` call.
+TRAINING_STEP_TIMER = "training_step"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 GARBAGE_COLLECTION_TIMER = "garbage_collection"

@@ -1,12 +1,11 @@
-import argparse
-import os
-
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.tune.registry import get_trainable_cls
 
-parser = argparse.ArgumentParser()
-
+parser = add_rllib_example_script_args(default_reward=500.0)
 parser.add_argument(
     "--evaluation-duration",
     type=lambda v: v if v == "auto" else int(v),
@@ -34,37 +33,6 @@ parser.add_argument(
     type=int,
     default=2,
     help="Every how many train iterations should we run an evaluation loop?",
-)
-
-parser.add_argument(
-    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
-)
-parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="torch",
-    help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=200, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=200000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--stop-reward", type=float, default=180.0, help="Reward at which we stop training."
-)
-parser.add_argument(
-    "--local-mode",
-    action="store_true",
-    help="Init Ray in local mode for easier debugging.",
 )
 
 
@@ -112,20 +80,15 @@ class AssertEvalCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    import ray
-    from ray import air, tune
-
     args = parser.parse_args()
-
-    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .environment("CartPole-v1")
         # Run with tracing enabled for tf2.
         .framework(args.framework)
-        .training()
         .evaluation(
             # Parallel evaluation+training config.
             # Switch on evaluation in parallel with training.
@@ -145,24 +108,21 @@ if __name__ == "__main__":
             # "episodes" or "timesteps".
             evaluation_duration_unit=args.evaluation_duration_unit,
         )
+        .rollouts(
+            num_rollout_workers=args.num_env_runners,
+            env_runner_cls=(
+
+            ),
+        )
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation OR - in auto
         # mode - run at least as many episodes as we have eval workers.
         .callbacks(AssertEvalCallback)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(
+            num_learner_workers=args.num_gpus,
+            num_gpus_per_learner=int(args.num_gpus != 0),
+            num_cpus_for_local_worker=1,
+        )
     )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
-    }
-
-    results = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
-    ).fit()
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
-    ray.shutdown()
+    run_rllib_example_script_experiment(config, args)
