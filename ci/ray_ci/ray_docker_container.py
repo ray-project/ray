@@ -49,8 +49,6 @@ class RayDockerContainer(DockerContainer):
                 "python .buildkite/copy_files.py --destination docker_login",
             ]
             for alias in self._get_image_names():
-                if os.environ["RAYCI_SCHEDULE"] != "nightly" and "nightly" in alias:
-                    continue
                 cmds += [
                     f"docker tag {ray_image} {alias}",
                     f"docker push {alias}",
@@ -58,10 +56,18 @@ class RayDockerContainer(DockerContainer):
         self.run_script(cmds)
 
     def _should_upload(self) -> bool:
-        return (
-            os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
-            and self.upload
-        )
+        if not self.upload:
+            return False
+        if os.environ.get("BUILDKITE_PIPELINE_ID") != POSTMERGE_PIPELINE:
+            return False
+        if os.environ.get("BUILDKITE_BRANCH").startswith("releases/"):
+            return True
+        if (
+            os.environ.get("BUILDKITE_BRANCH") == "master"
+            and os.environ.get("RAYCI_SCHEDULE") == "nightly"
+        ):
+            return True
+        return False
 
     def _get_image_names(self) -> List[str]:
         ray_repo = f"rayproject/{self.image_type}"
