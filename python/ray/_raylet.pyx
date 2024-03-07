@@ -230,6 +230,12 @@ GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
+TARGET_MAX_BATCH_DURATION_US = float(os.getenv("TARGET_MAX_BATCH_DURATION_US", "100.0"))
+DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", "25"))
+
+# TODO clean up
+_DBG_PRINT_BATCHING_STATS = int(os.getenv("DBG_PRINT_BATCHING_STATS", "0"))
+
 logger = logging.getLogger(__name__)
 
 # The currently executing task, if any. These are used to synchronize task
@@ -1234,8 +1240,9 @@ cdef class StreamingGeneratorExecutionContext:
 
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
-    output_or_exception: Union[object, Exception],
-    generator_index: int64_t
+    outputs: typing.List[object],
+    exception: Exception,
+    prev_generator_index: int64_t
 ):
     """Report a given generator output to a caller.
 
@@ -1246,20 +1253,45 @@ cdef report_streaming_generator_output(
 
     Args:
         context: Streaming generator's execution context.
-        output_or_exception: The output yielded from a
-            generator or raised as an exception.
-        generator_index: index of the output element in the
-            generated sequence
+        outputs: The output yielded from a
+            generator 
+        exception: Exception raised from a generator
+        prev_generator_index: index of the last previously reported 
+            element in the generated sequence (to continue from)
     """
     worker = ray._private.worker.global_worker
 
     cdef:
         # Ray Object created from an output.
-        c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] dynamic_return_objects
 
-    if isinstance(output_or_exception, Exception):
+    cur_gen_index = prev_generator_index
+
+    if outputs:
+        # Reserve appropriate amount of capacity in vector
+        # to avoid costly re-allocations
+        dynamic_return_objects.reserve(len(outputs))
+        # Report the intermediate result if there was no error.
+        create_generator_return_objects(
+            outputs,
+            context.generator_id,
+            worker,
+            context.caller_address,
+            context.task_id,
+            context.return_size,
+            cur_gen_index,
+            context.is_async,
+            dynamic_return_objects
+        )
+        cur_gen_index += len(outputs)
+
+    if exception:
+        # Reserve appropriate amount of capacity in vector
+        # to avoid costly re-allocations
+        dynamic_return_objects.reserve(1)
+
         create_generator_error_object(
-            output_or_exception,
+            exception,
             worker,
             context.task_type,
             context.caller_address,
@@ -1271,41 +1303,29 @@ cdef report_streaming_generator_output(
             context.actor,
             context.actor_id,
             context.return_size,
-            generator_index,
+            cur_gen_index,
             context.is_async,
             context.should_retry_exceptions,
-            &return_obj,
+            dynamic_return_objects,
             context.is_retryable_error,
             context.application_error
         )
-    else:
-        # Report the intermediate result if there was no error.
-        create_generator_return_obj(
-            output_or_exception,
-            context.generator_id,
-            worker,
-            context.caller_address,
-            context.task_id,
-            context.return_size,
-            generator_index,
-            context.is_async,
-            &return_obj)
+        cur_gen_index += 1
 
-    # Del output here so that we can GC the memory
-    # usage asap.
-    del output_or_exception
-
-    context.streaming_generator_returns[0].push_back(
-        c_pair[CObjectID, c_bool](
-            return_obj.first,
-            is_plasma_object(return_obj.second)))
+    # TODO(ak/sang) clean up
+    for i in range(dynamic_return_objects.size()):
+        context.streaming_generator_returns[0].push_back(
+            c_pair[CObjectID, c_bool](
+                dynamic_return_objects[i].first,
+                is_plasma_object(dynamic_return_objects[i].second)))
 
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-            return_obj,
+            dynamic_return_objects,
             context.generator_id,
             context.caller_address,
-            generator_index,
+            # TODO elaborate
+            prev_generator_index,
             context.attempt_number,
             context.waiter))
 
@@ -1343,7 +1363,8 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         except Exception as e:
             output_or_exception = e
 
-        report_streaming_generator_output(context, output_or_exception, gen_index)
+        # TODO fix
+        report_streaming_generator_output(context, output_or_exception, None, gen_index)
         gen_index += 1
 
         if isinstance(output_or_exception, Exception):
@@ -1382,47 +1403,67 @@ async def execute_streaming_generator_async(
 
     gen = context.generator
 
+    loop = asyncio.get_running_loop()
+    worker = ray._private.worker.global_worker
+
+    cur_batch_size = DEFAULT_BATCH_SIZE
+
     futures = []
+
     while True:
+        outputs = []
+        exception = None
+
         try:
-            output_or_exception = await gen.__anext__()
+            start = time.perf_counter()
+            i = 0
+            while i < cur_batch_size:
+                outputs.append(await gen.__anext__())
+                i += 1
+
+            batch_duration_us = (time.perf_counter() - start) * 1_000_000
+            # Batches are targeted to be exactly 1us in duration, otherwise we fallback to
+            # batch size of
+            next_batch_size = max(1, round((TARGET_MAX_BATCH_DURATION_US / batch_duration_us) * cur_batch_size))
+
+            if _DBG_PRINT_BATCHING_STATS:
+                print(f"[DBG] Batch size: {next_batch_size} ({cur_batch_size}), duration: ", batch_duration_us, f"us (ratio {TARGET_MAX_BATCH_DURATION_US / batch_duration_us})")
+
+            cur_batch_size = next_batch_size
         except StopAsyncIteration:
             break
         except AsyncioActorExit:
             # The execute_task will handle this case.
             raise
         except Exception as e:
-            output_or_exception = e
-
-        loop = asyncio.get_running_loop()
-        worker = ray._private.worker.global_worker
-
-        # NOTE: Reporting generator output in a streaming fashion,
-        #       is done in a standalone thread-pool fully *asynchronously*
-        #       to avoid blocking the event-loop and allow it to *concurrently*
-        #       make progress, since serializing and actual RPC I/O is done
-        #       with "nogil".
-        futures.append(
-            loop.run_in_executor(
-                worker.core_worker.get_thread_pool_for_async_event_loop(),
-                report_streaming_generator_output,
-                context,
-                output_or_exception,
-                cur_generator_index,
-            )
-        )
-
-        cur_generator_index += 1
-
-        if isinstance(output_or_exception, Exception):
+            exception = e
             break
+        finally:
+            # NOTE: Reporting generator output in a streaming fashion,
+            #       is done in a standalone thread-pool fully *asynchronously*
+            #       to avoid blocking the event-loop and allow it to *concurrently*
+            #       make progress, since serializing and actual RPC I/O is done
+            #       with "nogil".
+            futures.append(
+                loop.run_in_executor(
+                    worker.core_worker.get_thread_pool_for_async_event_loop(),
+                    report_streaming_generator_output,
+                    context,
+                    outputs,
+                    exception,
+                    cur_generator_index,
+                )
+            )
+
+            if not exception:
+                cur_generator_index += len(outputs)
 
     # Make sure all RPC I/O completes before returning
     await asyncio.gather(*futures)
 
 
-cdef create_generator_return_obj(
-        output,
+cdef create_generator_return_objects(
+        outputs,
         const CObjectID &generator_id,
         worker: "Worker",
         const CAddress &caller_address,
@@ -1430,11 +1471,11 @@ cdef create_generator_return_obj(
         return_size,
         generator_index,
         is_async,
-        c_pair[CObjectID, shared_ptr[CRayObject]] *return_object):
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] &dynamic_return_objects):
     """Create a generator return object based on a given output.
 
     Args:
-        output: The output from a next(generator).
+        outputs: The output from a next(generator).
         generator_id: The object ref id of the generator task.
         worker: The Python worker class inside worker.py
         caller_address: The address of the caller. By our protocol,
@@ -1445,29 +1486,34 @@ cdef create_generator_return_obj(
         generator_index: The index of a current error object.
         is_async: Whether or not the given object is created within
             an async actor.
-        return_object(out): A Ray Object that contains the given output.
+        dynamic_return_objects(out): A collection of Ray Objects that contains the given output.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
 
-    return_id = core_worker.allocate_dynamic_return_id_for_generator(
-        caller_address,
-        task_id.native(),
-        return_size,
-        generator_index,
-        is_async,
-    )
-    intermediate_result.push_back(
-            c_pair[CObjectID, shared_ptr[CRayObject]](
-                return_id, shared_ptr[CRayObject]()))
-    core_worker.store_task_outputs(
-        worker, [output],
-        caller_address,
-        &intermediate_result,
-        generator_id)
+    assert dynamic_return_objects.size() == 0
+    # Allocate dynamic return object-ids for objects returned by
+    # the generator
+    for i in range(len(outputs)):
+        dynamic_return_obj_id = core_worker.allocate_dynamic_return_id_for_generator(
+            caller_address,
+            task_id.native(),
+            return_size,
+            generator_index,
+            is_async,
+        )
+        generator_index += 1
 
-    return_object[0] = intermediate_result.back()
+        dynamic_return_objects.push_back(
+            c_pair[CObjectID, shared_ptr[CRayObject]](dynamic_return_obj_id, shared_ptr[CRayObject]())
+        )
+
+    core_worker.store_task_outputs(
+        worker,
+        outputs,
+        caller_address,
+        &dynamic_return_objects,
+        generator_id)
 
 
 cdef create_generator_error_object(
@@ -1486,7 +1532,7 @@ cdef create_generator_error_object(
         generator_index,
         is_async,
         c_bool should_retry_exceptions,
-        c_pair[CObjectID, shared_ptr[CRayObject]] *error_object,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] &dynamic_return_objects,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Create a generator error object.
@@ -1518,14 +1564,14 @@ cdef create_generator_error_object(
         generator_index: The index of a current error object.
         is_async: Whether or not the given object is created within
             an async actor.
-        error_object(out): A Ray Object that contains the given error exception.
+        dynamic_return_objects(out): A collection of Ray Objects that contains the given 
+            output/exception.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
 
     is_retryable_error[0] = determine_if_retryable(
@@ -1548,26 +1594,32 @@ cdef create_generator_error_object(
         "Task failed with unretryable exception:"
         " {}.".format(task_id), exc_info=True)
 
-    error_id = core_worker.allocate_dynamic_return_id_for_generator(
+    assert dynamic_return_objects.size() == 0
+    # Allocate dynamic return object-id for an exception object returned by
+    # the generator
+    dynamic_return_obj_id = core_worker.allocate_dynamic_return_id_for_generator(
         caller_address,
         task_id.native(),
         return_size,
         generator_index,
         is_async,
     )
-    intermediate_result.push_back(
-            c_pair[CObjectID, shared_ptr[CRayObject]](
-                error_id, shared_ptr[CRayObject]()))
-    store_task_errors(
-                worker, e,
-                True,  # task_exception
-                actor,  # actor
-                actor_id,  # actor id
-                function_name, task_type, title,
-                caller_address,
-                &intermediate_result, application_error)
 
-    error_object[0] = intermediate_result.back()
+    dynamic_return_objects.push_back(
+        c_pair[CObjectID, shared_ptr[CRayObject]](dynamic_return_obj_id, shared_ptr[CRayObject]())
+    )
+
+    store_task_errors(
+        worker,
+        e,
+        True,  # task_exception
+        actor,  # actor
+        actor_id,  # actor id
+        function_name, task_type, title,
+        caller_address,
+        &dynamic_return_objects,
+        application_error
+    )
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(

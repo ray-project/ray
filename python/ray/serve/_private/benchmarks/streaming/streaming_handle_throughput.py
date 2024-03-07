@@ -18,7 +18,6 @@ class CallerDeployment(Caller):
 
         async for r in method.remote():
             # Blackhole the response
-            # self.sink(str(r, 'utf-8'))
             self.sink(r)
 
 

@@ -18,7 +18,6 @@ class CallerActor(Caller):
         async for ref in method.options(num_returns="streaming").remote():
             r = ray.get(ref)
 
-            # self.sink(str(r, 'utf-8'))
             self.sink(r)
 
 
