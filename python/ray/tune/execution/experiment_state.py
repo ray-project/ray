@@ -70,7 +70,7 @@ class _ExperimentCheckpointManager:
     ):
         self._storage = storage
 
-        self._last_save_time = 0.0
+        self._last_save_time = float("-inf")
 
         # Dynamic checkpointing period
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
@@ -117,7 +117,8 @@ class _ExperimentCheckpointManager:
             save_fn: Function to call to actually save data to the driver
                 staging path. The files in the driver staging path will be
                 uploaded to the storage path.
-            force: Forces a checkpoint despite checkpoint_period.
+            force: Forces an experiment checkpoint, launches a sync to storage,
+                and waits for it to finish. This happens regardless of checkpoint_period
         """
         driver_staging_path = self._storage.experiment_driver_staging_path
 
@@ -136,28 +137,26 @@ class _ExperimentCheckpointManager:
         with out_of_band_serialize_dataset():
             save_fn()
 
-        # NOTE: This timeout is pretty arbitrarily set to be 2x the slow sync threshold.
-        # This timeout is okay since it's just catching the extreme case of a hanging
-        # upload operation.
-        # Saving + uploading the experiment state should take <1 second in most cases.
-        upload_timeout = self._slow_sync_threshold * 2
-        try:
-            self._storage.syncer.sync_up(
-                driver_staging_path, self._storage.experiment_fs_path
-            )
-            self._storage.syncer.wait(timeout=upload_timeout)
-        except TimeoutError:
-            logger.error(
-                "Saving experiment state to storage timed out after "
-                f"{upload_timeout} seconds. "
-                "The experiment will continue trying to save the state. "
-                "If this warning keeps showing up, you should diagnose "
-                "the reason causing the upload operation to storage to hang."
-            )
-        except Exception:
-            logger.exception(
-                "Saving experiment state to storage failed with exception: "
-            )
+        def wait_for_sync():
+            try:
+                self._storage.syncer.wait()
+            except Exception:
+                logger.error(
+                    "Saving experiment state to storage at "
+                    f"'{self._storage.experiment_fs_path}' failed with exception: ",
+                    exc_info=True,
+                    stack_info=True,
+                )
+
+        if force:
+            wait_for_sync()
+
+        self._storage.syncer.sync_up(
+            driver_staging_path, self._storage.experiment_fs_path
+        )
+
+        if force:
+            wait_for_sync()
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 

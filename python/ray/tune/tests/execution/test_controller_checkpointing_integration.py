@@ -566,7 +566,7 @@ def test_checkpoint_sync_up_timeout(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testForcedCloudCheckpointSyncTimeout
     """
-    storage = mock_storage_context()
+    storage = mock_storage_context(sync_config=ray.train.SyncConfig(sync_timeout=0.5))
     monkeypatch.setenv("TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "0.25")
 
     def _hanging_upload_to_fs_path(*args, **kwargs):
@@ -583,18 +583,19 @@ def test_checkpoint_sync_up_timeout(
         storage=storage,
     )
 
+    # Start a hanging sync that should not block the controller
+    runner.checkpoint()
+
     buffer = []
     logger = logging.getLogger("ray.tune.execution.experiment_state")
-    with mock.patch.object(logger, "error", lambda x: buffer.append(x)):
+    with mock.patch.object(logger, "error", lambda x, **kwargs: buffer.append(x)):
         with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
             runner.checkpoint(force=True)
 
     # We should see a log about the timeout
-    assert any("Saving experiment state to storage timed out " in x for x in buffer)
+    assert any("Saving experiment state to storage" in x for x in buffer)
     # We should also have a warning about the slow upload
     assert any("may be a bottleneck" in x for x in buffer)
-
-    print("\n", buffer, "\n")
 
 
 def test_checkpoint_sync_up_error(ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch):
@@ -615,16 +616,16 @@ def test_checkpoint_sync_up_error(ray_start_4_cpus_2_gpus_extra, tmp_path, monke
         storage=storage,
     )
 
+    # Launching a failing upload task should not crash the controller / main thread
+    runner.checkpoint()
+
     buffer = []
     logger = logging.getLogger("ray.tune.execution.experiment_state")
-    with mock.patch.object(logger, "exception", lambda x: buffer.append(x)):
-        with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
-            runner.checkpoint(force=True)
+    with mock.patch.object(logger, "error", lambda x, **kwargs: buffer.append(x)):
+        runner.checkpoint(force=True)
 
     # We should see a log about the timeout
-    assert any("Saving experiment state to storage failed" in x for x in buffer)
-
-    print("\n", buffer, "\n")
+    assert any("Saving experiment state to storage" in x for x in buffer)
 
 
 if __name__ == "__main__":
