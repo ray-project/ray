@@ -788,6 +788,7 @@ class DatasetStats:
             self.global_bytes_spilled,
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
+            self.streaming_exec_schedule_s.get()
         )
 
 
@@ -805,6 +806,7 @@ class DatasetStatsSummary:
     global_bytes_spilled: int
     global_bytes_restored: int
     dataset_bytes_spilled: int
+    streaming_exec_schedule_s: float
 
     def to_string(
         self,
@@ -887,13 +889,7 @@ class DatasetStatsSummary:
 
             output_num_rows = self.operators_stats[-1].output_num_rows
             total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
-            total_wall_time = sum(
-                [
-                    op_stats.wall_time["sum"]
-                    for op_stats in self.operators_stats
-                    if op_stats.wall_time
-                ]
-            )
+            total_wall_time = self.get_total_wall_time()
             if total_num_out_rows and self.time_total_s and total_wall_time:
                 out += "\n"
                 out += "Dataset throughput:\n"
@@ -907,8 +903,37 @@ class DatasetStatsSummary:
                     f" {total_num_out_rows / total_wall_time} "
                     "rows/s\n"
                 )
+        if add_global_stats:
+            out += "\n" + self.runtime_metrics()
+
 
         return out
+
+    @staticmethod
+    def _collect_parent_summaries(curr: "DatasetStatsSummary") -> List["DatasetStatsSummary"]:
+        summs = []
+        # TODO: Do operators ever have multiple parents? Do we need to deduplicate?
+        for p in curr.parents:
+            if p and p.parents:
+                summs.extend(DatasetStatsSummary._collect_parent_summaries(p))
+        return summs + [curr]
+
+    def runtime_metrics(self) -> str:
+        summaries = DatasetStatsSummary._collect_parent_summaries(self)
+        out = "Runtime Metrics:\n"
+        for summ in summaries:
+            op_total_time = sum(
+                [
+                    op_stats.time_total_s
+                    for op_stats in summ.operators_stats
+                ]
+            )
+
+            out += f"* {summ.base_name}: {fmt(op_total_time)} ({op_total_time / self.time_total_s * 100:.3f}%)\n"
+        out += f"* Scheduling: {fmt(self.streaming_exec_schedule_s)} ({self.streaming_exec_schedule_s / self.time_total_s * 100:.3f}%)\n"
+        out += f"* Total: {fmt(self.time_total_s)} (100%)\n"
+        return out
+
 
     def __repr__(self, level=0) -> str:
         indent = leveled_indent(level)
