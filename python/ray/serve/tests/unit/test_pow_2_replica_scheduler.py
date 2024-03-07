@@ -12,7 +12,7 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import DeploymentID, RequestMetadata
+from ray.serve._private.common import DeploymentID, ReplicaID, RequestMetadata
 from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
@@ -32,7 +32,7 @@ SCHEDULER_AZ = "scheduler_az"
 class FakeReplicaWrapper(ReplicaWrapper):
     def __init__(
         self,
-        replica_id: str,
+        replica_unique_id: str,
         *,
         node_id: str = "",
         availability_zone: Optional[str] = None,
@@ -41,7 +41,10 @@ class FakeReplicaWrapper(ReplicaWrapper):
         sleep_time_s: float = 0.0,
         max_ongoing_requests: int = DEFAULT_MAX_ONGOING_REQUESTS,
     ):
-        self._replica_id = replica_id
+        self._replica_id = ReplicaID(
+            unique_id=replica_unique_id,
+            deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        )
         self._node_id = node_id
         self._availability_zone = availability_zone
         self._queue_len = 0
@@ -55,7 +58,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self.queue_len_deadline_history = list()
 
     @property
-    def replica_id(self) -> str:
+    def replica_id(self) -> ReplicaID:
         return self._replica_id
 
     @property
@@ -1375,35 +1378,53 @@ async def test_queue_len_cache():
         staleness_timeout_s=staleness_timeout_s, get_curr_time_s=TIMER.time
     )
 
+    d_id = DeploymentID(name="TEST_DEPLOYMENT")
+    replica_id_1 = ReplicaID(
+        "r1",
+        deployment_id=d_id,
+    )
+    replica_id_2 = ReplicaID(
+        "r2",
+        deployment_id=d_id,
+    )
+    replica_id_3 = ReplicaID(
+        "r3",
+        deployment_id=d_id,
+    )
+    replica_id_4 = ReplicaID(
+        "r4",
+        deployment_id=d_id,
+    )
+
     # Get nonexistent key.
-    assert c.get("replica-id-1") is None
+    assert c.get(replica_id_1) is None
 
     # Insert and get a valid key.
-    c.update("replica-id-1", 123)
-    assert c.get("replica-id-1") == 123
+    c.update(replica_id_1, 123)
+    assert c.get(replica_id_1) == 123
 
     # Get timed out key.
     TIMER.advance(staleness_timeout_s + 1)
-    assert c.get("replica-id-1") is None
+    assert c.get(replica_id_1) is None
 
     # Reset timed out key.
-    c.update("replica-id-1", 456)
-    assert c.get("replica-id-1") == 456
+    c.update(replica_id_1, 456)
+    assert c.get(replica_id_1) == 456
 
     # Insert multiple keys and remove an inactive set of them.
-    c.update("replica-id-1", 1)
-    c.update("replica-id-2", 2)
-    c.update("replica-id-3", 3)
-    c.update("replica-id-4", 4)
+    c.update(replica_id_1, 1)
+    c.update(replica_id_2, 2)
+    c.update(replica_id_3, 3)
+    c.update(replica_id_4, 4)
     c.remove_inactive_replicas(
-        active_replica_ids={"replica-id-1", "replica-id-3"},
+        active_replica_ids={replica_id_1, replica_id_3},
     )
     assert all(
         [
-            c.get("replica-id-1") == 1,
-            c.get("replica-id-2") is None,
-            c.get("replica-id-3") == 3,
-            c.get("replica-id-4") is None,
+            c.get(replica_id_1) == 1,
+            c.get(replica_id_2) is None,
+            c.get(replica_id_3) == 3,
+            c.get(replica_id_4) is None,
         ]
     )
 
@@ -1427,7 +1448,7 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
     r1 = FakeReplicaWrapper("r1")
     s.update_replicas([r1])
-    s.replica_queue_len_cache.update("r1", 0)
+    s.replica_queue_len_cache.update(r1.replica_id, 0)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -1465,7 +1486,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
     # Add an entry for replica "r1" -- it shouldn't be actively probed.
     r1 = FakeReplicaWrapper("r1")
     s.update_replicas([r1])
-    s.replica_queue_len_cache.update("r1", DEFAULT_MAX_ONGOING_REQUESTS)
+    s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -1499,7 +1520,7 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     r1 = FakeReplicaWrapper("r1")
     r2 = FakeReplicaWrapper("r2")
     s.update_replicas([r1, r2])
-    s.replica_queue_len_cache.update("r1", 0)
+    s.replica_queue_len_cache.update(r1.replica_id, 0)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -1513,7 +1534,7 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
         # Check that r2 was probed and the response was added to the cache.
         assert (
             len(r2.queue_len_deadline_history) == 1
-            and s._replica_queue_len_cache.get("r2") == 3
+            and s._replica_queue_len_cache.get(r2.replica_id) == 3
         )
         return True
 
@@ -1555,8 +1576,8 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
 
         assert len(r1.queue_len_deadline_history) == i + 1
         assert len(r2.queue_len_deadline_history) == i + 1
-        assert s._replica_queue_len_cache.get("r1") == r1_queue_len
-        assert s._replica_queue_len_cache.get("r2") == r2_queue_len
+        assert s._replica_queue_len_cache.get(r1.replica_id) == r1_queue_len
+        assert s._replica_queue_len_cache.get(r2.replica_id) == r2_queue_len
         TIMER.advance(staleness_timeout_s + 1)
 
 

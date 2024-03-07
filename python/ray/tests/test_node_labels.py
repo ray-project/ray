@@ -114,7 +114,8 @@ def test_cluster_add_node_with_labels(ray_start_cluster):
             assert node["Labels"] == add_default_labels(node, {})
 
 
-def test_autoscaler_set_node_labels(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -126,6 +127,7 @@ def test_autoscaler_set_node_labels(shutdown_only):
                 "max_workers": 1,
             }
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:

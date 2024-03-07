@@ -5,12 +5,17 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.common import DeploymentID, RequestMetadata, RunningReplicaInfo
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    RequestMetadata,
+    RunningReplicaInfo,
+)
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
@@ -45,14 +50,12 @@ class RouterMetricsManager:
         self,
         deployment_id: DeploymentID,
         handle_id: str,
-        event_loop: asyncio.BaseEventLoop,
         controller_handle: ActorHandle,
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
     ):
-        self._deployment_id = deployment_id
         self._handle_id = handle_id
-        self._event_loop = event_loop
+        self._deployment_id = deployment_id
         self._controller_handle = controller_handle
 
         # Exported metrics
@@ -68,7 +71,9 @@ class RouterMetricsManager:
         )
 
         # Track queries sent to replicas for the autoscaling algorithm.
-        self.num_requests_sent_to_replicas = defaultdict(int)
+        self.num_requests_sent_to_replicas: DefaultDict[ReplicaID, int] = defaultdict(
+            int
+        )
         # We use Ray object ref callbacks to update state when tracking
         # number of requests running on replicas. The callbacks will be
         # called from a C++ thread into the router's async event loop,
@@ -76,7 +81,7 @@ class RouterMetricsManager:
         # this thread-safe lock.
         self._queries_lock = threading.Lock()
         # Regularly aggregate and push autoscaling metrics to controller
-        self.metrics_pusher = MetricsPusher(event_loop)
+        self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
         self.deployment_config: Optional[DeploymentConfig] = None
 
@@ -117,7 +122,7 @@ class RouterMetricsManager:
         in memory as the deployment upscales and downscales over time.
         """
 
-        running_replica_set = {replica.replica_tag for replica in running_replicas}
+        running_replica_set = {replica.replica_id for replica in running_replicas}
         with self._queries_lock:
             self.num_requests_sent_to_replicas = defaultdict(
                 int,
@@ -189,13 +194,13 @@ class RouterMetricsManager:
         self.num_queued_requests -= 1
         self.num_queued_requests_gauge.set(self.num_queued_requests)
 
-    def inc_num_running_requests_for_replica(self, replica_tag: str):
+    def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
-            self.num_requests_sent_to_replicas[replica_tag] += 1
+            self.num_requests_sent_to_replicas[replica_id] += 1
 
-    def process_finished_request(self, replica_tag, *args):
+    def process_finished_request(self, replica_id: ReplicaID, *args):
         with self._queries_lock:
-            self.num_requests_sent_to_replicas[replica_tag] -= 1
+            self.num_requests_sent_to_replicas[replica_id] -= 1
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
@@ -246,14 +251,11 @@ class RouterMetricsManager:
             "running_requests": running_requests,
         }
 
-    def shutdown(self):
+    async def shutdown(self):
         """Shutdown metrics manager gracefully."""
 
         if self.metrics_pusher:
-            fut = asyncio.run_coroutine_threadsafe(
-                self.metrics_pusher.graceful_shutdown(), loop=self._event_loop
-            )
-            fut.result()
+            await self.metrics_pusher.graceful_shutdown()
 
 
 class Router:
@@ -294,7 +296,7 @@ class Router:
 
         if replica_scheduler is None:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop,
+                self._event_loop,
                 deployment_id,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
@@ -322,13 +324,12 @@ class Router:
                     deployment_id,
                 ): self.update_deployment_config,
             },
-            call_in_event_loop=event_loop,
+            call_in_event_loop=self._event_loop,
         )
 
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
-            event_loop,
             controller_handle,
             metrics.Counter(
                 "serve_num_router_requests",
@@ -399,7 +400,7 @@ class Router:
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], str]:
+    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], ReplicaID]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -464,7 +465,7 @@ class Router:
                 request_args, request_kwargs = await self._resolve_deployment_responses(
                     request_args, request_kwargs
                 )
-                ref, replica_tag = await self.schedule_and_send_request(
+                ref, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
                         args=list(request_args),
                         kwargs=request_kwargs,
@@ -475,10 +476,10 @@ class Router:
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
                     self._metrics_manager.inc_num_running_requests_for_replica(
-                        replica_tag
+                        replica_id
                     )
                     callback = partial(
-                        self._metrics_manager.process_finished_request, replica_tag
+                        self._metrics_manager.process_finished_request, replica_id
                     )
                     if isinstance(ref, ray.ObjectRef):
                         ref._on_completed(callback)
@@ -496,4 +497,6 @@ class Router:
                 raise
 
     def shutdown(self):
-        self._metrics_manager.shutdown()
+        asyncio.run_coroutine_threadsafe(
+            self._metrics_manager.shutdown(), loop=self._event_loop
+        ).result()

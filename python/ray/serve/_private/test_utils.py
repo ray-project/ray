@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import time
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -12,7 +13,7 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import DeploymentID, DeploymentStatus
+from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -100,6 +101,40 @@ class MockKVStore:
         return False
 
 
+class MockClusterNodeInfoCache:
+    def __init__(self):
+        self.alive_node_ids = set()
+        self.total_resources_per_node = dict()
+        self.available_resources_per_node = dict()
+        self.draining_nodes = dict()
+
+    def get_alive_node_ids(self):
+        return self.alive_node_ids
+
+    def get_draining_nodes(self):
+        return self.draining_nodes
+
+    def get_active_node_ids(self):
+        return self.alive_node_ids - set(self.draining_nodes)
+
+    def get_node_az(self, node_id):
+        return None
+
+    def get_available_resources_per_node(self):
+        return self.available_resources_per_node
+
+    def get_total_resources_per_node(self):
+        return self.total_resources_per_node
+
+    def add_node(self, node_id: str, resources: Dict = None):
+        self.alive_node_ids.add(node_id)
+        self.total_resources_per_node[node_id] = deepcopy(resources) or {}
+        self.available_resources_per_node[node_id] = deepcopy(resources) or {}
+
+    def set_available_resources_per_node(self, node_id: str, resources: Dict):
+        self.available_resources_per_node[node_id] = deepcopy(resources)
+
+
 def check_ray_stopped():
     try:
         requests.get("http://localhost:52365/api/ray/version")
@@ -134,7 +169,7 @@ def check_deployment_status(name, expected_status) -> DeploymentStatus:
     return True
 
 
-def get_num_running_replicas(
+def get_num_alive_replicas(
     deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> int:
     """Get the replicas currently running for the given deployment."""
@@ -154,7 +189,7 @@ def check_num_replicas_gte(
 ) -> int:
     """Check if num replicas is >= target."""
 
-    assert get_num_running_replicas(name, app_name) >= target
+    assert get_num_alive_replicas(name, app_name) >= target
     return True
 
 
@@ -163,7 +198,7 @@ def check_num_replicas_eq(
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_running_replicas(name, app_name) == target
+    assert get_num_alive_replicas(name, app_name) == target
     return True
 
 
@@ -172,7 +207,16 @@ def check_num_replicas_lte(
 ) -> int:
     """Check if num replicas is <= target."""
 
-    assert get_num_running_replicas(name, app_name) <= target
+    assert get_num_alive_replicas(name, app_name) <= target
+    return True
+
+
+def check_apps_running(apps: List):
+    status = serve.status()
+
+    for app_name in apps:
+        assert status.applications[app_name].status == ApplicationStatus.RUNNING
+
     return True
 
 
@@ -461,3 +505,14 @@ class FakeCounter:
 
     def get_tags(self):
         return self.tags
+
+
+@ray.remote
+def get_node_id():
+    return ray.get_runtime_context().get_node_id()
+
+
+def check_num_alive_nodes(target: int):
+    alive_nodes = [node for node in ray.nodes() if node["Alive"]]
+    assert len(alive_nodes) == target
+    return True
