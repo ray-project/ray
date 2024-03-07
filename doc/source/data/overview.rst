@@ -107,11 +107,11 @@ Preprocessing and ingest for ML training
 ----------------------------------------
 
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
-Some key features include:
+Key supported features for distributed training include:
 
 - Support for fast out-of-memory recovery
 - Support for heterogeneous clusters
-- No dropped rows in distributed training (via :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`)
+- No dropped rows in distributed training (with :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`)
 
 Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
 applications and libraries in Ray. Don't use it as a replacement for more general data
