@@ -241,7 +241,7 @@ def record_extra_usage_tag(
             return
         _recorded_extra_usage_tags[key] = value
 
-    if not _internal_kv_initialized():
+    if not _internal_kv_initialized() and gcs_client is None:
         # This happens if the record is before ray.init and
         # no GCS client is used for recording explicitly.
         return
