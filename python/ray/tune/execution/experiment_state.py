@@ -55,11 +55,6 @@ class _ExperimentCheckpointManager:
     ``max(10, time_per_checkpoint * 19)``. This means that at most 5% of the
     time (1/20) will be used for writing checkpoints, while 95% of the time
     (19/20) will be used to handle the rest of the training loop.
-
-    If ``sync_every_n_trial_checkpoints`` is not None, syncing
-    to cloud will be forced if any trial has checkpointed more times than
-    ``sync_every_n_trial_checkpoints`` since last sync.
-
     """
 
     def __init__(
@@ -71,6 +66,7 @@ class _ExperimentCheckpointManager:
         self._storage = storage
 
         self._last_save_time = float("-inf")
+        self._last_sync_time = float("inf")
 
         # Dynamic checkpointing period
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
@@ -151,9 +147,11 @@ class _ExperimentCheckpointManager:
         if force:
             wait_for_sync()
 
-        self._storage.syncer.sync_up(
+        launched_sync = self._storage.syncer.sync_up(
             driver_staging_path, self._storage.experiment_fs_path
         )
+        if launched_sync:
+            self._last_sync_time = time.monotonic()
 
         if force:
             wait_for_sync()
@@ -163,11 +161,13 @@ class _ExperimentCheckpointManager:
         # Adjust dynamic checkpointing
         self._update_auto_checkpoint_time(time_taken=checkpoint_time_taken)
 
-        if checkpoint_time_taken > self._slow_sync_threshold:
+        time_since_last_sync = time.monotonic() - self._last_sync_time
+        if time_since_last_sync > self._slow_sync_threshold:
             logger.warning(
                 "Saving the experiment state (which holds a global view "
-                "of trial statuses and is used to restore the experiment) took "
-                f"{checkpoint_time_taken:.2f} seconds, which may be a bottleneck.\n"
+                "of trial statuses and is used to restore the experiment) has already "
+                f"taken {time_since_last_sync:.2f} seconds, which may cause consistency"
+                " issues upon restore if your driver script ungracefully exits.\n"
                 "This could be due to a large number of trials, "
                 "large logfiles from lots of reported metrics, or throttling from the "
                 "remote storage if uploading too frequently.\n"

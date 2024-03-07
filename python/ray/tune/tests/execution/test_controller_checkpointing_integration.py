@@ -595,7 +595,7 @@ def test_checkpoint_sync_up_timeout(
     # We should see a log about the timeout
     assert any("Saving experiment state to storage" in x for x in buffer)
     # We should also have a warning about the slow upload
-    assert any("may be a bottleneck" in x for x in buffer)
+    assert any("has already taken" in x for x in buffer)
 
 
 def test_checkpoint_sync_up_error(ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch):

@@ -415,7 +415,7 @@ class _BackgroundSyncer(Syncer):
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
         if self._should_continue_existing_sync():
-            logger.warning(
+            logger.debug(
                 f"Last sync still in progress, "
                 f"skipping sync up of {local_dir} to {remote_dir}"
             )
