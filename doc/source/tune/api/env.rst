@@ -36,7 +36,8 @@ These are the environment variables Ray Tune currently considers:
   ``'auto'`` measures the time it takes to checkpoint, and adjusts the checkpointing period
   so that ~5% of the driver's time is spent on checkpointing the experiment state.
   You should set this to a fixed value if you want to ensure that the experiment is
-  resumed from at least X seconds ago. For example.
+  resumed from at least X seconds ago. For example, ``TUNE_GLOBAL_CHECKPOINT_S=60``
+  ensures that you can restore your experiment to a state that is at most 60 seconds old.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
