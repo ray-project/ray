@@ -1666,10 +1666,12 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   results.clear();
 
   // DELETE. This should clean all references except generator id.
+  CompletePendingStreamingTask(spec, caller_address, 2);
   manager_.DelObjectRefStream(generator_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  // All the in memory objects should be cleaned up.
-  ASSERT_EQ(store_->Size(), 0);
+  // All the in memory objects should be cleaned up. The generator ref returns
+  // a direct result that would be GCed once it goes out of scope.
+  ASSERT_EQ(store_->Size(), 1);
   ASSERT_TRUE(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
   ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
@@ -1693,11 +1695,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   // The write should have been no op. No refs and no obj values except the generator id.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   // All the in memory objects should be cleaned up.
-  ASSERT_EQ(store_->Size(), 0);
+  ASSERT_EQ(store_->Size(), 1);
   ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
-
-  CompletePendingStreamingTask(spec, caller_address, 2);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
@@ -1779,10 +1779,11 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
   ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_1));
 
   // Delete the stream. This should remove references from ^.
-  manager_.DelObjectRefStream(generator_id);
+  CompletePendingStreamingTask(spec, caller_address, 0);
+  ASSERT_TRUE(manager_.DelObjectRefStream(generator_id));
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
 
-  // WRITE to index 0. It should fail cuz the stream has been removed.
+  // WRITE to index 0. It should fail because the stream has been removed.
   auto dynamic_return_id_index_0 = ObjectID::FromIndex(spec.TaskId(), 2);
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(
@@ -1798,9 +1799,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
 
   // There must be only a generator ID.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  // All the objects should be cleaned up.
-  ASSERT_EQ(store_->Size(), 0);
-  CompletePendingStreamingTask(spec, caller_address, 0);
+  // All the objects except the generator ref should be cleaned up.
+  ASSERT_EQ(store_->Size(), 1);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNeeded) {
@@ -1893,10 +1893,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
   manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_2,
                                                     generator_id);
   ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_2));
+  CompletePendingStreamingTask(spec, caller_address, 2);
   manager_.DelObjectRefStream(generator_id);
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_2));
-
-  CompletePendingStreamingTask(spec, caller_address, 2);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
@@ -1983,9 +1982,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   ASSERT_FALSE(signal_called);
 
   // Deleting the stream should send a signal.
-  manager_.DelObjectRefStream(generator_id);
-  ASSERT_TRUE(signal_called);
   CompletePendingStreamingTask(spec, caller_address, 2);
+  ASSERT_TRUE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_TRUE(signal_called);
 
   /// No need to test out of order case. It won't be different.
 }
