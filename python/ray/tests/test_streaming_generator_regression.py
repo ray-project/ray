@@ -13,7 +13,8 @@ from ray.util.state import list_workers
 class EndpointActor:
     def __init__(self, *, injected_executor_delay_s: float, tokens_per_request: int):
         self._tokens_per_request = tokens_per_request
-        # TODO elaborate
+        # In this test we simulate conditions leading to use-after-free conditions,
+        # by injecting delays into worker's thread-pool executor
         self._inject_delay_in_core_worker_executor(
             target_delay_s=injected_executor_delay_s,
             max_workers=1,
