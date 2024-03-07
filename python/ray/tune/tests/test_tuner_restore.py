@@ -5,6 +5,7 @@ import shutil
 import time
 import unittest
 
+import pyarrow.fs
 import pytest
 
 import ray
@@ -19,11 +20,7 @@ from ray.train import (
 )
 from ray.air._internal.uri_utils import URI
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train._internal.storage import (
-    get_fs_and_path,
-    _download_from_fs_path,
-    _upload_to_fs_path,
-)
+from ray.train._internal.storage import get_fs_and_path, _download_from_fs_path
 from ray.tune import Callback, Trainable
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
@@ -337,12 +334,9 @@ def test_tuner_restore_restart_errored(ray_start_2_cpus, tmpdir):
 def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     """Resuming unfinished trials should pick up existing state"""
     monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
-
-    # TODO(justinvyu): Setting storage_path to this tempdir causes this test to fail.
-    # This is because the error raised by the driver callback doesn't let the
-    # experiment sync happen (from ~/ray_results -> tmpdir). This would also
-    # be the case for real cloud syncing.
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
+    # Make sure that only one trial is pending at a time to prevent
+    # the trial order from getting shuffled around.
+    monkeypatch.setenv("TUNE_MAX_PENDING_TRIALS_PG", "1")
 
     fail_marker = tmpdir / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
@@ -350,6 +344,17 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     hang_marker = tmpdir / "hang_marker"
     hang_marker.write_text("", encoding="utf-8")
 
+    param_space = {
+        # First trial succeeds, second hangs, third fails, fourth hangs
+        "failing_hanging": tune.grid_search(
+            [
+                (None, None),
+                (None, hang_marker),
+                (fail_marker, None),
+                (None, hang_marker),
+            ]
+        ),
+    }
     tuner = Tuner(
         _train_fn_sometimes_failing,
         tune_config=TuneConfig(num_samples=1),
@@ -359,17 +364,7 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
             failure_config=FailureConfig(fail_fast=False),
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
-        param_space={
-            # First trial succeeds, second hangs, third fails, fourth hangs
-            "failing_hanging": tune.grid_search(
-                [
-                    (None, None),
-                    (None, hang_marker),
-                    (fail_marker, None),
-                    (None, hang_marker),
-                ]
-            ),
-        },
+        param_space=param_space,
     )
     # Catch the FailOnStats error
     with pytest.raises(RuntimeError):
@@ -392,6 +387,7 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     tuner = Tuner.restore(
         str(tmpdir / "test_tuner_resume_unfinished"),
         trainable=_train_fn_sometimes_failing,
+        param_space=param_space,
     )
     tuner._local_tuner._run_config.callbacks = None
 
@@ -405,9 +401,6 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
     """Not resuming unfinished trials (but only errored and pending) should work"""
     monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
 
-    # TODO(justinvyu): Same as above.
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
-
     fail_marker = tmpdir / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
@@ -419,6 +412,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="test_tuner_resume_errored_only",
+            storage_path=str(tmpdir),
             failure_config=FailureConfig(fail_fast=False),
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
@@ -466,11 +460,8 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-def _test_tuner_restore_from_cloud(
-    tmpdir, configure_storage_path, storage_path, monkeypatch
-):
+def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path):
     """Check that restoring Tuner() objects from cloud storage works"""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir / "ray_results"))
     tuner = Tuner(
         _dummy_train_fn,
         run_config=RunConfig(name="exp_dir", storage_path=configure_storage_path),
@@ -487,58 +478,43 @@ def _test_tuner_restore_from_cloud(
     prev_cp = _find_newest_experiment_checkpoint(str(check_path / "exp_dir"))
     prev_lstat = os.lstat(prev_cp)
 
-    (tmpdir / "ray_results").remove(ignore_errors=True)
-
     tuner2 = Tuner.restore(
         str(URI(storage_path) / "exp_dir"), trainable=_dummy_train_fn
     )
     results = tuner2.fit()
 
     assert results[0].metrics["_metric"] == 1
-    local_contents = os.listdir(tmpdir / "ray_results" / "exp_dir")
-    assert "tuner.pkl" in local_contents
 
-    after_cp = _find_newest_experiment_checkpoint(
-        str(tmpdir / "ray_results" / "exp_dir")
-    )
+    check_path_2 = tmpdir / "check_save_2"
+    _download_from_fs_path(fs=fs, fs_path=fs_path, local_path=str(check_path_2))
+    after_cp = _find_newest_experiment_checkpoint(str(check_path_2 / "exp_dir"))
     after_lstat = os.lstat(after_cp)
 
     # Experiment checkpoint was updated
     assert os.path.basename(prev_cp) != os.path.basename(after_cp)
     # Old experiment checkpoint still exists in dir
-    assert os.path.basename(prev_cp) in local_contents
+    assert os.path.basename(prev_cp) in os.listdir(check_path_2 / "exp_dir")
     # Contents changed
     assert prev_lstat.st_size != after_lstat.st_size
 
-    # Overwriting should work
-    tuner3 = Tuner.restore(
-        str(URI(storage_path) / "exp_dir"), trainable=_dummy_train_fn
-    )
-    tuner3.fit()
-
 
 def test_tuner_restore_from_cloud_manual_path(
-    ray_start_2_cpus, tmpdir, mock_s3_bucket_uri, monkeypatch
+    ray_start_2_cpus, tmpdir, mock_s3_bucket_uri
 ):
     _test_tuner_restore_from_cloud(
         tmpdir,
         configure_storage_path=mock_s3_bucket_uri,
         storage_path=mock_s3_bucket_uri,
-        monkeypatch=monkeypatch,
     )
 
 
-@pytest.mark.skip("Hanging due to some problem with ray storage.")
-def test_tuner_restore_from_cloud_ray_storage(
-    ray_shutdown, tmpdir, mock_s3_bucket_uri, monkeypatch
-):
+def test_tuner_restore_from_cloud_ray_storage(ray_shutdown, tmpdir, mock_s3_bucket_uri):
     ray.init(num_cpus=2, configure_logging=False, storage=mock_s3_bucket_uri)
 
     _test_tuner_restore_from_cloud(
         tmpdir / "local",
         configure_storage_path=None,
         storage_path=mock_s3_bucket_uri,
-        monkeypatch=monkeypatch,
     )
 
 
@@ -555,7 +531,7 @@ def test_tuner_restore_latest_available_checkpoint(
 
 
 @pytest.mark.parametrize("retry_num", [0, 2])
-def test_restore_retry(ray_start_2_cpus, tmpdir, monkeypatch, retry_num):
+def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
     """Test retrying restore on a trial level by setting `TUNE_RESTORE_RETRY_NUM`."""
 
     class MockTrainable(Trainable):
@@ -743,14 +719,13 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
     assert not results.errors
 
 
-@pytest.mark.parametrize("use_tune_run", [True])
+@pytest.mark.parametrize("use_tune_run", [True, False])
 def test_tuner_restore_from_moved_experiment_path(
     ray_start_2_cpus, tmp_path, use_tune_run
 ):
     """Check that restoring a Tuner from a moved experiment directory works."""
     # Create a fail_marker dummy file that causes the first Tune run to fail and
     # the second run to succeed
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = str(tmp_path / "local_dir")
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
@@ -983,24 +958,22 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_ty
     assert [load_dict_checkpoint(ckpt)["it"] for ckpt in checkpoints] == [2, 3, 4, 5]
 
 
-def test_tuner_can_restore(tmp_path, monkeypatch):
+def test_tuner_can_restore(tmp_path):
     """Make sure that `can_restore` detects an existing experiment at a
     path and only returns True if it's at the experiment dir root.
     """
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-
     name = "exp_name"
-    Tuner(lambda _: print("dummy"), run_config=RunConfig(name=name))
-
-    fs, fs_path = get_fs_and_path("mock:///bucket/exp_name")
-    _upload_to_fs_path(local_path=str(tmp_path / name), fs=fs, fs_path=fs_path)
+    Tuner(
+        lambda _: print("dummy"),
+        run_config=RunConfig(name=name, storage_path=str(tmp_path)),
+    )
 
     assert Tuner.can_restore(tmp_path / name)
+    assert Tuner.can_restore(
+        tmp_path / name, storage_filesystem=pyarrow.fs.LocalFileSystem()
+    )
     assert not Tuner.can_restore(tmp_path)
     assert not Tuner.can_restore(tmp_path / name / "other")
-    assert Tuner.can_restore("/bucket/exp_name", storage_filesystem=fs)
-    assert not Tuner.can_restore("/bucket", storage_filesystem=fs)
-    assert not Tuner.can_restore("/bucket/exp_name/other", storage_filesystem=fs)
 
 
 def testParamSpaceOverwriteValidation(ray_start_4_cpus, tmp_path):

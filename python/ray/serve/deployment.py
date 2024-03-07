@@ -459,6 +459,18 @@ class Deployment:
 
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
+            if (
+                new_deployment_config.autoscaling_config
+                and "target_num_ongoing_requests_per_replica"
+                in new_deployment_config.autoscaling_config.dict(exclude_unset=True)
+            ):
+                logger.warning(
+                    "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
+                    "`autoscaling_config` has been deprecated and replaced by "
+                    "`target_ongoing_requests`. Note that "
+                    "`target_num_ongoing_requests_per_replica` will be removed in a "
+                    "future version."
+                )
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
@@ -549,7 +561,7 @@ def deployment_to_schema(
         "num_replicas": None
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
-        "max_concurrent_queries": d.max_concurrent_queries,
+        "max_concurrent_queries": d.max_ongoing_requests,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,
