@@ -1221,7 +1221,14 @@ def run_rllib_example_script_experiment(
                 print(f" R(eval)={Reval}", end="")
             print()
             for key, value in stop.items():
-                if results.get(key, float("-inf")) > value:
+                val = results
+                for k in key.split("/"):
+                    try:
+                        val = val[k]
+                    except KeyError:
+                        val = None
+                        break
+                if val is not None and val >= value:
                     print(f"Stop criterium ({key}={value}) fulfilled!")
                     return results
         return results

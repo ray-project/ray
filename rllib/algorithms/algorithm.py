@@ -525,8 +525,8 @@ class Algorithm(Trainable, AlgorithmBase):
             },
         }
         # Buffers to store 1-ahead train results in case of parallel evaluation.
-        self._future_train_results = None
-        self._future_train_iter_ctx = None
+        #self._future_train_results = None
+        #self._future_train_iter_ctx = None
 
         super().__init__(
             config=config,
@@ -838,20 +838,20 @@ class Algorithm(Trainable, AlgorithmBase):
             # together with the training results on algo state A).
             # Also, discard the 1st eval results (they are useless as they were
             # performed on the possibly randomized initial algo state).
-            if self._future_train_results is None:
-                (
-                    self._future_train_results,
-                    eval_results,
-                    self._future_train_iter_ctx,
-                ) = self._run_one_training_iteration_and_evaluation_in_parallel()
-            # We have stepped before, store train results for future and publish
-            # current eval results together with previous train results.
-            else:
-                (a, b) = (self._future_train_results, self._future_train_iter_ctx)
-                self._future_train_results = train_results
-                self._future_train_iter_ctx = train_iter_ctx
-                train_results = a
-                train_iter_ctx = b
+            #if self._future_train_results is None:
+            #    (
+            #        self._future_train_results,
+            #        eval_results,
+            #        self._future_train_iter_ctx,
+            #    ) = self._run_one_training_iteration_and_evaluation_in_parallel()
+            ## We have stepped before, store train results for future and publish
+            ## current eval results together with previous train results.
+            #else:
+            #    (a, b) = (self._future_train_results, self._future_train_iter_ctx)
+            #    self._future_train_results = train_results
+            #    self._future_train_iter_ctx = train_iter_ctx
+            #    train_results = a
+            #    train_iter_ctx = b
 
         # - No evaluation necessary, just run the next training iteration.
         # - We have to evaluate in this training iteration, but no parallelism ->
@@ -862,9 +862,10 @@ class Algorithm(Trainable, AlgorithmBase):
         # Sequential: Train (already done above), then evaluate.
         if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
             eval_results = self._run_one_evaluation(parallel_train_future=None)
+
         # Attach latest available evaluation results to train results,
         # if necessary.
-        elif not evaluate_this_iter and self.config.always_attach_evaluation_results:
+        if not evaluate_this_iter and self.config.always_attach_evaluation_results:
             if not isinstance(self.evaluation_metrics, dict):
                 raise ValueError(
                     "Algorithm.evaluate() needs to return a ResultDict, but returned "
@@ -1086,11 +1087,14 @@ class Algorithm(Trainable, AlgorithmBase):
         if self.reward_estimators:
             all_batches.append(batch)
 
-        eval_results = summarize_episodes(
-            metrics,
-            metrics,
-            keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
-        )
+        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
+        return {
+            "sampler_results": summarize_episodes(
+                metrics,
+                metrics,
+                keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
+            ),
+        }
         return eval_results
 
     def _evaluate_with_auto_duration(self, parallel_train_future):
@@ -1200,13 +1204,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 self.evaluation_workers.num_healthy_remote_workers()
             )
 
-        eval_results = summarize_episodes(
-            metrics,
-            metrics,
-            keep_custom_metrics=self.evaluation_config.keep_per_episode_custom_metrics,
-        )
-
-        return eval_results
+        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
+        return {
+            "sampler_results": summarize_episodes(
+                metrics,
+                metrics,
+                keep_custom_metrics=self.evaluation_config.keep_per_episode_custom_metrics,
+            )
+        }
 
     def _evaluate_with_fixed_duration(self):
         # How many episodes/timesteps do we need to run?

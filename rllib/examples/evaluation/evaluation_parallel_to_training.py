@@ -33,7 +33,7 @@ parser.add_argument(
 parser.add_argument(
     "--evaluation-interval",
     type=int,
-    default=1,#TODO: 2
+    default=2,
     help="Every how many train iterations should we run an evaluation loop?",
 )
 
