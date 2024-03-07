@@ -33,10 +33,10 @@ class RandomAccessDataset:
     """
 
     def __init__(
-            self,
-            ds: "Dataset",
-            key: str,
-            num_workers: int,
+        self,
+        ds: "Dataset",
+        key: str,
+        num_workers: int,
     ):
         """Construct a RandomAccessDataset (internal API).
 
