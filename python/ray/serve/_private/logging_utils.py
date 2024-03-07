@@ -500,7 +500,7 @@ def get_component_log_file_name(
     # instead of adding the component type to the component name.
     component_log_file_name = component_name
     if component_type is not None:
-        component_log_file_name = f"{component_type}_{component_name}"
+        component_log_file_name = f"{component_type.value}_{component_name}"
         if component_type != ServeComponentType.REPLICA:
             component_name = f"{component_type}_{component_name}"
     log_file_name = LOG_FILE_FMT.format(
