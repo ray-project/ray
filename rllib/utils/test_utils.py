@@ -1215,7 +1215,11 @@ def run_rllib_example_script_experiment(
         algo = config.build()
         for iter in range(args.stop_iters):
             results = algo.train()
-            print(f"R={results['episode_reward_mean']}")
+            print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
+            if "evaluation" in results:
+                Reval = results["evaluation"]["sampler_results"]["episode_reward_mean"]
+                print(f" R(eval)={Reval}", end="")
+            print()
             for key, value in stop.items():
                 if results.get(key, float("-inf")) > value:
                     print(f"Stop criterium ({key}={value}) fulfilled!")

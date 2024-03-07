@@ -1,0 +1,144 @@
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.env. multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune.registry import get_trainable_cls
+
+parser = add_rllib_example_script_args(default_reward=500.0)
+parser.add_argument(
+    "--evaluation-duration",
+    type=lambda v: v if v == "auto" else int(v),
+    default=13,
+    help="Number of evaluation episodes/timesteps to run each iteration. "
+    "If 'auto', will run as many as possible during train pass.",
+)
+parser.add_argument(
+    "--evaluation-duration-unit",
+    type=str,
+    default="episodes",
+    choices=["episodes", "timesteps"],
+    help="The unit in which to measure the duration (`episodes` or `timesteps`).",
+)
+parser.add_argument(
+    "--evaluation-num-workers",
+    type=int,
+    default=2,
+    help="The number of evaluation workers to setup. "
+    "0 for a single local evaluation worker. Note that for values >0, no"
+    "local evaluation worker will be created (b/c not needed).",
+)
+parser.add_argument(
+    "--evaluation-interval",
+    type=int,
+    default=1,#TODO: 2
+    help="Every how many train iterations should we run an evaluation loop?",
+)
+
+
+class AssertEvalCallback(DefaultCallbacks):
+    def on_train_result(self, *, algorithm, result, **kwargs):
+        # Make sure we always run exactly the given evaluation duration,
+        # no matter what the other settings are (such as
+        # `evaluation_num_workers` or `evaluation_parallel_to_training`).
+        if "evaluation" in result and "hist_stats" in result["evaluation"]:
+            hist_stats = result["evaluation"]["hist_stats"]
+            # We count in episodes.
+            if algorithm.config.evaluation_duration_unit == "episodes":
+                num_episodes_done = len(hist_stats["episode_lengths"])
+                # Compare number of entries in episode_lengths (this is the
+                # number of episodes actually run) with desired number of
+                # episodes from the config.
+                if isinstance(algorithm.config.evaluation_duration, int):
+                    assert num_episodes_done == algorithm.config.evaluation_duration
+                # If auto-episodes: Expect at least as many episode as workers
+                # (each worker's `sample()` is at least called once).
+                else:
+                    assert algorithm.config.evaluation_duration == "auto"
+                    assert num_episodes_done >= algorithm.config.evaluation_num_workers
+                print(
+                    "Number of run evaluation episodes: " f"{num_episodes_done} (ok)!"
+                )
+            # We count in timesteps.
+            else:
+                num_timesteps_reported = result["evaluation"]["timesteps_this_iter"]
+                num_timesteps_wanted = algorithm.config.evaluation_duration
+                if num_timesteps_wanted != "auto":
+                    delta = num_timesteps_wanted - num_timesteps_reported
+                    # Expect roughly the same (desired // num-eval-workers).
+                    assert abs(delta) < 20, (
+                        delta,
+                        num_timesteps_wanted,
+                        num_timesteps_reported,
+                    )
+                print(
+                    "Number of run evaluation timesteps: "
+                    f"{num_timesteps_reported} (ok)!"
+                )
+
+            print(f"R={result['evaluation']['episode_reward_mean']}")
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+
+    config = (
+        get_trainable_cls(args.algo)
+        .get_default_config()
+        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        .environment("CartPole-v1")
+        # Run with tracing enabled for tf2.
+        .framework(args.framework)
+        .evaluation(
+            # Parallel evaluation+training config.
+            # Switch on evaluation in parallel with training.
+            evaluation_parallel_to_training=True,
+            # Use two evaluation workers. Must be >0, otherwise,
+            # evaluation will run on a local worker and block (no parallelism).
+            evaluation_num_workers=args.evaluation_num_workers,
+            # Evaluate every other training iteration (together
+            # with every other call to Algorithm.train()).
+            evaluation_interval=args.evaluation_interval,
+            # Run for n episodes/timesteps (properly distribute load amongst
+            # all eval workers). The longer it takes to evaluate, the more sense
+            # it makes to use `evaluation_parallel_to_training=True`.
+            # Use "auto" to run evaluation for roughly as long as the training
+            # step takes.
+            evaluation_duration=args.evaluation_duration,
+            # "episodes" or "timesteps".
+            evaluation_duration_unit=args.evaluation_duration_unit,
+            # Switch off exploratory behavior for better (greedy) results.
+            evaluation_config={"explore": False},
+        )
+        .rollouts(
+            num_rollout_workers=args.num_env_runners,
+            # Set up the correct env-runner to use depending on
+            # old-stack/new-stack and multi-agent settings.
+            env_runner_cls=(
+                None
+                if not args.enable_new_api_stack
+                else SingleAgentEnvRunner
+                if args.num_agents == 0
+                else MultiAgentEnvRunner
+            ),
+        )
+        # Use a custom callback that asserts that we are running the
+        # configured exact number of episodes per evaluation OR - in auto
+        # mode - run at least as many episodes as we have eval workers.
+        .callbacks(AssertEvalCallback)
+        .resources(
+            num_learner_workers=args.num_gpus,
+            num_gpus_per_learner_worker=int(args.num_gpus != 0),
+            num_cpus_for_local_worker=1,
+        )
+    )
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
+    run_rllib_example_script_experiment(config, args, stop)
