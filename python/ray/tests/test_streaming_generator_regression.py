@@ -11,12 +11,7 @@ from ray.util.state import list_workers
 
 @ray.remote(num_cpus=1)
 class EndpointActor:
-    def __init__(
-        self,
-        *,
-        injected_executor_delay_s: float,
-        tokens_per_request: int
-    ):
+    def __init__(self, *, injected_executor_delay_s: float, tokens_per_request: int):
         self._tokens_per_request = tokens_per_request
         # TODO elaborate
         self._inject_delay_in_core_worker_executor(
@@ -29,12 +24,17 @@ class EndpointActor:
             yield i
 
     @classmethod
-    def _inject_delay_in_core_worker_executor(cls, target_delay_s: float, max_workers: int):
+    def _inject_delay_in_core_worker_executor(
+        cls, target_delay_s: float, max_workers: int
+    ):
         if target_delay_s > 0:
+
             class DelayedThreadPoolExecutor(ThreadPoolExecutor):
                 def submit(self, fn, /, *args, **kwargs):
                     def __slowed_fn():
-                        print(f">>> [DelayedThreadPoolExecutor] Starting executing function with delay {target_delay_s}s")
+                        print(
+                            f">>> [DelayedThreadPoolExecutor] Starting executing function with delay {target_delay_s}s"
+                        )
 
                         time.sleep(target_delay_s)
                         fn(*args, **kwargs)
@@ -42,12 +42,13 @@ class EndpointActor:
                     return super().submit(__slowed_fn)
 
             executor = DelayedThreadPoolExecutor(max_workers=max_workers)
-            ray._private.worker.global_worker.core_worker.reset_event_loop_executor(executor)
+            ray._private.worker.global_worker.core_worker.reset_event_loop_executor(
+                executor
+            )
 
 
 @ray.remote(num_cpus=1)
 class CallerActor:
-
     def __init__(
         self,
         downstream: ActorHandle,
@@ -88,7 +89,9 @@ class CallerActor:
     ],
     indirect=True,
 )
-def test_segfault_report_streaming_generator_output(ray_start_cluster, injected_executor_delay_s: float):
+def test_segfault_report_streaming_generator_output(
+    ray_start_cluster, injected_executor_delay_s: float
+):
     """
     This is a "smoke" test attempting to emulate condition, when using Ray's async streaming generator,
     that leads to worker crashing with SIGSEGV.
@@ -117,5 +120,6 @@ def test_segfault_report_streaming_generator_output(ray_start_cluster, injected_
 
     worker_ids, worker_exit_types = zip(*worker_state_after)
     # Make sure no workers crashed
-    assert "SYSTEM_ERROR" not in worker_exit_types, f"Unexpected crashed worker(s) in {worker_ids}"
-
+    assert (
+        "SYSTEM_ERROR" not in worker_exit_types
+    ), f"Unexpected crashed worker(s) in {worker_ids}"
