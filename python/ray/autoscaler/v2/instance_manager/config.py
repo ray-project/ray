@@ -158,26 +158,18 @@ class AutoscalingConfig:
         self,
         configs: Dict[str, Any],
         skip_content_hash: bool = False,
-        skip_prepare: bool = False,
     ) -> None:
         """
         Args:
             configs : The raw configs dict.
             skip_content_hash :
                 Whether to skip file mounts/ray command hash calculation.
-            skip_prepare :
-                Whether to skip the config prep step from loading.
         """
         self._sync_continuously = False
-        self.update_configs(configs, skip_content_hash, skip_prepare)
+        self.update_configs(configs, skip_content_hash)
 
-    def update_configs(
-        self, configs: Dict[str, Any], skip_content_hash: bool, skip_prepare: bool
-    ) -> None:
-        if skip_prepare:
-            self._configs = configs
-        else:
-            self._configs = prepare_config(configs)
+    def update_configs(self, configs: Dict[str, Any], skip_content_hash: bool) -> None:
+        self._configs = prepare_config(configs)
         validate_config(self._configs)
         if skip_content_hash:
             return
@@ -488,24 +480,25 @@ class KubeRayConfigReader(IConfigReader):
 
     def __init__(self, config_producer: AutoscalingConfigProducer):
         self._config_producer = config_producer
-        self._cached_config = self._read()
+        self._cached_config = self._generate_configs_from_k8s()
 
-    def _read(self) -> AutoscalingConfig:
-        return AutoscalingConfig(self._config_producer(), skip_prepare=True)
+    def _generate_configs_from_k8s(self) -> AutoscalingConfig:
+        return AutoscalingConfig(self._config_producer())
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
         """
-        Reads the configs from the K8s RayCluster CR and returns the autoscaling config.
-
-        This reads from the K8s API server every time to pick up changes.
-
         Returns:
             AutoscalingConfig: The autoscaling config.
         """
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):
-        self._cached_config = self._read()
+        """
+        Reads the configs from the K8s RayCluster CR.
+
+        This reads from the K8s API server every time to pick up changes.
+        """
+        self._cached_config = self._generate_configs_from_k8s()
 
 
 class ReadOnlyProviderConfigReader(IConfigReader):
