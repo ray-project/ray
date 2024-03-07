@@ -16,6 +16,10 @@ Autoscaling can reduce workload costs, but adds node launch overheads and can be
 We recommend starting with non-autoscaling clusters if you're new to Ray.
 ```
 
+```{admonition} Ray Autoscaling V2 alpha with KubeRay (@ray 2.10.0) 
+With Ray 2.10, Ray Autoscaler V2 alpha is available with KubeRay. It has improvements on observability and stability. Please see the [section](kuberay-autoscaler-v2) for more details.
+```
+
 ## Overview
 
 The following diagram illustrates the integration of the Ray Autoscaler with the KubeRay operator.
@@ -316,3 +320,52 @@ for container environment variables.
 ## Next steps
 
 See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](ray-k8s-autoscaler-comparison) for more details about the relationship between the Ray Autoscaler and Kubernetes autoscalers.
+
+(kuberay-autoscaler-v2)=
+### Autosclaer V2 with KubeRay
+
+#### Prerequisites
+* Ray 2.10.0 or nightly ray version
+* KubeRay 1.1.0 or later
+
+Ray 2.10.0 introduces Ray Autoscaler V2 alpha with KubeRay, which has improvements on observability and stability:
+1. **Observability**: The Autoscaler V2 provides instance level tracing on each ray worker node's lifecycle, making it easier to debug and understand the Autoscaler's behavior. It also reports 
+the idle information (why it's idle, why it's not idle) of each node.
+2. **Stability**: The Autoscaler V2 has improvements on idle node termination. In current V1 autoscaler, it might kill a node which was idle, but no longer idle when the termination request was processed, causing tasks or actors to fail. Leveraging on ray's graceful draining mechanism, the Autoscaler V2 can terminate idle nodes more gracefully such that no tasks or actors on an idle node will be killed.
+
+
+In order to enable Autoscaler V2, one could modify the `ray-cluster.autoscaler.yaml` like below.
+
+```bash
+
+# Change 1: Use nightly ray or 2.10.+ ray version
+
+spec:
+  # Use the ray 2.10.0 or nightly ray version.
+  rayVersion: '2.10.0'
+...
+
+
+# Change 2: Set the RAY_enable_autoscaler_v2=1 env on the ray-head container.
+# The Ray head container
+  headGroupSpec:
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.10.0
+          # Add the environment variable.
+          env:
+            - name: RAY_enable_autoscaler_v2
+              value: "1"
+        restartPolicy: Never # Don't restart the container if ray is not healthy.
+
+
+# Change 3: Make sure K8s don't restart the containers for ray worker pods. This is important for Ray to manage the instances correctly. 
+  workerGroupSpecs:
+  - replicas: 1
+    template:
+      spec:
+        restartPolicy: Never 
+        ...
+```
