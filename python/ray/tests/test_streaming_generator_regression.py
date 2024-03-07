@@ -17,30 +17,32 @@ class EndpointActor:
         injected_executor_delay_s: float,
         tokens_per_request: int
     ):
-        self._injected_executor_delay_s = injected_executor_delay_s
         self._tokens_per_request = tokens_per_request
+        # TODO elaborate
+        self._inject_delay_in_core_worker_executor(
+            target_delay_s=injected_executor_delay_s,
+            max_workers=1,
+        )
 
     async def aio_stream(self):
+        for i in range(self._tokens_per_request):
+            yield i
 
-        if self._injected_executor_delay_s > 0:
-            # TODO elaborate
-            injected_delay = self._injected_executor_delay_s
-
+    @classmethod
+    def _inject_delay_in_core_worker_executor(cls, target_delay_s: float, max_workers: int):
+        if target_delay_s > 0:
             class DelayedThreadPoolExecutor(ThreadPoolExecutor):
                 def submit(self, fn, /, *args, **kwargs):
                     def __slowed_fn():
-                        print(f">>> [DelayedThreadPoolExecutor] Starting executing function with delay {injected_delay}s")
+                        print(f">>> [DelayedThreadPoolExecutor] Starting executing function with delay {target_delay_s}s")
 
-                        time.sleep(injected_delay)
+                        time.sleep(target_delay_s)
                         fn(*args, **kwargs)
 
                     return super().submit(__slowed_fn)
 
-            executor = DelayedThreadPoolExecutor(max_workers=1)
+            executor = DelayedThreadPoolExecutor(max_workers=max_workers)
             ray._private.worker.global_worker.core_worker.reset_event_loop_executor(executor)
-
-        for i in range(self._tokens_per_request):
-            yield i
 
 
 @ray.remote(num_cpus=1)
