@@ -242,25 +242,26 @@ def record_extra_usage_tag(
             return
         _recorded_extra_usage_tags[key] = value
 
-    if gcs_client is None:
-        gcs_client = internal_kv_get_gcs_client()
-
-    if gcs_client is None:
-        # This happens if the record is before ray.init and no
-        # gcs client is used.
+    if not _internal_kv_initialized():
+        # This happens if the record is before ray.init and
+        # no GCS client is used for recording explicitly.
         return
 
     _put_extra_usage_tag(key, value, gcs_client)
 
 
-def _put_extra_usage_tag(key: str, value: str, gcs_client: GcsClient):
-    assert gcs_client is not None
+def _put_extra_usage_tag(key: str, value: str, gcs_client: Optional[GcsClient] = None):
     try:
-        gcs_client.internal_kv_put(
-            f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode(),
-            value.encode(),
-            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
-        )
+        key = f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode()
+        val = value.encode()
+        namespace = usage_constant.USAGE_STATS_NAMESPACE.encode()
+        if gcs_client is not None:
+            # Use the GCS client.
+            gcs_client.internal_kv_put(key, val, namespace=namespace)
+        else:
+            # Use internal kv.
+            assert _internal_kv_initialized()
+            _internal_kv_put(key, val, namespace=namespace)
     except Exception as e:
         logger.debug(f"Failed to put extra usage tag, {e}")
 
@@ -311,7 +312,7 @@ def _put_pre_init_library_usages():
 def _put_pre_init_extra_usage_tags():
     assert _internal_kv_initialized()
     for k, v in _recorded_extra_usage_tags.items():
-        _put_extra_usage_tag(k, v, internal_kv_get_gcs_client())
+        _put_extra_usage_tag(k, v)
 
 
 def put_pre_init_usage_stats():
