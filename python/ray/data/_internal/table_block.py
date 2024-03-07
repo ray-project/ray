@@ -224,8 +224,10 @@ class TableBlockAccessor(BlockAccessor):
             ):
                 # If block types are different, but still both of TableBlock type, try
                 # converting both to default block type before zipping.
-                self_default, other_default = self.to_default(), acc.to_default()
-                return BlockAccessor.for_block(self_default).zip(other_default)
+                self_norm, other_norm = TableBlockAccessor.normalize_block_types(
+                    [self._table, other],
+                )
+                return BlockAccessor.for_block(self_norm).zip(other_norm)
             else:
                 raise ValueError(
                     "Cannot zip {} with block of type {}".format(
@@ -279,7 +281,11 @@ class TableBlockAccessor(BlockAccessor):
         seen_types = set()
         for block in blocks:
             acc = BlockAccessor.for_block(block)
-            assert isinstance(acc, TableBlockAccessor), type(acc)
+            if not isinstance(acc, TableBlockAccessor):
+                raise ValueError(
+                    "Block type normalization is only supported for TableBlock, "
+                    f"but received block of type: {type(block)}."
+                )
             seen_types.add(type(block))
 
         # Return original blocks if they are all of the same type.
@@ -293,5 +299,11 @@ class TableBlockAccessor(BlockAccessor):
         else:
             results = [BlockAccessor.for_block(block).to_default() for block in blocks]
 
-        assert all(isinstance(block, type(results[0])) for block in results)
+        if any(not isinstance(block, type(results[0])) for block in results):
+            raise ValueError(
+                "Expected all blocks to be of the same type after normalization, but "
+                f"got different types: {[type(b) for b in results]}. "
+                "Try using blocks of the same type to avoid the issue "
+                "with block normalization."
+            )
         return results
