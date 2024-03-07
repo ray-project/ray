@@ -23,7 +23,6 @@ def get_devices() -> List[torch.device]:
     """
     if torch.cuda.is_available():
         device_ids = []
-
         for resource_name, accelerator_ids in (
             ray.get_runtime_context().get_accelerator_ids().items()
         ):
@@ -48,20 +47,22 @@ def get_devices() -> List[torch.device]:
                 # If using fractional GPUs, these IDs are not guaranteed
                 # to be unique across different processes.
                 for gpu_id in accelerator_ids:
-                    try:
-                        device_ids.append(cuda_visible_list.index(gpu_id))
-                    except IndexError:
-                        raise RuntimeError(
-                            f"{accelerator_env_var} set incorrectly. "
-                            f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                            f"Did you override the {accelerator_env_var} environment variable? "
-                            "If not, please help file an issue on Github."
-                        )
+                    if len(device_ids) == 0:
+                        current_resource_name = resource_name
+                    if current_resource_name == resource_name:
+                        try:
+                            device_ids.append(cuda_visible_list.index(gpu_id))
+                        except IndexError:
+                            raise RuntimeError(
+                                f"{accelerator_env_var} set incorrectly. "
+                                f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                                f"Did you override the {accelerator_env_var} environment variable? "
+                                "If not, please help file an issue on Github."
+                            )
         if len(device_ids) == 0:
             # If called on the driver or outside of Ray Train, return the
             # 0th device.
             device_ids.append(0)
-
         devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
     else:
         devices = [torch.device("cpu")]
