@@ -165,7 +165,7 @@ class _ExperimentCheckpointManager:
 
         if checkpoint_time_taken > self._slow_sync_threshold:
             logger.warning(
-                "Checkpointing the experiment state (which holds a global view "
+                "Saving the experiment state (which holds a global view "
                 "of trial statuses and is used to restore the experiment) took "
                 f"{checkpoint_time_taken:.2f} seconds, which may be a bottleneck.\n"
                 "This could be due to a large number of trials, "
@@ -173,8 +173,8 @@ class _ExperimentCheckpointManager:
                 "remote storage if uploading too frequently.\n"
                 "You can increase the number of seconds between experiment syncs "
                 "by setting the environment variable TUNE_GLOBAL_CHECKPOINT_S. "
-                "For example, TUNE_GLOBAL_CHECKPOINT_S=60 will perform a global "
-                "experiment checkpoint every 60 seconds."
+                "For example, TUNE_GLOBAL_CHECKPOINT_S=60 will perform an "
+                "experiment state snapshot every 60 seconds."
             )
 
         # Finish
