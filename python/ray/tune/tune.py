@@ -1010,10 +1010,15 @@ def run(
 
     tune_taken = time.time() - tune_start
 
+    final_sync_start = time.time()
     try:
         runner.checkpoint(force=True)
-    except Exception as e:
-        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+        logger.info(
+            "Wrote the latest version of all result files and experiment state to "
+            f"'{runner.experiment_path}' in {time.time() - final_sync_start:.4f}s."
+        )
+    except Exception:
+        logger.error("Experiment checkpointing failed:", exc_info=True, stack_info=True)
 
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
