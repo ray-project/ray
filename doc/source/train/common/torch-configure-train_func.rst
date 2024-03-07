@@ -10,7 +10,7 @@ Begin by wrapping your code in a :ref:`training function <train-overview-trainin
 
 Each distributed training worker executes this function.
 
-You can also specify the input argument for `train_func` via the Trainer's `train_loop_config` parameter. For example:
+You can also specify the input argument for `train_func` as a dictionary via the Trainer's `train_loop_config`. For example:
 
 .. testcode:: python
     :skipif: True
