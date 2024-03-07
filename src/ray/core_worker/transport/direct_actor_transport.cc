@@ -94,14 +94,16 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
-    std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
+
+    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns = new std::vector<std::pair<ObjectID, bool>>();
+
     bool is_retryable_error = false;
     std::string application_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
-                                &streaming_generator_returns,
+                                streaming_generator_returns,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
@@ -121,7 +123,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       reply->set_task_execution_error(application_error);
     }
 
-    for (const auto &it : streaming_generator_returns) {
+    for (const auto &it : *streaming_generator_returns) {
       const auto &object_id = it.first;
       bool is_plasma_object = it.second;
       auto return_id_proto = reply->add_streaming_generator_return_ids();
@@ -208,6 +210,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       RAY_CHECK(objects_valid);
       send_reply_callback(status, nullptr, nullptr);
     }
+
+    delete streaming_generator_returns;
 
     std::cout << ">>> [CoreWorkerDirectTaskReceiver::HandleTask[accept_callback]] Completed" << std::endl;
   };
