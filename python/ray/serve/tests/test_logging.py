@@ -711,6 +711,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     direct_from_stdout = False
     direct_from_stderr = False
     multiline_log = False
+    structured_logs = []
     for log_file in os.listdir(logs_dir):
         if log_file.startswith("replica_default_disable_stdout"):
             with open(logs_dir / log_file) as f:
@@ -742,12 +743,16 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
                         and contain_logging_prefix(_message)
                     ):
                         multiline_log = True
-    assert from_serve_logger_check
-    assert from_print_check
-    assert from_error_check
-    assert direct_from_stdout
-    assert direct_from_stderr
-    assert multiline_log
+                    structured_logs.append(structured_log)
+    all_checks = [
+        from_serve_logger_check,
+        from_print_check,
+        from_error_check,
+        direct_from_stdout,
+        direct_from_stderr,
+        multiline_log,
+    ]
+    assert all(all_checks), structured_logs
 
 
 def test_stream_to_logger():
