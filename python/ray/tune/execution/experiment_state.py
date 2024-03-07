@@ -95,9 +95,9 @@ class _ExperimentCheckpointManager:
             # writing global checkpoints and 95% of the time processing trials
             self._checkpoint_period = max(10.0, time_taken * 19)
             logger.debug(
-                f"Global experiment checkpointing took "
+                f"Experiment state snapshotting took "
                 f"{time_taken:.2f} seconds. "
-                f"Adjusting checkpoint period to "
+                f"Adjusting snapshotting period to "
                 f"{self._checkpoint_period:.2f} seconds."
             )
 

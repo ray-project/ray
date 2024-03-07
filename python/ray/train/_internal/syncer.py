@@ -184,7 +184,7 @@ class Syncer(abc.ABC):
 
     This class handles data transfer for two cases:
 
-    1. Synchronizing data such as experiment checkpoints from the driver to
+    1. Synchronizing data such as experiment state snapshots from the driver to
        cloud storage.
     2. Synchronizing data such as trial checkpoints from remote trainables to
        cloud storage.

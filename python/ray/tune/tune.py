@@ -1018,7 +1018,9 @@ def run(
             f"'{runner.experiment_path}' in {time.time() - final_sync_start:.4f}s."
         )
     except Exception:
-        logger.error("Experiment checkpointing failed:", exc_info=True, stack_info=True)
+        logger.error(
+            "Experiment state snapshotting failed:", exc_info=True, stack_info=True
+        )
 
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
