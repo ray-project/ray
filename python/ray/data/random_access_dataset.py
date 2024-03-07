@@ -162,7 +162,7 @@ class RandomAccessDataset:
                 [index] * len(keybatch), keybatch
             )
             futures[index] = fut
-        all_values = ray.get(futures.values)
+        all_values = ray.get(futures.values())
         results = {}
         for i, values in zip(futures.keys(), all_values):
             keybatch = batches[i]
