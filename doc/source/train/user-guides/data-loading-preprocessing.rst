@@ -210,7 +210,7 @@ All datasets are split (i.e. sharded) across the training workers by default. :m
 .. note::
 
     Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers.
-    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:ref:`example <deepspeed_example>`) or
+    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:doc:`example <../examples/deepspeed/deepspeed_example>`) or
     utilities available in other frameworks that you can explore.
 
 This behavior can be overwritten by passing in the ``dataset_config`` argument. For more information on configuring splitting logic, see :ref:`Splitting datasets <train-datasets-split>`.
