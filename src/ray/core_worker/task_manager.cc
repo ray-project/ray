@@ -489,7 +489,16 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
-bool TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
+bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
+  }
+
+  if (!can_gc_lineage) {
+    return false;
+  }
+
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(generator_id.TaskId());
@@ -499,13 +508,17 @@ bool TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
       // stream metadata to determine whether it's safe to GC both.
       return false;
     }
+
+    submissible_tasks_.erase(it);
   }
 
   {
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
 
     RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
-    bool can_gc_lineage = GarbageCollectStreamingGeneratorInternal(generator_id);
+    // Perform GC again because we released the lock. More objects could have
+    // been reported in the meantime.
+    bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
     if (!can_gc_lineage) {
       RAY_LOG(WARNING) << "Deleted streaming generator " << generator_id
                        << " may leak objects. Please file an issue at "
@@ -571,12 +584,7 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
   return stream_it->second.IsFinished();
 }
 
-bool TaskManager::GarbageCollectStreamingGenerator(const ObjectID &generator_id) {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  return GarbageCollectStreamingGeneratorInternal(generator_id);
-}
-
-bool TaskManager::GarbageCollectStreamingGeneratorInternal(const ObjectID &generator_id) {
+bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
   // Call execution signal callbacks to ensure that the executor does not block
   // after the generator goes out of scope at the caller.
   auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
@@ -604,7 +612,8 @@ bool TaskManager::GarbageCollectStreamingGeneratorInternal(const ObjectID &gener
   in_memory_store_->Delete(deleted);
 
   int64_t num_objects_generated = stream_it->second.EofIndex();
-  if (num_objects_generated != -1) {
+  if (num_objects_generated == -1) {
+    RAY_LOG(DEBUG) << "Skip streaming generator deletion, EOF not written yet";
     // Generator task has not finished yet. Wait for EoF to be marked before
     // deleting.
     return false;

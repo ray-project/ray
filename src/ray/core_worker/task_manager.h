@@ -378,31 +378,37 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                                 const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Delete the object ref stream. If present, also deletes the task metadata
-  /// for the streaming generator task to avoid a memory leak in the edge case
-  /// where the task completes after all returned refs have already gone out of
-  /// scope.
+  /// Delete the object ref stream. The caller must guarantee that the
+  /// generator ref and all returned refs have been deleted from the reference
+  /// counter (all lineage out of scope) before calling this method.
   ///
-  /// Once the stream is deleted, it will clean up all unconsumed
-  /// object references, and all the future intermediate report
-  /// will be ignored.
+  /// Garbage collects any callbacks and unconsumed refs for a streaming
+  /// generator task. All registered execution signal callbacks will be
+  /// triggered and cleared. Future callbacks will be triggered immediately.
+  /// All unconsumed objects in scope will be released and removed from the
+  /// in-memory store.
   ///
-  /// This method is idempotent. It is because the language
-  /// frontend often calls this method upon destructor, but
-  /// not every langauge guarantees the destructor is called
-  /// only once.
+  /// If present, this method also deletes the task metadata for the streaming
+  /// generator task to avoid a memory leak in the edge case where the task
+  /// completes after all returned refs have already gone out of scope.
   ///
-  /// Returns false if the task metadata is present but the task is still
-  /// pending completion, because we need to wait until the task finishes or
-  /// fails to erase it. Otherwise, it is possible for the task metadata to
-  /// leak, because we have already deleted the corresponding stream metadata.
-  /// In this case, the caller should try again later.
+  /// This method is idempotent. Can return false in any of the following cases:
+  /// - The generator ref or one of the returned refs is still in the ref
+  /// counter (lineage is in scope).
+  /// - Generator task not complete yet. Task metadata is present but the task
+  /// is still pending completion, because we need to wait until the task
+  /// finishes or fails before we erase it. Otherwise, it is possible for the
+  /// task metadata to leak, because we have already deleted the corresponding
+  /// stream metadata.
+  ///
+  /// If the method returns false, the caller should repeat until this method
+  /// returns true.
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
   /// \return Whether the task metadata and stream metadata were successfully
   /// erased.
-  bool DelObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
+  bool TryDelObjectRefStream(const ObjectID &generator_id) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Return true if the object ref stream exists.
   ///
@@ -435,25 +441,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   /// \return True if there are no more objects to read from the generator.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const
-      ABSL_LOCKS_EXCLUDED(mu_);
-
-  /// Garbage collect any callbacks and unconsumed refs for a streaming
-  /// generator task. All registered execution signal callbacks will be
-  /// triggered and cleared. All unconsumed objects in scope will be released
-  /// and removed from the in-memory store.
-  ///
-  /// This method should be called once the generator ref has gone out of
-  /// scope. If the generator task is still running or is re-executed, it can
-  /// continue to report objects generated after this method is called.
-  /// Therefore, the caller should continue calling this method until the
-  /// stream has been deleted.
-  ///
-  /// \param[in] generator_id The ObjectRef ID returned by the streaming
-  /// generator task.
-  /// \return true if it is safe to delete the stream and task metadata for the
-  /// generator. If false, then the caller should continue calling this
-  /// function until this method returns true.
-  bool GarbageCollectStreamingGenerator(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
@@ -839,8 +826,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                                         const ObjectID &generator_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Helper method for GarbageCollectStreamingGenerator.
-  bool GarbageCollectStreamingGeneratorInternal(const ObjectID &generator_id)
+  /// Helper method for TryDelObjectRefStream. Triggers execution signal
+  /// callbacks and releases unconsumed refs. Return true if it is safe to
+  /// delete the stream and task metadata for the generator.
+  bool TryDelObjectRefStreamInternal(const ObjectID &generator_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.

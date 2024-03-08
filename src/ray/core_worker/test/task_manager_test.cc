@@ -1219,15 +1219,15 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCreateDelete) {
   manager_.AddPendingTask(caller_address, spec, "", 0);
   ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
   // Deletion does not succeed until task is completed too.
-  ASSERT_FALSE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
   ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
-  // Test DelObjectRefStream is idempotent
-  ASSERT_FALSE(manager_.DelObjectRefStream(generator_id));
+  // Test TryDelObjectRefStream is idempotent
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
   ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
 
   // Task completes. Deletion succeeds.
   CompletePendingStreamingTask(spec, caller_address, 0);
-  ASSERT_TRUE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
   ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 }
 
@@ -1242,7 +1242,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
   CompletePendingStreamingTask(spec, caller_address, 0);
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
   ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 
   auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
@@ -1317,7 +1317,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
   // DELETE
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
 }
 
 TEST_F(TaskManagerTest, TestPeekObjectReady) {
@@ -1396,7 +1396,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
   // DELETE
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
@@ -1609,7 +1609,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
 
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
@@ -1669,7 +1669,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
 
   // DELETE. This should clean all references except generator id.
   CompletePendingStreamingTask(spec, caller_address, 2);
-  ASSERT_FALSE(manager_.GarbageCollectStreamingGenerator(generator_id));
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
   // All the in memory objects should be cleaned up. The generator ref returns
   // a direct result that would be GCed once it goes out of scope.
   ASSERT_EQ(store_->Size(), 1);
@@ -1680,8 +1680,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
 
   // Clean up the generator ID. Now all lineage is safe to remove.
   reference_counter_->RemoveLocalReference(generator_id, nullptr);
-  ASSERT_TRUE(manager_.GarbageCollectStreamingGenerator(generator_id));
-  ASSERT_TRUE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 
@@ -1779,7 +1778,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
 
   // DELETE. This should clean all references except generator id.
   CompletePendingStreamingTask(spec, caller_address, 2);
-  ASSERT_FALSE(manager_.GarbageCollectStreamingGenerator(generator_id));
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
   // All the unconsumed objects should be cleaned up. The generator ref returns
   // a direct result that would be GCed once it goes out of scope.
   ASSERT_EQ(store_->Size(), 2);
@@ -1788,11 +1787,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
 
   // Clean up the generator ID.
   reference_counter_->RemoveLocalReference(generator_id, nullptr);
-  ASSERT_FALSE(manager_.GarbageCollectStreamingGenerator(generator_id));
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
   // Clean up the consumed dynamic return.
   reference_counter_->RemoveLocalReference(dynamic_return_id, nullptr);
-  ASSERT_TRUE(manager_.GarbageCollectStreamingGenerator(generator_id));
-  ASSERT_TRUE(manager_.DelObjectRefStream(dynamic_return_id));
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(dynamic_return_id));
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
   // All the unconsumed in memory objects should be cleaned up. Check for 2
@@ -1825,6 +1823,59 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   ASSERT_EQ(store_->Size(), 2);
   ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageBeforeTaskCompletes) {
+  /**
+   * Verify DEL cleans all references/objects and ignore all future WRITE.
+   * However, stream and task metadata is not deleted until the generator refs'
+   * lineage has gone out of scope.
+   *
+   * CREATE WRITE WRITE DEL (make sure no refs are leaked)
+   */
+  // Submit a task so that generator ID will be available
+  // to the reference counter.
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  // WRITE
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+
+  // NumObjectIDsInScope == Generator + 2 WRITE
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+  // 2 in memory objects.
+  ASSERT_EQ(store_->Size(), 1);
+
+  // Consume one ref.
+  ObjectID obj_id;
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(obj_id, dynamic_return_id);
+
+  // Clear consumers' references.
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  reference_counter_->RemoveLocalReference(dynamic_return_id, nullptr);
+  // Stream metadata cannot be GCed because EOF not written yet.
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  // DELETE. This should clean all references except generator id.
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
@@ -1871,7 +1922,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
@@ -1907,7 +1958,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
 
   // Delete the stream. This should remove references from ^.
   CompletePendingStreamingTask(spec, caller_address, 0);
-  ASSERT_TRUE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
 
   // WRITE to index 0. It should fail because the stream has been removed.
@@ -2021,7 +2072,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
                                                     generator_id);
   ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_2));
   CompletePendingStreamingTask(spec, caller_address, 2);
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_2));
 }
 
@@ -2110,7 +2161,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
 
   // Deleting the stream should send a signal.
   CompletePendingStreamingTask(spec, caller_address, 2);
-  ASSERT_TRUE(manager_.DelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
   ASSERT_TRUE(signal_called);
 
   /// No need to test out of order case. It won't be different.
