@@ -51,7 +51,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
     from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
-    def train_func(config):
+    def train_func():
         model = nn.Sequential(nn.Linear(30, 1), nn.Sigmoid())
         loss_fn = torch.nn.BCELoss()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
