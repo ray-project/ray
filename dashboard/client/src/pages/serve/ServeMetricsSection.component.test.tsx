@@ -73,8 +73,8 @@ describe("ServeMetricsSection", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders system metrics", async () => {
-    expect.assertions(5);
+  it("renders serve system metrics", async () => {
+    expect.assertions(7);
 
     render(
       <ServeMetricsSection metricsConfig={SERVE_SYSTEM_METRICS_CONFIG} />,
@@ -84,7 +84,7 @@ describe("ServeMetricsSection", () => {
     );
     await screen.findByText(/View in Grafana/);
     expect(screen.getByTitle("Ongoing HTTP Requests")).toBeInTheDocument();
-    expect(screen.getByTitle("Controller Starts")).toBeInTheDocument();
+    expect(screen.getByTitle("Ongoing gRPC Requests")).toBeInTheDocument();
     expect(screen.getByTitle("Scheduling Tasks")).toBeInTheDocument();
     expect(
       screen.getByTitle("Scheduling Tasks in Backoff"),
@@ -92,6 +92,7 @@ describe("ServeMetricsSection", () => {
     expect(
       screen.getByTitle("Controller Control Loop Duration"),
     ).toBeInTheDocument();
+    expect(screen.getByTitle("Number of Control Loops")).toBeInTheDocument();
   });
 
   it("renders nothing when grafana is not available", async () => {

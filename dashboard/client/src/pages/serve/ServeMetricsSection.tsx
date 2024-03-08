@@ -82,7 +82,7 @@ export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
     pathParams: "orgId=1&theme=light&panelId=20",
   },
   {
-    title: "Controller Starts",
+    title: "Ongoing gRPC Requests",
     pathParams: "orgId=1&theme=light&panelId=21",
   },
   {
@@ -96,6 +96,14 @@ export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
   {
     title: "Controller Control Loop Duration",
     pathParams: "orgId=1&theme=light&panelId=24",
+  },
+  {
+    title: "Controller Starts",
+    pathParams: "orgId=1&theme=light&panelId=25",
+  },
+  {
+    title: "Number of Control Loops",
+    pathParams: "orgId=1&theme=light&panelId=26",
   },
 ];
 

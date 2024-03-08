@@ -389,19 +389,6 @@ SERVE_GRAFANA_PANELS = [
     ),
     Panel(
         id=25,
-        title="Controller Starts",
-        description="The number of times the Ray Serve controller has started.",
-        unit="starts",
-        targets=[
-            Target(
-                expr="ray_serve_controller_num_starts{{{global_filters}}}",
-                legend="Controller Starts",
-            ),
-        ],
-        grid_pos=GridPos(16, 7, 8, 8),
-    ),
-    Panel(
-        id=26,
         title="Number of Control Loops",
         description="The number of control loops performed by the controller. Increases monotonically over the controller's lifetime.",
         unit="loops",
@@ -411,7 +398,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="Control Loops",
             ),
         ],
-        grid_pos=GridPos(0, 8, 8, 8),
+        grid_pos=GridPos(16, 7, 8, 8),
     ),
 ]
 
