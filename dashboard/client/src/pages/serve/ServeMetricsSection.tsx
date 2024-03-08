@@ -101,10 +101,6 @@ export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
     title: "Controller Starts",
     pathParams: "orgId=1&theme=light&panelId=25",
   },
-  {
-    title: "Number of Control Loops",
-    pathParams: "orgId=1&theme=light&panelId=26",
-  },
 ];
 
 type ServeMetricsSectionProps = ClassNameProps & {
