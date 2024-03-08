@@ -62,7 +62,6 @@ namespace ray {
 bool SetThisProcessAsSubreaper();
 
 // Sets a SIGCHLD handler to remove dead children from KnownChildrenTracker.
-// Only works for Linux. No-op on MacOS or Windows.
 void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service);
 
 // Kill all unknown children. Lists all processes with pid = this process, and filters
@@ -74,7 +73,7 @@ void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service)
 void KillUnknownChildren();
 
 // Thread-safe tracker for owned children. Provides transactional interfaces for creating
-// children and listing children. Only works in Linux.
+// children and listing children.
 // To avoid useless tracking, it should be enabled by calling `Enable` before use. If not
 // enabled, it's not tracking anything and is a no-op for each method.
 class KnownChildrenTracker {

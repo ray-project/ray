@@ -1,6 +1,7 @@
 import ray
 import pytest
 import multiprocessing
+import subprocess
 import time
 import psutil
 import logging
@@ -42,8 +43,6 @@ class BedMaker:
         return p.pid
 
     def spawn_daemon(self):
-        import subprocess
-
         # Spawns a bash script (shell=True) that starts a daemon process
         # which sleeps 1000s. The bash exits immediately, leaving the daemon
         # running in the background. We don't want to kill the daemon when
@@ -116,6 +115,61 @@ def test_daemon_processes_not_killed_until_actor_dead(enable_subreaper, shutdown
     time.sleep(11)  # unowned processes are killed every 10s.
     with pytest.raises(psutil.NoSuchProcess):
         logger.info(get_process_info(daemon_pid))  # subprocess killed
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_default_sigchld_handler(enable_subreaper, shutdown_only):
+    """
+    Core worker auto-reaps zombies via SIG_IGN. If the user wants to wait for subprocess
+    they can add it back.
+    """
+    ray.init()
+
+    @ray.remote
+    class A:
+        def auto_reap(self):
+            """
+            Auto subprocess management. Since the signal handler is set to SIG_IGN
+            by the flag, zombies are reaped automatically.
+            """
+            process = subprocess.Popen(["true"])
+            pid = process.pid
+            time.sleep(1)  # wait for the process to exit.
+
+            process.wait()
+            # after reaping, it's gone.
+            with pytest.raises(psutil.NoSuchProcess):
+                psutil.Process(pid)
+
+        def manual_reap(self):
+            """
+            Manual subprocess management. Since the signal handler is set back to
+            default, user needs to call `process.wait()` on their own, or the zombie
+            process would persist.
+            """
+
+            import signal
+
+            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+
+            process = subprocess.Popen(["true"])
+            pid = process.pid
+            time.sleep(1)  # wait for the process to exit.
+
+            assert psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+
+            process.wait()
+            # after reaping, it's gone.
+            with pytest.raises(psutil.NoSuchProcess):
+                psutil.Process(pid)
+
+    a = A.remote()
+    # order matters, since `manual_reap` sets the signal handler.
+    ray.get(a.auto_reap.remote())
+    ray.get(a.manual_reap.remote())
 
 
 if __name__ == "__main__":

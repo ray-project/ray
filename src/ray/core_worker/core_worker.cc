@@ -139,6 +139,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     // until this worker exits and raylet reaps it.
     if (SetThisProcessAsSubreaper()) {
       RAY_LOG(INFO) << "Set this core_worker process as subreaper: " << getpid();
+      SetSigchldIgnore();
     } else {
       RAY_LOG(WARNING)
           << "Failed to set this core_worker process as subreaper. If Raylet is set as "

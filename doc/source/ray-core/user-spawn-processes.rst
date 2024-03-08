@@ -1,18 +1,19 @@
 Lifetimes of a User-Spawn Process
 =================================
 
+When you spawns child processes from Ray workers, you are responsible for managing the lifetime of child processes. However, it is not always possible, especially when worker crashes and child processes are spawned from libraries (torch dataloader).
+
 To avoid leaking user-spawned processes, Ray provides mechanisms to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch).
 
-We have 2 environment variables to handle subprocess killing on core worker exit:
+We have 2 environment variables to handle subprocess killing on worker exit:
 
-- ``RAY_kill_child_processes_on_worker_exit`` (default ``true``): Only works on Linux. If true, core worker kills all subprocesses on exit. This won't work if the core worker crashed or was killed by a signal. If a process is created as a daemon, e.g. double forked, it will not be killed by this mechanism.
+- ``RAY_kill_child_processes_on_worker_exit`` (default ``true``): Only works on Linux. If true, the worker kills all *direct* child processes on exit. This won't work if the worker crashed. This is NOT recursive, in that grandchild processes are not killed by this mechanism.
 
-- ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` (default ``false``): Only works on Linux greater than or equal to 3.4. If true, Raylet kills any subprocesses that were spawned by the core worker after the core worker exits. This works even if the core worker crashed or was killed by a signal. Even if a process is created as a daemon, e.g. double forked, it will still be killed by this mechanism. The killing happens within 10 seconds after the core worker death.
-
-Both killings happen recursively, meaning if the core worker spawns user process A, then user process A spawns user process B, on core worker exit (or crash) both A and B are killed.
+- ``RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`` (default ``false``): Only works on Linux greater than or equal to 3.4. If true, Raylet *recursively* kills any child processes and grandchild processes that were spawned by the worker after the worker exits. This works even if the worker crashed. The killing happens within 10 seconds after the worker death.
 
 On non-Linux platforms, user-spawned process is not controlled by Ray. The user is responsible for managing the lifetime of the child processes. If the parent Ray worker process dies, the child processes will continue to run.
 
+Note: The feature is meant to be a last resort to kill orphaned processes. It is not a replacement for proper process management. Users should still manage the lifetime of their processes and clean up properly.
 
 .. contents::
   :local:
@@ -52,7 +53,7 @@ In the following example, we use Ray Actor to spawn a user process. The user pro
   pid = ray.get(actor.start.remote())
   assert psutil.pid_exists(pid)  # the subprocess running
 
-  actor.suicide.remote()  # sigkill'ed, core worker's subprocess killing no longer works
+  actor.suicide.remote()  # sigkill'ed, the worker's subprocess killing no longer works
   time.sleep(11)  # raylet kills orphans every 10s
   assert not psutil.pid_exists(pid)
 
@@ -73,17 +74,15 @@ Another way is to enable it during ``ray.init()`` by adding a ``_system_config``
   ray.init(_system_config={"kill_child_processes_on_worker_exit_with_raylet_subreaper":True})
 
 
-⚠️ Caution: Core worker needs to reap zombies
+⚠️ Caution: Core worker now reaps zombies, toggle back if you wait to ``waitpid``
 ----------------------------------------------
 
-When the feature is enabled, the core worker process becomes a subreaper (see the next section), meaning there can be some grandchildren processes that are reparented to the core worker process. If these processes exit, core worker needs to reap them to avoid zombies, even though they are not spawn by core worker. If core worker does not reap them, the zombies will accumulate and eventually cause the system to run out of resources like memory.
-
-You can add this code to the Ray Actors or Tasks to reap zombies, if you choose to enable the feature:
+When the feature is enabled, the worker process becomes a subreaper (see the next section), meaning there can be some grandchildren processes that are reparented to the worker process. To reap these processes, the worker sets the ``SIGCHLD`` signal to ``SIG_IGN``. This makes the worker not receive the ``SIGCHLD`` signal when its children exit. If you need to wait for a child process to exit, you need to reset the ``SIGCHLD`` signal to ``SIG_DFL``.
 
 .. code-block::
 
   import signal
-  signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+  signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
 
 Under the hood
@@ -91,16 +90,16 @@ Under the hood
 
 This feature is implemented by setting the `prctl(PR_SET_CHILD_SUBREAPER, 1)` flag on the Raylet process which spawns all Ray workers. See `prctl(2) <https://man7.org/linux/man-pages/man2/prctl.2.html>`_. This flag makes the Raylet process a "subreaper" which means that if a descendant child process dies, the dead child's children processes reparent to the Raylet process.
 
-Raylet maintains a list of "known" direct children pid it spawns, and when the Raylet process receives the SIGCHLD signal, it knows that one of its child processes (e.g. core workers) has died, and maybe there are reparented orphan processes. Raylet lists all children pids (with ppid = raylet pid), and if a child pid is not "known" (i.e. not in the list of direct children pids), Raylet thinks it is an orphan process and kills it via `SIGKILL`.
+Raylet maintains a list of "known" direct children pid it spawns, and when the Raylet process receives the SIGCHLD signal, it knows that one of its child processes (e.g. the workers) has died, and maybe there are reparented orphan processes. Raylet lists all children pids (with ppid = raylet pid), and if a child pid is not "known" (i.e. not in the list of direct children pids), Raylet thinks it is an orphan process and kills it via `SIGKILL`.
 
 For a deep chain of process creations, Raylet would do the killing step by step. For example, in a chain like this:
 
 .. code-block::
 
-  raylet -> core worker -> user process A -> user process B -> user process C
+  raylet -> the worker -> user process A -> user process B -> user process C
 
-When the ``core worker`` dies, ``Raylet`` kills the ``user process A``, because it's not on the "known" children list. When ``user process A`` dies, ``Raylet`` kills ``user process B``, and so on.
+When the ``the worker`` dies, ``Raylet`` kills the ``user process A``, because it's not on the "known" children list. When ``user process A`` dies, ``Raylet`` kills ``user process B``, and so on.
 
-An edge case is, if the ``core worker`` is still alive but the ``user process A`` is dead, then ``user process B`` gets reparented and risks being killed. To mitigate, ``Ray`` also sets the ``core worker`` as a subreaper, so it can adopt the reparented processes. ``Core worker`` does not kill unknown children processes, so a user "daemon" process e.g. ``user process B`` that outlives ``user process A`` can live along. However if the ``core worker`` dies, the user daemon process gets reparented to ``raylet`` and gets killed.
+An edge case is, if the ``the worker`` is still alive but the ``user process A`` is dead, then ``user process B`` gets reparented and risks being killed. To mitigate, ``Ray`` also sets the ``the worker`` as a subreaper, so it can adopt the reparented processes. ``Core worker`` does not kill unknown children processes, so a user "daemon" process e.g. ``user process B`` that outlives ``user process A`` can live along. However if the ``the worker`` dies, the user daemon process gets reparented to ``raylet`` and gets killed.
 
 Related PR: `Use subreaper to kill unowned subprocesses in raylet. (#42992) <https://github.com/ray-project/ray/pull/42992>`_
