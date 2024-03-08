@@ -493,7 +493,8 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
   bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
   if (!can_gc_lineage) {
-    RAY_LOG(DEBUG) << "Generator " << generator_id << " still has lineage in scope, try again later";
+    RAY_LOG(DEBUG) << "Generator " << generator_id
+                   << " still has lineage in scope, try again later";
     return false;
   }
 
