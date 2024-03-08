@@ -1235,7 +1235,8 @@ cdef class StreamingGeneratorExecutionContext:
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
-    generator_index: int64_t
+    generator_index: int64_t,
+    interrupt_event: Optional[threading.Event],
 ):
     """Report a given generator output to a caller.
 
@@ -1268,6 +1269,11 @@ cdef report_streaming_generator_output(
     # usage asap.
     del output
 
+    # NOTE: Once interrupting event is set by the caller, we can NOT access
+    #       externally provided data-structures, and have to interrupt the execution
+    if interrupt_event is not None and interrupt_event.is_set():
+        return
+
     context.streaming_generator_returns[0].push_back(
         c_pair[CObjectID, c_bool](
             return_obj.first,
@@ -1286,7 +1292,8 @@ cdef report_streaming_generator_output(
 cdef report_streaming_generator_exception(
     StreamingGeneratorExecutionContext context,
     e: Exception,
-    generator_index: int64_t
+    generator_index: int64_t,
+    interrupt_event: Optional[threading.Event],
 ):
     """Report a given generator exception to a caller.
 
@@ -1327,6 +1334,11 @@ cdef report_streaming_generator_exception(
     # Del exception here so that we can GC the memory
     # usage asap.
     del e
+
+    # NOTE: Once interrupting event is set by the caller, we can NOT access
+    #       externally provided data-structures, and have to interrupt the execution
+    if interrupt_event is not None and interrupt_event.is_set():
+        return
 
     context.streaming_generator_returns[0].push_back(
         c_pair[CObjectID, c_bool](
@@ -1372,7 +1384,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
             report_streaming_generator_output(context, output, gen_index)
             gen_index += 1
     except Exception as e:
-        report_streaming_generator_exception(context, e, gen_index)
+        report_streaming_generator_exception(context, e, gen_index, None)
 
 
 async def execute_streaming_generator_async(
@@ -1411,6 +1423,7 @@ async def execute_streaming_generator_async(
     worker = ray._private.worker.global_worker
 
     executor = worker.core_worker.get_event_loop_executor()
+    interrupt_event = threading.Event()
 
     futures = []
     try:
@@ -1428,6 +1441,7 @@ async def execute_streaming_generator_async(
                         context,
                         output,
                         cur_generator_index,
+                        interrupt_event,
                     )
                 )
                 cur_generator_index += 1
@@ -1440,6 +1454,7 @@ async def execute_streaming_generator_async(
                     context,
                     e,
                     cur_generator_index,
+                    interrupt_event,
                 )
             )
 
@@ -1452,18 +1467,17 @@ async def execute_streaming_generator_async(
         # Upon encountering any failures in reporting generator's output we have to
         # make sure that any already scheduled (onto thread-pool executor), but not
         # finished tasks are canceled before re-throwing the exception to avoid
-        # use-after-free failures where tasks could potential access data-structures
+        # use-after-free failures where tasks could potentially access data-structures
         # that are already cleaned by the caller.
+        #
+        # For that we set an event to interrupt already scheduled tasks (that have
+        # not finished executing), therefore interrupting their execution and
+        # making sure that externally provided data-structures are not
+        # accessed after this point
         #
         # For more details, please check out
         # https://github.com/ray-project/ray/issues/43771
-        if futures:
-            # To guarantee that all tasks are shutdown by the time
-            # we return from this method we have to shut down the executor
-            # and correspondingly flushing it from the worker to allow
-            # subsequent requests to create a new one
-            executor.shutdown(wait=True, cancel_futures=True)
-            worker.core_worker.reset_event_loop_executor(None)
+        interrupt_event.set()
 
         raise
 
@@ -4642,11 +4656,8 @@ cdef class CoreWorker:
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
-            self.reset_event_loop_executor(ThreadPoolExecutor(max_workers=1))
+            self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
         return self.event_loop_executor
-
-    def reset_event_loop_executor(self, executor: Optional[ThreadPoolExecutor]):
-        self.event_loop_executor = executor
 
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
