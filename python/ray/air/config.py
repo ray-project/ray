@@ -204,9 +204,8 @@ class ScalingConfig:
             resources_per_worker.setdefault("GPU", 1)
 
         if self.accelerator_type:
-            resources_per_worker[
-                f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
-            ] = 0.001
+            accelerator = f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
+            resources_per_worker.setdefault(accelerator, 1)
         return resources_per_worker
 
     @property
@@ -236,10 +235,6 @@ class ScalingConfig:
                 k: v for k, v in self.trainer_resources.items() if v != 0
             }
 
-        if self.accelerator_type:
-            trainer_resources[
-                f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
-            ] = 0.001
         return trainer_resources
 
     @property
