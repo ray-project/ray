@@ -1236,7 +1236,7 @@ cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
     generator_index: int64_t,
-    interrupt_event: Optional[threading.Event],
+    interrupt_signal_event: Optional[threading.Event],
 ):
     """Report a given generator output to a caller.
 
@@ -1271,7 +1271,7 @@ cdef report_streaming_generator_output(
 
     # NOTE: Once interrupting event is set by the caller, we can NOT access
     #       externally provided data-structures, and have to interrupt the execution
-    if interrupt_event is not None and interrupt_event.is_set():
+    if interrupt_signal_event is not None and interrupt_signal_event.is_set():
         return
 
     context.streaming_generator_returns[0].push_back(
@@ -1293,7 +1293,7 @@ cdef report_streaming_generator_exception(
     StreamingGeneratorExecutionContext context,
     e: Exception,
     generator_index: int64_t,
-    interrupt_event: Optional[threading.Event],
+    interrupt_signal_event: Optional[threading.Event],
 ):
     """Report a given generator exception to a caller.
 
@@ -1337,7 +1337,7 @@ cdef report_streaming_generator_exception(
 
     # NOTE: Once interrupting event is set by the caller, we can NOT access
     #       externally provided data-structures, and have to interrupt the execution
-    if interrupt_event is not None and interrupt_event.is_set():
+    if interrupt_signal_event is not None and interrupt_signal_event.is_set():
         return
 
     context.streaming_generator_returns[0].push_back(
@@ -1423,7 +1423,7 @@ async def execute_streaming_generator_async(
     worker = ray._private.worker.global_worker
 
     executor = worker.core_worker.get_event_loop_executor()
-    interrupt_event = threading.Event()
+    interrupt_signal_event = threading.Event()
 
     futures = []
     try:
@@ -1441,7 +1441,7 @@ async def execute_streaming_generator_async(
                         context,
                         output,
                         cur_generator_index,
-                        interrupt_event,
+                        interrupt_signal_event,
                     )
                 )
                 cur_generator_index += 1
@@ -1454,7 +1454,7 @@ async def execute_streaming_generator_async(
                     context,
                     e,
                     cur_generator_index,
-                    interrupt_event,
+                    interrupt_signal_event,
                 )
             )
 
@@ -1477,7 +1477,7 @@ async def execute_streaming_generator_async(
         #
         # For more details, please check out
         # https://github.com/ray-project/ray/issues/43771
-        interrupt_event.set()
+        interrupt_signal_event.set()
 
         raise
 
