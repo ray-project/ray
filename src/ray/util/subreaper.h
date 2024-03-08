@@ -33,7 +33,7 @@ namespace ray {
 //
 // In Ray, raylet creates core_worker processes, which may create grandchild processes.
 // If core_worker exits normally it tries to kill all its children recursively. However
-// if core_worker is killed by a signal, its children leak and still occupy resources.
+// if core_worker is crashed unexpectedly, its children leak and still occupy resources.
 //
 // This module allows raylet to act as a subreaper, so that it can take over the
 // responsibility of killing the grandchild processes when core_worker is killed by a
