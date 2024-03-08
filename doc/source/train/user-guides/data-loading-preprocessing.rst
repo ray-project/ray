@@ -4,13 +4,14 @@ Data Loading and Preprocessing
 ==============================
 
 Ray Train integrates with :ref:`Ray Data <data>` to offer an efficient, streaming solution for loading and preprocessing large datasets.
-We recommend using Ray Data for its ability to performantly support large-scale distributed training workloads. Some key advantages include:
+Use Ray Data to performantly run large-scale distributed training workloads. Key advantages include:
 
-- Support for fast out-of-memory recovery
+- Fast out-of-memory recovery
 - Support for heterogeneous clusters
-- No dropped rows in distributed training (with :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`)
+- No dropped rows during distributed dataset iteration
 
 For more details about Ray Data, including comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
+
 In this guide, we will cover how to incorporate Ray Data into your Ray Train script, and different ways to customize your data ingestion pipeline.
 
 .. TODO: Replace this image with a better one.
