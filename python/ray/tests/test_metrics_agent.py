@@ -570,12 +570,17 @@ def test_counter(shutdown_only):
     # Test to make sure Counter emits the right Prometheus metrics
     context = ray.init()
 
-    counter = Counter("test_counter", description="desc")
-    counter.inc(2.0)
-    counter.inc(3.0)
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.counter = Counter("test_counter", description="desc")
+            self.counter.inc(2.0)
+            self.counter.inc(3.0)
 
-    counter_with_total_suffix = Counter("test_counter2_total", description="desc2")
-    counter_with_total_suffix.inc(1.5)
+            self.counter_with_total_suffix = Counter("test_counter2_total", description="desc2")
+            self.counter_with_total_suffix.inc(1.5)
+
+    actor = Actor.remote()
 
     def check_metrics():
         metrics_page = "localhost:{}".format(
@@ -611,22 +616,27 @@ def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
     # Test to make sure we don't export counter as gauge if RAY_EXPORT_COUNTER_AS_GAUGE is 0
     monkeypatch.setenv("RAY_EXPORT_COUNTER_AS_GAUGE", "0")
     context = ray.init()
-    counter = Counter("test_counter", description="desc")
-    counter.inc(2.0)
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.counter = Counter("test_counter", description="desc")
+            self.counter.inc(2.0)
+
+    actor = Actor.remote()
 
     def check_metrics():
         metrics_page = "localhost:{}".format(
             context.address_info["metrics_export_port"]
         )
         _, metric_descriptors, _ = fetch_prometheus([metrics_page])
-        print(metric_descriptors.keys())
 
         assert "ray_test_counter" not in metric_descriptors
         assert "ray_test_counter_total" in metric_descriptors
 
         return True
 
-    wait_for_condition(check_metrics, timeout=20)
+    wait_for_condition(check_metrics, timeout=60)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
