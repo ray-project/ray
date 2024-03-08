@@ -929,7 +929,7 @@ def run_learning_tests_from_yaml_or_py(
         # If we have evaluation workers, use their rewards.
         # This is useful for offline learning tests, where
         # we evaluate against an actual environment.
-        return experiment["config"].get("evaluation_interval", None) is not None
+        return bool(experiment["config"].get("evaluation_interval"))
 
     # Loop through all collected files and gather experiments.
     # Set correct framework(s).

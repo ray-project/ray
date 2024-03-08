@@ -815,9 +815,10 @@ class Algorithm(Trainable, AlgorithmBase):
         # meaning that e.g. the first time this function is called,
         # self.iteration will be 0.
         evaluate_this_iter = (
-            self.config.evaluation_interval is not None
+            self.config.evaluation_interval
             and (self.iteration + 1) % self.config.evaluation_interval == 0
         )
+        evaluate_in_general = self.config.evaluation_interval
 
         # Results dict for training (and if appolicable: evaluation).
         train_results: ResultDict = {}
@@ -865,7 +866,11 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Attach latest available evaluation results to train results,
         # if necessary.
-        if not evaluate_this_iter and self.config.always_attach_evaluation_results:
+        if (
+            evaluate_in_general
+            and not evaluate_this_iter
+            and self.config.always_attach_evaluation_results
+        ):
             if not isinstance(self.evaluation_metrics, dict):
                 raise ValueError(
                     "Algorithm.evaluate() needs to return a ResultDict, but returned "
@@ -985,10 +990,6 @@ class Algorithm(Trainable, AlgorithmBase):
             #        timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
             #    )
 
-            ## TODO: Don't dump sampler results into top-level.
-            #if not self.config.custom_evaluation_function:
-            #    metrics = dict({"sampler_results": metrics}, **metrics)
-
             #metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             #metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
             ## TODO: Remove this key at some point. Here for backward compatibility.
@@ -1016,7 +1017,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     eval_results["off_policy_estimator"][name] = avg_estimate
 
         self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER] = (
-            eval_results.get("episodes_timesteps_total", 0)
+            eval_results["sampler_results"].get("episodes_timesteps_total", 0)
         )
 
         # Evaluation does not run for every step.
@@ -1047,7 +1048,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
         return eval_results
 
-    def _evaluate_on_local_env_runner(self, env_runner):
+    def _evaluate_on_local_env_runner(self, env_runner: EnvRunner) -> ResultDict:
         if (
             hasattr(env_runner, "input_reader")
             and env_runner.input_reader is None
@@ -1056,7 +1057,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "Cannot evaluate on a local worker (wither there is no evaluation "
                 "WorkerSet OR no remote evaluation workers) in the Algorithm or w/o an "
                 "environment on that local worker!\nTry one of the following:\n1) Set "
-                "`evaluation_interval` >= 0 to force creating a separate evaluation "
+                "`evaluation_interval` > 0 to force creating a separate evaluation "
                 "worker set.\n2) Set `create_env_on_driver=True` to force the local "
                 "(non-eval) worker to have an environment to evaluate on."
             )
@@ -1095,18 +1096,11 @@ class Algorithm(Trainable, AlgorithmBase):
                 keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
             ),
         }
-        return eval_results
 
     def _evaluate_with_auto_duration(self, parallel_train_future):
-        # How many episodes/timesteps do we need to run?
-        unit = self.config.evaluation_duration_unit
-
-        agent_steps_this_iter = 0
-        env_steps_this_iter = 0
-
         logger.info(
             f"Evaluating current state of {self} for as long as the parallelly "
-            f"running training step takes (unit={unit})."
+            "running training step takes."
         )
 
         metrics = []
@@ -1116,24 +1110,34 @@ class Algorithm(Trainable, AlgorithmBase):
         num_healthy_workers = (
             self.evaluation_workers.num_healthy_remote_workers()
         )
-        _round = 0
-        # In case all the remote evaluation workers die during a round of
-        # evaluation, we need to stop.
-        while num_healthy_workers > 0 and (_round == 0 or not parallel_train_future.done()):
+        # Do we have to force-reset the EnvRunners before the first round of `sample()`
+        # calls.?
+        force_reset = self.config.evaluation_force_reset_envs_before_iteration
+
+        _round = -1
+        while (
+            # In case all the remote evaluation workers die during a round of
+            # evaluation, we need to stop.
+            num_healthy_workers > 0
+            # Run at least for one round AND at least for as long as the parallel
+            # training step takes.
+            and (_round == -1 or not parallel_train_future.done())
+        ):
             _round += 1
             # New API stack -> EnvRunners return Episodes.
             if self.config.uses_new_env_runners:
-                # If we are doing full episodes, always run one per EnvRunner.
-                if unit == "episodes":
-                    _num = 1
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
                 # If this is the first round, compute a rough estimate based on how long
                 # the train iteration usually takes AND our (eval) speed.
-                elif _round == 1:
-                    _num = (
-                        self._timers[TRAINING_ITERATION_TIMER].mean
-                        * self._timers[EVALUATION_ITERATION_TIMER].mean_throughput
+                if _round == 0:
+                    _num = max(
+                        100,
+                        (
+                            self._timers[TRAINING_ITERATION_TIMER].mean
+                            * self._timers[EVALUATION_ITERATION_TIMER].mean_throughput
+                            / num_healthy_workers
+                        )
                     )
                 # If second or later round -> Take small steps to make sure we don't
                 # take much longer than the parallelly running training step.
@@ -1143,8 +1147,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 metric = self.evaluation_workers.foreach_worker(
                     # Sample AND get_metrics, but only return metrics to save time.
                     func=lambda w: (w.sample(
-                        num_timesteps=_num if unit == "timesteps" else None,
-                        num_episodes=_num if unit == "episodes" else None,
+                        num_timesteps=_num,
+                        force_reset=force_reset and _round == 0
                     ), w.get_metrics())[1],
                     local_worker=False,
                     healthy_only=True,
@@ -1154,11 +1158,8 @@ class Algorithm(Trainable, AlgorithmBase):
             # Old API Stack -> RolloutWorkers return batches.
             else:
                 unit_per_remote_worker = (
-                    1 if unit == "episodes"
-                    else (
-                        self.evaluation_config.rollout_fragment_length
-                        * self.evaluation_config.num_envs_per_worker
-                    )
+                    self.evaluation_config.rollout_fragment_length
+                    * self.evaluation_config.num_envs_per_worker
                 )
                 # Select proper number of evaluation workers for this round.
                 selected_eval_worker_ids = [
@@ -1184,20 +1185,13 @@ class Algorithm(Trainable, AlgorithmBase):
                         f"{self.config.evaluation_sample_timeout_s} seconds)! "
                         "Try to set `evaluation_sample_timeout_s` in your config"
                         " to a larger value."
-                        + (
-                            " If your episodes don't terminate easily, you may "
-                            "also want to set `evaluation_duration_unit` to "
-                            "'timesteps' (instead of 'episodes')."
-                            if unit == "episodes"
-                            else ""
-                        )
                     )
                     break
 
-            if self.reward_estimators:
-                # TODO: (kourosh) This approach will cause an OOM issue when
-                # the dataset gets huge (should be ok for now).
-                all_batches.extend(batches)
+                if self.reward_estimators:
+                    # TODO: (kourosh) This approach will cause an OOM issue when
+                    # the dataset gets huge (should be ok for now).
+                    all_batches.extend(batches)
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = (
@@ -1217,13 +1211,10 @@ class Algorithm(Trainable, AlgorithmBase):
         # How many episodes/timesteps do we need to run?
         unit = self.config.evaluation_duration_unit
         eval_cfg = self.evaluation_config
-        rollout = eval_cfg.rollout_fragment_length
-        num_envs = eval_cfg.num_envs_per_worker
-        duration = self.config.evaluation_duration
-        agent_steps_this_iter = 0
-        env_steps_this_iter = 0
+        num_workers = self.config.evaluation_num_workers
+        force_reset = self.config.evaluation_force_reset_envs_before_iteration
 
-        metrics = None
+        all_metrics = []
         all_batches = []
 
         # How many episodes have we run (across all eval workers)?
@@ -1231,79 +1222,110 @@ class Algorithm(Trainable, AlgorithmBase):
         num_healthy_workers = (
             self.evaluation_workers.num_healthy_remote_workers()
         )
-        _round = 0
+        _round = -1
         # In case all the remote evaluation workers die during a round of
         # evaluation, we need to stop.
-        while num_healthy_workers > 0 and duration - num_units_done > 0:
-            _round += 1
-            unit_per_healthy_remote_worker = (
-                1 if unit == "episodes" else rollout * num_envs
-            )
-            # Select proper number of evaluation workers for this round.
-            selected_eval_worker_ids = [
-                worker_id
-                for i, worker_id in enumerate(
-                    self.evaluation_workers.healthy_worker_ids()
-                )
-                if i * unit_per_remote_worker < units_left_to_do
-            ]
-            batches = self.evaluation_workers.foreach_worker(
-                func=lambda w: w.sample(),
-                local_worker=False,
-                remote_worker_ids=selected_eval_worker_ids,
-                timeout_seconds=self.config.evaluation_sample_timeout_s,
-            )
-            if len(batches) != len(selected_eval_worker_ids):
-                logger.warning(
-                    "Calling `sample()` on your remote evaluation worker(s) "
-                    "resulted in a timeout (after the configured "
-                    f"{self.config.evaluation_sample_timeout_s} seconds)! "
-                    "Try to set `evaluation_sample_timeout_s` in your config"
-                    " to a larger value."
-                    + (
-                        " If your episodes don't terminate easily, you may "
-                        "also want to set `evaluation_duration_unit` to "
-                        "'timesteps' (instead of 'episodes')."
-                        if unit == "episodes"
-                        else ""
-                    )
-                )
+        while num_healthy_workers > 0:
+            units_left_to_do = self.config.evaluation_duration - num_units_done
+            if units_left_to_do <= 0:
                 break
 
-            _agent_steps = sum(b.agent_steps() for b in batches)
-            _env_steps = sum(b.env_steps() for b in batches)
-            # 1 episode per returned batch.
-            if unit == "episodes":
-                num_units_done += len(batches)
-                # Make sure all batches are exactly one episode.
-                for ma_batch in batches:
-                    ma_batch = ma_batch.as_multi_agent()
-                    for batch in ma_batch.policy_batches.values():
-                        assert batch.is_terminated_or_truncated()
-            # n timesteps per returned batch.
-            else:
-                num_units_done += (
-                    _agent_steps
-                    if self.config.count_steps_by == "agent_steps"
-                    else _env_steps
+            _round += 1
+            
+            if self.config.uses_new_env_runners:
+                _num = [None] + [
+                    (units_left_to_do // num_healthy_workers)
+                    + bool(i <= (units_left_to_do % num_healthy_workers))
+                    for i in range(1, num_workers + 1)
+                ]
+                metrics = self.evaluation_workers.foreach_worker(
+                    # Sample AND get_metrics, but only return metrics to save time.
+                    func=lambda w: (w.sample(
+                        num_timesteps=(
+                            _num[w.worker_index] if unit == "timesteps" else None
+                        ),
+                        num_episodes=(
+                            _num[w.worker_index] if unit == "episodes" else None
+                        ),
+                        force_reset=force_reset and _round == 0
+                    ), w.get_metrics())[1],
+                    local_worker=False,
+                    healthy_only=True,
+                    timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-            if self.reward_estimators:
-                # TODO: (kourosh) This approach will cause an OOM issue when
-                # the dataset gets huge (should be ok for now).
-                all_batches.extend(batches)
+                for metric_list in metrics:
+                    all_metrics.extend(metric_list)
+                    num_units_done += (
+                        len(metric_list) if unit == "episodes"
+                        else sum(m.episode_length for m in metric_list)
+                    )
+            else:
+                units_per_healthy_remote_worker = (
+                    1 if unit == "episodes"
+                    else eval_cfg.rollout_fragment_length * eval_cfg.num_envs_per_worker
+                )
+                # Select proper number of evaluation workers for this round.
+                selected_eval_worker_ids = [
+                    worker_id
+                    for i, worker_id in enumerate(
+                        self.evaluation_workers.healthy_worker_ids()
+                    )
+                    if i * units_per_healthy_remote_worker < units_left_to_do
+                ]
+                batches, metrics = self.evaluation_workers.foreach_worker(
+                    func=lambda w: (w.sample(), w.get_metrics()),
+                    local_worker=False,
+                    remote_worker_ids=selected_eval_worker_ids,
+                    timeout_seconds=self.config.evaluation_sample_timeout_s,
+                )
+                [all_metrics.extend(metric_list) for metric_list in metrics]
+                if len(batches) != len(selected_eval_worker_ids):
+                    logger.warning(
+                        "Calling `sample()` on your remote evaluation worker(s) "
+                        "resulted in a timeout (after the configured "
+                        f"{self.config.evaluation_sample_timeout_s} seconds)! "
+                        "Try to set `evaluation_sample_timeout_s` in your config"
+                        " to a larger value."
+                        + (
+                            " If your episodes don't terminate easily, you may "
+                            "also want to set `evaluation_duration_unit` to "
+                            "'timesteps' (instead of 'episodes')."
+                            if unit == "episodes"
+                            else ""
+                        )
+                    )
+                    break
+    
+                _agent_steps = sum(b.agent_steps() for b in batches)
+                _env_steps = sum(b.env_steps() for b in batches)
+                # 1 episode per returned batch.
+                if unit == "episodes":
+                    num_units_done += len(batches)
+                # n timesteps per returned batch.
+                else:
+                    num_units_done += (
+                        _agent_steps
+                        if self.config.count_steps_by == "agent_steps"
+                        else _env_steps
+                    )
+                if self.reward_estimators:
+                    # TODO: (kourosh) This approach will cause an OOM issue when
+                    # the dataset gets huge (should be ok for now).
+                    all_batches.extend(batches)
 
-            agent_steps_this_iter += _agent_steps
-            env_steps_this_iter += _env_steps
-
-            logger.info(
-                f"Ran round {_round} of non-parallel evaluation "
-                f"({num_units_done}/{duration if not auto else '?'} "
-                f"{unit} done)"
-            )
             # Update correct number of healthy remote workers.
             num_healthy_workers = (
                 self.evaluation_workers.num_healthy_remote_workers()
             )
+
+        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
+        return {
+            "sampler_results": summarize_episodes(
+                all_metrics,
+                all_metrics,
+                keep_custom_metrics=self.evaluation_config.keep_per_episode_custom_metrics,
+            )
+        }
 
     #@ExperimentalAPI
     #def _evaluate_async(
@@ -3357,9 +3379,12 @@ class Algorithm(Trainable, AlgorithmBase):
         # Run `self.evaluate()` only once per training iteration.
         with self._timers[EVALUATION_ITERATION_TIMER]:
             eval_results = self.evaluate(parallel_train_future=parallel_train_future)
+        #print(f"EVALUATION_ITERATION_TIMER._samples[-1] = {self._timers[EVALUATION_ITERATION_TIMER]._samples[-1]}")
         self._timers[EVALUATION_ITERATION_TIMER].push_units_processed(
             self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER]
         )
+        #print(f"EVALUATION_ITERATION_TIMER._units_processed[-1] = {self._timers[EVALUATION_ITERATION_TIMER]._units_processed[-1]}")
+        #print(f"EVALUATION_ITERATION_TIMER._mean_throughput[-1] = {self._timers[EVALUATION_ITERATION_TIMER]._units_processed[-1] / self._timers[EVALUATION_ITERATION_TIMER]._samples[-1]}")
 
         # After evaluation, do a round of health check on remote eval workers to see if
         # any of the failed workers are back.
