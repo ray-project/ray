@@ -577,10 +577,12 @@ def test_counter(shutdown_only):
             self.counter.inc(2.0)
             self.counter.inc(3.0)
 
-            self.counter_with_total_suffix = Counter("test_counter2_total", description="desc2")
+            self.counter_with_total_suffix = Counter(
+                "test_counter2_total", description="desc2"
+            )
             self.counter_with_total_suffix.inc(1.5)
 
-    actor = Actor.remote()
+    _ = Actor.remote()
 
     def check_metrics():
         metrics_page = "localhost:{}".format(
@@ -593,7 +595,10 @@ def test_counter(shutdown_only):
 
         assert "ray_test_counter" in metric_descriptors
         assert metric_descriptors["ray_test_counter"].type == "gauge"
-        assert metric_descriptors["ray_test_counter"].documentation == "(DEPRECATED, use ray_test_counter_total metric instead) desc"
+        assert (
+            metric_descriptors["ray_test_counter"].documentation
+            == "(DEPRECATED, use ray_test_counter_total metric instead) desc"
+        )
         assert metric_samples_by_name["ray_test_counter"][-1].value == 5.0
 
         assert "ray_test_counter_total" in metric_descriptors
@@ -613,7 +618,8 @@ def test_counter(shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
-    # Test to make sure we don't export counter as gauge if RAY_EXPORT_COUNTER_AS_GAUGE is 0
+    # Test to make sure we don't export counter as gauge
+    # if RAY_EXPORT_COUNTER_AS_GAUGE is 0
     monkeypatch.setenv("RAY_EXPORT_COUNTER_AS_GAUGE", "0")
     context = ray.init()
 
@@ -623,7 +629,7 @@ def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
             self.counter = Counter("test_counter", description="desc")
             self.counter.inc(2.0)
 
-    actor = Actor.remote()
+    _ = Actor.remote()
 
     def check_metrics():
         metrics_page = "localhost:{}".format(
