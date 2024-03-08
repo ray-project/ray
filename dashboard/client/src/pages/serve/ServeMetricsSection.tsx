@@ -107,7 +107,6 @@ export const ServeMetricsSection = ({
   className,
   metricsConfig,
 }: ServeMetricsSectionProps) => {
-  console.log(metricsConfig);
   const classes = useStyles();
   const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
     useContext(GlobalContext);
