@@ -89,13 +89,11 @@ class ImageDatasource(FileBasedDatasource):
             image = image.resize((width, height), resample=Image.BILINEAR)
         if self.mode is not None:
             image = image.convert(self.mode)
-
         if self.transform is not None:
-            array = self.transform(image)
-            # @ronyw: Casting to `np.array` type here so we don't need to do it in the `collate_fn`
-            array = np.array(array)
-        else:
-            array = np.array(image)
+            image = self.transform(image)
+
+        # @ronyw: Casting to `np.array` type here so we don't need to do it in the `collate_fn`
+        array = np.array(image)
         item = {"image": array}
         yield item
 
