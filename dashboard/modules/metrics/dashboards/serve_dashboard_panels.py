@@ -325,7 +325,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=20,
         title="Ongoing HTTP Requests",
-        description="The number of ongoing HTTP requests in Ray Serve.",
+        description="The number of ongoing requests in the HTTP Proxy.",
         unit="requests",
         targets=[
             Target(
@@ -351,7 +351,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=22,
         title="Scheduling Tasks",
-        description="The number of tasks currently being scheduled in Ray Serve.",
+        description="The number of request scheduling tasks in the router.",
         unit="tasks",
         targets=[
             Target(
@@ -364,7 +364,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=23,
         title="Scheduling Tasks in Backoff",
-        description="The number of scheduling tasks in backoff state in Ray Serve.",
+        description="The number of request scheduling tasks in the router that are undergoing backoff.",
         unit="tasks",
         targets=[
             Target(
@@ -377,7 +377,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=24,
         title="Controller Control Loop Duration",
-        description="The duration of the control loop within the Ray Serve controller.",
+        description="The duration of the last control loop.",
         unit="seconds",
         targets=[
             Target(
