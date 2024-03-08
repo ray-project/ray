@@ -751,6 +751,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     assert multiline_log
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to look for temp dir.")
 def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
     """Test to ensure the log file names are correct."""
     logs_dir = Path("/tmp/ray/session_latest/logs/serve")
