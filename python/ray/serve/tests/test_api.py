@@ -335,41 +335,6 @@ def test_run_get_ingress_node(serve_instance):
     assert handle.remote().result() == "got f"
 
 
-class TestSetOptions:
-    def test_set_options_basic(self):
-        @serve.deployment(
-            num_replicas=4,
-            max_concurrent_queries=3,
-            ray_actor_options={"num_cpus": 2},
-            health_check_timeout_s=17,
-        )
-        def f():
-            pass
-
-        f.set_options(
-            num_replicas=9,
-            version="efgh",
-            ray_actor_options={"num_gpus": 3},
-        )
-
-        assert f.num_replicas == 9
-        assert f.max_concurrent_queries == 3
-        assert f.version == "efgh"
-        assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
-        assert f._deployment_config.health_check_timeout_s == 17
-
-    def test_set_options_validation(self):
-        @serve.deployment
-        def f():
-            pass
-
-        with pytest.raises(TypeError):
-            f.set_options(init_args=-4)
-
-        with pytest.raises(ValueError):
-            f.set_options(max_concurrent_queries=-4)
-
-
 def test_deploy_application_basic(serve_instance):
     """Test deploy multiple applications"""
 

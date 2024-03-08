@@ -4398,7 +4398,7 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10, parallelism=2)
+            >>> ds = ray.data.range(10, override_num_blocks=2)
             >>> refs = ds.to_pandas_refs()
             >>> len(refs)
             2
@@ -4426,7 +4426,7 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10, parallelism=2)
+            >>> ds = ray.data.range(10, override_num_blocks=2)
             >>> refs = ds.to_numpy_refs()
             >>> len(refs)
             2
@@ -4461,7 +4461,7 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10, parallelism=2)
+            >>> ds = ray.data.range(10, override_num_blocks=2)
             >>> refs = ds.to_arrow_refs()
             >>> len(refs)
             2

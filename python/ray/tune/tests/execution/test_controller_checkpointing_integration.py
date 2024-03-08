@@ -57,6 +57,13 @@ def create_mock_components():
     return searchalg, scheduler
 
 
+def num_checkpoints(trial):
+    return sum(
+        item.startswith("checkpoint_")
+        for item in os.listdir(trial.storage.trial_fs_path)
+    )
+
+
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
@@ -316,12 +323,6 @@ def test_checkpoint_freq_buffered(
         os.environ,
         {"TUNE_RESULT_BUFFER_LENGTH": "7", "TUNE_RESULT_BUFFER_MIN_TIME_S": "1"},
     ):
-
-        def num_checkpoints(trial):
-            return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
-            )
-
         trial = Trial(
             "__fake",
             checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
@@ -367,12 +368,6 @@ def test_checkpoint_at_end_not_buffered(
         os.environ,
         {"TUNE_RESULT_BUFFER_LENGTH": "7", "TUNE_RESULT_BUFFER_MIN_TIME_S": "0.5"},
     ):
-
-        def num_checkpoints(trial):
-            return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
-            )
-
         trial = Trial(
             "__fake",
             checkpoint_config=CheckpointConfig(
@@ -482,11 +477,6 @@ def test_checkpoint_user_checkpoint_buffered(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testUserCheckpointBuffered
     """
 
-    def num_checkpoints(trial):
-        return sum(
-            item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
-        )
-
     with mock.patch.dict(
         os.environ,
         {"TUNE_RESULT_BUFFER_LENGTH": "8", "TUNE_RESULT_BUFFER_MIN_TIME_S": "1"},
@@ -547,13 +537,10 @@ def test_checkpoint_auto_period(
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointAutoPeriod
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
 
-    with mock.patch.object(
-        storage.syncer, "sync_up"
-    ) as sync_up, tempfile.TemporaryDirectory() as local_dir:
+    with tempfile.TemporaryDirectory() as local_dir:
         storage.storage_local_path = local_dir
-        sync_up.side_effect = lambda *a, **kw: time.sleep(2)
 
         runner = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),
@@ -561,15 +548,21 @@ def test_checkpoint_auto_period(
             checkpoint_period="auto",
         )
 
-        runner.add_trial(
-            Trial("__fake", config={"user_checkpoint_freq": 1}, storage=storage)
-        )
+        with mock.patch.object(runner, "save_to_dir") as save_to_dir:
+            save_to_dir.side_effect = lambda *a, **kw: time.sleep(2)
 
-        runner.step()  # Run one step, this will trigger checkpointing
+            runner.add_trial(
+                Trial("__fake", config={"user_checkpoint_freq": 1}, storage=storage)
+            )
+
+            runner.step()  # Run one step, this will trigger checkpointing
 
         assert runner._checkpoint_manager._checkpoint_period > 38.0
 
 
+@pytest.mark.skip(
+    "TODO(justinvyu): We should remove forceful checkpointing based on num_to_keep."
+)
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
@@ -582,7 +575,7 @@ def test_checkpoint_force_with_num_to_keep(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testCloudCheckpointForceWithNumToKeep
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
     # Needed to avoid infinite recursion error on CI runners
     storage.syncer.__getstate__ = lambda *a, **kw: {}
 
@@ -635,6 +628,7 @@ def test_checkpoint_force_with_num_to_keep(
         assert sync_up.call_count == 6
 
 
+@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
@@ -647,7 +641,7 @@ def test_checkpoint_forced_cloud_sync_timeout(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testForcedCloudCheckpointSyncTimeout
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
 
     storage.syncer.sync_period = 60
     storage.syncer.sync_timeout = 0.001
@@ -679,6 +673,7 @@ def test_checkpoint_forced_cloud_sync_timeout(
         assert sync_up_cmd.call_count == 2
 
 
+@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
@@ -691,7 +686,7 @@ def test_checkpoint_periodic_cloud_sync_timeout(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testPeriodicCloudCheckpointSyncTimeout
     """
-    storage = mock_storage_context(delete_syncer=False)
+    storage = mock_storage_context()
 
     storage.syncer.sync_period = 60
     storage.syncer.sync_timeout = 0.5

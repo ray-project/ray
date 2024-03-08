@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import ray
 from ray.air.constants import (  # noqa: F401
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     EVALUATION_DATASET_KEY,
@@ -8,6 +9,13 @@ from ray.air.constants import (  # noqa: F401
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
 )
+
+
+def _get_ray_train_session_dir() -> str:
+    assert ray.is_initialized(), "Ray must be initialized to get the session dir."
+    return Path(
+        ray._private.worker._global_node.get_session_dir_path(), "artifacts"
+    ).as_posix()
 
 
 def _get_defaults_results_dir() -> str:
@@ -23,6 +31,8 @@ def _get_defaults_results_dir() -> str:
         or Path("~/ray_results").expanduser().as_posix()
     )
 
+
+DEFAULT_STORAGE_PATH = Path("~/ray_results").expanduser().as_posix()
 
 # Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
 CHECKPOINT_DIR_NAME = "checkpoint_dir_name"

@@ -1,0 +1,41 @@
+group: Pre-release checks
+steps:
+  - label: "Check release blockers"
+    key: check-release-blockers
+    depends_on: forge
+    job_env: forge
+    instance_type: small_branch
+    commands:
+      - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
+
+  - block: "Trigger tests & image builds"
+    depends_on:
+      - step: check-release-blockers
+        allow_failure: true
+
+  - label: "Check commit hash"
+    key: check-commit-hash
+    job_env: forge
+    commands:
+      - bash .buildkite/release-automation/check-commit-hash.sh
+
+  - label: "Trigger Postmerge test"
+    trigger: "postmerge"
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_CONTINUOUS_BUILD: 1
+  
+  - label: "Trigger Release nightly test"
+    trigger: "release"
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Nightly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly"

@@ -28,11 +28,14 @@ class DeploymentID:
     name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
 
-    def __str__(self):
-        return f"{self.app_name}_{self.name}"
-
     def to_replica_actor_class_name(self):
         return f"ServeReplica:{self.app_name}:{self.name}"
+
+    def __str__(self):
+        return f"Deployment(name='{self.name}', app='{self.app_name}')"
+
+    def __repr__(self):
+        return str(self)
 
 
 ReplicaTag = str
@@ -578,7 +581,7 @@ class RunningReplicaInfo:
     node_id: Optional[str]
     availability_zone: Optional[str]
     actor_handle: ActorHandle
-    max_concurrent_queries: int
+    max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
 
@@ -596,7 +599,7 @@ class RunningReplicaInfo:
                     self.replica_tag,
                     self.node_id if self.node_id else "",
                     str(self.actor_handle._actor_id),
-                    str(self.max_concurrent_queries),
+                    str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                 ]
