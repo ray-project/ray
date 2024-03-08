@@ -198,6 +198,7 @@ py_test_module_list(
     "test_streaming_generator_3.py",
     "test_streaming_generator_4.py",
     "test_streaming_generator_backpressure.py",
+    "test_streaming_generator_regression.py",
     "test_scheduling_performance.py",
     "test_implicit_resource.py",
   ],
