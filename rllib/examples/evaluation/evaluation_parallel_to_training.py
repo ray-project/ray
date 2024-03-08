@@ -1,11 +1,12 @@
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import get_trainable_cls
+from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=500.0)
 parser.add_argument(
@@ -95,11 +96,18 @@ class AssertEvalCallback(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    # Register our environment with tune.
+    if args.num_agents > 0:
+        register_env(
+            "env",
+            lambda _: MultiAgentCartPole(config={"num_agents": args.num_agents}),
+        )
+
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)
-        .environment("CartPole-v1")
+        .environment("env" if args.num_agents > 0 else "CartPole-v1")
         # Run with tracing enabled for tf2.
         .framework(args.framework)
         # Use a custom callback that asserts that we are running the
@@ -147,6 +155,13 @@ if __name__ == "__main__":
             num_cpus_for_local_worker=1,
         )
     )
+
+    # Add a simple multi-agent setup.
+    if args.num_agents > 0:
+        config.multi_agent(
+            policies={f"p{i}" for i in range(args.num_agents)},
+            policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+        )
 
     stop = {
         "training_iteration": args.stop_iters,

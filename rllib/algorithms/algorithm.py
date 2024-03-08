@@ -932,6 +932,8 @@ class Algorithm(Trainable, AlgorithmBase):
 
         self.callbacks.on_evaluate_start(algorithm=self)
 
+        env_steps = agent_steps = 0
+
         # We will use a user provided evaluation function.
         if self.config.custom_evaluation_function:
             eval_results = self._evaluate_with_custom_eval_function()
@@ -963,7 +965,12 @@ class Algorithm(Trainable, AlgorithmBase):
                     all_batches,
                 ) = self._evaluate_with_auto_duration(parallel_train_future)
             else:
-                eval_results = self._evaluate_with_fixed_duration()
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    all_batches,
+                ) = self._evaluate_with_fixed_duration()
         # Can't find a good way to run this evaluation -> Wait for next iteration.
         else:
             pass
@@ -1250,24 +1257,24 @@ class Algorithm(Trainable, AlgorithmBase):
                     + bool(i <= (units_left_to_do % num_healthy_workers))
                     for i in range(1, num_workers + 1)
                 ]
-                env_s, ag_s, metrics = self.evaluation_workers.foreach_worker(
+                results = self.evaluation_workers.foreach_worker(
                     # Sample AND get_metrics, but only return metrics to save time.
                     func=functools.partial(_env_runner_remote, num=_num, round=_round),
                     local_worker=False,
                     healthy_only=True,
                     timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                env_steps += env_s
-                agent_steps += ag_s
-                for metric_list in metrics:
-                    all_metrics.extend(metric_list)
+                for r in results:
+                    env_steps += r[0]
+                    agent_steps += r[1]
+                    all_metrics.extend(r[2])
                     num_units_done += (
-                        len(metric_list)
+                        len(r[2])
                         if unit == "episodes"
                         else (
-                            ag_s
+                            r[0]
                             if self.config.count_steps_by == "agent_steps"
-                            else env_s
+                            else r[1]
                         )
                     )
             else:
@@ -1337,7 +1344,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     self.evaluation_config.keep_per_episode_custom_metrics
                 ),
             )
-        }
+        }, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI

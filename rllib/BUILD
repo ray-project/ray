@@ -2347,6 +2347,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_duration_auto_torch_envrunner",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=auto"]
+)
+
+py_test(
     name = "examples/evaluation/evaluation_parallel_to_training_211_ts_torch_envrunner",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2356,12 +2365,30 @@ py_test(
 )
 
 py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_301_ts_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=301", "--evaluation-duration-unit=timesteps"]
+)
+
+py_test(
     name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_torch_envrunner",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=13", "--num-cpus=6"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=13"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_10_episodes_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=10"]
 )
 # END: New API Stack
 
