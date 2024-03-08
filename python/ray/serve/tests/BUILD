@@ -237,7 +237,7 @@ py_test_module_list(
     "test_standalone_3.py",
   ],
   size = "large",
-  tags = ["exclusive", "team:serve"],
+  tags = ["exclusive", "no_windows", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
