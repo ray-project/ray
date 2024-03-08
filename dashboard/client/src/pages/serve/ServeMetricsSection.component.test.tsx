@@ -3,8 +3,8 @@ import React, { PropsWithChildren } from "react";
 import { GlobalContext } from "../../App";
 import {
   APPS_METRICS_CONFIG,
-  ServeMetricsSection,
   SERVE_SYSTEM_METRICS_CONFIG,
+  ServeMetricsSection,
 } from "./ServeMetricsSection";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
@@ -76,9 +76,12 @@ describe("ServeMetricsSection", () => {
   it("renders system metrics", async () => {
     expect.assertions(5);
 
-    render(<ServeMetricsSection metricsConfig={SERVE_SYSTEM_METRICS_CONFIG} />, {
-      wrapper: Wrapper,
-    });
+    render(
+      <ServeMetricsSection metricsConfig={SERVE_SYSTEM_METRICS_CONFIG} />,
+      {
+        wrapper: Wrapper,
+      },
+    );
     await screen.findByText(/View in Grafana/);
     expect(screen.getByTitle("Ongoing HTTP Requests")).toBeInTheDocument();
     expect(screen.getByTitle("Controller Starts")).toBeInTheDocument();

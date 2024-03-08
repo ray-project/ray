@@ -6,8 +6,8 @@ import Loading from "../../components/Loading";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeDeployments } from "./hook/useServeApplications";
 import {
-  ServeMetricsSection,
   SERVE_SYSTEM_METRICS_CONFIG,
+  ServeMetricsSection,
 } from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
 const useStyles = makeStyles((theme) =>
