@@ -206,6 +206,38 @@ def test_observability_helpers():
     assert handle._is_batching_task_alive.remote().result()
 
 
+def test_batching_large_max_batch_size(serve_instance):
+    """Test large max_batch_size are not bounded.
+
+    We had issue there the batching is bounded by `max_ongoing_requests`. This test
+    ensures when using a large `max_batch_size`, the batching continue to work without
+    getting rate limited.
+    """
+
+    @serve.deployment
+    class BatchingExample:
+        def __init__(self):
+            self.count = 0
+
+        @serve.batch(max_batch_size=256, batch_wait_timeout_s=1)
+        async def handle_batch(self, requests):
+            self.count += 1
+            batch_size = len(requests)
+            print("batch_size!!!", batch_size)
+            return [self.count] * batch_size
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    handle = serve.run(BatchingExample.bind())
+
+    result_list = [handle.remote(1) for _ in range(1000)]
+    # since count is only updated per batch of queries
+    # If there atleast one __call__ fn call with batch size greater than 1
+    # counter result will always be less than 5
+    assert max([r.result() for r in result_list]) < 5
+
+
 if __name__ == "__main__":
     import sys
 
