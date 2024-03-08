@@ -2981,10 +2981,8 @@ void CoreWorker::TryDeleteObjectRefStreams() {
   for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
        it++) {
     const auto &generator_id = *it;
-    RAY_LOG(DEBUG) << "TryDelObjectRefStream " << generator_id;
     if (task_manager_->TryDelObjectRefStream(generator_id)) {
       out_of_scope_generator_ids.push_back(generator_id);
-      continue;
     }
   }
 
