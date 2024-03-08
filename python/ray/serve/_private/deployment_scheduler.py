@@ -429,13 +429,17 @@ class DeploymentScheduler(ABC):
             deployment = self._deployments[deployment_id]
             for info in replicas.values():
                 target_node_id = info.target_node_id
-                if not target_node_id:
+                if not target_node_id or target_node_id not in total_minus_replicas:
                     continue
+
                 total_minus_replicas[target_node_id] -= deployment.required_resources
 
         for deployment_id, replicas in self._running_replicas.items():
             deployment = self._deployments[deployment_id]
             for node_id in replicas.values():
+                if node_id not in total_minus_replicas:
+                    continue
+
                 total_minus_replicas[node_id] -= deployment.required_resources
 
         def custom_min(a: Resources, b: Resources):
@@ -725,12 +729,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         non_idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas[node_id]) > 0
+            if len(node_to_running_replicas.get(node_id, set())) > 0
         }
         idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas[node_id]) == 0
+            if len(node_to_running_replicas.get(node_id, set())) == 0
         }
 
         # 1. Prefer non-idle nodes
