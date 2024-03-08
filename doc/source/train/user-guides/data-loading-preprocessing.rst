@@ -59,7 +59,7 @@ Data ingestion can be set up with four basic steps:
             train_dataset = train_dataset.map_batches(increment)
 
 
-            def train_func(config):
+            def train_func():
                 batch_size = 16
 
                 # Step 4: Access the dataset shard for the training worker via
@@ -141,7 +141,7 @@ Data ingestion can be set up with four basic steps:
             train_data = ray.data.from_huggingface(hf_train_ds)
             eval_data = ray.data.from_huggingface(hf_eval_ds)
 
-            def train_func(config):
+            def train_func():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.
                 # The "train" dataset gets sharded across workers by default
                 train_ds = ray.train.get_dataset_shard("train")
