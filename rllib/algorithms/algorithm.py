@@ -520,9 +520,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 },
             },
         }
-        # Buffers to store 1-ahead train results in case of parallel evaluation.
-        # self._future_train_results = None
-        # self._future_train_iter_ctx = None
 
         super().__init__(
             config=config,
@@ -648,9 +645,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 num_workers=self.config.evaluation_num_workers,
                 logdir=self.logdir,
             )
-
-            # if self.config.enable_async_evaluation:
-            #    self._evaluation_weights_seq_number = 0
 
         self.evaluation_dataset = None
         if (
@@ -909,7 +903,11 @@ class Algorithm(Trainable, AlgorithmBase):
         """Evaluates current policy under `evaluation_config` settings.
 
         Args:
-            parallel_train_future:
+            parallel_train_future: In case, we are training and avaluating in parallel,
+                this arg carries the currently running ThreadPoolExecutor object that
+                runs the training iteration. Use `parallel_train_future.done()` to
+                check, whether the parallel training job has completed and
+                `parallel_train_future.result()` to get its return values.
 
         Returns:
             A ResultDict only containing the evaluation results from the current
@@ -2974,9 +2972,11 @@ class Algorithm(Trainable, AlgorithmBase):
         """Runs evaluation step via `self.evaluate()` and handling worker failures.
 
         Args:
-            train_future: In case, we are training and avaluating in parallel, this arg
-                carries the currently running ThreadPoolExecutor object that runs the
-                training iteration.
+            parallel_train_future: In case, we are training and avaluating in parallel,
+                this arg carries the currently running ThreadPoolExecutor object that
+                runs the training iteration. Use `parallel_train_future.done()` to
+                check, whether the parallel training job has completed and
+                `parallel_train_future.result()` to get its return values.
 
         Returns:
             The results dict from the evaluation call.
