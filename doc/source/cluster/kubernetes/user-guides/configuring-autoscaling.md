@@ -316,22 +316,46 @@ for container environment variables.
 ### 4. Set the `rayStartParams` and the resource limits for the Ray container
 
 The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
-Without this information, the Ray Autoscaler would report an error and fail to start.
-For example, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) specifies the resource limits for the Ray head container as follows.
-If you comment out the `limits` field, the Ray Autoscaler would fail to start.
+The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
+Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
+Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
 ```yaml
-containers:
-  - name: ray-head
-    image: rayproject/ray:2.9.0
-    resources:
-      limits:
-        cpu: 2
-        memory: 2Gi
-      requests:
-        cpu: 2
-        memory: 2Gi
+headGroupSpec:
+  rayStartParams:
+    num-cpus: "0"
+  template:
+    spec:
+      containers:
+      - name: ray-head
+        resources:
+          # The Ray Autoscaler still functions if you comment out the `limits` field for the
+          # head container, as users have already specified `num-cpus` in `rayStartParams`.
+          limits:
+            cpu: "1"
+            memory: "2G"
+          requests:
+            cpu: "1"
+            memory: "2G"
+...
+workerGroupSpecs:
+- groupName: small-group
+  rayStartParams: {}
+  template:
+    spec:
+      containers:
+      - name: ray-worker
+        resources:
+          limits:
+            # The Ray Autoscaler will fail to start if the CPU resource limit for the worker
+            # container is commented out because `rayStartParams` is empty.
+            cpu: "1"
+            memory: "1G"
+          requests:
+            cpu: "1"
+            memory: "1G"
 ```
+
 
 ## Next steps
 
