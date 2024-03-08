@@ -1,5 +1,5 @@
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.env. multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,

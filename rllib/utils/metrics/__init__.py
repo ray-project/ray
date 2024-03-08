@@ -4,13 +4,8 @@ NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
 NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
 NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"
-NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION = "num_env_steps_sampled_for_evaluation"
-NUM_AGENT_STEPS_SAMPLED_FOR_EVALUATION = "num_agent_steps_sampled_for_evaluation"
 NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
     "num_env_steps_sampled_for_evaluation_this_iter"
-)
-NUM_AGENT_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
-    "num_agent_steps_sampled_for_evaluation_this_iter"
 )
 NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
@@ -41,7 +36,7 @@ NUM_TARGET_UPDATES = "num_target_updates"
 # ------------------------------------------------
 # Duration of n `Algorithm.training_step()` calls making up one "iteration".
 # Note that n may be >1 if the user has set up a min time (sec) or timesteps per
-# iteration. 
+# iteration.
 TRAINING_ITERATION_TIMER = "training_iteration"
 # Duration of a `Algorithm.evaluate()` call.
 EVALUATION_ITERATION_TIMER = "evaluation_iteration"
