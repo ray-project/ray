@@ -558,6 +558,62 @@ def test_checkpoint_auto_period(
         assert runner._checkpoint_manager._checkpoint_period > 38.0
 
 
+def test_checkpoint_force_with_num_to_keep(ray_start_4_cpus_2_gpus_extra, tmp_path):
+    """Test that cloud syncing is forced if one of the trials has made more
+    than num_to_keep checkpoints since last sync.
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::
+        testCloudCheckpointForceWithNumToKeep
+    """
+    storage = mock_storage_context()
+    # Needed to avoid infinite recursion error on CI runners
+    storage.syncer.__getstate__ = lambda *a, **kw: {}
+
+    with mock.patch.object(storage.syncer, "sync_up") as sync_up:
+        num_to_keep = 2
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=num_to_keep, checkpoint_frequency=1
+        )
+
+        runner = TuneController(
+            resource_manager_factory=lambda: PlacementGroupResourceManager(),
+            storage=storage,
+            checkpoint_period=100,  # only rely on force syncing
+            trial_checkpoint_config=checkpoint_config,
+        )
+
+        class CheckpointingTrial(Trial):
+            def should_checkpoint(self):
+                return True
+
+            def get_json_state(self):
+                return "", ""
+
+        trial = CheckpointingTrial(
+            "__fake",
+            checkpoint_config=checkpoint_config,
+            stopping_criterion={"training_iteration": 10},
+            storage=storage,
+        )
+        runner.add_trial(trial)
+
+        # also check if the warning is printed
+        buffer = []
+        from ray.tune.execution.experiment_state import logger
+
+        with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
+            while not runner.is_finished():
+                runner.step()
+
+        # We should sync 6 times:
+        # The first checkpoint happens when the experiment starts,
+        # since no checkpoints have happened yet
+        # (This corresponds to the new_trial event in the runner loop)
+        # Then, every num_to_keep=2 checkpoints, we should perform a forced checkpoint
+        # which results in 5 more checkpoints (running for 10 iterations),
+        # giving a total of 6
+        assert sync_up.call_count == 6
+
+
 def test_checkpoint_sync_up_timeout(
     ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch
 ):

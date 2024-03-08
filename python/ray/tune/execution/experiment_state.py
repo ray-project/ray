@@ -1,6 +1,7 @@
+from collections import Counter
 import fnmatch
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Dict, Optional, Union
 import logging
 import os
 import time
@@ -13,6 +14,7 @@ from ray.train._internal.storage import (
     _download_from_fs_path,
     _list_at_fs_path,
 )
+from ray.tune.experiment.trial import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,7 @@ class _ExperimentCheckpointManager:
         *,
         storage: Optional[StorageContext],
         checkpoint_period: Union[int, float, str],
+        sync_every_n_trial_checkpoints: Optional[int] = None,
     ):
         self._storage = storage
 
@@ -74,6 +77,14 @@ class _ExperimentCheckpointManager:
             self._checkpoint_period = 10.0  # Initial value
         else:
             self._checkpoint_period = float(checkpoint_period)
+
+        # TODO(justinvyu): This is a non-performant workaround to force sync
+        # every num_to_keep checkpoints in order to maintain consistency
+        # between the experiment state's view of the latest checkpoint,
+        # and the actual latest checkpoint that was uploaded.
+        self._sync_every_n_trial_checkpoints = sync_every_n_trial_checkpoints
+        self._trial_num_checkpoints_since_last_sync: Dict[Trial, int] = Counter()
+        self._should_force_sync_up: bool = False
 
         self._slow_sync_threshold = float(
             os.environ.get(
@@ -101,6 +112,7 @@ class _ExperimentCheckpointManager:
         self,
         save_fn: Callable[[], None],
         force: bool = False,
+        wait: bool = False,
     ):
         """Saves execution state to the experiment directory on the storage path.
         This includes an experiment checkpoint file that contains trial statuses
@@ -113,10 +125,13 @@ class _ExperimentCheckpointManager:
             save_fn: Function to call to actually save data to the driver
                 staging path. The files in the driver staging path will be
                 uploaded to the storage path.
-            force: Forces an experiment checkpoint, launches a sync to storage,
-                and waits for it to finish. This happens regardless of checkpoint_period
+            force: Forces an experiment checkpoint and launches a sync to storage.
+                This happens regardless of checkpoint_period
+            wait: Waits for the sync up to complete before returning.
         """
         driver_staging_path = self._storage.experiment_driver_staging_path
+
+        force = force or self._should_force_sync_up
 
         now = time.monotonic()
         if now - self._last_save_time < self._checkpoint_period and not force:
@@ -153,7 +168,7 @@ class _ExperimentCheckpointManager:
         if launched_sync:
             self._last_sync_time = time.monotonic()
 
-        if force:
+        if wait:
             wait_for_sync()
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
@@ -180,6 +195,10 @@ class _ExperimentCheckpointManager:
         # Finish
         self._last_save_time = time.monotonic()
 
+        # We just synced, so reset the force flag
+        self._trial_num_checkpoints_since_last_sync.clear()
+        self._should_force_sync_up = False
+
     def sync_down_experiment_state(self) -> None:
         fs = self._storage.storage_filesystem
         filepaths = _list_at_fs_path(fs=fs, fs_path=self._storage.experiment_fs_path)
@@ -203,3 +222,15 @@ class _ExperimentCheckpointManager:
             f"{self._storage.experiment_fs_path})\n"
             f"-> {self._storage.experiment_driver_staging_path}"
         )
+
+    def on_trial_checkpoint(self, trial: Trial):
+        if not self._sync_every_n_trial_checkpoints:
+            return
+
+        self._trial_num_checkpoints_since_last_sync[trial] += 1
+
+        if (
+            self._trial_num_checkpoints_since_last_sync[trial]
+            >= self._sync_every_n_trial_checkpoints
+        ):
+            self._should_force_sync_up = True

@@ -314,7 +314,9 @@ class TuneController:
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
-            storage=self._storage, checkpoint_period=self._checkpoint_period
+            storage=self._storage,
+            checkpoint_period=self._checkpoint_period,
+            sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
 
     def save_to_dir(self):
@@ -347,9 +349,9 @@ class TuneController:
         self._search_alg.save_to_dir(driver_staging_path, session_str=self._session_str)
         self._callbacks.save_to_dir(driver_staging_path, session_str=self._session_str)
 
-    def checkpoint(self, force: bool = False):
+    def checkpoint(self, force: bool = False, wait: bool = False):
         self._checkpoint_manager.sync_up_experiment_state(
-            save_fn=self.save_to_dir, force=force
+            save_fn=self.save_to_dir, force=force, wait=wait
         )
 
     def _requeue_restored_trials(
@@ -1764,6 +1766,8 @@ class TuneController:
                     raise
 
                 trial.on_checkpoint(checkpoint_value)
+
+                self._checkpoint_manager.on_trial_checkpoint(trial)
 
                 self._mark_trial_to_checkpoint(trial)
         except Exception:

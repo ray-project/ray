@@ -1012,7 +1012,7 @@ def run(
 
     final_sync_start = time.time()
     try:
-        runner.checkpoint(force=True)
+        runner.checkpoint(force=True, wait=True)
         logger.info(
             "Wrote the latest version of all result files and experiment state to "
             f"'{runner.experiment_path}' in {time.time() - final_sync_start:.4f}s."
