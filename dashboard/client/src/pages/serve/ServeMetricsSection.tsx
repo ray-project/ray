@@ -98,7 +98,7 @@ export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
     pathParams: "orgId=1&theme=light&panelId=24",
   },
   {
-    title: "Controller Starts",
+    title: "Number of Control Loops",
     pathParams: "orgId=1&theme=light&panelId=25",
   },
 ];
