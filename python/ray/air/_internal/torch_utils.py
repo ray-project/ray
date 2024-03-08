@@ -55,10 +55,17 @@ def get_devices() -> List[torch.device]:
                         except IndexError:
                             raise RuntimeError(
                                 f"{accelerator_env_var} set incorrectly. "
-                                f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                                f"Did you override the {accelerator_env_var} environment variable? "
-                                "If not, please help file an issue on Github."
+                                f"Got {cuda_visible_str}, expected to include {gpu_id}."
+                                f"Did you override the {accelerator_env_var}"
+                                f"environment variable? If not, please help file an "
+                                f"issue on Github."
                             )
+                    else:
+                        raise RuntimeError(
+                            f"Resources of multiple accelerator types not supported."
+                            f"{current_resource_name}:{device_ids}"
+                            f"{resource_name}:{gpu_id}"
+                        )
         if len(device_ids) == 0:
             # If called on the driver or outside of Ray Train, return the
             # 0th device.
