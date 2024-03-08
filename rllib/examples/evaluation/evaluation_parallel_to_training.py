@@ -56,7 +56,7 @@ class AssertEvalCallback(DefaultCallbacks):
             eval_sampler_res = result["evaluation"]["sampler_results"]
             hist_stats = eval_sampler_res["hist_stats"]
             num_episodes_done = len(hist_stats["episode_lengths"])
-            num_timesteps_reported = eval_sampler_res["episodes_timesteps_total"]
+            num_timesteps_reported = result["evaluation"]["timesteps_this_iter"]
 
             # We run for automatic duration (as long as training takes).
             if algorithm.config.evaluation_duration == "auto":

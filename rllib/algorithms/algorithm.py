@@ -1273,7 +1273,7 @@ class Algorithm(Trainable, AlgorithmBase):
                         if unit == "episodes"
                         else (
                             r[0]
-                            if self.config.count_steps_by == "agent_steps"
+                            if self.config.count_steps_by == "env_steps"
                             else r[1]
                         )
                     )
@@ -1315,17 +1315,17 @@ class Algorithm(Trainable, AlgorithmBase):
                     )
                     break
 
-                _agent_steps = sum(b.agent_steps() for b in batches)
                 _env_steps = sum(b.env_steps() for b in batches)
+                _agent_steps = sum(b.agent_steps() for b in batches)
                 # 1 episode per returned batch.
                 if unit == "episodes":
                     num_units_done += len(batches)
                 # n timesteps per returned batch.
                 else:
                     num_units_done += (
-                        _agent_steps
-                        if self.config.count_steps_by == "agent_steps"
-                        else _env_steps
+                        _env_steps
+                        if self.config.count_steps_by == "env_steps"
+                        else _agent_steps
                     )
                 if self.reward_estimators:
                     # TODO: (kourosh) This approach will cause an OOM issue when
