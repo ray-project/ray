@@ -1381,7 +1381,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
     try:
         for output in gen:
-            report_streaming_generator_output(context, output, gen_index)
+            report_streaming_generator_output(context, output, gen_index, None)
             gen_index += 1
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
