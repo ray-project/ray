@@ -129,6 +129,27 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
   metric_descriptor_proto->set_description(measure_descriptor.description());
   metric_descriptor_proto->set_unit(measure_descriptor.units());
 
+  auto descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED;
+  auto view_aggregation = view_descriptor.aggregation();
+  switch (view_aggregation.type()) {
+  case opencensus::stats::Aggregation::Type::kCount:
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_INT64;
+    break;
+  case opencensus::stats::Aggregation::Type::kSum:
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DOUBLE;
+    break;
+  case opencensus::stats::Aggregation::Type::kDistribution:
+    descriptor_type =
+        opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DISTRIBUTION;
+    break;
+  case opencensus::stats::Aggregation::Type::kLastValue:
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::GAUGE_DOUBLE;
+    break;
+  default:
+    break;
+  }
+  metric_descriptor_proto->set_type(descriptor_type);
+
   for (const auto &tag_key : view_descriptor.columns()) {
     metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());
   };
