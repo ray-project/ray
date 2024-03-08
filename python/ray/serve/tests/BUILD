@@ -230,7 +230,7 @@ py_test_module_list(
 
 # Test compact scheduling
 py_test_module_list(
-  name_suffix="_with_compact_scheduling",
+  name_suffix="_with_comp_sche",
   env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
   files = [
     "test_standalone.py",

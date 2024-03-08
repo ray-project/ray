@@ -535,7 +535,9 @@ class DeploymentScheduler(ABC):
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
 
     @abstractmethod
-    def detect_compact_opportunities(self) -> Tuple[Optional[str], Optional[float]]:
+    def get_node_to_compact(
+        self, allow_new_compaction: bool
+    ) -> Optional[Tuple[str, float]]:
         """Returns a node ID to be compacted and a compaction deadlne."""
         raise NotImplementedError
 
@@ -707,5 +709,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         if chosen_node:
             return chosen_node
 
-    def detect_compact_opportunities(self) -> Tuple[Optional[str], Optional[float]]:
-        return None, None
+    def get_node_to_compact(
+        self, allow_new_compaction: bool
+    ) -> Optional[Tuple[str, float]]:
+        return None

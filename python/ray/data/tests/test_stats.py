@@ -93,6 +93,15 @@ def gen_extra_metrics_str(metrics: str, verbose: bool):
     return f"* Extra metrics: {metrics}" + "\n" if verbose else ""
 
 
+def gen_runtime_metrics_str(op_names: List[str], verbose: bool) -> str:
+    if not verbose:
+        return ""
+    out = "\nRuntime Metrics:\n"
+    for op in op_names + ["Scheduling", "Total"]:
+        out += f"* {op}: T (N%)\n"
+    return out
+
+
 STANDARD_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=False,
@@ -266,6 +275,7 @@ Dataset iterator time breakdown:
     * In batch formatting: T min, T max, T avg, T total
 Streaming split coordinator overhead time: T
 """
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'split(N, equal=False)'], True)}"  # noqa: E501
     )
 
 
@@ -328,6 +338,7 @@ def test_large_args_scheduling_strategy(
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
+        f"{gen_runtime_metrics_str(['ReadRange','MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
     assert canonicalize(stats) == expected_stats
 
@@ -373,6 +384,7 @@ def test_dataset_stats_basic(
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
+                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
             )
 
         ds = ds.map(dummy_map_batches).materialize()
@@ -397,6 +409,7 @@ def test_dataset_stats_basic(
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
+                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
             )
 
     for batch in ds.iter_batches():
@@ -448,6 +461,7 @@ def test_dataset_stats_basic(
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
 
 
@@ -693,6 +707,9 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
     Suboperator N RandomShuffleReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
@@ -703,6 +720,9 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
 Operator N Repartition: executed in T
 
@@ -715,6 +735,9 @@ Operator N Repartition: executed in T
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
     Suboperator N RepartitionReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
@@ -725,6 +748,9 @@ Operator N Repartition: executed in T
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
 Dataset throughput:
     * Ray Data throughput: N rows/s
@@ -1201,6 +1227,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(<lambda>)'], verbose_stats_logs)}"  # noqa: E501
     )
 
     assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
