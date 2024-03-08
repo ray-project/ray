@@ -53,6 +53,10 @@ void RegisterSignalHandlerLoop(std::shared_ptr<boost::asio::signal_set> signals,
 
 void SigchldHandlerReapZombieAndRemoveKnownChildren(
     const boost::system::error_code &error, int signal_number) {
+  // The only error is "signal set cancelled" as boost::asio::error::operation_aborted but
+  // we won't ever cancel it.
+  // https://www.boost.org/doc/libs/1_84_0/doc/html/boost_asio/reference/basic_signal_set/async_wait.html
+  // It does not hurt to waitpid anyway.
   if (error) {
     RAY_LOG(WARNING) << "Error in SIGCHLD handler: " << error.message();
   }
