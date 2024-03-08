@@ -74,7 +74,7 @@ describe("ServeMetricsSection", () => {
   });
 
   it("renders serve system metrics", async () => {
-    expect.assertions(7);
+    expect.assertions(6);
 
     render(
       <ServeMetricsSection metricsConfig={SERVE_SYSTEM_METRICS_CONFIG} />,
