@@ -693,6 +693,9 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
     Suboperator N RandomShuffleReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
@@ -703,6 +706,9 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
 Operator N Repartition: executed in T
 
@@ -715,6 +721,9 @@ Operator N Repartition: executed in T
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
     Suboperator N RepartitionReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
@@ -725,6 +734,9 @@ Operator N Repartition: executed in T
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
 Dataset throughput:
     * Ray Data throughput: N rows/s
