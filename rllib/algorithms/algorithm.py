@@ -1137,12 +1137,12 @@ class Algorithm(Trainable, AlgorithmBase):
             if self.config.uses_new_env_runners:
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
-                # If this is the first round, compute a rough estimate based on how long
-                # the train iteration usually takes AND our (eval) speed.
-                # Cap at 20k to not put too much memory strain on EnvRunners.
                 _num = min(
+                    # Cap at 20k to not put too much memory strain on EnvRunners.
                     20000,
                     max(
+                        # Low-cap at 100 to avoid possibly negative rollouts or very short
+                        # ones.
                         100,
                         (
                             # How much time do we have left?
