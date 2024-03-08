@@ -540,7 +540,7 @@ class ObjectRefGenerator:
             # NOTE: This can be called multiple times
             # because python doesn't guarantee __del__ is called
             # only once.
-            self.worker.core_worker.delete_object_ref_stream(self._generator_ref)
+            self.worker.core_worker.async_delete_object_ref_stream(self._generator_ref)
 
     def __getstate__(self):
         raise TypeError(
@@ -4955,12 +4955,12 @@ cdef class CoreWorker:
                 make_optional[ObjectIDIndexType](
                     <int>1 + <int>return_size + <int>generator_index))
 
-    def delete_object_ref_stream(self, ObjectRef generator_id):
+    def async_delete_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
+            CCoreWorkerProcess.GetCoreWorker().AsyncDelObjectRefStream(c_generator_id)
 
     def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
@@ -4985,7 +4985,7 @@ cdef class CoreWorker:
             c_bool finished
 
         with nogil:
-            finished = CCoreWorkerProcess.GetCoreWorker().IsFinished(
+            finished = CCoreWorkerProcess.GetCoreWorker().StreamingGeneratorIsFinished(
                 c_generator_id)
         return finished
 

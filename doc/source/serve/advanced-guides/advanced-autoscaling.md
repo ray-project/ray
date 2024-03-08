@@ -18,6 +18,9 @@ To define what the steady state of your deployments should be, set values for `t
 This parameter is renamed to `target_ongoing_requests`. `target_num_ongoing_requests_per_replica` will be removed in a future release.
 
 #### **target_ongoing_requests [default=1]**
+:::{note}
+The default for `target_ongoing_requests` will be changed to 2.0 in an upcoming Ray release. You can continue to set it manually to override the default.
+:::
 Serve scales the number of replicas for a deployment up or down based on the average number of ongoing requests per replica. Specifically, Serve compares the *actual* number of ongoing requests per replica with the target value you set in the autoscaling config and makes upscale or downscale decisions from that. Set the target value with `target_ongoing_requests`, and Serve attempts to ensure that each replica has roughly that number
 of requests being processed and waiting in the queue. 
 
