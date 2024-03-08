@@ -4659,6 +4659,9 @@ cdef class CoreWorker:
             self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
         return self.event_loop_executor
 
+    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
+        self.event_loop_executor = executor
+
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
         if function_descriptor.function_name == "__init__":
