@@ -3556,45 +3556,52 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
             unique_ptr[CAddress] null_owner_address
+            uint64_t data_size = serialized_object.total_bytes
+            int64_t c_num_readers = num_readers
 
         metadata = string_to_buffer(serialized_object.metadata)
-        data_size = serialized_object.total_bytes
-        check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalChannelWriteAcquire(
-                         c_object_id,
-                         metadata,
-                         data_size,
-                         num_readers,
-                         &data,
-                         ))
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalChannelWriteAcquire(
+                             c_object_id,
+                             metadata,
+                             data_size,
+                             c_num_readers,
+                             &data,
+                             ))
         if data_size > 0:
             (<SerializedObject>serialized_object).write_to(
                 Buffer.make(data))
-        check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalChannelWriteRelease(
-                         c_object_id,
-                         ))
+
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalChannelWriteRelease(
+                             c_object_id,
+                             ))
 
     def experimental_channel_set_error(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
 
-        check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalChannelSetError(c_object_id))
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalChannelSetError(c_object_id))
 
     def experimental_channel_register_writer(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
 
-        check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalChannelRegisterWriter(c_object_id))
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalChannelRegisterWriter(c_object_id))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
 
-        check_status(CCoreWorkerProcess.GetCoreWorker()
-                     .ExperimentalChannelRegisterReader(c_object_id))
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalChannelRegisterReader(c_object_id))
 
     def experimental_channel_read_release(self, object_refs):
         """
