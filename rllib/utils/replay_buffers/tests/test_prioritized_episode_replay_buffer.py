@@ -253,7 +253,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             episode = self._get_episode(with_extra_model_outs=True)
             buffer.add(episode)
 
-        # Now test a sampling with infos and extra model outputs (nbeta=0.7).
+        # Now test a sampling with infos and extra model outputs (beta=0.7).
         for _ in range(1000):
             sample = buffer.sample(
                 batch_size_B=16,
