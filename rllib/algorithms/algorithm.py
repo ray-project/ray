@@ -939,24 +939,31 @@ class Algorithm(Trainable, AlgorithmBase):
             eval_results = self._evaluate_with_custom_eval_function()
         # There is no eval WorkerSet -> Run on local EnvRunner.
         elif self.evaluation_workers is None:
-            eval_results, env_steps, agent_steps, batches = (
-                self._evaluate_on_local_env_runner(
-                    self.workers.local_worker()
-                )
-            )
+            (
+                eval_results,
+                env_steps,
+                agent_steps,
+                batches,
+            ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
         # There is only a local eval EnvRunner -> Run on that.
         elif self.evaluation_workers.num_healthy_remote_workers() == 0:
-            eval_results, env_steps, agent_steps, batches = (
-                self._evaluate_on_local_env_runner(
-                    self.evaluation_workers.local_worker()
-                )
+            (
+                eval_results,
+                env_steps,
+                agent_steps,
+                batches,
+            ) = self._evaluate_on_local_env_runner(
+                self.evaluation_workers.local_worker()
             )
         # There are healthy remote evaluation workers -> Run on these.
         elif self.evaluation_workers.num_healthy_remote_workers() > 0:
             if self.config.evaluation_duration == "auto":
-                eval_results, env_steps, agent_steps, all_batches = (
-                    self._evaluate_with_auto_duration(parallel_train_future)
-                )
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    all_batches,
+                ) = self._evaluate_with_auto_duration(parallel_train_future)
             else:
                 eval_results = self._evaluate_with_fixed_duration()
         # Can't find a good way to run this evaluation -> Wait for next iteration.
@@ -966,9 +973,9 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
         eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
         # TODO: Remove this key at some point. Here for backward compatibility.
-        eval_results["timesteps_this_iter"] = (
-            eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER]
-        )
+        eval_results["timesteps_this_iter"] = eval_results[
+            NUM_ENV_STEPS_SAMPLED_THIS_ITER
+        ]
 
         # Compute off-policy estimates
         if not self.config.custom_evaluation_function:
@@ -1066,13 +1073,18 @@ class Algorithm(Trainable, AlgorithmBase):
         metrics = env_runner.get_metrics()
 
         # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return {
-            "sampler_results": summarize_episodes(
-                metrics,
-                metrics,
-                keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
-            ),
-        }, env_steps, agent_steps, all_batches
+        return (
+            {
+                "sampler_results": summarize_episodes(
+                    metrics,
+                    metrics,
+                    keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
+                ),
+            },
+            env_steps,
+            agent_steps,
+            all_batches,
+        )
 
     def _evaluate_with_auto_duration(self, parallel_train_future):
         logger.info(
@@ -1134,41 +1146,30 @@ class Algorithm(Trainable, AlgorithmBase):
                 else:
                     _num = 20
 
-                env_s, ag_s, metrics = self.evaluation_workers.foreach_worker(
+                results = self.evaluation_workers.foreach_worker(
                     func=functools.partial(_env_runner_remote, num=_num, round=_round),
                     local_worker=False,
                     healthy_only=True,
                     timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                [all_metrics.extend(metric) for metric in metrics]
-                env_steps += env_s
-                agent_steps += ag_s
+                for (env_s, ag_s, metrics) in results:
+                    env_steps += env_s
+                    agent_steps += ag_s
+                    all_metrics.extend(metrics)
             # Old API Stack -> RolloutWorkers return batches.
             else:
-                unit_per_remote_worker = (
-                    self.evaluation_config.rollout_fragment_length
-                    * self.evaluation_config.num_envs_per_worker
-                )
-                # Select proper number of evaluation workers for this round.
-                selected_eval_worker_ids = [
-                    worker_id
-                    for i, worker_id in enumerate(
-                        self.evaluation_workers.healthy_worker_ids()
-                    )
-                    if i * unit_per_remote_worker < units_left_to_do
-                ]
-                batches, metrics = self.evaluation_workers.foreach_worker(
+                results = self.evaluation_workers.foreach_worker(
                     func=lambda w: (w.sample(), w.get_metrics()),
                     local_worker=False,
-                    remote_worker_ids=selected_eval_worker_ids,
                     healthy_only=True,
                     timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                env_steps += sum(b.env_steps for b in batches)
-                agent_steps += sum(b.agent_steps() for b in batches)
-                [all_metrics.extend(metric) for metric in metrics]
+                for (batches, metrics) in results:
+                    env_steps += sum(b.env_steps for b in batches)
+                    agent_steps += sum(b.agent_steps() for b in batches)
+                    all_metrics.extend(metrics)
 
-                if len(batches) != len(selected_eval_worker_ids):
+                if len(batches) != num_healthy_workers:
                     logger.warning(
                         "Calling `sample()` on your remote evaluation worker(s) "
                         "resulted in a timeout (after the configured "
@@ -1187,15 +1188,20 @@ class Algorithm(Trainable, AlgorithmBase):
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
 
         # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return {
-            "sampler_results": summarize_episodes(
-                all_metrics,
-                all_metrics,
-                keep_custom_metrics=(
-                    self.evaluation_config.keep_per_episode_custom_metrics
-                ),
-            )
-        }, env_steps, agent_steps, all_batches
+        return (
+            {
+                "sampler_results": summarize_episodes(
+                    all_metrics,
+                    all_metrics,
+                    keep_custom_metrics=(
+                        self.evaluation_config.keep_per_episode_custom_metrics
+                    ),
+                )
+            },
+            env_steps,
+            agent_steps,
+            all_batches,
+        )
 
     def _evaluate_with_fixed_duration(self):
         # How many episodes/timesteps do we need to run?
@@ -1213,9 +1219,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 num_timesteps=(
                     num[worker.worker_index] if unit == "timesteps" else None
                 ),
-                num_episodes=(
-                    num[worker.worker_index] if unit == "episodes" else None
-                ),
+                num_episodes=(num[worker.worker_index] if unit == "episodes" else None),
                 force_reset=force_reset and round == 0,
             )
             metrics = worker.get_metrics()
