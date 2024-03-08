@@ -1,3 +1,4 @@
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -125,3 +126,12 @@ def test_segfault_report_streaming_generator_output(
     assert (
         "SYSTEM_ERROR" not in worker_exit_types
     ), f"Unexpected crashed worker(s) in {worker_ids}"
+
+
+if __name__ == "__main__":
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
