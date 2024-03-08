@@ -57,6 +57,38 @@ absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   return result;
 }
 
+std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
+  // Get all unconsumed refs.
+  std::vector<ObjectID> unconsumed_ids;
+  for (int64_t index = 0; index <= max_index_seen_; index++) {
+    const auto &object_id = GetObjectRefAtIndex(index);
+    auto it = refs_written_to_stream_.find(object_id);
+    if (it == refs_written_to_stream_.end()) {
+      continue;
+    }
+
+    if (index >= next_index_) {
+      unconsumed_ids.push_back(object_id);
+      refs_written_to_stream_.erase(it);
+    }
+  }
+
+  if (end_of_stream_index_ != -1) {
+    // End of stream index is never consumed by a caller
+    // so we should add it here.
+    const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
+    unconsumed_ids.push_back(object_id);
+  }
+
+  // Temporarily owned refs are not consumed.
+  for (const auto &object_id : temporarily_owned_refs_) {
+    unconsumed_ids.push_back(object_id);
+  }
+  temporarily_owned_refs_.clear();
+
+  return unconsumed_ids;
+}
+
 bool ObjectRefStream::IsObjectConsumed(int64_t item_index) {
   return item_index < next_index_;
 }
@@ -239,7 +271,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   if (spec.IsStreamingGenerator()) {
     const auto generator_id = spec.ReturnId(0);
     RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
-    absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
     auto inserted =
         object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
     ref_stream_execution_signal_callbacks_.emplace(
@@ -469,43 +501,20 @@ bool TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
     }
   }
 
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
 
-  RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
-  absl::flat_hash_set<ObjectID> object_ids_unconsumed;
+    RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
+    bool can_gc_lineage = GarbageCollectStreamingGeneratorInternal(generator_id);
+    if (!can_gc_lineage) {
+      RAY_LOG(WARNING) << "Deleted streaming generator " << generator_id
+                       << " may leak objects. Please file an issue at "
+                          "https://github.com/ray-project/ray/issues/new/choose.";
+    }
 
-  auto it = object_ref_streams_.find(generator_id);
-  auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-  if (it == object_ref_streams_.end()) {
-    RAY_CHECK(signal_it == ref_stream_execution_signal_callbacks_.end());
+    object_ref_streams_.erase(generator_id);
     return true;
   }
-
-  // If a stream is deleted, signal the executor to just resume.
-  // Otherwise the executor will pause forever.
-  RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
-  for (const auto &execution_signal : signal_it->second) {
-    execution_signal(Status::NotFound("Stream is deleted."), -1);
-  }
-  ref_stream_execution_signal_callbacks_.erase(signal_it);
-
-  const auto &stream = it->second;
-  object_ids_unconsumed = stream.GetItemsUnconsumed();
-  object_ref_streams_.erase(generator_id);
-
-  // When calling RemoveLocalReference, we shouldn't hold a lock.
-  for (const auto &object_id : object_ids_unconsumed) {
-    std::vector<ObjectID> deleted;
-    RAY_LOG(DEBUG) << "Removing unconsume streaming ref " << object_id;
-    reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TODO(sang): This is required because the reference counter
-    // cannot remove objects from the in memory store.
-    // Instead of doing this manually here, we should modify
-    // reference_count.h to automatically remove objects
-    // when the ref goes to 0.
-    in_memory_store_->Delete(deleted);
-  }
-  return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
@@ -519,7 +528,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
@@ -552,29 +561,63 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
-bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id,
-                                               int64_t *num_objects_generated) const {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "IsFinished API can be used only when the stream has been "
+         "created "
+         "and not removed.";
+  return stream_it->second.IsFinished();
+}
+
+bool TaskManager::GarbageCollectStreamingGenerator(const ObjectID &generator_id) {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  return GarbageCollectStreamingGeneratorInternal(generator_id);
+}
+
+bool TaskManager::GarbageCollectStreamingGeneratorInternal(const ObjectID &generator_id) {
+  // Call execution signal callbacks to ensure that the executor does not block
+  // after the generator goes out of scope at the caller.
+  auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+  if (signal_it != ref_stream_execution_signal_callbacks_.end()) {
+    RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
+                   << generator_id;
+    for (const auto &execution_signal : signal_it->second) {
+      execution_signal(Status::NotFound("Stream is deleted."), -1);
+    }
+    // We may still receive more generator return reports in the future, if the
+    // generator task is still running or is retried. They will get the
+    // callback immediately because we deleted this entry.
+    ref_stream_execution_signal_callbacks_.erase(signal_it);
+  }
+
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
-    if (num_objects_generated) {
-      *num_objects_generated = -1;
-    }
     return true;
   }
 
-  if (stream_it->second.IsFinished()) {
-    if (num_objects_generated) {
-      *num_objects_generated = stream_it->second.EofIndex();
-    }
+  // Remove any unconsumed refs from the stream metadata in-memory store.
+  auto unconsumed_ids = stream_it->second.PopUnconsumedItems();
+  std::vector<ObjectID> deleted;
+  reference_counter_->TryReleaseLocalRefs(unconsumed_ids, &deleted);
+  in_memory_store_->Delete(deleted);
+
+  int64_t num_objects_generated = stream_it->second.EofIndex();
+  if (num_objects_generated != -1) {
+    // Generator task has not finished yet. Wait for EoF to be marked before
+    // deleting.
+    return false;
   }
 
-  return stream_it->second.IsFinished();
+  bool can_gc_lineage = reference_counter_->CheckGeneratorRefsLineageOutOfScope(
+      generator_id, num_objects_generated);
+  return can_gc_lineage;
 }
 
 std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
   ObjectID next_object_id;
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "PeekObjectRefStream API can be used only when the stream has been "
@@ -589,14 +632,14 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto it = object_ref_streams_.find(generator_id);
   return it != object_ref_streams_.end();
 }
 
 void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                                   int64_t end_of_stream_index) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   ObjectID last_object_id;
 
   auto stream_it = object_ref_streams_.find(generator_id);
@@ -652,7 +695,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // it is always empty.
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
@@ -704,8 +747,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                    << ". total_consumed: " << total_consumed
                    << ". threshold: " << backpressure_threshold;
     auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
-    signal_it->second.push_back(execution_signal_callback);
+    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
+      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
+    } else {
+      signal_it->second.push_back(execution_signal_callback);
+    }
   } else {
     // No need to backpressure.
     execution_signal_callback(Status::OK(), total_consumed);
@@ -715,7 +761,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
                                                            const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   return TemporarilyOwnGeneratorReturnRefIfNeededInternal(object_id, generator_id);
 }
 

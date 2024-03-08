@@ -311,7 +311,6 @@ def test_no_memory_store_obj_leak(ray_start_regular):
         if signal is not None:
             signal.send.remote()
 
-
     for _ in range(2):
         gen = f.remote()
         for _ in range(10):

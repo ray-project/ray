@@ -156,6 +156,12 @@ class ObjectRefStream {
   /// \return A list of object IDs that are not read yet.
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
+  /// Pop all ObjectIDs that are not read yet via
+  /// TryReadNextItem.
+  ///
+  /// \return A list of object IDs that are not read yet.
+  std::vector<ObjectID> PopUnconsumedItems();
+
   /// \return Index of the last consumed item, -1 if nothing is consumed yet.
   int64_t LastConsumedIndex() const { return next_index_ - 1; }
 
@@ -422,9 +428,32 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Return True if there's no more object to read. False otherwise.
-  bool StreamingGeneratorIsFinished(const ObjectID &generator_id,
-                                    int64_t *num_objects_generated = nullptr) const
+  /// Returns true if there are no more objects to read from the streaming
+  /// generator task.
+  ///
+  /// \param[in] generator_id The ObjectRef ID returned by the streaming
+  /// generator task.
+  /// \return True if there are no more objects to read from the generator.
+  bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Garbage collect any callbacks and unconsumed refs for a streaming
+  /// generator task. All registered execution signal callbacks will be
+  /// triggered and cleared. All unconsumed objects in scope will be released
+  /// and removed from the in-memory store.
+  ///
+  /// This method should be called once the generator ref has gone out of
+  /// scope. If the generator task is still running or is re-executed, it can
+  /// continue to report objects generated after this method is called.
+  /// Therefore, the caller should continue calling this method until the
+  /// stream has been deleted.
+  ///
+  /// \param[in] generator_id The ObjectRef ID returned by the streaming
+  /// generator task.
+  /// \return true if it is safe to delete the stream and task metadata for the
+  /// generator. If false, then the caller should continue calling this
+  /// function until this method returns true.
+  bool GarbageCollectStreamingGenerator(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
@@ -803,12 +832,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// this should be used when a task fails (which means we know the task won't
   /// report any more generator return values).
   void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
-      ABSL_LOCKS_EXCLUDED(objet_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
   bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
                                                         const ObjectID &generator_id)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(objet_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Helper method for GarbageCollectStreamingGenerator.
+  bool GarbageCollectStreamingGeneratorInternal(const ObjectID &generator_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -820,13 +853,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
-      ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
+      ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
   /// The consumer side of object ref stream should signal the executor
   /// to resume execution via signal callbacks (i.e., RPC reply).
   /// This data structure maintains the mapping of ObjectRefStreamID -> signal_callbacks
   absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
-      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
+      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these
@@ -853,7 +886,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// The lock to protect concurrency problems when
   /// using object ref stream APIs
-  mutable absl::Mutex objet_ref_stream_ops_mu_;
+  mutable absl::Mutex object_ref_stream_ops_mu_;
 
   /// Tracks per-task-state counters for metric purposes.
   TaskStatusCounter task_counter_ ABSL_GUARDED_BY(mu_);

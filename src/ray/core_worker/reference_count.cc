@@ -273,8 +273,26 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     absl::optional<NodeID>()));
 }
 
-bool ReferenceCounter::CheckGeneratorRefsOutOfScope(const ObjectID &generator_id,
-                                                    int64_t num_objects_generated) {
+void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
+                                           std::vector<ObjectID> *deleted) {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it == object_id_refs_.end()) {
+      // Unconsumed ref has already been released.
+      continue;
+    }
+
+    if (it->second.local_ref_count == 0) {
+      // Unconsumed ref has already been released.
+      continue;
+    }
+    RemoveLocalReferenceInternal(object_id, deleted);
+  }
+}
+
+bool ReferenceCounter::CheckGeneratorRefsLineageOutOfScope(
+    const ObjectID &generator_id, int64_t num_objects_generated) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.count(generator_id)) {
     return false;
