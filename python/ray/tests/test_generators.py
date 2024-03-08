@@ -631,6 +631,79 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
     assert_no_leak()
 
 
+def test_yield_exception(ray_start_cluster):
+    @ray.remote
+    def f():
+        yield 1
+        yield 2
+        yield Exception("value")
+        yield 3
+        raise Exception("raise")
+        yield 5
+
+    gen = f.remote()
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    yield_exc = ray.get(next(gen))
+    assert isinstance(yield_exc, Exception)
+    assert str(yield_exc) == "value"
+    assert ray.get(next(gen)) == 3
+    with pytest.raises(Exception, match="raise"):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+
+
+def test_actor_yield_exception(ray_start_cluster):
+    @ray.remote
+    class A:
+        def f(self):
+            yield 1
+            yield 2
+            yield Exception("value")
+            yield 3
+            raise Exception("raise")
+            yield 5
+
+    a = A.remote()
+    gen = a.f.remote()
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    yield_exc = ray.get(next(gen))
+    assert isinstance(yield_exc, Exception)
+    assert str(yield_exc) == "value"
+    assert ray.get(next(gen)) == 3
+    with pytest.raises(Exception, match="raise"):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+
+
+def test_async_actor_yield_exception(ray_start_cluster):
+    @ray.remote
+    class A:
+        async def f(self):
+            yield 1
+            yield 2
+            yield Exception("value")
+            yield 3
+            raise Exception("raise")
+            yield 5
+
+    a = A.remote()
+    gen = a.f.remote()
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    yield_exc = ray.get(next(gen))
+    assert isinstance(yield_exc, Exception)
+    assert str(yield_exc) == "value"
+    assert ray.get(next(gen)) == 3
+    with pytest.raises(Exception, match="raise"):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+
+
 # Client server port of the shared Ray instance
 SHARED_CLIENT_SERVER_PORT = 25555
 
