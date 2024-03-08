@@ -75,7 +75,7 @@ Another way is to enable it during ``ray.init()`` by adding a ``_system_config``
 
 
 ⚠️ Caution: Core worker now reaps zombies, toggle back if you wait to ``waitpid``
-----------------------------------------------
+----------------------------------------------------------------------------------
 
 When the feature is enabled, the worker process becomes a subreaper (see the next section), meaning there can be some grandchildren processes that are reparented to the worker process. To reap these processes, the worker sets the ``SIGCHLD`` signal to ``SIG_IGN``. This makes the worker not receive the ``SIGCHLD`` signal when its children exit. If you need to wait for a child process to exit, you need to reset the ``SIGCHLD`` signal to ``SIG_DFL``.
 
