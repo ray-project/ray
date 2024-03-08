@@ -978,9 +978,9 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
         eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
         # TODO: Remove this key at some point. Here for backward compatibility.
-        eval_results["timesteps_this_iter"] = eval_results[
-            NUM_ENV_STEPS_SAMPLED_THIS_ITER
-        ]
+        eval_results["timesteps_this_iter"] = eval_results.get(
+            NUM_ENV_STEPS_SAMPLED_THIS_ITER, 0
+        )
 
         # Compute off-policy estimates
         if not self.config.custom_evaluation_function:
@@ -1003,9 +1003,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     )
                     eval_results["off_policy_estimator"][name] = avg_estimate
 
-        self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER] = eval_results[
-            "sampler_results"
-        ].get("episodes_timesteps_total", 0)
+        self._counters[
+            NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER
+        ] = eval_results.get("sampler_results", {}).get("episodes_timesteps_total", 0)
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on Algorithm, so it can be attached to
@@ -1120,6 +1120,8 @@ class Algorithm(Trainable, AlgorithmBase):
             return env_steps, agent_steps, metrics
 
         env_steps = agent_steps = 0
+        train_mean_time = self._timers[TRAINING_ITERATION_TIMER].mean
+        t0 = time.time()
 
         _round = -1
         while (
@@ -1137,19 +1139,21 @@ class Algorithm(Trainable, AlgorithmBase):
                 # to occupy the estimated (parallelly running) train step.
                 # If this is the first round, compute a rough estimate based on how long
                 # the train iteration usually takes AND our (eval) speed.
-                if _round == 0:
-                    _num = max(
+                # Cap at 20k to not put too much memory strain on EnvRunners.
+                _num = min(
+                    20000,
+                    max(
                         100,
                         (
-                            self._timers[TRAINING_ITERATION_TIMER].mean
+                            # How much time do we have left?
+                            (train_mean_time - (time.time() - t0))
+                            # Multiply by our own (eval) throughput to get the timesteps
+                            # to do (per worker).
                             * self._timers[EVALUATION_ITERATION_TIMER].mean_throughput
                             / num_healthy_workers
                         ),
-                    )
-                # If second or later round -> Take small steps to make sure we don't
-                # take much longer than the parallelly running training step.
-                else:
-                    _num = 20
+                    ),
+                )
 
                 results = self.evaluation_workers.foreach_worker(
                     func=functools.partial(_env_runner_remote, num=_num, round=_round),
@@ -1272,9 +1276,7 @@ class Algorithm(Trainable, AlgorithmBase):
                         len(r[2])
                         if unit == "episodes"
                         else (
-                            r[0]
-                            if self.config.count_steps_by == "env_steps"
-                            else r[1]
+                            r[0] if self.config.count_steps_by == "env_steps" else r[1]
                         )
                     )
             else:
@@ -1336,15 +1338,20 @@ class Algorithm(Trainable, AlgorithmBase):
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
 
         # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return {
-            "sampler_results": summarize_episodes(
-                all_metrics,
-                all_metrics,
-                keep_custom_metrics=(
-                    self.evaluation_config.keep_per_episode_custom_metrics
-                ),
-            )
-        }, env_steps, agent_steps, all_batches
+        return (
+            {
+                "sampler_results": summarize_episodes(
+                    all_metrics,
+                    all_metrics,
+                    keep_custom_metrics=(
+                        self.evaluation_config.keep_per_episode_custom_metrics
+                    ),
+                )
+            },
+            env_steps,
+            agent_steps,
+            all_batches,
+        )
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
