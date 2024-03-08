@@ -490,44 +490,16 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
-  {
-    absl::MutexLock lock(&object_ref_stream_ops_mu_);
-    bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
-  }
-
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
   if (!can_gc_lineage) {
+    RAY_LOG(DEBUG) << "Generator " << generator_id << " still has lineage in scope, try again later";
     return false;
   }
 
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(generator_id.TaskId());
-    if (it != submissible_tasks_.end() && it->second.IsPending()) {
-      // Wait for the task to complete before we try to delete it.
-      // We check for the task before deleting the stream because we need the
-      // stream metadata to determine whether it's safe to GC both.
-      return false;
-    }
-
-    submissible_tasks_.erase(it);
-  }
-
-  {
-    absl::MutexLock lock(&object_ref_stream_ops_mu_);
-
-    RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
-    // Perform GC again because we released the lock. More objects could have
-    // been reported in the meantime.
-    bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
-    if (!can_gc_lineage) {
-      RAY_LOG(WARNING) << "Deleted streaming generator " << generator_id
-                       << " may leak objects. Please file an issue at "
-                          "https://github.com/ray-project/ray/issues/new/choose.";
-    }
-
-    object_ref_streams_.erase(generator_id);
-    return true;
-  }
+  RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
+  object_ref_streams_.erase(generator_id);
+  return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
@@ -874,14 +846,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                          << " return objects.";
           for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
             if (return_id_info.is_plasma_object()) {
-              // NOTE(swang): It is possible that the dynamically returned refs
+              // TODO(swang): It is possible that the dynamically returned refs
               // have already been consumed by the caller and deleted. This can
               // cause a memory leak of the task metadata, because we will
               // never receive a callback from the ReferenceCounter to erase
-              // the task. To work around this, the caller must periodically
-              // check whether all of the generator refs have gone out of
-              // scope, and then call DelObjectRefStream to delete both the
-              // task spec and the stream metadata.
+              // the task.
               it->second.reconstructable_return_ids.insert(
                   ObjectID::FromBinary(return_id_info.object_id()));
             }
