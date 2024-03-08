@@ -7,7 +7,7 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeDeployments } from "./hook/useServeApplications";
 import {
   ServeMetricsSection,
-  SYSTEM_METRICS_CONFIG,
+  SERVE_SYSTEM_METRICS_CONFIG,
 } from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
 const useStyles = makeStyles((theme) =>
@@ -61,7 +61,7 @@ export const ServeSystemDetailPage = () => {
       )}
       <ServeMetricsSection
         className={classes.section}
-        metricsConfig={SYSTEM_METRICS_CONFIG}
+        metricsConfig={SERVE_SYSTEM_METRICS_CONFIG}
       />
     </div>
   );

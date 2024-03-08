@@ -4,7 +4,7 @@ import { GlobalContext } from "../../App";
 import {
   APPS_METRICS_CONFIG,
   ServeMetricsSection,
-  SYSTEM_METRICS_CONFIG,
+  SERVE_SYSTEM_METRICS_CONFIG,
 } from "./ServeMetricsSection";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
@@ -76,7 +76,7 @@ describe("ServeMetricsSection", () => {
   it("renders system metrics", async () => {
     expect.assertions(5);
 
-    render(<ServeMetricsSection metricsConfig={SYSTEM_METRICS_CONFIG} />, {
+    render(<ServeMetricsSection metricsConfig={SERVE_SYSTEM_METRICS_CONFIG} />, {
       wrapper: Wrapper,
     });
     await screen.findByText(/View in Grafana/);

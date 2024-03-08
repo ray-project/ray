@@ -76,7 +76,7 @@ export const APPS_METRICS_CONFIG: MetricConfig[] = [
 ];
 
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
-export const SYSTEM_METRICS_CONFIG: MetricConfig[] = [
+export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
   {
     title: "Ongoing HTTP Requests",
     pathParams: "orgId=1&theme=light&panelId=20",
