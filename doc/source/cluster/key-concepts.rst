@@ -62,6 +62,9 @@ It is important to understand that the autoscaler only reacts to task and actor 
 To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
 
 
+.. note::
+    Autoscaling V2 is alpha released on KubeRay in 2.10.0, learn more about the improvements and setup :ref:`here <kuberay-autoscaler-v2>`.
+
 .. _cluster-clients-and-jobs:
 
 Ray Jobs
