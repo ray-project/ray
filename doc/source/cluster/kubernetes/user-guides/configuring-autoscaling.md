@@ -320,6 +320,9 @@ The information regarding the number of CPUs is essential for the Ray Autoscaler
 Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
 Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
+* If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
+* If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
+
 ```yaml
 headGroupSpec:
   rayStartParams:
