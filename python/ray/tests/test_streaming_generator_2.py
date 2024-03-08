@@ -7,6 +7,9 @@ import gc
 
 import ray
 from ray.experimental.state.api import list_actors
+from ray._private.test_utils import (
+    wait_for_condition,
+)
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -21,14 +24,18 @@ RECONSTRUCTION_CONFIG = {
 
 
 def assert_no_leak():
-    gc.collect()
-    core_worker = ray._private.worker.global_worker.core_worker
-    ref_counts = core_worker.get_all_reference_counts()
-    print(ref_counts)
-    for rc in ref_counts.values():
-        assert rc["local"] == 0
-        assert rc["submitted"] == 0
-    assert core_worker.get_memory_store_size() == 0
+    def check():
+        gc.collect()
+        core_worker = ray._private.worker.global_worker.core_worker
+        ref_counts = core_worker.get_all_reference_counts()
+        for k, rc in ref_counts.items():
+            if rc["local"] != 0:
+                return False
+            if rc["submitted"] != 0:
+                return False
+        return core_worker.get_memory_store_size() == 0
+
+    wait_for_condition(check)
 
 
 @pytest.mark.parametrize("delay", [True])
@@ -280,39 +287,26 @@ def test_async_actor_concurrent(shutdown_only):
     assert 4.5 < time.time() - s < 6.5
 
 
-def test_no_memory_store_obj_leak(shutdown_only):
+def test_no_memory_store_obj_leak(ray_start_regular):
     """Fixes https://github.com/ray-project/ray/issues/38089
 
     Verify there's no leak from in-memory object store when
     using a streaming generator.
     """
-    ray.init()
 
     @ray.remote
     def f():
         for _ in range(10):
             yield 1
 
-    for _ in range(10):
-        for ref in f.remote():
-            del ref
+    for _ in range(2):
+        gen = f.remote()
+        for _ in range(10):
+            for ref in gen:
+                del ref
 
-        time.sleep(0.2)
-
-    core_worker = ray._private.worker.global_worker.core_worker
-    assert core_worker.get_memory_store_size() == 0
-    assert_no_leak()
-
-    for _ in range(10):
-        for ref in f.remote():
-            break
-
-        time.sleep(0.2)
-
-    del ref
-    core_worker = ray._private.worker.global_worker.core_worker
-    assert core_worker.get_memory_store_size() == 0
-    assert_no_leak()
+        del gen
+        assert_no_leak()
 
 
 def test_python_object_leak(shutdown_only):

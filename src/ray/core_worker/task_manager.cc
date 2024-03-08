@@ -66,8 +66,8 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   if (IsFinished()) {
     // next_index_ cannot be bigger than end_of_stream_index_.
     RAY_CHECK(next_index_ == end_of_stream_index_);
-    RAY_LOG(INFO) << "ObjectRefStream of an id " << generator_id_
-                  << " has no more objects.";
+    RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
+                   << " has no more objects.";
     return Status::ObjectRefEndOfStream("");
   }
 
@@ -75,12 +75,12 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   if (it != refs_written_to_stream_.end()) {
     total_num_object_consumed_ += 1;
     next_index_ += 1;
-    RAY_LOG_EVERY_MS(INFO, 10000) << "Get the next object id " << *object_id_out
-                                  << " generator id: " << generator_id_;
+    RAY_LOG_EVERY_MS(DEBUG, 10000) << "Get the next object id " << *object_id_out
+                                   << " generator id: " << generator_id_;
   } else {
     // If the current index hasn't been written, return nothing.
     // The caller is supposed to retry.
-    RAY_LOG_EVERY_MS(INFO, 10000)
+    RAY_LOG_EVERY_MS(DEBUG, 10000)
         << "Object not available. Current index: " << next_index_
         << " end_of_stream_index_: " << end_of_stream_index_
         << " generator id: " << generator_id_;
@@ -175,21 +175,21 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     int max_retries) {
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
-  RAY_LOG(INFO) << "Adding pending task " << spec.TaskId() << " with " << max_retries
-                << " retries, " << max_oom_retries << " oom retries";
+  RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
+                 << " retries, " << max_oom_retries << " oom retries";
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       task_deps.push_back(spec.ArgId(i));
-      RAY_LOG(INFO) << "Adding arg ID " << spec.ArgId(i);
+      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
         const auto inlined_id = ObjectID::FromBinary(inlined_ref.object_id());
         task_deps.push_back(inlined_id);
-        RAY_LOG(INFO) << "Adding inlined ID " << inlined_id;
+        RAY_LOG(DEBUG) << "Adding inlined ID " << inlined_id;
       }
     }
   }
@@ -238,7 +238,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   // The language frontend is responsible for calling DeleteObjectRefStream.
   if (spec.IsStreamingGenerator()) {
     const auto generator_id = spec.ReturnId(0);
-    RAY_LOG(INFO) << "Create an object ref stream of an id " << generator_id;
+    RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
     absl::MutexLock lock(&objet_ref_stream_ops_mu_);
     auto inserted =
         object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
@@ -319,8 +319,8 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     for (const auto &task_dep : *task_deps) {
       bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
       if (was_freed) {
-        RAY_LOG(INFO) << "Dependency " << task_dep << " of task " << task_id
-                      << " was freed";
+        RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << task_id
+                       << " was freed";
         // We do not keep around copies for objects that were freed, but now that
         // they're needed for recovery, we need to generate and pin a new copy.
         // Delete the old in-memory marker that indicated that the object was
@@ -404,8 +404,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
                                    bool store_in_plasma) {
   bool direct_return = false;
   reference_counter_->UpdateObjectSize(object_id, return_object.size());
-  RAY_LOG(INFO) << "Task return object " << object_id << " has size "
-                << return_object.size();
+  RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
+                 << return_object.size();
   const auto nested_refs =
       VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
 
@@ -471,7 +471,7 @@ bool TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
 
   absl::MutexLock lock(&objet_ref_stream_ops_mu_);
 
-  RAY_LOG(INFO) << "Deleting an object ref stream of an id " << generator_id;
+  RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
   absl::flat_hash_set<ObjectID> object_ids_unconsumed;
 
   auto it = object_ref_streams_.find(generator_id);
@@ -496,7 +496,7 @@ bool TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   // When calling RemoveLocalReference, we shouldn't hold a lock.
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
-    RAY_LOG(INFO) << "Removing unconsume streaming ref " << object_id;
+    RAY_LOG(DEBUG) << "Removing unconsume streaming ref " << object_id;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TODO(sang): This is required because the reference counter
     // cannot remove objects from the in memory store.
@@ -538,10 +538,10 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
       auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
       if (it != ref_stream_execution_signal_callbacks_.end()) {
         for (const auto &execution_signal : it->second) {
-          RAY_LOG(INFO) << "The task for a stream " << generator_id
-                        << " should resume. total_generated: " << total_generated
-                        << ". total_consumed: " << total_consumed
-                        << ". threshold: " << backpressure_threshold;
+          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
+                         << " should resume. total_generated: " << total_generated
+                         << ". total_consumed: " << total_consumed
+                         << ". threshold: " << backpressure_threshold;
           execution_signal(Status::OK(), total_consumed);
         }
         it->second.clear();
@@ -606,8 +606,8 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 
   stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  RAY_LOG(INFO) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
-                << ". Last object id: " << last_object_id;
+  RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
+                 << ". Last object id: " << last_object_id;
 
   if (!last_object_id.IsNil()) {
     reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
@@ -627,8 +627,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   int64_t item_index = request.item_index();
   uint64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
-  RAY_LOG(INFO) << "Received an intermediate result of index " << item_index
-                << " generator_id: " << generator_id;
+  RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
+                 << " generator_id: " << generator_id;
   auto backpressure_threshold = -1;
 
   {
@@ -665,8 +665,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
 
-    RAY_LOG(INFO) << "Write an object " << object_id << " to the object ref stream of id "
-                  << generator_id;
+    RAY_LOG(DEBUG) << "Write an object " << object_id
+                   << " to the object ref stream of id " << generator_id;
     auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
 
     // If the ref was written to a stream, we should also
@@ -699,10 +699,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // `HandleReportGeneratorItemReturns` requests out of order.
   if (backpressure_threshold != -1 &&
       (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
-    RAY_LOG(INFO) << "Stream " << generator_id
-                  << " is backpressured. total_generated: " << total_generated
-                  << ". total_consumed: " << total_consumed
-                  << ". threshold: " << backpressure_threshold;
+    RAY_LOG(DEBUG) << "Stream " << generator_id
+                   << " is backpressured. total_generated: " << total_generated
+                   << ". total_consumed: " << total_consumed
+                   << ". threshold: " << backpressure_threshold;
     auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
     RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
     signal_it->second.push_back(execution_signal_callback);
@@ -732,7 +732,7 @@ bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(
 
   // We shouldn't hold a lock when calling refernece counter API.
   if (inserted_to_stream) {
-    RAY_LOG(INFO) << "Added streaming ref " << object_id;
+    RAY_LOG(DEBUG) << "Added streaming ref " << object_id;
     reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
     return true;
   }
@@ -744,7 +744,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
-  RAY_LOG(INFO) << "Completing task " << task_id;
+  RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   bool first_execution = false;
   const auto store_in_plasma_ids =
@@ -799,8 +799,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // TODO(sang): Remove this logic once streaming generator is the default.
     if (first_execution) {
       for (const auto &dynamic_return_id : dynamic_return_ids) {
-        RAY_LOG(INFO) << "Task " << task_id << " produced dynamic return object "
-                      << dynamic_return_id;
+        RAY_LOG(DEBUG) << "Task " << task_id << " produced dynamic return object "
+                       << dynamic_return_id;
         spec.AddDynamicReturnId(dynamic_return_id);
       }
       for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
@@ -814,9 +814,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             reply.streaming_generator_return_ids_size();
         if (num_streaming_generator_returns > 0) {
           spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
-          RAY_LOG(INFO) << "Completed streaming generator task " << spec.TaskId()
-                        << " has " << spec.NumStreamingGeneratorReturns()
-                        << " return objects.";
+          RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
+                         << " has " << spec.NumStreamingGeneratorReturns()
+                         << " return objects.";
           for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
             if (return_id_info.is_plasma_object()) {
               // NOTE(swang): It is possible that the dynamically returned refs
@@ -838,15 +838,15 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // Release the lineage for any non-plasma return objects.
     // TODO(sang): Remove this logic once streaming generator is the default.
     for (const auto &direct_return_id : direct_return_ids) {
-      RAY_LOG(INFO) << "Task " << it->first << " returned direct object "
-                    << direct_return_id << ", now has "
-                    << it->second.reconstructable_return_ids.size()
-                    << " plasma returns in scope";
+      RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
+                     << direct_return_id << ", now has "
+                     << it->second.reconstructable_return_ids.size()
+                     << " plasma returns in scope";
       it->second.reconstructable_return_ids.erase(direct_return_id);
     }
-    RAY_LOG(INFO) << "Task " << it->first << " now has "
-                  << it->second.reconstructable_return_ids.size()
-                  << " plasma returns in scope";
+    RAY_LOG(DEBUG) << "Task " << it->first << " now has "
+                   << it->second.reconstructable_return_ids.size()
+                   << " plasma returns in scope";
     it->second.num_successful_executions++;
 
     if (is_application_error) {
@@ -896,9 +896,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         // It means the task was re-executed but failed with an application
         // error. In this case, we should fail the rest of known streaming
         // generator returns with the same error.
-        RAY_LOG(INFO) << "Streaming generator task " << spec.TaskId()
-                      << " failed with application error, failing "
-                      << spec.NumStreamingGeneratorReturns() << " return objects.";
+        RAY_LOG(DEBUG) << "Streaming generator task " << spec.TaskId()
+                       << " failed with application error, failing "
+                       << spec.NumStreamingGeneratorReturns() << " return objects.";
         RAY_CHECK_EQ(reply.return_objects_size(), 1);
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
@@ -1002,10 +1002,10 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                   const rpc::RayErrorInfo *ray_error_info) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(INFO) << "Task " << task_id << " failed with error "
-                << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
-                << ((ray_error_info == nullptr) ? "nullptr"
-                                                : ray_error_info->DebugString());
+  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+                 << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
+                 << ((ray_error_info == nullptr) ? "nullptr"
+                                                 : ray_error_info->DebugString());
 
   TaskSpecification spec;
   // Check whether the error should be stored in plasma or not.
@@ -1052,8 +1052,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       } else {
         RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
       }
-      RAY_LOG(INFO) << "Runtime env for task " << spec.TaskId() << " is "
-                    << spec.RuntimeEnvDebugString();
+      RAY_LOG(DEBUG) << "Runtime env for task " << spec.TaskId() << " is "
+                     << spec.RuntimeEnvDebugString();
     }
   }
 
@@ -1185,18 +1185,18 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   const TaskID &task_id = object_id.TaskId();
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
-    RAY_LOG(INFO) << "No lineage for object " << object_id;
+    RAY_LOG(DEBUG) << "No lineage for object " << object_id;
     return 0;
   }
 
-  RAY_LOG(INFO) << "Plasma object " << object_id << " out of scope";
+  RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
   for (const auto &plasma_id : it->second.reconstructable_return_ids) {
-    RAY_LOG(INFO) << "Task " << task_id << " has " << plasma_id << " in scope";
+    RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
   }
   it->second.reconstructable_return_ids.erase(object_id);
-  RAY_LOG(INFO) << "Task " << task_id << " now has "
-                << it->second.reconstructable_return_ids.size()
-                << " plasma returns in scope";
+  RAY_LOG(DEBUG) << "Task " << task_id << " now has "
+                 << it->second.reconstructable_return_ids.size()
+                 << " plasma returns in scope";
 
   if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
     // If the task can no longer be retried, decrement the lineage ref count
@@ -1260,8 +1260,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) {
   const TaskID task_id = spec.TaskId();
   RayObject error(error_type, ray_error_info);
-  RAY_LOG(INFO) << "Treat task as failed. task_id: " << task_id
-                << ", error_type: " << ErrorType_Name(error_type);
+  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
+                 << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);

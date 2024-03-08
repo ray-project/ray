@@ -640,8 +640,6 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
     # We should never reconstruct an empty generator.
     assert ray.get(exec_counter.get_count.remote()) == 1
 
-    print("gen", gen._generator_ref)
-    print("refs", refs)
     del gen, refs, exec_counter
     assert_no_leak()
 
