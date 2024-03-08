@@ -1146,11 +1146,16 @@ Dataset throughput:
 
 def test_time_backpressure(ray_start_regular_shared, restore_data_context):
     class TimedBackpressurePolicy(BackpressurePolicy):
+        COUNT = 0
         def __init__(self, topology: "Topology"):
-            self.start_time = time.perf_counter()
+            pass
 
         def can_add_input(self, op: "PhysicalOperator") -> bool:
-            return time.perf_counter() - self.start_time < 1
+            if TimedBackpressurePolicy.COUNT > 10:
+                return True
+            else:
+                TimedBackpressurePolicy.COUNT += 1
+                return False
 
     context = DataContext.get_current()
     context.verbose_stats_logs = True
@@ -1158,7 +1163,11 @@ def test_time_backpressure(ray_start_regular_shared, restore_data_context):
         ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY, [TimedBackpressurePolicy]
     )
 
-    ds = ray.data.range(10000).map_batches(lambda x: x).materialize()
+    def f(x):
+        time.sleep(0.01)
+        return x
+
+    ds = ray.data.range(10000).map_batches(f).materialize()
     assert ds._plan.stats().extra_metrics["task_submission_backpressure_time"] > 0
 
 
