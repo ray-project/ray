@@ -124,7 +124,10 @@ class CITestStateMachine(TestStateMachine):
         )
 
     def _flaky_to_passing(self) -> bool:
-        return self._is_recently_stable()
+        # A flaky test is considered passing if it has been passing for a certain
+        # period and the github issue is closed (by a human).
+        issue = self.ray_repo.get_issue(self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER))
+        return self._is_recently_stable() and issue.state == "closed"
 
     def _is_recently_stable(self) -> bool:
         return len(self.test_results) >= CONTINUOUS_PASSING_TO_PASSING and all(
