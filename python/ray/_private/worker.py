@@ -513,7 +513,7 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
-    def current_node_id(self):
+    def current_node_id(self) -> ray.NodeID:
         return self.core_worker.get_current_node_id()
 
     @property
@@ -718,7 +718,7 @@ class Worker:
         value: Any,
         object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
-        _is_experimental_mutable_object: bool = False,
+        _is_experimental_channel: bool = False,
     ):
         """Put value in the local object store with object reference `object_ref`.
 
@@ -734,7 +734,7 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
-            _is_experimental_mutable_object: An experimental flag for mutable
+            _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
@@ -774,7 +774,7 @@ class Worker:
 
         # If the object is mutable, then the raylet should never read the
         # object. Instead, clients will keep the object pinned.
-        pin_object = not _is_experimental_mutable_object
+        pin_object = not _is_experimental_channel
 
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
@@ -788,7 +788,7 @@ class Worker:
                 object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
-                _is_experimental_mutable_object=_is_experimental_mutable_object,
+                _is_experimental_channel=_is_experimental_channel,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -814,7 +814,6 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
-        _is_experimental_mutable_object: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -831,10 +830,6 @@ class Worker:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
-            _is_experimental_mutable_object: An experimental flag for mutable
-                objects. If True, then wait until there is a value available to
-                read. The object must also already be local, or else the get
-                call will hang.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -849,7 +844,6 @@ class Worker:
             object_refs,
             self.current_task_id,
             timeout_ms,
-            _is_experimental_mutable_object,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
@@ -940,7 +934,7 @@ class Worker:
 
     def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> List[str]:
+    ) -> Union[List[str], List[int]]:
         """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
@@ -948,7 +942,8 @@ class Worker:
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource.
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
@@ -981,12 +976,12 @@ class Worker:
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
-        return [str(assigned_id) for assigned_id in assigned_ids]
+        return list(assigned_ids)
 
 
 @PublicAPI
 @client_mode_hook
-def get_gpu_ids():
+def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -999,12 +994,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return [
-        int(i)
-        for i in worker.get_accelerator_ids_for_accelerator_resource(
-            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-        )
-    ]
+    return worker.get_accelerator_ids_for_accelerator_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -1167,7 +1159,6 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         super().__init__()
@@ -1175,9 +1166,6 @@ class RayContext(BaseContext, Mapping):
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
-        # No client protocol version since this driver was intiialized
-        # directly
-        self.protocol_version = None
         self.address_info = address_info
 
     def __getitem__(self, key):
@@ -1655,10 +1643,11 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
+            ray_params=ray_params,
             head=True,
             shutdown_at_exit=False,
             spawn_reaper=True,
-            ray_params=ray_params,
+            ray_init_cluster=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -2347,29 +2336,45 @@ def connect(
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        # We also want to skip adding script directory when running from dashboard.
-        code_paths = []
-        if not interactive_mode and not (
-            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+        # paths of the workers. Also add the current directory. This is useful when the
+        # worker code references local libraries like `import local_lib`, *without*
+        # working_dir set and the worker and driver are on the same node, e.g. when the
+        # user is running on a single node cluster on their laptop.
+        #
+        # In production, This is not encouraged, and won't work if the driver and worker
+        # are on different nodes. In that case, the user should use `working_dir` to
+        # specify the code search path.
+        #
+        # Formally, the local path(s) should be added when all of these are true:
+        # (1) there's no working_dir (or code search path should be in working_dir),
+        # (2) it's not interactive mode, (there's no script file in interactive mode),
+        # (3) it's not in dashboard,
+        # (4) it's not client mode, (handled by client code)
+        # (5) the driver is at the same node (machine) as the worker.
+        #
+        # We only do the first 4 checks here. The (5) check is done in _raylet.pyx
+        # maybe_initialize_job_config.
+        if not any(
+            [
+                job_config._runtime_env_has_working_dir(),
+                interactive_mode,
+                namespace
+                and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                job_config._client_job,
+            ]
         ):
-            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            code_paths = set()
+            script_directory = os.path.dirname(os.path.realpath(driver_name))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                code_paths.append(script_directory)
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
+                code_paths.add(script_directory)
             current_directory = os.path.abspath(os.path.curdir)
-            code_paths.append(current_directory)
-        if len(code_paths) != 0:
-            job_config._py_driver_sys_path.extend(code_paths)
+            code_paths.add(current_directory)
+            if len(code_paths) != 0:
+                job_config._py_driver_sys_path.extend(code_paths)
 
     serialized_job_config = job_config._serialize()
     if not node.should_redirect_logs():

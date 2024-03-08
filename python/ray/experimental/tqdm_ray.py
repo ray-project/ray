@@ -178,6 +178,7 @@ class _Bar:
             total=state["total"],
             position=pos_offset + state["pos"],
             leave=False,
+            dynamic_ncols=True,
         )
         if state["x"]:
             self.bar.update(state["x"])
@@ -387,7 +388,7 @@ if __name__ == "__main__":
             time.sleep(delay)
             return x
 
-        ray.data.range(1000, parallelism=100).map(
+        ray.data.range(1000, override_num_blocks=100).map(
             sleep, compute=ray.data.ActorPoolStrategy(size=1)
         ).count()
 

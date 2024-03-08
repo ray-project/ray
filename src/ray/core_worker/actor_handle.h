@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
@@ -43,7 +44,8 @@ class ActorHandle {
               const std::string &name,
               const std::string &ray_namespace,
               int32_t max_pending_calls,
-              bool execute_out_of_order = false);
+              bool execute_out_of_order = false,
+              absl::optional<bool> enable_task_events = absl::nullopt);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -94,6 +96,8 @@ class ActorHandle {
   void Serialize(std::string *output);
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
+
+  bool EnableTaskEvents() const { return inner_.enable_task_events(); }
 
   std::string GetName() const;
 

@@ -14,9 +14,9 @@ from ray import serve
 
 @serve.deployment(
     ray_actor_options={"num_cpus": 1},
-    max_concurrent_queries=5,
+    max_ongoing_requests=5,
     autoscaling_config={
-        "target_num_ongoing_requests_per_replica": 1,
+        "target_ongoing_requests": 1,
         "min_replicas": 0,
         "initial_replicas": 0,
         "max_replicas": 200,

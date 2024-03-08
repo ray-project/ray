@@ -135,7 +135,7 @@ cdef class CoreWorker:
                             c_bool created_by_worker,
                             owner_address=*,
                             c_bool inline_small_object=*,
-                            c_bool is_experimental_mutable_object=*)
+                            c_bool is_experimental_channel=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
             self, serialized_object,
@@ -151,7 +151,6 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             CObjectID ref_generator_id=*)
-    cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
     cdef c_function_descriptors_to_python(
         self, const c_vector[CFunctionDescriptor] &c_function_descriptors)

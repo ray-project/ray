@@ -13,6 +13,15 @@ from ray.rllib.utils.spaces.space_utils import (
 
 
 class InfiniteLookbackBuffer:
+    @property
+    def space(self):
+        return self._space
+
+    @space.setter
+    def space(self, value):
+        self._space = value
+        self.space_struct = get_base_struct_from_space(value)
+
     def __init__(
         self,
         data: Optional[Union[List, np.ndarray]] = None,
@@ -22,8 +31,8 @@ class InfiniteLookbackBuffer:
         self.data = data if data is not None else []
         self.lookback = min(lookback, len(self.data))
         self.finalized = not isinstance(self.data, list)
+        self.space_struct = None
         self.space = space
-        self.space_struct = get_base_struct_from_space(self.space)
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
@@ -73,7 +82,7 @@ class InfiniteLookbackBuffer:
         indices: Optional[Union[int, slice, List[int]]] = None,
         *,
         neg_indices_left_of_zero: bool = False,
-        fill: Optional[float] = None,
+        fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         _ignore_last_ts: bool = False,
         _add_last_ts_value: Optional[Any] = None,
@@ -92,7 +101,7 @@ class InfiniteLookbackBuffer:
                 into the lookback buffer.
             neg_indices_left_of_zero: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
-                buffer. For example, an buffer with data [4, 5, 6,  7, 8, 9],
+                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
                 respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
                 `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
@@ -308,13 +317,15 @@ class InfiniteLookbackBuffer:
         )
 
         # Perform the actual slice.
-        if self.finalized:
-            data_slice = tree.map_structure(lambda s: s[slice_], data_to_use)
-        else:
-            data_slice = data_to_use[slice_]
+        data_slice = None
+        if slice_len > 0:
+            if self.finalized:
+                data_slice = tree.map_structure(lambda s: s[slice_], data_to_use)
+            else:
+                data_slice = data_to_use[slice_]
 
-        if one_hot_discrete and slice_len > 0:
-            data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
+            if one_hot_discrete:
+                data_slice = self._one_hot(data_slice, space_struct=self.space_struct)
 
         # Data is shorter than the range requested -> Fill the rest with `fill` data.
         if fill is not None and (fill_right_count > 0 or fill_left_count > 0):
@@ -374,6 +385,11 @@ class InfiniteLookbackBuffer:
                     + fill_batch * fill_right_count
                 )
 
+        if data_slice is None:
+            if self.finalized:
+                return tree.map_structure(lambda s: s[slice_], data_to_use)
+            else:
+                return data_to_use[slice_]
         return data_slice
 
     def _set_slice(
@@ -397,8 +413,6 @@ class InfiniteLookbackBuffer:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data[0])
                 assert len(self.data[slice_]) == len(new_data)
                 self.data[slice_] = new_data
         except AssertionError:
@@ -481,8 +495,6 @@ class InfiniteLookbackBuffer:
 
                 tree.map_structure(__set, self.data, new_data)
             else:
-                if self.space:
-                    assert self.space.contains(new_data), new_data
                 self.data[actual_idx] = new_data
         except IndexError:
             raise IndexError(

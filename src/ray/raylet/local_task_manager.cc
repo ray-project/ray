@@ -24,6 +24,23 @@
 namespace ray {
 namespace raylet {
 
+bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
+  // Check whether the resource is CPU resource or CPU resource inside PG.
+  if (resource_id == ResourceID::CPU()) {
+    return true;
+  }
+
+  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
+                                                       /*for_wildcard_resource*/ true,
+                                                       /*for_indexed_resource*/ true);
+  if (possible_pg_resource.has_value() &&
+      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
+    return true;
+  }
+
+  return false;
+}
+
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
@@ -230,7 +247,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           cluster_resource_scheduler_->GetLocalResourceManager()
               .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
                                           allocated_instances);
-
       if (!schedulable) {
         ReleaseTaskArgs(task_id);
         // The local node currently does not have the resources to run the task, so we
@@ -944,30 +960,34 @@ int64_t LocalTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
 
 void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   RAY_CHECK(worker != nullptr);
-  auto allocated_instances = worker->GetAllocatedInstances();
-  if (allocated_instances != nullptr) {
-    if (worker->IsBlocked()) {
-      // If the worker is blocked, its CPU instances have already been released. We clear
-      // the CPU instances to avoid double freeing.
-      allocated_instances->Remove(ResourceID::CPU());
-    }
-    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-        worker->GetAllocatedInstances());
-    worker->ClearAllocatedInstances();
+  auto allocated_instances = worker->GetAllocatedInstances()
+                                 ? worker->GetAllocatedInstances()
+                                 : worker->GetLifetimeAllocatedInstances();
+  if (allocated_instances == nullptr) {
     return;
   }
 
-  auto lifetime_allocated_instances = worker->GetLifetimeAllocatedInstances();
-  if (lifetime_allocated_instances != nullptr) {
-    if (worker->IsBlocked()) {
-      // If the worker is blocked, its CPU instances have already been released. We clear
-      // the CPU instances to avoid double freeing.
-      lifetime_allocated_instances->Remove(ResourceID::CPU());
+  if (worker->IsBlocked()) {
+    // If the worker is blocked, its CPU instances have already been released. We clear
+    // the CPU instances to avoid double freeing.
+
+    // For PG, there may be two cpu resources: wildcard and indexed.
+    std::vector<ResourceID> cpu_resource_ids;
+    for (const auto &resource_id : allocated_instances->ResourceIds()) {
+      if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
+        cpu_resource_ids.emplace_back(resource_id);
+      }
     }
-    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-        worker->GetLifetimeAllocatedInstances());
-    worker->ClearLifetimeAllocatedInstances();
+
+    for (const auto &cpu_resource_id : cpu_resource_ids) {
+      allocated_instances->Remove(cpu_resource_id);
+    }
   }
+
+  cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+      allocated_instances);
+  worker->ClearAllocatedInstances();
+  worker->ClearLifetimeAllocatedInstances();
 }
 
 bool LocalTaskManager::ReleaseCpuResourcesFromBlockedWorker(
@@ -976,17 +996,27 @@ bool LocalTaskManager::ReleaseCpuResourcesFromBlockedWorker(
     return false;
   }
 
+  bool cpu_resources_released = false;
   if (worker->GetAllocatedInstances() != nullptr) {
-    if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
-      auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
-      cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
-          ResourceID::CPU(), cpu_instances);
-      worker->MarkBlocked();
-      return true;
+    for (const auto &resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
+      if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
+        auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(resource_id);
+        cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
+            resource_id, cpu_instances);
+        cpu_resources_released = true;
+
+        // Cannot break since we need to release
+        // both PG wildcard and indexed CPU resources.
+      }
     }
   }
 
-  return false;
+  if (cpu_resources_released) {
+    worker->MarkBlocked();
+    return true;
+  } else {
+    return false;
+  }
 }
 
 bool LocalTaskManager::ReturnCpuResourcesToUnblockedWorker(
@@ -994,19 +1024,31 @@ bool LocalTaskManager::ReturnCpuResourcesToUnblockedWorker(
   if (!worker || !worker->IsBlocked()) {
     return false;
   }
+
+  bool cpu_resources_returned = false;
   if (worker->GetAllocatedInstances() != nullptr) {
-    if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
-      auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
-      // Important: we allow going negative here, since otherwise you can use infinite
-      // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
-      // negative, at most one task can "borrow" this worker's resources.
-      cluster_resource_scheduler_->GetLocalResourceManager().SubtractResourceInstances(
-          ResourceID::CPU(), cpu_instances, /*allow_going_negative=*/true);
-      worker->MarkUnblocked();
-      return true;
+    for (const auto &resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
+      if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
+        auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(resource_id);
+        // Important: we allow going negative here, since otherwise you can use infinite
+        // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
+        // negative, at most one task can "borrow" this worker's resources.
+        cluster_resource_scheduler_->GetLocalResourceManager().SubtractResourceInstances(
+            resource_id, cpu_instances, /*allow_going_negative=*/true);
+        cpu_resources_returned = true;
+
+        // Cannot break since we need to return
+        // both PG wildcard and indexed CPU resources.
+      }
     }
   }
-  return false;
+
+  if (cpu_resources_returned) {
+    worker->MarkUnblocked();
+    return true;
+  } else {
+    return false;
+  }
 }
 
 ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
@@ -1029,7 +1071,11 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
       auto resource_set = allocated_instances->ToResourceSet();
       // Blocked normal task workers have temporarily released its allocated CPU.
       if (worker->IsBlocked()) {
-        resource_set.Set(ResourceID::CPU(), 0);
+        for (const auto &resource_id : allocated_instances->ResourceIds()) {
+          if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
+            resource_set.Set(resource_id, 0);
+          }
+        }
       }
       total_normal_task_resources += resource_set;
     }

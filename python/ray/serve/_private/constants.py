@@ -97,7 +97,8 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
-DEFAULT_MAX_CONCURRENT_QUERIES = 100
+DEFAULT_MAX_ONGOING_REQUESTS = 100
+NEW_DEFAULT_MAX_ONGOING_REQUESTS = 5
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = (
@@ -125,9 +126,6 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
-
-# Key used to idenfity given json represents a serialized RayServeHandle
-SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
 
 # The time in seconds that the Serve client waits before rechecking deployment state
 CLIENT_POLLING_INTERVAL_S: float = 1
@@ -163,8 +161,17 @@ DAG_DEPRECATION_MESSAGE = (
     "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
 )
 
-# Jsonify the log messages
+# Environment variable name for to specify the encoding of the log messages
+RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
+
+# Jsonify the log messages. This constant is deprecated and will be removed in the
+# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+
+# Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
+# Also, redirect them to serve's log files.
+RAY_SERVE_LOG_TO_STDERR = os.environ.get("RAY_SERVE_LOG_TO_STDERR", "1") == "1"
+
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
 SERVE_LOG_ROUTE = "route"
@@ -174,6 +181,8 @@ SERVE_LOG_REPLICA = "replica"
 SERVE_LOG_COMPONENT = "component_name"
 SERVE_LOG_COMPONENT_ID = "component_id"
 SERVE_LOG_MESSAGE = "message"
+SERVE_LOG_ACTOR_ID = "actor_id"
+SERVE_LOG_WORKER_ID = "worker_id"
 # This is a reserved for python logging module attribute, it should not be changed.
 SERVE_LOG_LEVEL_NAME = "levelname"
 SERVE_LOG_TIME = "asctime"
@@ -193,11 +202,6 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
-# Feature flag to enable new handle API.
-RAY_SERVE_ENABLE_NEW_HANDLE_API = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "1") == "1"
-)
-
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
     os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1") == "1"
@@ -216,8 +220,7 @@ RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
 RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
-# Serve gauge metric set period.
-RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
 
@@ -266,6 +269,24 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
+# Feature flag for caching queue lengths for faster routing in each handle.
+RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
+    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "1") == "1"
+)
+
+# Feature flag for strictly enforcing max_ongoing_requests (replicas will reject
+# requests).
+RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS = (
+    os.environ.get("RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS", "0") == "1"
+    # Strict enforcement path must be enabled for the queue length cache.
+    or RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
+)
+
+# Length of time to respect entries in the queue length cache when scheduling requests.
+RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
+)
+
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
 
@@ -273,4 +294,40 @@ DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_p
 # metrics at handles instead of replicas. OFF by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
     os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+)
+
+# Feature flag to always run a proxy on the head node even if it has no replicas.
+RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = (
+    os.environ.get("RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1") == "1"
+)
+
+
+# Default is 2GiB, the max for a signed int.
+RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
+    os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
+)
+
+# Serve's gRPC server options.
+SERVE_GRPC_OPTIONS = [
+    ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
+]
+
+# Feature flag to eagerly start replacement replicas. This means new
+# replicas will start before waiting for old replicas to fully stop.
+RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
+    os.environ.get("RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS", "1") == "1"
+)
+
+# Timeout for gracefully shutting down metrics pusher, e.g. in routers or replicas
+METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
+
+# Feature flag to set `enable_task_events=True` on Serve-managed actors.
+RAY_SERVE_ENABLE_TASK_EVENTS = (
+    os.environ.get("RAY_SERVE_ENABLE_TASK_EVENTS", "0") == "1"
+)
+
+# Use compact instead of spread scheduling strategy
+RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )

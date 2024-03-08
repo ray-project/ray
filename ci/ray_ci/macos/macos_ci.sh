@@ -11,31 +11,60 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 
+filter_out_flaky_tests() {
+  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+}
+
+select_flaky_tests() {
+  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
+}
+
+run_small_and_large_flaky_tests() {
+  # shellcheck disable=SC2046
+  # 42 is the universal rayci exit code for test failures
+  (bazel query 'attr(tags, "client_tests|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2", tests(//python/ray/tests/...))' | select_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+}
+
+run_medium_flaky_tests() {
+  # shellcheck disable=SC2046
+  # 42 is the universal rayci exit code for test failures
+  (bazel query 'attr(tags, "medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
+}
+
 run_small_test() {
   # shellcheck disable=SC2046
-  bazel test $(./ci/run/bazel_export_options) --config=ci \
-    --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-    --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
-    --test_tag_filters=client_tests,small_size_python_tests \
-    -- python/ray/tests/...
+  # 42 is the universal rayci exit code for test failures
+  (bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
 }
 
 run_medium_a_j_test() {
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j \
-      python/ray/tests/...
+  # 42 is the universal rayci exit code for test failures
+  (bazel query 'attr(tags, "medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
 }
 
 run_medium_k_z_test() {
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI \
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z \
-      python/ray/tests/...
+  # 42 is the universal rayci exit code for test failures
+  (bazel query 'attr(tags, "medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
 }
 
 run_large_test() {
-  ./ci/ci.sh test_large
+  # shellcheck disable=SC2046
+  # 42 is the universal rayci exit code for test failures
+  (bazel query 'attr(tags, "large_size_python_tests_shard_'"${BUILDKITE_PARALLEL_JOB}"'", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
+      --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
 }
 
 run_core_dashboard_test() {
@@ -43,17 +72,19 @@ run_core_dashboard_test() {
   # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
   # with dynamic linking.
   # shellcheck disable=SC2046
-  bazel test --config=ci --dynamic_mode=off \
+  # 42 is the universal rayci exit code for test failures
+  (bazel test --config=ci --dynamic_mode=off \
     --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
     --test_tag_filters=-post_wheel_build -- \
-    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/... -core_worker_test
+    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
 }
 
 run_ray_cpp_and_java() {
   # clang-format is needed by java/test.sh
+  # 42 is the universal rayci exit code for test failures
   pip install clang-format==12.0.1
-  ./java/test.sh
-  ./ci/ci.sh test_cpp
+  ./java/test.sh || exit 42
+  ./ci/ci.sh test_cpp || exit 42
 }
 
 _prelude() {

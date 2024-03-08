@@ -107,8 +107,9 @@ class _BatchQueue:
         self.curr_iteration_start_time = time.time()
 
         self._handle_batch_task = None
+        self._loop = get_or_create_event_loop()
         if handle_batch_func is not None:
-            self._handle_batch_task = get_or_create_event_loop().create_task(
+            self._handle_batch_task = self._loop.create_task(
                 self._process_batches(handle_batch_func)
             )
 
@@ -250,13 +251,13 @@ class _BatchQueue:
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
 
-        while True:
+        while not self._loop.is_closed():
             try:
                 self.curr_iteration_start_time = time.time()
                 await self._process_batch(func)
             except Exception:
                 logger.exception(
-                    "_process_batches asyncio task ran into an " "unexpected exception."
+                    "_process_batches asyncio task ran into an unexpected exception."
                 )
 
     async def _process_batch(self, func: Callable) -> None:

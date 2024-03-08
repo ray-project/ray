@@ -1,27 +1,25 @@
 from collections import Counter
-from dataclasses import dataclass
+import fnmatch
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple, Union
-
-import click
+from typing import Callable, Dict, Optional, Union
 import logging
 import os
 import time
-import warnings
+
+import pyarrow.fs
 
 from ray.train._internal.storage import (
     StorageContext,
     get_fs_and_path,
     _download_from_fs_path,
     _list_at_fs_path,
+    _upload_to_fs_path,
 )
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 
 logger = logging.getLogger(__name__)
 
-
-VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"]
 
 _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
     "If this warning keeps showing up, consider diagnosing the "
@@ -32,70 +30,33 @@ _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
 _DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
 
 
-@dataclass
-class _ResumeConfig:
-    resume_unfinished: bool = True
-    resume_errored: bool = False
-    restart_errored: bool = False
-
-
-def _resume_str_to_config(resume_str: str) -> Tuple[str, _ResumeConfig]:
-    if resume_str is True:
-        resume_str = "LOCAL"
-    elif resume_str == "ERRORED_ONLY":
-        warnings.warn(
-            "Passing `resume='ERRORED_ONLY'` to tune.run() is deprecated and "
-            "will be removed in the future. Please pass e.g. "
-            "`resume='LOCAL+RESTART_ERRORED_ONLY'` instead."
-        )
-        resume_str = "LOCAL+RESTART_ERRORED_ONLY"
-
-    # Parse resume string, e.g. AUTO+ERRORED
-    resume_config = _ResumeConfig()
-    resume_settings = resume_str.split("+")
-    resume_str = resume_settings[0]
-
-    for setting in resume_settings:
-        if setting == "ERRORED":
-            resume_config.resume_errored = True
-        elif setting == "RESTART_ERRORED":
-            resume_config.restart_errored = True
-        elif setting == "ERRORED_ONLY":
-            resume_config.resume_unfinished = False
-            resume_config.restart_errored = False
-            resume_config.resume_errored = True
-        elif setting == "RESTART_ERRORED_ONLY":
-            resume_config.resume_unfinished = False
-            resume_config.restart_errored = True
-            resume_config.resume_errored = False
-
-    assert resume_str in VALID_RESUME_TYPES, "resume={} is not one of {}".format(
-        resume_str, VALID_RESUME_TYPES
-    )
-    return resume_str, resume_config
-
-
 def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
     return bool(_find_newest_experiment_checkpoint(experiment_dir=experiment_dir))
 
 
-def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
+def _find_newest_experiment_checkpoint(
+    experiment_path: str, fs: Optional[pyarrow.fs.FileSystem] = None
+) -> Optional[str]:
     """Returns file name of most recently created experiment checkpoint.
 
     Args:
-        experiment_dir: Local or remote path to the experiment directory
+        experiment_path: Local or remote path to the experiment directory
             containing at least one experiment checkpoint file.
 
     Returns:
         str: The local or remote path to the latest experiment checkpoint file
             based on timestamp. None if no experiment checkpoints were found.
     """
-    from ray.tune.analysis import ExperimentAnalysis
+    from ray.tune.execution.tune_controller import TuneController
 
-    fs, path = get_fs_and_path(experiment_dir)
-    return ExperimentAnalysis._find_newest_experiment_checkpoint(
-        fs=fs, experiment_fs_path=path
-    )
+    fs, experiment_fs_path = get_fs_and_path(experiment_path, storage_filesystem=fs)
+    filenames = _list_at_fs_path(fs=fs, fs_path=experiment_fs_path)
+    pattern = TuneController.CKPT_FILE_TMPL.format("*")
+    matching = fnmatch.filter(filenames, pattern)
+    if not matching:
+        return None
+    filename = max(matching)
+    return Path(experiment_fs_path, filename).as_posix()
 
 
 class _ExperimentCheckpointManager:
@@ -149,7 +110,7 @@ class _ExperimentCheckpointManager:
 
         self._excessive_sync_threshold = float(
             os.environ.get(
-                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "30"
+                "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "5"
             )
         )
         self._should_force_cloud_sync = False
@@ -202,10 +163,8 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        experiment_local_path = self._storage.experiment_local_path
-        if not experiment_local_path:
-            return
-
+        driver_staging_path = self._storage.experiment_driver_staging_path
+        # TODO(justinvyu): [local_dir] Probably want to disable this num_to_keep force
         force = force or self._should_force_cloud_sync
 
         now = time.time()
@@ -223,8 +182,11 @@ class _ExperimentCheckpointManager:
         with out_of_band_serialize_dataset():
             save_fn()
 
-        # Sync to cloud
-        self.sync_up(force=force, wait=wait)
+        _upload_to_fs_path(
+            local_path=driver_staging_path,
+            fs=self._storage.storage_filesystem,
+            fs_path=self._storage.experiment_fs_path,
+        )
 
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
@@ -233,7 +195,6 @@ class _ExperimentCheckpointManager:
 
         # Finish
         self._last_save_time = time.time()
-        return experiment_local_path
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
         syncer = self._storage.syncer
@@ -246,7 +207,7 @@ class _ExperimentCheckpointManager:
         # But for now, this is needed to upload driver artifacts that live in the
         # trial directory.
         exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
-        experiment_local_path = self._storage.experiment_local_path
+        experiment_local_path = self._storage.experiment_driver_staging_path
         experiment_fs_path = self._storage.experiment_fs_path
 
         if force:
@@ -292,25 +253,13 @@ class _ExperimentCheckpointManager:
         sync_time_taken = now - start_time
 
         if sync_time_taken > self._slow_sync_threshold:
-            try:
-                import fsspec
-            except Exception:
-                fsspec = None
-
-            fsspec_msg = ""
-            if fsspec is None:
-                fsspec_msg = (
-                    "If your data is small, try installing fsspec "
-                    "(`pip install fsspec`) for more efficient local file parsing. "
-                )
-
             logger.warning(
-                "Syncing the experiment checkpoint to cloud took a long time with "
+                "Syncing the experiment checkpoint to cloud took a "
                 f"{sync_time_taken:.2f} seconds. This can be due to a large number "
                 f"of trials, large logfiles, or throttling from the "
-                f"remote storage provider for too frequent syncs. {fsspec_msg}"
-                f"If your `CheckpointConfig.num_to_keep` is a low number, this can "
-                f"trigger frequent syncing, in which case you should increase it. "
+                f"remote storage provider for too frequent syncs.\n"
+                f"If you set `CheckpointConfig.num_to_keep` to a low number, this can "
+                f"trigger frequent syncing. Try increasing the `num_to_keep`. "
             )
 
         if not synced:
@@ -348,125 +297,13 @@ class _ExperimentCheckpointManager:
         ]
         for relpath in matches:
             fs_path = Path(self._storage.experiment_fs_path, relpath).as_posix()
-            local_path = Path(self._storage.experiment_local_path, relpath).as_posix()
+            local_path = Path(
+                self._storage.experiment_driver_staging_path, relpath
+            ).as_posix()
             _download_from_fs_path(fs=fs, fs_path=fs_path, local_path=local_path)
         logger.debug(
             f"Copied {matches} from:\n(fs, path) = "
             f"({self._storage.storage_filesystem.type_name}, "
             f"{self._storage.experiment_fs_path})\n"
-            f"-> {self._storage.experiment_local_path}"
+            f"-> {self._storage.experiment_driver_staging_path}"
         )
-
-    def _resume_auto(self) -> bool:
-        experiment_local_path = self._storage.experiment_local_path
-        experiment_fs_path = self._storage.experiment_fs_path
-        syncer = self._storage.syncer
-
-        if experiment_fs_path and syncer:
-            logger.info(
-                f"Trying to find and download experiment checkpoint at "
-                f"{experiment_fs_path}"
-            )
-            try:
-                self.sync_down_experiment_state()
-            except Exception:
-                logger.exception(
-                    "Got error when trying to sync down.\n"
-                    "Please check this error message for potential "
-                    "access problems - if a directory was not found, "
-                    "that is expected at this stage when you're starting "
-                    "a new experiment."
-                )
-                logger.info(
-                    "No remote checkpoint was found or an error occurred "
-                    "when trying to download the experiment checkpoint. "
-                    "Please check the previous warning message for more "
-                    "details. "
-                    "Starting a new run..."
-                )
-                return False
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                logger.warning(
-                    "A remote checkpoint was fetched, but no checkpoint "
-                    "data was found. This can happen when e.g. the cloud "
-                    "bucket exists but does not contain any data. "
-                    "Starting a new run..."
-                )
-                return False
-            logger.info(
-                "A remote experiment checkpoint was found and will be "
-                "used to restore the previous experiment state."
-            )
-            return True
-        elif not _experiment_checkpoint_exists(experiment_local_path):
-            logger.info("No local checkpoint was found. Starting a new run...")
-            return False
-        logger.info(
-            "A local experiment checkpoint was found and will be used "
-            "to restore the previous experiment state."
-        )
-        return True
-
-    def resume(self, resume_type: Union[str, bool]) -> Optional[_ResumeConfig]:
-        """Checks whether to resume experiment.
-
-        If experiment should be resumed, this method may sync down experiment state
-        from the cloud and then return a ResumeConfig mapping to the resume type.
-
-        Args:
-            resume_type: One of ["REMOTE", "LOCAL", "PROMPT", "AUTO"]. Can
-                be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
-                "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"]
-
-        Returns:
-            _ResumeConfig if resume is successful. None otherwise.
-        """
-        if not resume_type:
-            return None
-
-        resume_type, resume_config = _resume_str_to_config(resume_type)
-
-        experiment_local_path = self._storage.experiment_local_path
-        experiment_fs_path = self._storage.experiment_fs_path
-
-        if resume_type == "AUTO":
-            if self._resume_auto():
-                return resume_config
-            # Else
-            return None
-
-        if resume_type in ["LOCAL", "PROMPT"]:
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                raise ValueError(
-                    f"You called resume ({resume_type}) when no checkpoint "
-                    f"exists in local directory "
-                    f"({experiment_local_path}). If you want to start "
-                    f'a new experiment, use `resume="AUTO"` or '
-                    f"`resume=None`. If you expected an experiment to "
-                    f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `train.RunConfig()`."
-                )
-            elif resume_type == "PROMPT":
-                if click.confirm(
-                    f"Resume from local directory? " f"({experiment_local_path})"
-                ):
-                    return resume_config
-
-        if resume_type in ["REMOTE", "PROMPT"]:
-            if resume_type == "PROMPT" and not click.confirm(
-                f"Try downloading from remote directory? " f"({experiment_fs_path})"
-            ):
-                return None
-
-            # Try syncing down the upload directory.
-            logger.info(
-                f"Downloading experiment checkpoint from " f"{experiment_fs_path}"
-            )
-            self.sync_down_experiment_state()
-
-            if not _experiment_checkpoint_exists(experiment_local_path):
-                raise ValueError(
-                    "Called resume when no checkpoint exists "
-                    "in remote or local directory."
-                )
-        return resume_config
