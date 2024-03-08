@@ -77,15 +77,15 @@ py_test_module_list(
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
-# Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 1
+# Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 0
 py_test(
-    name = "test_autoscaling_metrics_on_handle",
+    name = "test_autoscaling_policy_with_handle_metrics_disabled",
     size = "medium",
     main = "test_autoscaling_policy.py",
     srcs = ["test_autoscaling_policy.py"],
     tags = ["exclusive", "team:serve", "autoscaling"],
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1"},
+    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
 )
 
 py_test_module_list(
