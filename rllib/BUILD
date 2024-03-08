@@ -2352,7 +2352,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=auto"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=auto", "--evaluation-duration-unit=episodes"]
 )
 
 py_test(
@@ -2379,7 +2379,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=13"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=13", "--evaluation-duration-unit=episodes"]
 )
 
 py_test(
@@ -2388,7 +2388,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=10"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=10", "--evaluation-duration-unit=episodes"]
 )
 # END: New API Stack
 
