@@ -312,7 +312,7 @@ class MapOperator(OneToOneOperator, ABC):
                 / self._metrics.num_tasks_finished
             )
 
-            task = self._data_tasks.pop(task_index)
+            self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
             if task_done_callback:
