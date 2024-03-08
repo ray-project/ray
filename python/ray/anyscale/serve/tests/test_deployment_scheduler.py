@@ -1,19 +1,33 @@
+import os
+import random
 import sys
+from typing import List, Set
 
 import pytest
 
 import ray
+from ray import serve
+from ray._private.test_utils import SignalActor, kill_raylet, wait_for_condition
 from ray._raylet import GcsClient
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
-from ray.anyscale.serve._private.deployment_scheduler import AnyscaleDeploymentScheduler
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.cluster_utils import AutoscalingCluster
+from ray.serve._private import default_impl
+from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
 from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
-from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     ReplicaSchedulingRequest,
     SpreadDeploymentSchedulingPolicy,
 )
+from ray.serve._private.deployment_state import ReplicaState
+from ray.serve._private.test_utils import (
+    check_deployment_status,
+    check_num_alive_nodes,
+    check_replica_counts,
+)
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeDeploySchema
+from ray.serve.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
@@ -48,12 +62,12 @@ class TestSpreadScheduling:
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
 
-        cluster_node_info_cache = create_cluster_node_info_cache(
+        cluster_node_info_cache = default_impl.create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
         )
         cluster_node_info_cache.update()
 
-        scheduler = AnyscaleDeploymentScheduler(cluster_node_info_cache)
+        scheduler = default_impl.create_deployment_scheduler(cluster_node_info_cache)
         dep_id = DeploymentID("deployment1", "my_app")
         scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
 
@@ -177,12 +191,12 @@ class TestSpreadScheduling:
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
 
-        cluster_node_info_cache = create_cluster_node_info_cache(
+        cluster_node_info_cache = default_impl.create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
         )
         cluster_node_info_cache.update()
 
-        scheduler = AnyscaleDeploymentScheduler(cluster_node_info_cache)
+        scheduler = default_impl.create_deployment_scheduler(cluster_node_info_cache)
         dep_id = DeploymentID("deployment1", "default")
         scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
         replica_actor_handles = []
@@ -317,12 +331,12 @@ class TestSpreadScheduling:
             get_node_id.options(resources={"worker4": 1}).remote()
         )
 
-        cluster_node_info_cache = create_cluster_node_info_cache(
+        cluster_node_info_cache = default_impl.create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
         )
         cluster_node_info_cache.update()
 
-        scheduler = AnyscaleDeploymentScheduler(cluster_node_info_cache)
+        scheduler = default_impl.create_deployment_scheduler(cluster_node_info_cache)
         dep_id = DeploymentID("deployment1", "my_app")
         scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
         scheduler.on_replica_running(ReplicaID("replica1", dep_id), worker1_node_id)
@@ -436,12 +450,12 @@ class TestSpreadScheduling:
             get_node_id.options(resources={"worker2": 1}).remote()
         )
 
-        cluster_node_info_cache = create_cluster_node_info_cache(
+        cluster_node_info_cache = default_impl.create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
         )
         cluster_node_info_cache.update()
 
-        scheduler = AnyscaleDeploymentScheduler(cluster_node_info_cache)
+        scheduler = default_impl.create_deployment_scheduler(cluster_node_info_cache)
         d1_id = DeploymentID("deployment1", "default")
         d2_id = DeploymentID("deployment2", "default")
         scheduler.on_deployment_created(d1_id, SpreadDeploymentSchedulingPolicy())
@@ -520,12 +534,12 @@ class TestSpreadScheduling:
             get_node_id.options(resources={"worker1": 1}).remote()
         )
 
-        cluster_node_info_cache = create_cluster_node_info_cache(
+        cluster_node_info_cache = default_impl.create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
         )
         cluster_node_info_cache.update()
 
-        scheduler = AnyscaleDeploymentScheduler(cluster_node_info_cache)
+        scheduler = default_impl.create_deployment_scheduler(cluster_node_info_cache)
         dep_id = DeploymentID("deployment1", "my_app")
         scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
         scheduler.on_replica_running(ReplicaID("replica1", dep_id), head_node_id)
@@ -567,6 +581,342 @@ class TestSpreadScheduling:
         assert deployment_to_replicas_to_stop[dep_id] == {ReplicaID("replica1", dep_id)}
         scheduler.on_replica_stopping(ReplicaID("replica1", dep_id))
         scheduler.on_deployment_deleted(dep_id)
+
+
+def get_current_replica_ids(
+    deployment_id: DeploymentID,
+    states: List[ReplicaState] = None,
+) -> Set[str]:
+    client = _get_global_client()
+    details = client.get_serve_details()
+    app = details["applications"][deployment_id.app_name]
+    replicas = app["deployments"][deployment_id.name]["replicas"]
+    if not states:
+        return {r["replica_id"] for r in replicas}
+
+    return {r["replica_id"] for r in replicas if r["state"] in states}
+
+
+@serve.deployment
+class BlockInit:
+    def __init__(self):
+        signal = ray.get_actor("signal123")
+        ray.get(signal.wait.remote())
+
+    def __call__(self):
+        return ray.get_runtime_context().get_node_id()
+
+    def get_pid(self):
+        return os.getpid()
+
+
+app_B = BlockInit.bind()
+
+
+@pytest.fixture
+def setup_compact_scheduling(request):
+    """Setup fixture for compact scheduling e2e tests.
+
+    1. Starts an empty autoscaling cluster with 0 worker nodes.
+    2. Deploys 2 Serve applications, A (1 replica, 1CPU) and B (1 replica, 2CPU).
+       Both should fit on a single worker node (node 1).
+    3. Upscales application A from 1 to 6 replicas. This should add 2 more nodes,
+       one of them (let's say node 3) have an extra CPU available.
+    4. Removes application B. This should leave node 1 with just one 1-CPU replica.
+    5. Node 1 should be compacted (the 1-CPU replica can be moved to node 3).
+    """
+
+    params = getattr(request, "param") if hasattr(request, "param") else None
+    cluster = AutoscalingCluster(
+        **{
+            "head_resources": {"CPU": 0},
+            "worker_node_types": {
+                "cpu_node": {
+                    "resources": {"CPU": 3},
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 10,
+                },
+            },
+            "idle_timeout_minutes": 0.05,
+        }
+    )
+    cluster.start()
+    ray.init()
+    serve.start()
+    client = _get_global_client()
+    dep_id = DeploymentID(name="BlockInit", app_name="A")
+
+    # Start with replica initializations unblocked
+    signal = SignalActor.options(name="signal123").remote()
+    signal.send.remote()
+
+    # Application A: 1-cpu replicas
+    # Application B: 2-cpu replicas
+    # config = self.get_serve_config()
+    import_path = "ray.anyscale.serve.tests.test_deployment_scheduler.app_B"
+    config = {
+        "applications": [
+            {
+                "name": "A",
+                "import_path": import_path,
+                "route_prefix": "/a",
+                "deployments": [
+                    params[0]
+                    if params
+                    else {
+                        "name": "BlockInit",
+                        "num_replicas": 1,
+                        "ray_actor_options": {"num_cpus": 1},
+                        "health_check_period_s": 1,
+                    }
+                ],
+            },
+            {
+                "name": "B",
+                "import_path": import_path,
+                "route_prefix": "/b",
+                "deployments": [
+                    params[1]
+                    if params
+                    else {
+                        "name": "BlockInit",
+                        "num_replicas": 1,
+                        "ray_actor_options": {"num_cpus": 2},
+                        "health_check_period_s": 1,
+                    }
+                ],
+            },
+        ]
+    }
+
+    client.deploy_apps(ServeDeploySchema(**config))
+    client._wait_for_application_running("A")
+    client._wait_for_application_running("B")
+    # Node1: (B, A1)
+    check_num_alive_nodes(2)  # 1 head + 1 worker node
+
+    config["applications"][0]["deployments"][0]["num_replicas"] = 6
+    client.deploy_apps(ServeDeploySchema(**config))
+    client._wait_for_application_running("A")
+    # Node1: (B, A1) -> 0 CPUs remaining
+    # Node2: (A2, A3, A4) -> 0 CPUs remaining
+    # Node3: (A5, A6) -> 1 CPUs remaining
+    wait_for_condition(check_num_alive_nodes, target=4)  # 1 head + 3 worker node
+
+    # Delete app2. We should try to compact node 1, but the new
+    # replacement replica is blocked on init so A1 should stay in
+    # PENDING_MIGRATION and node 1 cannot become idle
+    signal.send.remote(clear=True)
+    del config["applications"][1]
+    client.deploy_apps(ServeDeploySchema(**config))
+    wait_for_condition(
+        check_replica_counts,
+        controller=client._controller,
+        deployment_id=dep_id,
+        total=7,
+        by_state=[
+            (ReplicaState.RUNNING, 5, None),
+            (ReplicaState.STARTING, 1, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+        ],
+    )
+    check_num_alive_nodes(4)  # 1 head + 3 worker node
+
+    yield client, config, signal
+
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs compact strategy."
+)
+class TestCompactScheduling:
+    def test_e2e_compact_node_basic(self, setup_compact_scheduling):
+        _, _, signal = setup_compact_scheduling
+
+        # Unblock replica initialization, the compaction should complete
+        # The remaining idle node should get killed and the cluster
+        # downscales to 2 worker nodes
+        signal.send.remote()
+        wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker nodes
+
+    @pytest.mark.parametrize(
+        "setup_compact_scheduling",
+        [
+            (
+                {
+                    "name": "BlockInit",
+                    "num_replicas": 1,
+                    "ray_actor_options": {"num_cpus": 0},
+                    "placement_group_bundles": [{"CPU": 0.5}, {"CPU": 0.5}],
+                    "placement_group_strategy": "STRICT_PACK",
+                },
+                {
+                    "name": "BlockInit",
+                    "num_replicas": 1,
+                    "ray_actor_options": {"num_cpus": 0},
+                    "placement_group_bundles": [{"CPU": 1.5}, {"CPU": 0.5}],
+                    "placement_group_strategy": "STRICT_PACK",
+                },
+            )
+        ],
+        indirect=True,
+    )
+    def test_e2e_placement_group(self, setup_compact_scheduling):
+        _, _, signal = setup_compact_scheduling
+
+        # Unblock replica initialization, the compaction should complete
+        # The remaining idle node should get killed and the cluster
+        # downscales to 2 worker nodes
+        signal.send.remote()
+        wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker nodes
+
+    def test_downscale_during_compaction(self, setup_compact_scheduling):
+        """Test replicas downscale while a node is being comopacted.
+
+        1. Start with 6 (1CPU) replicas spread across 3 nodes.
+        2. Attempt to compact one node with start-then-stop migration.
+        3. Before the new replacement replica starts, downscale target
+           `num_replicas` from 6 to 5.
+        4. Both the PENDING_MIGRATION and new replacement STARTING
+           replicas should be stopped, and the 5 RUNNING replicas should
+           be untouched.
+        """
+        client, config, _ = setup_compact_scheduling
+        dep_id = DeploymentID(name="BlockInit", app_name="A")
+
+        running_replicas = get_current_replica_ids(dep_id, states=["RUNNING"])
+
+        # Downscale from 6 -> 5 replicas
+        config["applications"][0]["deployments"][0]["num_replicas"] = 5
+        client.deploy_apps(ServeDeploySchema(**config))
+
+        wait_for_condition(
+            check_replica_counts,
+            controller=client._controller,
+            deployment_id=DeploymentID(name="BlockInit", app_name="A"),
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 5, None)],
+        )
+        assert get_current_replica_ids(dep_id, states=["RUNNING"]) == running_replicas
+        wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker node
+
+    def test_upscale_during_compaction(self, setup_compact_scheduling):
+        """Test replicas upscale while a node is being comopacted.
+
+        1. Start with 6 (1CPU) replicas spread across 3 nodes.
+        2. Attempt to compact one node with start-then-stop migration.
+        3. Before the new replacement replica starts, upscale target
+           `num_replicas` from 6 to 7.
+        4. Since compacting down to 2 nodes is no longer possible, the
+           previous in-progress node compaction should be cancelled and
+           deployment should become HEALTHY with 7 running replicas.
+        """
+
+        # another test: Next event loop: A2 died. A8 should start on A234 node
+        client, config, signal = setup_compact_scheduling
+        dep_id = DeploymentID(name="BlockInit", app_name="A")
+
+        running_replicas = get_current_replica_ids(dep_id, states=["RUNNING"])
+
+        # Upscale from 6 -> 7 replicas
+        config["applications"][0]["deployments"][0]["num_replicas"] = 7
+        client.deploy_apps(ServeDeploySchema(**config))
+
+        # Unblock replica initializations
+        signal.send.remote()
+        wait_for_condition(
+            check_replica_counts,
+            controller=client._controller,
+            deployment_id=DeploymentID(name="BlockInit", app_name="A"),
+            total=7,
+            by_state=[(ReplicaState.RUNNING, 7, None)],
+        )
+        assert running_replicas < get_current_replica_ids(dep_id, states=["RUNNING"])
+        check_num_alive_nodes(4)  # 1 head + 3 worker node
+
+    def test_controller_crashes(self, setup_compact_scheduling):
+        client, _, signal = setup_compact_scheduling
+        dep_id = DeploymentID(name="BlockInit", app_name="A")
+
+        h = serve.get_app_handle("A")
+        pids = [h.get_pid.remote().result() for _ in range(30)]
+
+        # Controller crashes
+        ray.kill(client._controller, no_restart=False)
+
+        # When the controller recovers, it should recover 6 RUNNING
+        # replicas and 1 STARTING replica. Then it should stop one
+        # replica to match `target_num_replicas=6`.
+        # Then it should promptly identify the same compaction that was
+        # in-progress before and try to compact Node3 (with 1 replica on it)
+        wait_for_condition(
+            check_replica_counts,
+            controller=client._controller,
+            deployment_id=dep_id,
+            total=7,
+            by_state=[
+                (ReplicaState.RUNNING, 5, None),
+                (ReplicaState.STARTING, 1, None),
+                (ReplicaState.PENDING_MIGRATION, 1, None),
+            ],
+        )
+        check_num_alive_nodes(4)  # 1 head + 3 worker node
+
+        # The same set of replicas should be RUNNING/PENDING_MIGRATION
+        # from before the controller crashed
+        new_pids = [h.get_pid.remote().result() for _ in range(30)]
+        assert set(pids) == set(new_pids)
+
+        # Unblock all new starting replica initializations
+        signal.send.remote()
+        wait_for_condition(
+            check_deployment_status,
+            name="BlockInit",
+            app_name="A",
+            expected_status=DeploymentStatus.HEALTHY,
+            timeout=20,
+        )
+        wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker node
+
+    def test_worker_node_crashes(self, setup_compact_scheduling):
+        _, _, signal = setup_compact_scheduling
+
+        # One of the worker nodes crashes
+        kill_raylet(
+            random.choice(
+                [
+                    node
+                    for node in ray.nodes()
+                    if not node["Resources"].get("node:__internal_head__")
+                ]
+            )
+        )
+
+        # At least 1 RUNNING/PENDING_MIGRATION replica was on the worker
+        # node that crashed, since compaction was in-progress/blocked:
+        # -> health checks should fail
+        # -> deployment should transition to UNHEALTHY
+        wait_for_condition(
+            check_deployment_status,
+            name="BlockInit",
+            app_name="A",
+            expected_status=DeploymentStatus.UNHEALTHY,
+        )
+
+        # Unblock all new starting replica initializations
+        signal.send.remote()
+        wait_for_condition(
+            check_deployment_status,
+            name="BlockInit",
+            app_name="A",
+            expected_status=DeploymentStatus.HEALTHY,
+            timeout=20,
+        )
+        wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker node
 
 
 if __name__ == "__main__":

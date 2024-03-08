@@ -1,24 +1,51 @@
 # Copyright (2023 and onwards) Anyscale, Inc.
 
+import logging
 import sys
+import time
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-import ray
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
+from ray.anyscale.serve._private.constants import (
+    ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S,
+)
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import DeploymentID, ReplicaID
-from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
+from ray.serve._private.constants import (
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentScheduler,
-    DeploymentSchedulingInfo,
-    LaunchingReplicaInfo,
     ReplicaSchedulingRequest,
     Resources,
 )
-from ray.serve._private.utils import get_head_node_id
 from ray.util.scheduling_strategies import In
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@dataclass
+class CompactingNodeInfo:
+    """Describes an in-progress active compaction.
+
+    Args:
+        target_node_id: The target node to compact away. This node can
+            become idle by moving all its replicas onto other available
+            nodes in the cluster.
+        start_timestamp_s: The time at which the compaction opportunity
+            was identified.
+        cached_running_replicas_on_target_node: The set of replicas that
+            were running on the target compact node when the compaction
+            opportunity was identified.
+    """
+
+    target_node_id: str
+    start_timestamp_s: float
+    cached_running_replicas_on_target_node: Set[ReplicaID]
 
 
 class AnyscaleDeploymentScheduler(DeploymentScheduler):
@@ -53,34 +80,20 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         head_node_id: Optional[str] = None,
         create_placement_group_fn: Callable = None,
     ):
-        # {deployment_id: scheduling_policy}
-        self._deployments: Dict[DeploymentID, DeploymentSchedulingInfo] = {}
-        # Replicas that are waiting to be scheduled.
-        # {deployment_id: {replica_name: deployment_upscale_request}}
-        self._pending_replicas: Dict[
-            DeploymentID, Dict[str, ReplicaSchedulingRequest]
-        ] = defaultdict(dict)
-        # Replicas that are being scheduled.
-        # The underlying actors have been submitted.
-        # {deployment_id: {replica_name, az}}
-        self._launching_replicas: Dict[
-            DeploymentID, Dict[str, LaunchingReplicaInfo]
-        ] = defaultdict(dict)
-        # Replicas that are recovering.
-        # We don't know where those replicas are running.
-        # {deployment_id: {replica_name}}
-        self._recovering_replicas = defaultdict(set)
-        # Replicas that are running.
-        # We know where those replicas are running.
-        # {deployment_id: {replica_name: running_node_id}}
-        self._running_replicas = defaultdict(dict)
-
-        self._cluster_node_info_cache = cluster_node_info_cache
-
-        self._head_node_id = head_node_id or get_head_node_id()
-        self._create_placement_group_fn = (
-            create_placement_group_fn or ray.util.placement_group
+        super().__init__(
+            cluster_node_info_cache=cluster_node_info_cache,
+            head_node_id=head_node_id,
+            create_placement_group_fn=create_placement_group_fn,
         )
+
+        # Contains info on the current in-progress compaction.
+        # NOTE(zcin): If there is an in-progress compaction and the
+        # controller dies, this state will be lost and the controller
+        # will not continue the same compaction when it recovers.
+        # Instead it will recover PENDING_MIGRATION replicas as RUNNING,
+        # reconcile the deployments towards a healthy state, then
+        # re-identify new compaction opportunities.
+        self._compacting_node: Optional[CompactingNodeInfo] = None
 
     def schedule(
         self,
@@ -277,15 +290,19 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
 
         node_to_running_replicas = self._get_node_to_running_replicas()
 
+        target_compact = None
+        if self._compacting_node:
+            target_compact = self._compacting_node.target_node_id
+
         non_idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas[node_id]) > 0
+            if len(node_to_running_replicas[node_id]) > 0 and node_id != target_compact
         }
         idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas[node_id]) == 0
+            if len(node_to_running_replicas[node_id]) == 0 and node_id != target_compact
         }
 
         # 1. Prefer non-idle nodes
@@ -293,10 +310,220 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         if chosen_node:
             return chosen_node
 
-        # 2. Consider idle nodes last
+        # 2. Prefer target node being compacted
+        if target_compact:
+            chosen_node = self._best_fit_node(
+                required_resources,
+                {target_compact: available_resources_per_node[target_compact]},
+            )
+            if chosen_node:
+                return chosen_node
+
+        # 3. Consider idle nodes last
         chosen_node = self._best_fit_node(required_resources, idle_nodes)
         if chosen_node:
             return chosen_node
 
-    def detect_compact_opportunities(self) -> Optional[Tuple[str, float]]:
-        return None, None
+    def _launching_replicas_on_node_id(self, target_node_id: str) -> Set[ReplicaID]:
+        return {
+            replica_id
+            for replicas in self._launching_replicas.values()
+            for replica_id, info in replicas.items()
+            if info.target_node_id == target_node_id
+        }
+
+    def _running_replicas_on_node_id(self, target_node_id: str) -> Set[ReplicaID]:
+        return {
+            replica_id
+            for replicas in self._running_replicas.values()
+            for replica_id, node_id in replicas.items()
+            if node_id == target_node_id
+        }
+
+    def _update_compacting_node_info(self):
+        """Complete or cancel current active compaction.
+
+        Completing the current active compaction:
+            If the target node has been made idle, then we have
+            successfully migrated all the replicas and the current
+            compaction is complete.
+
+        Cancelling the current active compaction:
+            If new replicas have been scheduled onto the target node
+            since we initially identified the compaction opportunity,
+            or if the compaction has been going on for too long, there
+            is likely limited resources, so cancel the compaction.
+        """
+
+        assert self._compacting_node
+        target_node = self._compacting_node.target_node_id
+
+        current_replicas_on_target_compact = set()
+        current_replicas_on_target_compact |= self._running_replicas_on_node_id(
+            target_node
+        )
+        current_replicas_on_target_compact |= self._launching_replicas_on_node_id(
+            target_node
+        )
+
+        # If more replicas have been scheduled onto the node since we
+        # identified the compaction opportunity, cancel compaction
+        new_replicas = (
+            current_replicas_on_target_compact
+            - self._compacting_node.cached_running_replicas_on_target_node
+        )
+        if len(new_replicas):
+            logger.info(
+                f"Canceling compaction of {target_node} because new replicas "
+                f"have been scheduled on {target_node}: {new_replicas}."
+            )
+            self._compacting_node = None
+
+        # If all replicas have migrated off of the node, compaction is
+        # complete.
+        elif len(current_replicas_on_target_compact) == 0:
+            logger.info(f"Successfully migrated replicas off of {target_node}.")
+            self._compacting_node = None
+
+        # If we have been trying to compact the node for too long and
+        # still haven't succeeded in making the target node idle, then
+        # there may be resource constrainment issues, cancel compaction
+        elif (
+            time.time()
+            > self._compacting_node.start_timestamp_s
+            + ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S
+        ):
+            logger.info(
+                f"Migrating replicas off of node {target_node} timed out after "
+                f"{ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S} seconds. Canceling "
+                f"compaction of node {target_node}. Replicas still running on node "
+                f"{target_node}: {current_replicas_on_target_compact}."
+            )
+            self._compacting_node = None
+
+        else:
+            # Print warnings at 1min, 10min
+            message = (
+                "The controller has been trying to compact "
+                f"{target_node} for more than "
+                "{amount}. Resources may be "
+                "unexpectedly constrained, or migration is slow because new replicas "
+                "are taking a long time to initialize."
+            )
+            if time.time() > self._compacting_node.start_timestamp_s + 600:
+                logger.warning(message.format(amount="10 minutes"))
+            elif time.time() > self._compacting_node.start_timestamp_s + 60:
+                logger.warning(message.format(amount="1 minute"))
+
+    def get_node_to_compact(
+        self, allow_new_compaction: bool
+    ) -> Optional[Tuple[str, float]]:
+        """Returns the node to be compacted and the compaction deadline."""
+
+        # Reset active compaction if necessary
+        if self._compacting_node:
+            self._update_compacting_node_info()
+
+        # If there is an active compaction in progress, return it.
+        if self._compacting_node:
+            return self._compacting_node.target_node_id, float("inf")
+
+        # Check if we should be starting a new compaction.
+        if (
+            not allow_new_compaction
+            or any(len(r) > 0 for r in self._pending_replicas.values())
+            or any(len(r) > 0 for r in self._launching_replicas.values())
+            or any(len(r) > 0 for r in self._recovering_replicas.values())
+        ):
+            return None
+
+        # Look for a new node to compact.
+        node_with_min_replicas = self._find_best_node_to_compact()
+
+        # It's not possible to compact any of the nodes, meaning we
+        # failed to identify a compaction opportunity.
+        if not node_with_min_replicas:
+            return None
+
+        self._compacting_node = CompactingNodeInfo(
+            target_node_id=node_with_min_replicas,
+            start_timestamp_s=time.time(),
+            cached_running_replicas_on_target_node=self._get_node_to_running_replicas()[
+                node_with_min_replicas
+            ],
+        )
+        return self._compacting_node.target_node_id, float("inf")
+
+    def _find_best_node_to_compact(self) -> Optional[str]:
+        """Finds the best node to compact, if it exists.
+
+        A node is compactable if it can be made idle by moving all its
+        running replicas to other non-idle nodes in the cluster. Out of
+        all compactable nodes, we choose the node that has the least
+        number of replicas running on it, i.e. the node that requires
+        the least number of replica migrations.
+        """
+
+        node_to_running_replicas = self._get_node_to_running_replicas()
+        min_replicas_to_move = float("inf")
+        node_with_min_replicas = None
+        optimal_assignment = None
+
+        available_resources_per_node = self._get_available_resources_per_node()
+
+        # For each node, check if it can become idle by moving the
+        # replicas off of that node - this essentially run best fit
+        # binpacking algorithm
+        for target_node_id in available_resources_per_node:
+            # Only consider resources on other non-idle nodes when running
+            # the best fit binpacking algorithm
+            available_resources = {
+                n: v
+                for n, v in available_resources_per_node.items()
+                if n != target_node_id and len(node_to_running_replicas[n]) > 0
+            }
+
+            # RUN BEST FIT BINPACKING ALGORITHM
+            assigned_replicas = dict()
+            # 1. Greedily "schedule" replicas. Go through the replicas
+            #    that would need to be migrated in DECREASING ORDER by
+            #    the size of their required resources.
+            replicas_on_curr_node = self._running_replicas_on_node_id(target_node_id)
+            replicas_on_curr_node = sorted(
+                replicas_on_curr_node,
+                key=lambda r: self._deployments[r.deployment_id].required_resources,
+                reverse=True,
+            )
+            for replica_id in replicas_on_curr_node:
+                # 2. For each replica, find a node that would minimize fragmentation.
+                deployment_id = replica_id.deployment_id
+                required_resources = self._deployments[deployment_id].required_resources
+                chosen_node = self._find_best_available_node(
+                    required_resources, available_resources
+                )
+
+                # If no node could fit the replica, the binpacking failed
+                if not chosen_node:
+                    assigned_replicas = None
+                    break
+                else:
+                    assigned_replicas[replica_id] = chosen_node
+                    available_resources[chosen_node] -= required_resources
+
+            # 3. If it's theoretically possible to migrate all replicas
+            #    from target_node_id onto other non-idle nodes, then
+            #    this node is compactable.
+            if assigned_replicas:
+                # 4. Choose the compactable node that has the least
+                #    number of replicas that require migrating.
+                if len(assigned_replicas) < min_replicas_to_move:
+                    min_replicas_to_move = len(replicas_on_curr_node)
+                    node_with_min_replicas = target_node_id
+                    optimal_assignment = assigned_replicas
+
+        if node_with_min_replicas:
+            logger.info(
+                f"Found compactable node '{node_with_min_replicas}' with migration "
+                f"plan: {optimal_assignment}."
+            )
+            return node_with_min_replicas
