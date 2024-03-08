@@ -227,11 +227,13 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("smoothing_factor", [1, 0.2])
+@pytest.mark.parametrize("scaling_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
 @mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_scale_up_down_with_0_replica(
-    serve_instance, smoothing_factor, use_upscale_downscale_config
+    serve_instance,
+    scaling_factor,
+    use_upscale_downscale_config,
 ):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
@@ -247,10 +249,10 @@ def test_e2e_scale_up_down_with_0_replica(
         "upscale_delay_s": 0,
     }
     if use_upscale_downscale_config:
-        autoscaling_config["upscale_smoothing_factor"] = smoothing_factor
-        autoscaling_config["downscale_smoothing_factor"] = smoothing_factor
+        autoscaling_config["upscaling_factor"] = scaling_factor
+        autoscaling_config["downscaling_factor"] = scaling_factor
     else:
-        autoscaling_config["smoothing_factor"] = smoothing_factor
+        autoscaling_config["smoothing_factor"] = scaling_factor
 
     @serve.deployment(
         autoscaling_config=autoscaling_config,
@@ -472,8 +474,11 @@ def test_e2e_intermediate_downscaling(serve_instance):
 
 
 @pytest.mark.parametrize("initial_replicas", [2, 3])
-def test_downscaling_with_fractional_smoothing_factor(
-    serve_instance, initial_replicas: int
+@pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+def test_downscaling_with_fractional_scaling_factor(
+    serve_instance,
+    initial_replicas: int,
+    use_deprecated_smoothing_factor: bool,
 ):
     signal = SignalActor.options(name="signal123").remote()
     signal.send.remote(clear=True)
@@ -488,7 +493,6 @@ def test_downscaling_with_fractional_smoothing_factor(
                     "min_replicas": 0,
                     "max_replicas": 5,
                     "initial_replicas": initial_replicas,
-                    "downscale_smoothing_factor": 0.5,
                     "look_back_period_s": 0.2,
                     "downscale_delay_s": 5,
                 },
@@ -497,6 +501,12 @@ def test_downscaling_with_fractional_smoothing_factor(
             }
         ],
     }
+    if use_deprecated_smoothing_factor:
+        app_config["deployments"][0]["autoscaling_config"][
+            "downscale_smoothing_factor"
+        ] = 0.5
+    else:
+        app_config["deployments"][0]["autoscaling_config"]["downscaling_factor"] = 0.5
 
     # Deploy with initial replicas = 2+, smoothing factor = 0.5
     serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))

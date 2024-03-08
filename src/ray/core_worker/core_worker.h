@@ -1760,6 +1760,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
+  /// Used to read and write experimental channels.
   std::shared_ptr<ExperimentalMutableObjectManager> experimental_mutable_object_manager_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
