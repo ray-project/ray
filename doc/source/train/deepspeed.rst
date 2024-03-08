@@ -16,7 +16,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
     import deepspeed
     from deepspeed.accelerator import get_accelerator
 
-    def train_func(config):
+    def train_func():
         # Instantiate your model and dataset
         model = ...
         train_dataset = ...
