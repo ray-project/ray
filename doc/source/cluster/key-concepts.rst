@@ -63,7 +63,7 @@ To learn more about autoscaling, refer to the user guides for Ray clusters on :r
 
 
 .. note::
-    Autoscaling V2 is alpha released on KubeRay in 2.10.0, learn more about the improvements and setup :ref:`here <kuberay-autoscaler-v2>`.
+    Version 2.10.0 introduces the alpha release of Autoscaling V2 on KubeRay. Discover the enhancements and configuration details :ref:`here <kuberay-autoscaler-v2>`.
 
 .. _cluster-clients-and-jobs:
 
