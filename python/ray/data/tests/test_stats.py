@@ -1147,11 +1147,13 @@ Dataset throughput:
 def test_time_backpressure(ray_start_regular_shared, restore_data_context):
     class TimedBackpressurePolicy(BackpressurePolicy):
         COUNT = 0
+
         def __init__(self, topology: "Topology"):
             pass
 
         def can_add_input(self, op: "PhysicalOperator") -> bool:
-            if TimedBackpressurePolicy.COUNT > 10:
+            if TimedBackpressurePolicy.COUNT > 1:
+                time.sleep(0.01)
                 return True
             else:
                 TimedBackpressurePolicy.COUNT += 1
