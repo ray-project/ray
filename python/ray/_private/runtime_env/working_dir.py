@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from contextlib import contextmanager
 
 import ray._private.ray_constants as ray_constants
@@ -25,7 +25,6 @@ default_logger = logging.getLogger(__name__)
 
 _WIN32 = os.name == "nt"
 
-
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
@@ -36,9 +35,21 @@ def upload_working_dir_if_needed(
 
     If the working_dir is already a URI, this is a no-op.
     """
+    return upload_working_dir_if_needed_and_return_original_path[0]
+
+def upload_working_dir_if_needed_and_return_original_path(
+    runtime_env: Dict[str, Any],
+    scratch_dir: Optional[str] = os.getcwd(),
+    logger: Optional[logging.Logger] = default_logger,
+    upload_fn=None,
+) -> Tuple[Dict[str, Any], str]:
+    """Uploads the working_dir and returns the runtime env replacing "working_dir" with a URI, and the original working_dir.
+
+    If the working_dir is already a URI, this is a no-op. Returns the original runtime_env and None.
+    """
     working_dir = runtime_env.get("working_dir")
     if working_dir is None:
-        return runtime_env
+        return runtime_env, None
 
     if not isinstance(working_dir, str) and not isinstance(working_dir, Path):
         raise TypeError(
@@ -58,7 +69,7 @@ def upload_working_dir_if_needed(
     if protocol is not None:
         if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
             raise ValueError("Only .zip files supported for remote URIs.")
-        return runtime_env
+        return runtime_env, None
 
     excludes = runtime_env.get("excludes", None)
     try:
@@ -79,7 +90,7 @@ def upload_working_dir_if_needed(
                 f"Failed to upload package {package_path} to the Ray cluster: {e}"
             ) from e
         runtime_env["working_dir"] = pkg_uri
-        return runtime_env
+        return runtime_env, None
     if upload_fn is None:
         try:
             upload_package_if_needed(
@@ -98,7 +109,7 @@ def upload_working_dir_if_needed(
         upload_fn(working_dir, excludes=excludes)
 
     runtime_env["working_dir"] = working_dir_uri
-    return runtime_env
+    return runtime_env, working_dir
 
 
 def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):

@@ -3,6 +3,7 @@ import logging
 import threading
 import traceback
 from typing import Any
+import types
 
 import google.protobuf.message
 
@@ -107,6 +108,16 @@ def _actor_handle_deserializer(serialized_obj):
     return ray.actor.ActorHandle._deserialization_helper(serialized_obj, outer_id)
 
 
+from pathlib import Path
+
+def try_make_relative(dir_path, file_path):
+    try:
+        relative_path = Path(file_path).relative_to(Path(dir_path))
+        return str(relative_path)
+    except ValueError:
+        return str(file_path)
+
+
 class SerializationContext:
     """Initialize the serialization library.
 
@@ -149,6 +160,27 @@ class SerializationContext:
         self._register_cloudpickle_reducer(
             DynamicObjectRefGenerator, object_ref_generator_reducer
         )
+
+
+        orig = pickle.CloudPickler.dispatch[types.CodeType]
+        def hack_codetype_reducer(obj):
+            """
+            Hack to change co_filename in serialized CodeType.
+            If the co_filename is subpath of the working directory in the SCRIPT_MODE
+            worker, we make it relative to the working directory.
+            """
+            ctor, data = orig(obj)
+            if worker._hack_original_working_dir is not None:
+                co_filename = try_make_relative(worker._hack_original_working_dir, obj.co_filename)
+                # Index of the co_filename in the data tuple for CodeType.
+                # This is pure hack. See _code_reduce in cloudpickle/cloudpickle.py
+                idx = 11 if hasattr(obj, "co_nmeta") else 10
+                lst = list(data)
+                lst[idx] = co_filename
+                data = tuple(lst)
+            return ctor, data
+        
+        self._register_cloudpickle_reducer(types.CodeType, hack_codetype_reducer)
 
         serialization_addons.apply(self)
 
