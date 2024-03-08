@@ -354,7 +354,7 @@ Next steps
 After you have converted your PyTorch Lightning training script to use Ray Train:
 
 * See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
-* Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
+* Browse the :doc:`Examples <examples>` for end-to-end examples of how to use Ray Train.
 * Consult the :ref:`API Reference <train-api>` for more details on the classes and methods from this tutorial.
 
 Version Compatibility

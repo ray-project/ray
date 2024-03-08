@@ -1,5 +1,6 @@
-(serve-triton-server-integration)=
-
+---
+orphan: true
+---
 # Serving models with Triton Server in Ray Serve
 This guide shows how to build an application with stable diffusion model using [NVIDIA Triton Server](https://github.com/triton-inference-server/server) in Ray Serve.
 
