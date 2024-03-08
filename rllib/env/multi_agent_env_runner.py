@@ -38,7 +38,7 @@ class MultiAgentEnvRunner(EnvRunner):
         if not self.config.is_multi_agent():
             raise ValueError(
                 f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
-                "setup is nt multi-agent! Try adding multi-agent information to your "
+                "setup is not multi-agent! Try adding multi-agent information to your "
                 "AlgorithmConfig via calling the `config.multi_agent(policies=..., "
                 "policy_mapping_fn=...)`."
             )
