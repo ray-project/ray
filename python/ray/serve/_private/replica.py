@@ -835,7 +835,7 @@ class UserCallableWrapper:
         return self._callable
 
     @staticmethod
-    def _get_single_max_batch_size_form_method(method: Callable) -> int:
+    def _get_single_max_batch_size_from_method(method: Callable) -> int:
         """Helper to get a single max_batch_size form a method.
 
         If the method doesn't uses batching, return 0.
@@ -848,16 +848,16 @@ class UserCallableWrapper:
     def get_max_batch_size(self) -> int:
         """Helper to get the max of max_batch_size for the user callable.
 
-        If no methods uses batching, return 0.
+        If no methods use batching, return 0.
         """
         if self._is_function:
-            return self._get_single_max_batch_size_form_method(self._callable)
+            return self._get_single_max_batch_size_from_method(self._callable)
 
         max_batch_sizes = set([0])
         for method_name in dir(self._callable):
             method = getattr(self._callable, method_name)
             if callable(method):
-                max_batch_sizes.add(self._get_single_max_batch_size_form_method(method))
+                max_batch_sizes.add(self._get_single_max_batch_size_from_method(method))
 
         return max(max_batch_sizes)
 
