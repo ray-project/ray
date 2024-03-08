@@ -72,7 +72,9 @@ from ray._private.ray_logging import (
 )
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed_and_return_original_path
+from ray._private.runtime_env.working_dir import (
+    upload_working_dir_if_needed_and_return_original_path,
+)
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
@@ -2325,9 +2327,12 @@ def connect(
         runtime_env = upload_py_modules_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
-        runtime_env, working_dir = upload_working_dir_if_needed_and_return_original_path(
+        (
+            runtime_env,
+            working_dir,
+        ) = upload_working_dir_if_needed_and_return_original_path(
             runtime_env, scratch_dir, logger=logger
-        )            
+        )
         runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
             worker,
@@ -2465,8 +2470,6 @@ def connect(
             _setup_tracing()
             ray.__traced__ = True
 
-    # trigger context
-    ctx = worker.get_serialization_context()
 
 def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""

@@ -25,6 +25,7 @@ default_logger = logging.getLogger(__name__)
 
 _WIN32 = os.name == "nt"
 
+
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
@@ -37,15 +38,18 @@ def upload_working_dir_if_needed(
     """
     return upload_working_dir_if_needed_and_return_original_path[0]
 
+
 def upload_working_dir_if_needed_and_return_original_path(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
     upload_fn=None,
 ) -> Tuple[Dict[str, Any], str]:
-    """Uploads the working_dir and returns the runtime env replacing "working_dir" with a URI, and the original working_dir.
+    """Uploads the working_dir and returns the runtime env replacing "working_dir" with
+    a URI, and the original working_dir.
 
-    If the working_dir is already a URI, this is a no-op. Returns the original runtime_env and None.
+    If the working_dir is already a URI, this is a no-op. Returns the original
+    runtime_env and None.
     """
     working_dir = runtime_env.get("working_dir")
     if working_dir is None:

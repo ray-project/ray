@@ -2519,7 +2519,7 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, file=sys.stderr, end="")
 
         # Trigger registration of our custom serializers.
-        ctx = ray._private.worker.global_worker.get_serialization_context()
+        ray._private.worker.global_worker.get_serialization_context()
         job_config_initialized = True
 
 
