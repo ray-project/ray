@@ -789,6 +789,7 @@ def read_images(
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    transform: Optional[Callable] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -912,6 +913,7 @@ def read_images(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         file_extensions=file_extensions,
+        transform=transform
     )
     return read_datasource(
         datasource,
