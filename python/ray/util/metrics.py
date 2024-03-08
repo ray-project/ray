@@ -140,6 +140,13 @@ class Counter(Metric):
     This corresponds to Prometheus' counter metric:
     https://prometheus.io/docs/concepts/metric_types/#counter
 
+    Before Ray 2.10, this exports a Prometheus gauge metric instead of
+    a counter metric, which is wrong.
+    Since 2.10, this exports a Prometheus counter metric with `_total` suffix
+    and a deprecated Prometheus gauge metric for bug compatiblity.
+    Users can disable the behavior of exporting Prometheus gauge metric
+    by setting env var `RAY_EXPORT_COUNTER_AS_GAUGE=0` before starting Ray.
+
     Args:
         name: Name of the metric.
         description: Description of the metric.

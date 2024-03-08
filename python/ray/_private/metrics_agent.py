@@ -36,6 +36,7 @@ import ray
 from ray._raylet import GcsClient
 
 from ray.core.generated.metrics_pb2 import Metric
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +268,10 @@ class OpenCensusProxyCollector:
         # For other components (raylet, GCS),
         # they contain the global key `GLOBAL_COMPONENT_KEY`.
         self._components = {}
+        # Whether we want to export counter as gauge.
+        # This is for bug compatibility.
+        # See https://github.com/ray-project/ray/pull/43795.
+        self._export_counter_as_gauge = env_bool("RAY_EXPORT_COUNTER_AS_GAUGE", True)
 
     def record(self, metrics: List[Metric], worker_id_hex: str = None):
         """Record the metrics reported from the component that reports it.
@@ -363,7 +368,7 @@ class OpenCensusProxyCollector:
             # we now emit both counter and gauge and in the
             # next major Ray release (3.0) we can stop emitting gauge.
             # This leaves people enough time to migrate their dashboards.
-            # See https://github.com/ray-project/ray/issues/37768.
+            # See https://github.com/ray-project/ray/pull/43795.
             metrics = metrics_map.get(metric_name)
             if not metrics:
                 metric = CounterMetricFamily(
@@ -375,7 +380,9 @@ class OpenCensusProxyCollector:
                 metrics_map[metric_name] = metrics
             metrics[0].add_metric(labels=label_values, value=agg_data.sum_data)
 
-            if metric_name.endswith("_total"):
+            if not self._export_counter_as_gauge:
+                pass
+            elif metric_name.endswith("_total"):
                 # In this case, we only need to emit prometheus counter
                 # since for metric name already ends with _total suffix
                 # prometheus client won't change it
