@@ -1015,17 +1015,18 @@ class OperatorStatsSummary:
         rounded_total = 0
         time_total_s = 0
 
+        if exec_stats:
+            # Calculate the total execution time of operator as
+            # the difference between the latest end time and
+            # the earliest start time of all blocks in the operator.
+            earliest_start_time = min(s.start_time_s for s in exec_stats)
+            latest_end_time = max(s.end_time_s for s in exec_stats)
+            time_total_s = latest_end_time - earliest_start_time
+
         if is_sub_operator:
             exec_summary_str = "{} blocks produced\n".format(len(exec_stats))
         else:
             if exec_stats:
-                # Calculate the total execution time of operator as
-                # the difference between the latest end time and
-                # the earliest start time of all blocks in the operator.
-                earliest_start_time = min(s.start_time_s for s in exec_stats)
-                latest_end_time = max(s.end_time_s for s in exec_stats)
-                time_total_s = latest_end_time - earliest_start_time
-
                 rounded_total = round(time_total_s, 2)
                 if rounded_total <= 0:
                     # Handle -0.0 case.
