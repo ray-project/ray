@@ -1234,19 +1234,14 @@ cdef class StreamingGeneratorExecutionContext:
 
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
-    output_or_exception: Union[object, Exception],
+    output: object,
     generator_index: int64_t
 ):
     """Report a given generator output to a caller.
 
-    If a generator produces an exception, it should be
-    passed as an output to report. The API will return
-    False if the generator should keep executing.
-    True otherwise.
-
     Args:
         context: Streaming generator's execution context.
-        output_or_exception: The output yielded from a
+        output: The output yielded from a
             generator or raised as an exception.
         generator_index: index of the output element in the
             generated sequence
@@ -1257,43 +1252,21 @@ cdef report_streaming_generator_output(
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
-    if isinstance(output_or_exception, Exception):
-        create_generator_error_object(
-            output_or_exception,
-            worker,
-            context.task_type,
-            context.caller_address,
-            context.task_id,
-            context.serialized_retry_exception_allowlist,
-            context.function_name,
-            context.function_descriptor,
-            context.title,
-            context.actor,
-            context.actor_id,
-            context.return_size,
-            generator_index,
-            context.is_async,
-            context.should_retry_exceptions,
-            &return_obj,
-            context.is_retryable_error,
-            context.application_error
-        )
-    else:
-        # Report the intermediate result if there was no error.
-        create_generator_return_obj(
-            output_or_exception,
-            context.generator_id,
-            worker,
-            context.caller_address,
-            context.task_id,
-            context.return_size,
-            generator_index,
-            context.is_async,
-            &return_obj)
+    # Report the intermediate result if there was no error.
+    create_generator_return_obj(
+        output,
+        context.generator_id,
+        worker,
+        context.caller_address,
+        context.task_id,
+        context.return_size,
+        generator_index,
+        context.is_async,
+        &return_obj)
 
     # Del output here so that we can GC the memory
     # usage asap.
-    del output_or_exception
+    del output
 
     context.streaming_generator_returns[0].push_back(
         c_pair[CObjectID, c_bool](
@@ -1309,6 +1282,65 @@ cdef report_streaming_generator_output(
             context.attempt_number,
             context.waiter))
 
+
+cdef report_streaming_generator_exception(
+    StreamingGeneratorExecutionContext context,
+    e: Exception,
+    generator_index: int64_t
+):
+    """Report a given generator exception to a caller.
+
+    Args:
+        context: Streaming generator's execution context.
+        output_or_exception: The output yielded from a
+            generator or raised as an exception.
+        generator_index: index of the output element in the
+            generated sequence
+    """
+    worker = ray._private.worker.global_worker
+
+    cdef:
+        # Ray Object created from an output.
+        c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+
+    create_generator_error_object(
+        e,
+        worker,
+        context.task_type,
+        context.caller_address,
+        context.task_id,
+        context.serialized_retry_exception_allowlist,
+        context.function_name,
+        context.function_descriptor,
+        context.title,
+        context.actor,
+        context.actor_id,
+        context.return_size,
+        generator_index,
+        context.is_async,
+        context.should_retry_exceptions,
+        &return_obj,
+        context.is_retryable_error,
+        context.application_error
+    )
+
+    # Del exception here so that we can GC the memory
+    # usage asap.
+    del e
+
+    context.streaming_generator_returns[0].push_back(
+        c_pair[CObjectID, c_bool](
+            return_obj.first,
+            is_plasma_object(return_obj.second)))
+
+    with nogil:
+        check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            return_obj,
+            context.generator_id,
+            context.caller_address,
+            generator_index,
+            context.attempt_number,
+            context.waiter))
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
@@ -1335,19 +1367,12 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
     gen = context.generator
 
-    while True:
-        try:
-            output_or_exception = next(gen)
-        except StopIteration:
-            break
-        except Exception as e:
-            output_or_exception = e
-
-        report_streaming_generator_output(context, output_or_exception, gen_index)
-        gen_index += 1
-
-        if isinstance(output_or_exception, Exception):
-            break
+    try:
+        for output in gen:
+            report_streaming_generator_output(context, output, gen_index)
+            gen_index += 1
+    except Exception as e:
+        report_streaming_generator_exception(context, e, gen_index)
 
 
 async def execute_streaming_generator_async(
@@ -1383,40 +1408,39 @@ async def execute_streaming_generator_async(
     gen = context.generator
 
     futures = []
-    while True:
-        try:
-            output_or_exception = await gen.__anext__()
-        except StopAsyncIteration:
-            break
-        except AsyncioActorExit:
-            # The execute_task will handle this case.
-            raise
-        except Exception as e:
-            output_or_exception = e
 
-        loop = asyncio.get_running_loop()
-        worker = ray._private.worker.global_worker
+    loop = asyncio.get_running_loop()
+    worker = ray._private.worker.global_worker
 
-        # NOTE: Reporting generator output in a streaming fashion,
-        #       is done in a standalone thread-pool fully *asynchronously*
-        #       to avoid blocking the event-loop and allow it to *concurrently*
-        #       make progress, since serializing and actual RPC I/O is done
-        #       with "nogil".
+    # NOTE: Reporting generator output in a streaming fashion,
+    #       is done in a standalone thread-pool fully *asynchronously*
+    #       to avoid blocking the event-loop and allow it to *concurrently*
+    #       make progress, since serializing and actual RPC I/O is done
+    #       with "nogil".
+    try:
+        async for output in gen:
+            # Report the output to the owner of the task.
+            futures.append(
+                loop.run_in_executor(
+                    worker.core_worker.get_thread_pool_for_async_event_loop(),
+                    report_streaming_generator_output,
+                    context,
+                    output,
+                    cur_generator_index,
+                )
+            )
+            cur_generator_index += 1
+    except Exception as e:
+        # Report the exception to the owner of the task.
         futures.append(
             loop.run_in_executor(
                 worker.core_worker.get_thread_pool_for_async_event_loop(),
-                report_streaming_generator_output,
+                report_streaming_generator_exception,
                 context,
-                output_or_exception,
+                e,
                 cur_generator_index,
             )
         )
-
-        cur_generator_index += 1
-
-        if isinstance(output_or_exception, Exception):
-            break
-
     # Make sure all RPC I/O completes before returning
     await asyncio.gather(*futures)
 
@@ -1684,7 +1708,6 @@ cdef void execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         uint64_t attempt_number = core_worker.get_current_task_attempt_number()
-        CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     # Helper method used to exit current asyncio actor.
@@ -2044,7 +2067,6 @@ cdef execute_task_with_cancellation_handler(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
-        CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     task_name = name.decode("utf-8")
@@ -4752,10 +4774,6 @@ cdef class CoreWorker:
             self.current_runtime_env = serialized_env
 
         return self.current_runtime_env
-
-    cdef yield_current_fiber(self, CFiberEvent &fiber_event):
-        with nogil:
-            CCoreWorkerProcess.GetCoreWorker().YieldCurrentFiber(fiber_event)
 
     def get_pending_children_task_ids(self, parent_task_id: TaskID):
         cdef:
