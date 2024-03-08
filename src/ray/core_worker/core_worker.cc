@@ -667,6 +667,7 @@ void CoreWorker::Shutdown() {
   }
 
   RAY_LOG(INFO) << "Shutting down a core worker.";
+  RAY_LOG(ERROR) << ray::StackTrace();
   is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
