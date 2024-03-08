@@ -37,3 +37,16 @@ py_test_module_list(
   tags = ["no_windows", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", "//python/ray/serve/tests:common", ":conftest"],
 )
+
+py_test_module_list(
+  name_suffix="_with_handle_metrics_disabled",
+  env={"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
+  files = [
+    "test_deployment_state.py",
+    "test_autoscaling_policy.py",
+    "test_router.py",
+  ],
+  size = "medium",
+  tags = ["team:serve", "no_windows"],
+  deps = ["//python/ray/serve:serve_lib", "//python/ray/serve/tests:common", ":conftest"],
+)
