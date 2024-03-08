@@ -486,6 +486,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = PandasBlockAccessor._empty_table()
         else:
+            # Handle blocks of different types.
+            blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
@@ -527,6 +529,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             if key is not None
             else (lambda r: (0,))
         )
+
+        # Handle blocks of different types.
+        blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
 
         iter = heapq.merge(
             *[

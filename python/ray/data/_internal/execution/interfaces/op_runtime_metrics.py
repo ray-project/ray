@@ -420,7 +420,13 @@ class OpRuntimeMetrics:
     def on_input_dequeued(self, input: RefBundle):
         """Callback when the operator dequeues an input."""
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
-        self.obj_store_mem_internal_inqueue -= input.size_bytes()
+        input_size = input.size_bytes()
+        self.obj_store_mem_internal_inqueue -= input_size
+        assert self.obj_store_mem_internal_inqueue >= 0, (
+            self._op,
+            self.obj_store_mem_internal_inqueue,
+            input_size,
+        )
 
     def on_output_queued(self, output: RefBundle):
         """Callback when an output is queued by the operator."""
@@ -430,7 +436,13 @@ class OpRuntimeMetrics:
     def on_output_dequeued(self, output: RefBundle):
         """Callback when an output is dequeued by the operator."""
         self.obj_store_mem_internal_outqueue_blocks -= len(output.blocks)
-        self.obj_store_mem_internal_outqueue -= output.size_bytes()
+        output_size = output.size_bytes()
+        self.obj_store_mem_internal_outqueue -= output_size
+        assert self.obj_store_mem_internal_outqueue >= 0, (
+            self._op,
+            self.obj_store_mem_internal_outqueue,
+            output_size,
+        )
 
     def on_toggle_task_submission_backpressure(self, in_backpressure):
         if in_backpressure and self._task_submission_backpressure_start_time == -1:
@@ -492,7 +504,13 @@ class OpRuntimeMetrics:
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
-        self.obj_store_mem_pending_task_inputs -= inputs.size_bytes()
+        input_size = inputs.size_bytes()
+        self.obj_store_mem_pending_task_inputs -= input_size
+        assert self.obj_store_mem_pending_task_inputs >= 0, (
+            self._op,
+            self.obj_store_mem_pending_task_inputs,
+            input_size,
+        )
 
         blocks = [input[0] for input in inputs.blocks]
         metadata = [input[1] for input in inputs.blocks]

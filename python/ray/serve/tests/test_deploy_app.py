@@ -1287,6 +1287,8 @@ def test_num_replicas_auto(client: ServeControllerClient):
         "downscale_delay_s": 600.0,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
     }

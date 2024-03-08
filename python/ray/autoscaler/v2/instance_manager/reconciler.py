@@ -1472,21 +1472,36 @@ class Reconciler:
                 the cloud provider.
             ray_nodes: The ray cluster's states of ray nodes.
         """
+        Reconciler._handle_extra_cloud_instances_from_cloud_provider(
+            instance_manager, non_terminated_cloud_instances
+        )
+        Reconciler._handle_extra_cloud_instances_from_ray_nodes(
+            instance_manager, ray_nodes
+        )
+
+    @staticmethod
+    def _handle_extra_cloud_instances_from_cloud_provider(
+        instance_manager: InstanceManager,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+    ):
+        """
+        For extra cloud instances that are not managed by the instance manager but
+        are running in the cloud provider, we will create new IM instances with
+        ALLOCATED status.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
+        """
         updates = {}
 
-        def _get_cloud_instance_ids_managed_by_im_and_version():
-            instances, version = Reconciler._get_im_instances(instance_manager)
-            return {
-                instance.cloud_instance_id
-                for instance in instances
-                if instance.cloud_instance_id
-            }, version
-
-        (
-            cloud_instance_ids_managed_by_im,
-            version,
-        ) = _get_cloud_instance_ids_managed_by_im_and_version()
         instances, version = Reconciler._get_im_instances(instance_manager)
+        cloud_instance_ids_managed_by_im = {
+            instance.cloud_instance_id
+            for instance in instances
+            if instance.cloud_instance_id
+        }
 
         # Find the extra cloud instances that are not managed by the instance manager.
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
@@ -1505,13 +1520,29 @@ class Reconciler:
                 ),
                 upsert=True,
             )
+        Reconciler._update_instance_manager(instance_manager, version, updates)
 
-        # Find the extra cloud instances reported by Ray but not managed by the instance
-        # manager.
-        (
-            cloud_instance_ids_managed_by_im,
-            version,
-        ) = _get_cloud_instance_ids_managed_by_im_and_version()
+    @staticmethod
+    def _handle_extra_cloud_instances_from_ray_nodes(
+        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+    ):
+        """
+        For extra cloud instances reported by Ray but not managed by the instance
+        manager, we will create new IM instances with ALLOCATED status.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            ray_nodes: The ray cluster's states of ray nodes.
+        """
+        updates = {}
+
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        cloud_instance_ids_managed_by_im = {
+            instance.cloud_instance_id
+            for instance in instances
+            if instance.cloud_instance_id
+        }
+
         for ray_node in ray_nodes:
             if not ray_node.instance_id:
                 continue
