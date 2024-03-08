@@ -30,6 +30,7 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
+from ray.serve._private.utils import DEFAULT
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -439,7 +440,6 @@ def deploy(
 @click.option(
     "--route-prefix",
     required=False,
-    default="/",
     type=str,
     help=(
         "Route prefix for the application. This should only be used "
@@ -468,9 +468,11 @@ def run(
     address: str,
     blocking: bool,
     reload: bool,
-    route_prefix: str,
+    route_prefix: Optional[str],
     name: str,
 ):
+    if route_prefix is None:
+        route_prefix = DEFAULT.VALUE
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
