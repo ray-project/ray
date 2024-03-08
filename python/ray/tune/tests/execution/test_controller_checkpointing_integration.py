@@ -604,6 +604,10 @@ def test_checkpoint_force_with_num_to_keep(ray_start_4_cpus_2_gpus_extra, tmp_pa
             while not runner.is_finished():
                 runner.step()
 
+        assert any(
+            "Experiment state snapshotting has been triggered multiple times" in x
+            for x in buffer
+        )
         # We should sync 6 times:
         # The first checkpoint happens when the experiment starts,
         # since no checkpoints have happened yet
@@ -646,12 +650,12 @@ def test_checkpoint_sync_up_timeout(
     logger = logging.getLogger("ray.tune.execution.experiment_state")
     with mock.patch.object(logger, "error", lambda x, **kwargs: buffer.append(x)):
         with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
-            runner.checkpoint(force=True)
+            runner.checkpoint(force=True, wait=True)
 
     # We should see a log about the timeout
     assert any("Saving experiment state to storage" in x for x in buffer)
     # We should also have a warning about the slow upload
-    assert any("has already taken" in x for x in buffer)
+    assert any("may be a performance bottleneck" in x for x in buffer)
 
 
 def test_checkpoint_sync_up_error(ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch):
@@ -680,7 +684,7 @@ def test_checkpoint_sync_up_error(ray_start_4_cpus_2_gpus_extra, tmp_path, monke
     with mock.patch.object(logger, "error", lambda x, **kwargs: buffer.append(x)):
         runner.checkpoint(force=True)
 
-    # We should see a log about the timeout
+    # We should see a log about the failure
     assert any("Saving experiment state to storage" in x for x in buffer)
 
 
