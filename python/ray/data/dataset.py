@@ -4568,7 +4568,6 @@ class Dataset:
         output._set_uuid(copy._get_uuid())
         return output
 
-    @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
         """Returns a string containing execution timing information.
 

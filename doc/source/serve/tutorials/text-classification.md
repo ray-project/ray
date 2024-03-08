@@ -1,3 +1,6 @@
+---
+orphan: true
+---
 (serve-text-classification-tutorial)=
 
 # Serve a Text Classification Model
