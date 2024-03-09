@@ -14,6 +14,7 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    PrivateAttr,
     validator,
 )
 from ray._private.serialization import pickle_dumps
@@ -170,6 +171,38 @@ class DeploymentConfig(BaseModel):
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
+    _max_batch_size: NonNegativeInt = PrivateAttr(default=0)
+
+    @staticmethod
+    def _get_single_max_batch_size_from_method(method: Callable) -> int:
+        """Helper to get a single max_batch_size form a method.
+
+        If the method doesn't uses batching, return 0.
+        """
+        if not hasattr(method, "_get_max_batch_size"):
+            return 0
+
+        return method._get_max_batch_size()
+
+    def set_max_batch_size(self, user_callable: Callable) -> int:
+        """Helper to set the max of max_batch_size for the user callable.
+
+        If no methods use batching, set to 0.
+        """
+        if inspect.isfunction(user_callable):
+            self._max_batch_size = self._get_single_max_batch_size_from_method(
+                user_callable
+            )
+            return
+
+        max_batch_sizes = set([0])
+        for method_name in dir(user_callable):
+            method = getattr(user_callable, method_name)
+            if callable(method):
+                max_batch_sizes.add(self._get_single_max_batch_size_from_method(method))
+
+        self._max_batch_size = max(max_batch_sizes)
+
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
@@ -236,6 +269,7 @@ class DeploymentConfig(BaseModel):
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
+        data["_max_batch_size"] = self._max_batch_size
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -285,8 +319,9 @@ class DeploymentConfig(BaseModel):
                 data["logging_config"]["encoding"] = EncodingTypeProto.Name(
                     data["logging_config"]["encoding"]
                 )
-
-        return cls(**data)
+        deployment_config = cls(**data)
+        deployment_config._max_batch_size = proto._max_batch_size
+        return deployment_config
 
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):
@@ -323,6 +358,12 @@ class DeploymentConfig(BaseModel):
             config.__setattr__(key, val)
 
         return config
+
+    @property
+    def max_ongoing_requests_limit(self) -> int:
+        if self._max_batch_size > self.max_ongoing_requests:
+            return self._max_batch_size
+        return self.max_ongoing_requests
 
 
 def handle_num_replicas_auto(

@@ -487,7 +487,7 @@ class ReplicaActor:
 
         The first response from this generator is always a system message indicating
         if the request was accepted (the replica has capacity for the request) or
-        rejected (the replica is already at max(max_ongoing_requests, max_batch_size)).
+        rejected (the replica is already at max_ongoing_requests).
 
         For non-streaming requests, there will only be one more message, the unary
         result of the user request handler.
@@ -496,13 +496,12 @@ class ReplicaActor:
         user request handler (which must be a generator).
         """
         request_metadata = pickle.loads(pickled_request_metadata)
-        max_batch_size = self._user_callable_wrapper.get_max_batch_size()
-        limit = max(self._deployment_config.max_ongoing_requests, max_batch_size)
+        limit = self._deployment_config.max_ongoing_requests_limit
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
             logger.warning(
-                "Replica at capacity of max(max_ongoing_requests, max_batch_size)="
-                f"{limit}, rejecting request {request_metadata.request_id}.",
+                f"Replica at capacity of max_ongoing_requests={limit}, "
+                f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},
             )
             yield pickle.dumps(
@@ -635,6 +634,11 @@ class ReplicaActor:
             if user_config_changed:
                 await self._user_callable_wrapper.call_reconfigure(
                     deployment_config.user_config
+                )
+                # `max_batch_size` could be reconfigured. Update deployment_config with
+                # the latest value.
+                deployment_config.set_max_batch_size(
+                    self._user_callable_wrapper.user_callable
                 )
 
             return self._get_metadata()
@@ -833,33 +837,6 @@ class UserCallableWrapper:
     @property
     def user_callable(self) -> Optional[Callable]:
         return self._callable
-
-    @staticmethod
-    def _get_single_max_batch_size_from_method(method: Callable) -> int:
-        """Helper to get a single max_batch_size form a method.
-
-        If the method doesn't uses batching, return 0.
-        """
-        if not hasattr(method, "_get_max_batch_size"):
-            return 0
-
-        return method._get_max_batch_size()
-
-    def get_max_batch_size(self) -> int:
-        """Helper to get the max of max_batch_size for the user callable.
-
-        If no methods use batching, return 0.
-        """
-        if self._is_function:
-            return self._get_single_max_batch_size_from_method(self._callable)
-
-        max_batch_sizes = set([0])
-        for method_name in dir(self._callable):
-            method = getattr(self._callable, method_name)
-            if callable(method):
-                max_batch_sizes.add(self._get_single_max_batch_size_from_method(method))
-
-        return max(max_batch_sizes)
 
     @_run_on_user_code_event_loop
     async def initialize_callable(self):

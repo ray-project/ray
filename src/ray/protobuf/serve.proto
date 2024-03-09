@@ -137,6 +137,9 @@ message DeploymentConfig {
   repeated string user_configured_option_names = 13;
 
   LoggingConfig logging_config = 14;
+
+  // The maximum number of max_batch_size on the deployment.
+  int32 _max_batch_size = 15;
 }
 
 // Deployment language.

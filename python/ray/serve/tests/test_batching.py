@@ -229,7 +229,7 @@ def test_batching_large_max_batch_size(serve_instance):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    handle = serve.run(BatchingExample.bind())
+    handle = serve.run(BatchingExample.bind(), route_prefix="/large_max_batch_size")
 
     result_list = [handle.remote(1) for _ in range(1000)]
     # since count is only updated per batch of queries

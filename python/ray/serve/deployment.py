@@ -149,6 +149,12 @@ class Deployment:
         ):
             docs_path = replica_config.deployment_def.__fastapi_docs_path__
 
+        print(
+            "deployment init",
+            deployment_config._max_batch_size,
+            deployment_config,
+            replica_config.deployment_def,
+        )
         self._name = name
         self._version = version
         self._deployment_config = deployment_config
@@ -492,6 +498,18 @@ class Deployment:
             if isinstance(logging_config, LoggingConfig):
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
+
+        new_deployment_config.set_max_batch_size(func_or_class)
+        if (
+            new_deployment_config._max_batch_size
+            > new_deployment_config.max_ongoing_requests
+        ):
+            logger.warning(
+                f"`max_batch_size` ({new_deployment_config._max_batch_size}) is larger "
+                "than `max_ongoing_requests` "
+                f"({new_deployment_config.max_ongoing_requests}). The maximum "
+                "ongoing request will use `max_batch_size` to allow batching limits."
+            )
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
