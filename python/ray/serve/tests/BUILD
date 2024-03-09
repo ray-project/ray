@@ -79,7 +79,7 @@ py_test_module_list(
 
 # Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 0
 py_test(
-    name = "test_autoscaling_policy_with_handle_metrics_disabled",
+    name = "test_autoscaling_policy_with_metr_disab",
     size = "medium",
     main = "test_autoscaling_policy.py",
     srcs = ["test_autoscaling_policy.py"],
