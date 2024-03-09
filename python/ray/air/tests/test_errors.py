@@ -166,13 +166,9 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
         # The cause of the error should be the trainable error
         assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
-        # TODO(justinvyu): Re-enable after fixing the Trainer.restore(...) error
-        # message to give the correct path. Currently it recommends the local path.
-        # Since the trainable failed, we should get a message about restore + setting
-        # FailureConfig for retry on runtime errors for a new run.
-        # assert TrainingFailedError._RESTORE_MSG.format(
-        #     trainer_cls_name="FailingTrainer", path=str(tmp_path / name)
-        # ) in str(exc_info.value)
+        assert TrainingFailedError._RESTORE_MSG.format(
+            trainer_cls_name="FailingTrainer", path=str(tmp_path / name)
+        ) in str(exc_info.value)
         assert TrainingFailedError._FAILURE_CONFIG_MSG in str(exc_info.value)
 
     elif fail_fast == "raise":
