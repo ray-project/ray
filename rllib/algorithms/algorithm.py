@@ -1070,10 +1070,10 @@ class Algorithm(Trainable, AlgorithmBase):
             env_steps += sum(e.env_steps() for e in episodes)
         else:
             batch = env_runner.sample()
+            agent_steps += batch.agent_steps()
+            env_steps += batch.env_steps()
             if self.reward_estimators:
                 all_batches.append(batch)
-            agent_steps += sum(len(pb) for pb in batch.policy_batches.values())
-            env_steps += batch.env_steps
 
         metrics = env_runner.get_metrics()
 
@@ -1311,7 +1311,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
                 for (batch, metrics) in results:
-                    env_steps += batch.env_steps
+                    env_steps += batch.env_steps()
                     agent_steps += batch.agent_steps()
                     all_metrics.extend(metrics)
                     if self.reward_estimators:
