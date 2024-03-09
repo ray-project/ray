@@ -424,7 +424,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_workers=1,
-                enable_async_evaluation=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )
@@ -454,7 +453,6 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .evaluation(
                 evaluation_num_workers=1,
-                enable_async_evaluation=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )

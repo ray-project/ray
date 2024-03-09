@@ -95,8 +95,7 @@ class TestPPO(unittest.TestCase):
                 evaluation_num_workers=2,
                 evaluation_duration=3,
                 evaluation_duration_unit="episodes",
-                # Has to be used if `env_runner_cls` is not RolloutWorker.
-                enable_async_evaluation=True,
+                evaluation_parallel_to_training=True,
             )
         )
 
