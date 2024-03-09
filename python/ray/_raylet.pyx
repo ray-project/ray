@@ -1235,7 +1235,8 @@ cdef class StreamingGeneratorExecutionContext:
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
-    generator_index: int64_t
+    generator_index: int64_t,
+    interrupt_signal_event: Optional[threading.Event],
 ):
     """Report a given generator output to a caller.
 
@@ -1268,6 +1269,11 @@ cdef report_streaming_generator_output(
     # usage asap.
     del output
 
+    # NOTE: Once interrupting event is set by the caller, we can NOT access
+    #       externally provided data-structures, and have to interrupt the execution
+    if interrupt_signal_event is not None and interrupt_signal_event.is_set():
+        return
+
     context.streaming_generator_returns[0].push_back(
         c_pair[CObjectID, c_bool](
             return_obj.first,
@@ -1286,7 +1292,8 @@ cdef report_streaming_generator_output(
 cdef report_streaming_generator_exception(
     StreamingGeneratorExecutionContext context,
     e: Exception,
-    generator_index: int64_t
+    generator_index: int64_t,
+    interrupt_signal_event: Optional[threading.Event],
 ):
     """Report a given generator exception to a caller.
 
@@ -1327,6 +1334,11 @@ cdef report_streaming_generator_exception(
     # Del exception here so that we can GC the memory
     # usage asap.
     del e
+
+    # NOTE: Once interrupting event is set by the caller, we can NOT access
+    #       externally provided data-structures, and have to interrupt the execution
+    if interrupt_signal_event is not None and interrupt_signal_event.is_set():
+        return
 
     context.streaming_generator_returns[0].push_back(
         c_pair[CObjectID, c_bool](
@@ -1369,10 +1381,10 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
     try:
         for output in gen:
-            report_streaming_generator_output(context, output, gen_index)
+            report_streaming_generator_output(context, output, gen_index, None)
             gen_index += 1
     except Exception as e:
-        report_streaming_generator_exception(context, e, gen_index)
+        report_streaming_generator_exception(context, e, gen_index, None)
 
 
 async def execute_streaming_generator_async(
@@ -1407,42 +1419,67 @@ async def execute_streaming_generator_async(
 
     gen = context.generator
 
-    futures = []
-
     loop = asyncio.get_running_loop()
     worker = ray._private.worker.global_worker
 
-    # NOTE: Reporting generator output in a streaming fashion,
-    #       is done in a standalone thread-pool fully *asynchronously*
-    #       to avoid blocking the event-loop and allow it to *concurrently*
-    #       make progress, since serializing and actual RPC I/O is done
-    #       with "nogil".
+    executor = worker.core_worker.get_event_loop_executor()
+    interrupt_signal_event = threading.Event()
+
+    futures = []
     try:
-        async for output in gen:
-            # Report the output to the owner of the task.
+        try:
+            async for output in gen:
+                # NOTE: Reporting generator output in a streaming fashion,
+                #       is done in a standalone thread-pool fully *asynchronously*
+                #       to avoid blocking the event-loop and allow it to *concurrently*
+                #       make progress, since serializing and actual RPC I/O is done
+                #       with "nogil".
+                futures.append(
+                    loop.run_in_executor(
+                        executor,
+                        report_streaming_generator_output,
+                        context,
+                        output,
+                        cur_generator_index,
+                        interrupt_signal_event,
+                    )
+                )
+                cur_generator_index += 1
+        except Exception as e:
+            # Report the exception to the owner of the task.
             futures.append(
                 loop.run_in_executor(
-                    worker.core_worker.get_thread_pool_for_async_event_loop(),
-                    report_streaming_generator_output,
+                    executor,
+                    report_streaming_generator_exception,
                     context,
-                    output,
+                    e,
                     cur_generator_index,
+                    interrupt_signal_event,
                 )
             )
-            cur_generator_index += 1
-    except Exception as e:
-        # Report the exception to the owner of the task.
-        futures.append(
-            loop.run_in_executor(
-                worker.core_worker.get_thread_pool_for_async_event_loop(),
-                report_streaming_generator_exception,
-                context,
-                e,
-                cur_generator_index,
-            )
-        )
-    # Make sure all RPC I/O completes before returning
-    await asyncio.gather(*futures)
+
+        # Make sure all RPC I/O completes before returning
+        await asyncio.gather(*futures)
+
+    except BaseException as be:
+        # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
+        #
+        # Upon encountering any failures in reporting generator's output we have to
+        # make sure that any already scheduled (onto thread-pool executor), but not
+        # finished tasks are canceled before re-throwing the exception to avoid
+        # use-after-free failures where tasks could potentially access data-structures
+        # that are already cleaned by the caller.
+        #
+        # For that we set an event to interrupt already scheduled tasks (that have
+        # not finished executing), therefore interrupting their execution and
+        # making sure that externally provided data-structures are not
+        # accessed after this point
+        #
+        # For more details, please check out
+        # https://github.com/ray-project/ray/issues/43771
+        interrupt_signal_event.set()
+
+        raise
 
 
 cdef create_generator_return_obj(
@@ -3305,7 +3342,7 @@ cdef class CoreWorker:
         self.current_runtime_env = None
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
-        self.thread_pool_for_async_event_loop = None
+        self.event_loop_executor = None
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
@@ -4614,12 +4651,16 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_thread_pool_for_async_event_loop(self):
-        if self.thread_pool_for_async_event_loop is None:
-            # Theoretically, we can use multiple threads,
-            self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
-                max_workers=1)
-        return self.thread_pool_for_async_event_loop
+    def get_event_loop_executor(self) -> ThreadPoolExecutor:
+        if self.event_loop_executor is None:
+            # NOTE: We're deliberately allocating thread-pool executor with
+            #       a single thread, provided that many of its use-cases are
+            #       not thread-safe yet (for ex, reporting streaming generator output)
+            self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
+        return self.event_loop_executor
+
+    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
+        self.event_loop_executor = executor
 
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
@@ -4729,9 +4770,9 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
-        if self.thread_pool_for_async_event_loop:
-            self.thread_pool_for_async_event_loop.shutdown(
-                wait=False, cancel_futures=True)
+        if self.event_loop_executor:
+            self.event_loop_executor.shutdown(
+                wait=True, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
         if self.thread_for_default_cg is not None:
