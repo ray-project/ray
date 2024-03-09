@@ -1173,12 +1173,16 @@ class Algorithm(Trainable, AlgorithmBase):
                     healthy_only=True,
                     timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                for (batches, metrics) in results:
-                    env_steps += sum(b.env_steps for b in batches)
-                    agent_steps += sum(b.agent_steps() for b in batches)
+                for (batch, metrics) in results:
+                    env_steps += batch.env_steps()
+                    agent_steps += batch.agent_steps()
                     all_metrics.extend(metrics)
+                    if self.reward_estimators:
+                        # TODO: (kourosh) This approach will cause an OOM issue when
+                        #  the dataset gets huge (should be ok for now).
+                        all_batches.append(batch)
 
-                if len(batches) != num_healthy_workers:
+                if len(results) != num_healthy_workers:
                     logger.warning(
                         "Calling `sample()` on your remote evaluation worker(s) "
                         "resulted in a timeout (after the configured "
@@ -1186,12 +1190,6 @@ class Algorithm(Trainable, AlgorithmBase):
                         "Try to set `evaluation_sample_timeout_s` in your config"
                         " to a larger value."
                     )
-                    break
-
-                if self.reward_estimators:
-                    # TODO: (kourosh) This approach will cause an OOM issue when
-                    # the dataset gets huge (should be ok for now).
-                    all_batches.extend(batches)
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
@@ -1306,14 +1304,22 @@ class Algorithm(Trainable, AlgorithmBase):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                batches, metrics = self.evaluation_workers.foreach_worker(
+                results = self.evaluation_workers.foreach_worker(
                     func=lambda w: (w.sample(), w.get_metrics()),
                     local_worker=False,
                     remote_worker_ids=selected_eval_worker_ids,
                     timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                [all_metrics.extend(metric_list) for metric_list in metrics]
-                if len(batches) != len(selected_eval_worker_ids):
+                for (batch, metrics) in results:
+                    env_steps += batch.env_steps
+                    agent_steps += batch.agent_steps()
+                    all_metrics.extend(metrics)
+                    if self.reward_estimators:
+                        # TODO: (kourosh) This approach will cause an OOM issue when
+                        #  the dataset gets huge (should be ok for now).
+                        all_batches.append(batch)
+
+                if len(results) != len(selected_eval_worker_ids):
                     logger.warning(
                         "Calling `sample()` on your remote evaluation worker(s) "
                         "resulted in a timeout (after the configured "
@@ -1328,24 +1334,17 @@ class Algorithm(Trainable, AlgorithmBase):
                             else ""
                         )
                     )
-                    break
 
-                _env_steps = sum(b.env_steps() for b in batches)
-                _agent_steps = sum(b.agent_steps() for b in batches)
                 # 1 episode per returned batch.
                 if unit == "episodes":
-                    num_units_done += len(batches)
+                    num_units_done += len(results)
                 # n timesteps per returned batch.
                 else:
-                    num_units_done += (
-                        _env_steps
+                    num_units_done = (
+                        env_steps
                         if self.config.count_steps_by == "env_steps"
-                        else _agent_steps
+                        else agent_steps
                     )
-                if self.reward_estimators:
-                    # TODO: (kourosh) This approach will cause an OOM issue when
-                    # the dataset gets huge (should be ok for now).
-                    all_batches.extend(batches)
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
