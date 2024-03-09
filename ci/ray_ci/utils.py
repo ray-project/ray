@@ -14,7 +14,7 @@ from ray_release.test import Test, TestState
 
 
 POSTMERGE_PIPELINE = "0189e759-8c96-4302-b6b5-b4274406bf89"
-RAY_VERSION = "3.0.0.dev0"
+RAY_VERSION = "2.10.0"
 
 
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:
