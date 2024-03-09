@@ -67,6 +67,7 @@ py_test_module_list(
     "test_global_gc.py",
     "test_job.py",
     "test_memstat.py",
+    "test_kill_subprocesses.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "no_windows", "team:core"],
