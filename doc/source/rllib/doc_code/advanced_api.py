@@ -47,7 +47,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 config = AlgorithmConfig().evaluation(
     evaluation_interval=3,
 )
-# __rllib-adv_api_evaluation_1_env__
+# __rllib-adv_api_evaluation_1_end__
 
 
 # __rllib-adv_api_evaluation_2_begin__
@@ -61,7 +61,7 @@ config = AlgorithmConfig().evaluation(
     evaluation_duration=200,
     evaluation_duration_unit="timesteps",
 )
-# __rllib-adv_api_evaluation_2_env__
+# __rllib-adv_api_evaluation_2_end__
 
 
 # __rllib-adv_api_evaluation_3_begin__
@@ -75,7 +75,7 @@ config = AlgorithmConfig().evaluation(
     #    evaluation workers 1-3 (evaluation workers 4-7 remain idle during that time).
     evaluation_num_workers=7,
 )
-# __rllib-adv_api_evaluation_3_env__
+# __rllib-adv_api_evaluation_3_end__
 
 
 # __rllib-adv_api_evaluation_4_begin__
@@ -93,7 +93,7 @@ config = AlgorithmConfig().evaluation(
     # will always run by timesteps (not by complete
     # episodes) in this duration=auto mode
 )
-# __rllib-adv_api_evaluation_4_env__
+# __rllib-adv_api_evaluation_4_end__
 
 
 # __rllib-adv_api_evaluation_5_begin__
@@ -107,7 +107,7 @@ config = AlgorithmConfig().evaluation(
 # config = AlgorithmConfig().evaluation(
 #    evaluation_config={"explore": False},
 # )
-# __rllib-adv_api_evaluation_5_env__
+# __rllib-adv_api_evaluation_5_end__
 
 
 # __rllib-adv_api_evaluation_6_begin__
@@ -120,4 +120,4 @@ config = AlgorithmConfig().evaluation(
     evaluation_duration_unit="timesteps",  # <- default anyway
     evaluation_force_reset_envs_before_iteration=True,  # <- default anyway
 )
-# __rllib-adv_api_evaluation_6_env__
+# __rllib-adv_api_evaluation_6_end__

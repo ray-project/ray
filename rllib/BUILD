@@ -2339,7 +2339,7 @@ py_test(
 # New API Stack
 py_test(
     name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch_envrunner",
-    main = "examples/parallel_evaluation_and_training.py",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
@@ -2348,7 +2348,7 @@ py_test(
 
 py_test(
     name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_duration_auto_torch_envrunner",
-    main = "examples/parallel_evaluation_and_training.py",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
@@ -2394,7 +2394,7 @@ py_test(
 
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_13_episodes_tf",
+    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_tf",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2413,7 +2413,7 @@ py_test(
 
 py_test(
     name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch",
-    main = "examples/parallel_evaluation_and_training.py",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
