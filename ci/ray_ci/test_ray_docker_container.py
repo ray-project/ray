@@ -36,7 +36,6 @@ class TestRayDockerContainer(RayCITestBase):
             container = RayDockerContainer(v, "cu11.8.0", "ray")
             container.run()
             cmd = self.cmds[-1]
-            print(cmd)
             assert cmd == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
