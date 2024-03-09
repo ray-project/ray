@@ -2365,12 +2365,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_901_ts_torch_envrunner",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_1001_ts_torch_envrunner",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=901", "--evaluation-duration-unit=timesteps"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=1001", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(

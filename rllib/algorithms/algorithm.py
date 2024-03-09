@@ -1141,8 +1141,8 @@ class Algorithm(Trainable, AlgorithmBase):
                     # Cap at 20k to not put too much memory strain on EnvRunners.
                     20000,
                     max(
-                        # Low-cap at 100 to avoid possibly negative rollouts or very short
-                        # ones.
+                        # Low-cap at 100 to avoid possibly negative rollouts or very
+                        # short ones.
                         100,
                         (
                             # How much time do we have left?
@@ -1196,21 +1196,34 @@ class Algorithm(Trainable, AlgorithmBase):
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
 
-        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return (
-            {
-                "sampler_results": summarize_episodes(
-                    all_metrics,
-                    all_metrics,
-                    keep_custom_metrics=(
-                        self.evaluation_config.keep_per_episode_custom_metrics
-                    ),
-                )
-            },
-            env_steps,
-            agent_steps,
-            all_batches,
+        episode_summary = summarize_episodes(
+            all_metrics,
+            all_metrics,
+            keep_custom_metrics=(
+                self.evaluation_config.keep_per_episode_custom_metrics
+            ),
         )
+
+        # Warn if results are empty, it could be that this is because the auto-time is
+        # not enough to run through one full episode.
+        if (
+            self.config.evaluation_force_reset_envs_before_iteration
+            and episode_summary["episodes_this_iter"] == 0
+        ):
+            logger.warning(
+                "This evaluation iteration resulted in an empty set of episode summary "
+                "results! It's possible that the auto-duration time (roughly the mean "
+                "time it takes for the training step to finish) is not enough to finish"
+                " even a single episode. Your current mean training iteration time is "
+                f"{train_mean_time}sec. Try setting the min iteration time to a higher "
+                "value via the `config.reporting(min_time_s_per_iteration=...)` OR you "
+                "can also set `config.evaluation_force_reset_envs_before_iteration` to "
+                "False. However, keep in mind that then the evaluation results may "
+                "contain some episode stats generated with earlier weights versions."
+            )
+
+        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
+        return {"sampler_results": episode_summary}, env_steps, agent_steps, all_batches
 
     def _evaluate_with_fixed_duration(self):
         # How many episodes/timesteps do we need to run?
@@ -1337,21 +1350,35 @@ class Algorithm(Trainable, AlgorithmBase):
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
 
-        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return (
-            {
-                "sampler_results": summarize_episodes(
-                    all_metrics,
-                    all_metrics,
-                    keep_custom_metrics=(
-                        self.evaluation_config.keep_per_episode_custom_metrics
-                    ),
-                )
-            },
-            env_steps,
-            agent_steps,
-            all_batches,
+        episode_summary = summarize_episodes(
+            all_metrics,
+            all_metrics,
+            keep_custom_metrics=(
+                self.evaluation_config.keep_per_episode_custom_metrics
+            ),
         )
+
+        # Warn if results are empty, it could be that this is because the eval timesteps
+        # are not enough to run through one full episode.
+        if (
+            self.config.evaluation_duration_unit == "timesteps"
+            and episode_summary["episodes_this_iter"] == 0
+        ):
+            logger.warning(
+                "This evaluation iteration resulted in an empty set of episode summary "
+                "results! It's possible that your configured duration timesteps are not"
+                " enough to finish even a single episode. Your have configured "
+                f"{self.config.evaluation_duration}ts. Try increasing this value via "
+                "the `config.evaluation(evaluation_duration=...)` OR change the unit to"
+                " 'episodes' via `config.evaluation(evaluation_duration_unit='episodes'"
+                ")` OR you can also set `config.evaluation_force_reset_envs_before_"
+                "iteration` to False. However, keep in mind that then the evaluation "
+                "results may contain some episode stats generated with earlier weights "
+                "versions."
+            )
+
+        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
+        return {"sampler_results": episode_summary}, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
