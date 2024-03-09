@@ -695,6 +695,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
+  // If Node Manager already knows this (node, worker) is dead, return false.
+  // Otherwise returns true.
+  bool IsOwnerAlive(const WorkerID &owner_worker_id, const NodeID &owner_node_id) const;
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
