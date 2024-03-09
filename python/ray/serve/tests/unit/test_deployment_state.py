@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -2010,12 +2011,25 @@ def test_basic_autoscaling(mock_deployment_state_manager, target_capacity_direct
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
 
-    for replica in ds._replicas.get():
-        dsm.record_autoscaling_metrics(
-            replica._actor.replica_id,
-            2 if target_capacity_direction == "up" else 0,
-            None,
+    req_per_replica = 2 if target_capacity_direction == "up" else 0
+    replicas = ds._replicas.get()
+    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+        dsm.record_handle_metrics(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            handle_id="random",
+            queued_requests=0,
+            running_requests={
+                replica._actor.replica_id: req_per_replica for replica in replicas
+            },
+            send_timestamp=timer.time(),
         )
+    else:
+        for replica in replicas:
+            dsm.record_autoscaling_metrics(
+                replica_id=replica._actor.replica_id,
+                window_avg=req_per_replica,
+                send_timestamp=timer.time(),
+            )
 
     # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
     dsm.update()
@@ -2104,52 +2118,58 @@ def test_downscaling_reclaiming_starting_replicas_first(
 
     dsm.deploy(TEST_DEPLOYMENT_ID, info)
 
-    deployment_state: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     # status=UPDATING, status_trigger=DEPLOY
     dsm.update()
-    check_counts(deployment_state, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
-    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
+    assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
-        deployment_state.curr_status_info.status_trigger
+        ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
 
     # Set replicas as SUCCESSFUL and check statuses
-    for replica in deployment_state._replicas.get():
+    for replica in ds._replicas.get():
         replica._actor.set_ready()
 
     # status=HEALTHY, status_trigger=DEPLOY
     dsm.update()
-    check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
-    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert (
-        deployment_state.curr_status_info.status_trigger
+        ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
 
     # Fetch all currently running replicas
-    running_replicas = deployment_state._replicas.get(states=[ReplicaState.RUNNING])
-
-    for replica in deployment_state._replicas.get():
-        dsm.record_autoscaling_metrics(replica._actor.replica_id, 2, timer.time())
+    running_replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
+    replicas = ds._replicas.get()
+    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+        dsm.record_handle_metrics(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            handle_id="random",
+            queued_requests=0,
+            running_requests={replica._actor.replica_id: 2 for replica in replicas},
+            send_timestamp=timer.time(),
+        )
+    else:
+        for replica in replicas:
+            dsm.record_autoscaling_metrics(replica._actor.replica_id, 2, timer.time())
 
     # status=UPSCALING, status_trigger=AUTOSCALE
     dsm.update()
     check_counts(
-        deployment_state,
+        ds,
         total=6,
         by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STARTING, 3, None)],
     )
-    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
-    assert (
-        deployment_state.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.AUTOSCALING
-    )
+    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
 
     # Set replicas as PENDING_INITIALIZATION: actors have been successfully allocated,
     # but replicas are still pending successful initialization
-    for replica in deployment_state._replicas.get():
+    for replica in ds._replicas.get():
         replica._actor.set_status(target_startup_status)
 
     # Advance timer by 60 seconds; this should exceed the slow startup
@@ -2158,16 +2178,13 @@ def test_downscaling_reclaiming_starting_replicas_first(
     timer.advance(60)
     dsm.update()
     check_counts(
-        deployment_state,
+        ds,
         total=6,
         by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STARTING, 3, None)],
     )
 
-    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
-    assert (
-        deployment_state.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.AUTOSCALING
-    )
+    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
 
     if target_startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
         expected_message = (
@@ -2188,39 +2205,44 @@ def test_downscaling_reclaiming_starting_replicas_first(
     else:
         raise RuntimeError(f"Got unexpected status: {target_startup_status}")
 
-    assert expected_message == deployment_state.curr_status_info.message
+    assert expected_message == ds.curr_status_info.message
 
     # Now, trigger downscaling attempting to reclaim half (3) of the replicas
-    for replica in deployment_state._replicas.get(states=[ReplicaState.RUNNING]):
-        dsm.record_autoscaling_metrics(replica._actor.replica_id, 1, timer.time())
+    replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
+    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+        dsm.record_handle_metrics(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            handle_id="random",
+            queued_requests=0,
+            running_requests={replica._actor.replica_id: 1 for replica in replicas},
+            send_timestamp=timer.time(),
+        )
+    else:
+        for replica in replicas:
+            dsm.record_autoscaling_metrics(replica._actor.replica_id, 1, timer.time())
 
     # status=DOWNSCALING, status_trigger=AUTOSCALE
     dsm.update()
     check_counts(
-        deployment_state,
+        ds,
         total=6,
         by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STOPPING, 3, None)],
     )
 
     # Assert that no RUNNING replicas are being stopped
-    assert running_replicas == deployment_state._replicas.get(
-        states=[ReplicaState.RUNNING]
-    )
+    assert running_replicas == ds._replicas.get(states=[ReplicaState.RUNNING])
 
-    assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
-    assert (
-        deployment_state.curr_status_info.status_trigger
-        == DeploymentStatusTrigger.AUTOSCALING
-    )
+    assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
+    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
 
-    for replica in deployment_state._replicas.get():
+    for replica in ds._replicas.get():
         replica._actor.set_done_stopping()
 
     # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
     dsm.update()
-    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert (
-        deployment_state.curr_status_info.status_trigger
+        ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.DOWNSCALE_COMPLETED
     )
 
@@ -2236,7 +2258,7 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
     """
 
     # Create deployment state manager
-    create_dsm, _, _ = mock_deployment_state_manager
+    create_dsm, timer, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
 
     # Deploy deployment with 3 replicas
@@ -2269,8 +2291,19 @@ def test_update_autoscaling_config(mock_deployment_state_manager):
     )
 
     # Num ongoing requests = 1, status should remain HEALTHY
-    for replica in ds._replicas.get():
-        dsm.record_autoscaling_metrics(replica._actor.replica_id, 1, None)
+    replicas = ds._replicas.get()
+    if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+        dsm.record_handle_metrics(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            handle_id="random",
+            queued_requests=0,
+            running_requests={replica._actor.replica_id: 1 for replica in replicas},
+            send_timestamp=timer.time(),
+        )
+    else:
+        for replica in replicas:
+            dsm.record_autoscaling_metrics(replica._actor.replica_id, 1, timer.time())
+
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert (

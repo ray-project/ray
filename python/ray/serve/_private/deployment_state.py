@@ -192,7 +192,7 @@ _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 @dataclass
 class HandleRequestMetric:
     queued_requests: float
-    running_requests: Dict[str, float]
+    running_requests: Dict[ReplicaID, float]
     timestamp: float
 
 
@@ -2320,7 +2320,7 @@ class DeploymentState:
         self,
         handle_id: str,
         queued_requests: float,
-        running_requests: Dict[str, float],
+        running_requests: Dict[ReplicaID, float],
         send_timestamp: float,
     ) -> None:
         """Update request metric for a specific handle."""
@@ -2418,7 +2418,7 @@ class DeploymentStateManager:
         deployment_id: str,
         handle_id: str,
         queued_requests: float,
-        running_requests: Dict[str, float],
+        running_requests: Dict[ReplicaID, float],
         send_timestamp: float,
     ):
         # NOTE(zcin): There can be handles to deleted deployments still
