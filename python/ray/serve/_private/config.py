@@ -195,7 +195,7 @@ class DeploymentConfig(BaseModel):
             )
             return
 
-        max_batch_sizes = set([0])
+        max_batch_sizes = {0}
         for method_name in dir(user_callable):
             method = getattr(user_callable, method_name)
             if callable(method):
