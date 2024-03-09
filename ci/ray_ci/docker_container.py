@@ -76,13 +76,6 @@ class DockerContainer(LinuxContainer):
         return [sha_tag]
 
     def _get_canonical_tag(self) -> str:
-        """
-        Get canonical tag, which is the first tag in the list of tags.
-
-        Args:
-            external: If True, return canonical tag from external image tags.
-                If False, return from the internal image tags.
-        """
         # The canonical tag is the first tag in the list of tags. The list of tag is
         # never empty because the image is always tagged with at least the sha tag.
         #
