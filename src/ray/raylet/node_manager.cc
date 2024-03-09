@@ -1719,9 +1719,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   const auto &caller_addr = request.resource_spec().caller_address();
-  if (!IsOwnerAlive(WorkerID::FromBinary(caller_addr.worker_id()),
-                    NodeID::FromBinary(caller_addr.raylet_id()))) {
-    RAY_LOG(WARNING) << "Caller " << caller_addr.raylet_id() << " is dead. Skip leasing.";
+  const auto caller_worker = WorkerID::FromBinary(caller_addr.worker_id());
+  const auto caller_node = NodeID::FromBinary(caller_addr.raylet_id());
+  if (!IsOwnerAlive(caller_worker, caller_node)) {
+    RAY_LOG(INFO) << "Caller is dead. worker = " << caller_worker
+                  << ", node = " << caller_node << " Skip leasing.";
     reply->set_canceled(true);
     reply->set_failure_type(rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
     reply->set_scheduling_failure_message(
