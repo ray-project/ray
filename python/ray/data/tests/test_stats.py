@@ -12,6 +12,14 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.backpressure_policy import (
+    ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+)
+from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
+    BackpressurePolicy,
+)
+from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.stats import (
     DatasetStats,
     StatsManager,
@@ -707,6 +715,9 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
     Suboperator N RandomShuffleReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
@@ -717,6 +728,9 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
 Operator N Repartition: executed in T
 
@@ -729,6 +743,9 @@ Operator N Repartition: executed in T
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
     Suboperator N RepartitionReduce: N tasks executed, N blocks produced
     * Remote wall time: T min, T max, T mean, T total
@@ -739,6 +756,9 @@ Operator N Repartition: executed in T
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Operator throughput:
+        * Ray Data throughput: N rows/s
+        * Estimated single node throughput: N rows/s
 
 Dataset throughput:
     * Ray Data throughput: N rows/s
@@ -1134,6 +1154,35 @@ Dataset throughput:
     )
 
     assert stats == ds._write_ds.stats()
+
+
+def test_time_backpressure(ray_start_regular_shared, restore_data_context):
+    class TimedBackpressurePolicy(BackpressurePolicy):
+        COUNT = 0
+
+        def __init__(self, topology: "Topology"):
+            pass
+
+        def can_add_input(self, op: "PhysicalOperator") -> bool:
+            if TimedBackpressurePolicy.COUNT > 1:
+                time.sleep(0.01)
+                return True
+            else:
+                TimedBackpressurePolicy.COUNT += 1
+                return False
+
+    context = DataContext.get_current()
+    context.verbose_stats_logs = True
+    context.set_config(
+        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY, [TimedBackpressurePolicy]
+    )
+
+    def f(x):
+        time.sleep(0.01)
+        return x
+
+    ds = ray.data.range(10000).map_batches(f).materialize()
+    assert ds._plan.stats().extra_metrics["task_submission_backpressure_time"] > 0
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

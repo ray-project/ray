@@ -32,7 +32,7 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaScheduler,
 )
-from ray.serve._private.utils import inside_ray_client_context
+from ray.serve._private.utils import FakeObjectRef, inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -481,7 +481,7 @@ class Router:
                     callback = partial(
                         self._metrics_manager.process_finished_request, replica_id
                     )
-                    if isinstance(ref, ray.ObjectRef):
+                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
                         ref._on_completed(callback)
                     else:
                         ref.completed()._on_completed(callback)
