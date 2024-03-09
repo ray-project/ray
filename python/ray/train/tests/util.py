@@ -4,7 +4,7 @@ import tempfile
 from typing import Any, Dict, Optional, Type
 
 import ray.cloudpickle as ray_pickle
-from ray.train import Checkpoint
+from ray.train import Checkpoint, SyncConfig
 from ray.train._internal.storage import StorageContext
 
 
@@ -29,6 +29,7 @@ def mock_storage_context(
     exp_name: str = "exp_name",
     storage_path: Optional[str] = None,
     storage_context_cls: Type = StorageContext,
+    sync_config: Optional[SyncConfig] = None,
 ) -> StorageContext:
     storage_path = storage_path or tempfile.mkdtemp()
     exp_name = exp_name
@@ -38,6 +39,7 @@ def mock_storage_context(
         storage_path=storage_path,
         experiment_dir_name=exp_name,
         trial_dir_name=trial_name,
+        sync_config=sync_config,
     )
     # Patch the default /tmp/ray/session_* so we don't require ray
     # to be initialized in unit tests.

@@ -146,19 +146,22 @@ class _ClassTrainableSometimesFailing(Trainable):
 class _FailOnStats(Callback):
     """Fail when at least num_trials exist and num_finished have finished."""
 
-    def __init__(self, num_trials: int, num_finished: int = 0, delay: int = 1):
+    def __init__(self, num_trials: int, num_finished: int = 0, delay_s: int = 0):
         self.num_trials = num_trials
         self.num_finished = num_finished
-        self.delay = delay
+        self.delay_s = delay_s
         self.fail_at = None
 
     def on_step_begin(self, iteration: int, trials: list, **info):
-        if self.fail_at and iteration >= self.fail_at:
-            print(
-                "Actually failing after delay:",
-                [(t.status, t.last_result.get("it")) for t in trials],
-            )
-            raise RuntimeError("Failing")
+        if self.fail_at:
+            if time.monotonic() >= self.fail_at:
+                print(
+                    "Actually failing after delay:",
+                    [(t.status, t.last_result.get("it")) for t in trials],
+                )
+                raise RuntimeError("Failing")
+
+            return
 
         if len(trials) < self.num_trials:
             return
@@ -167,9 +170,9 @@ class _FailOnStats(Callback):
             len([t for t in trials if t.status in [Trial.TERMINATED, Trial.ERROR]])
             >= self.num_finished
         ):
-            self.fail_at = iteration + self.delay
+            self.fail_at = time.monotonic() + self.delay_s
             print(
-                f"Triggering fail in {self.delay} iterations:",
+                f"Triggering fail in {self.delay_s} seconds:",
                 [(t.status, t.last_result.get("it")) for t in trials],
             )
         else:
@@ -333,7 +336,7 @@ def test_tuner_restore_restart_errored(ray_start_2_cpus, tmpdir):
 
 def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     """Resuming unfinished trials should pick up existing state"""
-    monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
+    monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0.1")
     # Make sure that only one trial is pending at a time to prevent
     # the trial order from getting shuffled around.
     monkeypatch.setenv("TUNE_MAX_PENDING_TRIALS_PG", "1")
@@ -355,6 +358,9 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
             ]
         ),
     }
+    # These tests need driver syncing to happen before the crash happens
+    # so that they can pick up from the *exact* state it left off at.
+    # We do this by failing after a delay of 0.3s > TUNE_GLOBAL_CHECKPOINT_S
     tuner = Tuner(
         _train_fn_sometimes_failing,
         tune_config=TuneConfig(num_samples=1),
@@ -362,7 +368,7 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
             name="test_tuner_resume_unfinished",
             storage_path=str(tmpdir),
             failure_config=FailureConfig(fail_fast=False),
-            callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
+            callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay_s=0.3)],
         ),
         param_space=param_space,
     )
@@ -399,7 +405,7 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
 
 def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
     """Not resuming unfinished trials (but only errored and pending) should work"""
-    monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
+    monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0.1")
 
     fail_marker = tmpdir / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
@@ -414,7 +420,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir, monkeypatch):
             name="test_tuner_resume_errored_only",
             storage_path=str(tmpdir),
             failure_config=FailureConfig(fail_fast=False),
-            callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
+            callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay_s=0.3)],
         ),
         param_space={
             # First trial succeeds, second hangs, third fails, fourth hangs.
@@ -765,8 +771,7 @@ def test_tuner_restore_from_moved_experiment_path(
     restore_path = str(new_storage_path / new_exp_name)
     results = ResultGrid(ExperimentAnalysis(restore_path))
 
-    # TODO(justinvyu): [populate_exception] for storage_path != None
-    # assert len(results.errors) == 1
+    assert len(results.errors) == 1
     training_iteration = results[0].metrics["training_iteration"]
     assert (
         training_iteration == 1

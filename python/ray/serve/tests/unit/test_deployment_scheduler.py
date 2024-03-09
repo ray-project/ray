@@ -1,7 +1,7 @@
 import random
 import sys
-from copy import copy
-from typing import Dict, List, Optional
+from collections import defaultdict
+from typing import List
 from unittest.mock import Mock
 
 import pytest
@@ -18,7 +18,11 @@ from ray.serve._private.deployment_scheduler import (
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
-from ray.serve._private.test_utils import MockClusterNodeInfoCache
+from ray.serve._private.test_utils import (
+    MockActorClass,
+    MockClusterNodeInfoCache,
+    MockPlacementGroup,
+)
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -28,44 +32,6 @@ from ray.util.scheduling_strategies import (
 
 def dummy():
     pass
-
-
-class MockActorHandle:
-    def __init__(self, **kwargs):
-        self._options = kwargs
-
-
-class MockActorClass:
-    def __init__(self):
-        self._init_args = ()
-        self._options = dict()
-
-    def options(self, **kwargs):
-        res = copy(self)
-
-        for k, v in kwargs.items():
-            res._options[k] = v
-
-        return res
-
-    def remote(self, *args) -> MockActorHandle:
-        return MockActorHandle(init_args=args, **self._options)
-
-
-class MockPlacementGroup:
-    def __init__(
-        self,
-        bundles: List[Dict[str, float]],
-        strategy: str = "PACK",
-        name: str = "",
-        lifetime: Optional[str] = None,
-        _soft_target_node_id: Optional[str] = None,
-    ):
-        self._bundles = bundles
-        self._strategy = strategy
-        self._name = name
-        self._lifetime = lifetime
-        self._soft_target_node_id = _soft_target_node_id
 
 
 def get_random_resources(n: int) -> List[Resources]:
@@ -217,6 +183,7 @@ class TestResources:
 
 def test_deployment_scheduling_info():
     info = DeploymentSchedulingInfo(
+        deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
         actor_resources=Resources.from_ray_resource_dict({"CPU": 2, "GPU": 1}),
     )
@@ -226,6 +193,7 @@ def test_deployment_scheduling_info():
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
+        deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
         actor_resources=Resources.from_ray_resource_dict({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
@@ -240,6 +208,7 @@ def test_deployment_scheduling_info():
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
+        deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
         actor_resources=Resources.from_ray_resource_dict({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
@@ -282,7 +251,12 @@ def test_get_available_resources_per_node():
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
     assert scheduler._get_available_resources_per_node().get("node1") == Resources(
-        **{"GPU": 9, "CPU": 29, "memory": 1024}
+        **{
+            "GPU": 9,
+            "CPU": 29,
+            "memory": 1024,
+            f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}b:a": 0.75,
+        }
     )
 
     # Similarly when a replica is marked as running, the resources it
@@ -291,7 +265,12 @@ def test_get_available_resources_per_node():
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
     assert scheduler._get_available_resources_per_node().get("node1") == Resources(
-        **{"GPU": 8, "CPU": 26, "memory": 1024}
+        **{
+            "GPU": 8,
+            "CPU": 26,
+            "memory": 1024,
+            f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}b:a": 0.5,
+        }
     )
 
     # Get updated info from GCS that available memory has dropped,
@@ -302,7 +281,12 @@ def test_get_available_resources_per_node():
         "node1", {"GPU": 10, "CPU": 32, "memory": 256}
     )
     assert scheduler._get_available_resources_per_node().get("node1") == Resources(
-        **{"GPU": 8, "CPU": 26, "memory": 256}
+        **{
+            "GPU": 8,
+            "CPU": 26,
+            "memory": 256,
+            f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}b:a": 0.5,
+        }
     )
 
 
@@ -787,6 +771,63 @@ class TestCompactScheduling:
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
             assert scheduling_strategy.node_id == "node1"
             assert call.kwargs == {"placement_group": None}
+
+    def test_max_replicas_per_node(self):
+        """Test that at most `max_replicas_per_node` number of replicas
+        are scheduled onto a node even if that node has more resources.
+        """
+
+        d_id1 = DeploymentID(name="deployment1")
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Should try to schedule on node1 to minimize fragmentation
+        cluster_node_info_cache.add_node("node1", {"CPU": 20})
+        cluster_node_info_cache.add_node("node2", {"CPU": 21})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(  # noqa
+                *args, **kwargs
+            ),
+        )
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1,
+            ReplicaConfig.create(
+                dummy, max_replicas_per_node=4, ray_actor_options={"num_cpus": 2}
+            ),
+        )
+
+        state = defaultdict(int)
+
+        def on_scheduled(actor_handle, placement_group):
+            scheduling_strategy = actor_handle._options["scheduling_strategy"]
+            if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
+                state[scheduling_strategy.node_id] += 1
+            elif isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+                state[placement_group._soft_target_node_id] += 1
+
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(
+                            unique_id=f"replica{i}", deployment_id=d_id1
+                        ),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 2},
+                        max_replicas_per_node=4,
+                        actor_options={"name": "random"},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                    for i in range(5)
+                ]
+            },
+            downscales={},
+        )
+        assert state["node1"] == 4
+        assert state["node2"] == 1
 
 
 if __name__ == "__main__":
