@@ -149,12 +149,6 @@ class Deployment:
         ):
             docs_path = replica_config.deployment_def.__fastapi_docs_path__
 
-        print(
-            "deployment init",
-            deployment_config._max_batch_size,
-            deployment_config,
-            replica_config.deployment_def,
-        )
         self._name = name
         self._version = version
         self._deployment_config = deployment_config
