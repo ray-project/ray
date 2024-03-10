@@ -8,6 +8,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -23,6 +24,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -79,6 +81,7 @@ steps:
       - raycudabase
       - raycpubase
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -104,6 +107,7 @@ steps:
       - raycpubase-aarch64
     job_env: forge-aarch64
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -124,5 +128,6 @@ steps:
       - ray-mlcudabase
       - ray-mlcpubase
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"

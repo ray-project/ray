@@ -11,6 +11,7 @@ steps:
     label: "wanda: corebuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
     matrix:
+      - "3.8"
       - "3.10"
     env:
       PYTHON: "{{matrix}}"
@@ -20,6 +21,7 @@ steps:
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -57,7 +59,7 @@ steps:
     depends_on: corebuild-multipy
     matrix:
       setup:
-        python: ["3.9"]
+        python: ["3.8"]
         worker_id: ["0", "1", "2", "3"]
 
   - label: ":ray: core: redis tests"
@@ -254,6 +256,7 @@ steps:
     depends_on:
       - minbuild-core
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
