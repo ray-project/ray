@@ -75,6 +75,10 @@ class SkOptSearch(Searcher):
         convert_to_python: SkOpt outputs numpy primitives (e.g.
             ``np.int64``) instead of Python types. If this setting is set
             to ``True``, the values will be converted to Python primitives.
+        optimizer_kwargs: These Parameters will only be passed to the SkOpt
+            optimizer only if the `optimizer` argument of `SkOptSearch` is
+            set to `None`. (See ``skopt.optimizer.Optimizer`` for details
+            of Parameters)
 
     Tune automatically converts search spaces to SkOpt's format:
 
@@ -96,10 +100,16 @@ class SkOptSearch(Searcher):
             }
         ]
 
+        gp_optimizer_kwargs = {
+            "base_estimator": "GP",
+            "acq_func": "gp_hedge",
+        }
+
         skopt_search = SkOptSearch(
             metric="mean_loss",
             mode="min",
-            points_to_evaluate=current_best_params)
+            points_to_evaluate=current_best_params,
+            optimizer_kwargs=gp_optimizer_kwargs)
 
         tuner = tune.Tuner(
             trainable_function,
@@ -145,6 +155,7 @@ class SkOptSearch(Searcher):
         points_to_evaluate: Optional[List[Dict]] = None,
         evaluated_rewards: Optional[List] = None,
         convert_to_python: bool = True,
+        optimizer_kwargs: Optional[Dict] = None,
     ):
         assert sko is not None, (
             "skopt must be installed! "
@@ -195,6 +206,10 @@ class SkOptSearch(Searcher):
         self._convert_to_python = convert_to_python
 
         self._skopt_opt = optimizer
+        if optimizer_kwargs is None:
+            self._skopt_opt_kwargs = {}
+        else:
+            self._skopt_opt_kwargs = optimizer_kwargs
         if self._skopt_opt or self._space:
             self._setup_skopt()
 
@@ -221,7 +236,9 @@ class SkOptSearch(Searcher):
                     "pass a valid `space` parameter."
                 )
 
-            self._skopt_opt = sko.Optimizer(self._parameter_ranges)
+            self._skopt_opt = sko.Optimizer(
+                self._parameter_ranges, **self._skopt_opt_kwargs
+            )
 
         if self._points_to_evaluate and self._evaluated_rewards:
             skopt_points = [
