@@ -18,6 +18,7 @@ from scheduler_constant import *
 from ray.util.state import get_task
 import random
 import os
+import subprocess
 
 class Controller():
     def __init__(self):
@@ -43,8 +44,19 @@ class Controller():
         # print("s3 parameter: ",user_task.status[ASSIGN_NODE], user_task.spec[HPC_DIR],user_task.spec['s3'],user_task.spec[BUCKET_NAME])
         # print("s3 Object Key:",user_task.spec[OBJECT_KEY])
         # schedule to this task to a node
+
+        print("[RECONCILE TASK] user task:", user_task)
+        # if user_task.status[BIND_TASK_STATUS] is not None:
+        #     task_status = get_task(user_task.status[BIND_TASK_ID])
+        #     if task_status == None:
+        #         return
+        #     print("checking ray task status: ", task_status)
+
+
         if user_task.status[ASSIGN_NODE] is None:
             node_id = self.schedule(user_task)
+            if node_id is None:
+                return
             user_task.status[ASSIGN_NODE] = node_id
             user_task.status[USER_TASK_STATUS] = PENDING
             # print("reconcile: assign to node", user_task.spec[USER_TASK_ID], node_id)
@@ -59,10 +71,13 @@ class Controller():
             return
         
         # Check if data is sent and label is binded
+
         elif user_task.status[BIND_TASK_STATUS] == RUNNING:
             task_status = get_task(user_task.status[BIND_TASK_ID])
             if task_status == None:
                 return
+            print("[BIND TASK RUNNING] user task status: ", user_task)
+            print("[BIND TASK RUNNING] ray task status: ", task_status)
             # print(task_status)
             # The task_status is retrieved from the Ray API, and the end/start time may sometimes not be updated yet even though the state is FINISHED.
             if task_status[STATE] == FINISHED and task_status[END_TIME] != None and task_status[START_TIME] != None:
@@ -79,7 +94,8 @@ class Controller():
             task_status = get_task(user_task.spec[USER_TASK_ID])
             if task_status == None:
                 return
-            print(task_status)
+            print("[BIND TASK FINISHED] user task status: ", user_task)
+            print("[BIND TASK FINISHED] ray task status: ", task_status)
             # The task_status is retrieved from the Ray API, and the end/start time may sometimes not be updated yet even though the state is FINISHED.
             if task_status[STATE] == RUNNING and task_status[START_TIME] != None:
                 user_task.status[USER_TASK_START_TIME] = task_status[START_TIME]
@@ -154,8 +170,38 @@ class Controller():
                     ray.get_runtime_context().set_label({label: label})
 
                 else:
-                    os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -r -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
-                    ray.get_runtime_context().set_label({label: label})
+                    # os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -r -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
+                    # ray.get_runtime_context().set_label({label: label})
+
+                    # make rsync fault tolerant
+                    max_attempts = 3
+                    attempts = 0
+                    while attempts < max_attempts:
+                        try:
+                            result = subprocess.run(
+                                ["rsync", "-e", "ssh -o StrictHostKeyChecking=no", "--mkpath", "-r", "-a", "-P",
+                                f"{NODE_USER_NAME}@{DATA_IP}:{label}", label],
+                                check=True
+                            )
+                            if result.returncode == 0:
+                                ray.get_runtime_context().set_label({label: label})
+                                break
+                            else:
+                                print(f"rsync failed with return code {result.returncode}")
+                        except subprocess.CalledProcessError as e:
+                            print(f"rsync command failed with error: {e}")
+                        attempts += 1
+                        if attempts < max_attempts:
+                            print(f"Retrying rsync (attempt {attempts + 1} of {max_attempts})")
+                            time.sleep(attempts)
+                        else:
+                            print(f"rsync failed after {max_attempts} attempts")
+                    # write the final attempt to log in /tmp/rsync_log.txt, append to it
+                    is_failed = attempts == max_attempts
+                    status_log = "failed" if is_failed else "succeeded"
+                    log_file_path = "/tmp/rsync_log.txt"
+                    with open(log_file_path, "a") as f:
+                        f.write(f"rsync {label} to {DATA_IP} {status_log} after {attempts} attempts\n")
             return FINISHED
 
         task_id = bind_label.options(
@@ -243,6 +289,13 @@ class Controller():
                             best_node = node_id
         
         if best_node == None or (node_info[best_node][PENDING_TASKS_COUNT] + 1) > MAX_PENDING_TASK:
+            if best_node is None:
+                print("[FIND BEST NODE] No available node found")
+                # print all node's available resources for debugging
+                for node_id, node in node_info.items():
+                    print("[FIND BEST NODE] Check Node {}: CPU: {}".format(node_id, node[AVAILABLE_CPU]))
+            else:
+                print("[FIND BEST NODE] Node {} has too many pending tasks".format(best_node))
             return None
 
         user_task.status[USER_TASK_ESTIMATED_START_TIME] = earliest_time
