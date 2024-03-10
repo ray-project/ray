@@ -1,9 +1,18 @@
 import os
+import socket
 
-HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", None) 
 
-if HEAD_NODE_IP is None:
-    raise ValueError("to run experiments, environemtn HEAD_NODE_IP must be set")
+hostname = socket.gethostname()
+IPAddr = socket.gethostbyname(hostname)
+
+HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", IPAddr) 
+
+# if HEAD_NODE_IP is None:
+#     raise ValueError("to run experiments, environemtn HEAD_NODE_IP must be set")
+
+# HEAD_NODE_IP should not be localhost
+if HEAD_NODE_IP == "localhost" or HEAD_NODE_IP == "127.0.0.1" or HEAD_NODE_IP == "":
+    raise ValueError("HEAD_NODE_IP should not be localhost or empty, try set environment variable HEAD_NODE_IP")
 
 SERVER_IP = "http://" + HEAD_NODE_IP + ":8000"
 # print(SERVER_IP)
