@@ -937,43 +937,44 @@ class Algorithm(Trainable, AlgorithmBase):
         # We will use a user provided evaluation function.
         if self.config.custom_evaluation_function:
             eval_results = self._evaluate_with_custom_eval_function()
-        # There is no eval WorkerSet -> Run on local EnvRunner.
-        elif self.evaluation_workers is None:
-            (
-                eval_results,
-                env_steps,
-                agent_steps,
-                batches,
-            ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
-        # There is only a local eval EnvRunner -> Run on that.
-        elif self.evaluation_workers.num_healthy_remote_workers() == 0:
-            (
-                eval_results,
-                env_steps,
-                agent_steps,
-                batches,
-            ) = self._evaluate_on_local_env_runner(
-                self.evaluation_workers.local_worker()
-            )
-        # There are healthy remote evaluation workers -> Run on these.
-        elif self.evaluation_workers.num_healthy_remote_workers() > 0:
-            if self.config.evaluation_duration == "auto":
-                (
-                    eval_results,
-                    env_steps,
-                    agent_steps,
-                    all_batches,
-                ) = self._evaluate_with_auto_duration(parallel_train_future)
-            else:
-                (
-                    eval_results,
-                    env_steps,
-                    agent_steps,
-                    all_batches,
-                ) = self._evaluate_with_fixed_duration()
-        # Can't find a good way to run this evaluation -> Wait for next iteration.
         else:
-            pass
+            # There is no eval WorkerSet -> Run on local EnvRunner.
+            if self.evaluation_workers is None:
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    batches,
+                ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
+            # There is only a local eval EnvRunner -> Run on that.
+            elif self.evaluation_workers.num_healthy_remote_workers() == 0:
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    batches,
+                ) = self._evaluate_on_local_env_runner(
+                    self.evaluation_workers.local_worker()
+                )
+            # There are healthy remote evaluation workers -> Run on these.
+            elif self.evaluation_workers.num_healthy_remote_workers() > 0:
+                if self.config.evaluation_duration == "auto":
+                    (
+                        eval_results,
+                        env_steps,
+                        agent_steps,
+                        all_batches,
+                    ) = self._evaluate_with_auto_duration(parallel_train_future)
+                else:
+                    (
+                        eval_results,
+                        env_steps,
+                        agent_steps,
+                        all_batches,
+                    ) = self._evaluate_with_fixed_duration()
+            # Can't find a good way to run this evaluation -> Wait for next iteration.
+            else:
+                pass
 
         # TODO: Don't dump sampler results into top-level.
         eval_results = dict({"sampler_results": eval_results}, **eval_results)
@@ -1037,7 +1038,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
         return eval_results
 
-    def _evaluate_on_local_env_runner(self, env_runner: EnvRunner) -> ResultDict:
+    def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
             raise ValueError(
                 "Cannot evaluate on a local worker (wither there is no evaluation "
@@ -1079,19 +1080,13 @@ class Algorithm(Trainable, AlgorithmBase):
 
         metrics = env_runner.get_metrics()
 
-        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return (
-            {
-                "sampler_results": summarize_episodes(
-                    metrics,
-                    metrics,
-                    keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
-                ),
-            },
-            env_steps,
-            agent_steps,
-            all_batches,
+        episode_summary = summarize_episodes(
+            metrics,
+            metrics,
+            keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
         )
+
+        return episode_summary, env_steps, agent_steps, all_batches
 
     def _evaluate_with_auto_duration(self, parallel_train_future):
         logger.info(
@@ -1222,8 +1217,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "contain some episode stats generated with earlier weights versions."
             )
 
-        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return {"sampler_results": episode_summary}, env_steps, agent_steps, all_batches
+        return episode_summary, env_steps, agent_steps, all_batches
 
     def _evaluate_with_fixed_duration(self):
         # How many episodes/timesteps do we need to run?
@@ -1378,8 +1372,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "versions."
             )
 
-        # TODO (sven): Define a more unified naming and nesting schema for all metrics.
-        return {"sampler_results": episode_summary}, env_steps, agent_steps, all_batches
+        return episode_summary, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
