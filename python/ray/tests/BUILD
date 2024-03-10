@@ -67,6 +67,7 @@ py_test_module_list(
     "test_global_gc.py",
     "test_job.py",
     "test_memstat.py",
+    "test_kill_subprocesses.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "no_windows", "team:core"],
@@ -142,14 +143,15 @@ py_test_module_list(
     "accelerators/test_nvidia_gpu.py",
     "accelerators/test_hpu.py",
     "accelerators/test_intel_gpu.py",
+    "accelerators/test_amd_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
     "test_nested_task.py",
     "test_metrics.py",
     "test_task_events.py",
-    "test_worker_state.py",
     "test_task_events_2.py",
+    "test_task_events_3.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -185,6 +187,7 @@ py_test_module_list(
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
+    "test_worker_state.py",
     "test_multi_tenancy.py",
     "test_namespace.py",
     "test_scheduling.py",
@@ -196,6 +199,7 @@ py_test_module_list(
     "test_streaming_generator_3.py",
     "test_streaming_generator_4.py",
     "test_streaming_generator_backpressure.py",
+    "test_streaming_generator_regression.py",
     "test_scheduling_performance.py",
     "test_implicit_resource.py",
   ],
@@ -270,7 +274,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
-    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
@@ -331,9 +334,19 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
+    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_autoscaler.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -345,15 +358,6 @@ py_test_module_list(
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
-    "test_autoscaler.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -465,8 +469,16 @@ py_test(
 
 py_test_module_list(
   files = [
-    "test_tqdm.py",
     "test_out_of_disk_space.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "tmpfs", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_tqdm.py",
     "test_failure_4.py",
     "test_iter.py",
     "test_object_spilling.py",

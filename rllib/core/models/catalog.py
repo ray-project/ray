@@ -272,6 +272,16 @@ class Catalog:
                 input_dims=observation_space.shape,
                 recurrent_layer_type="lstm",
                 hidden_dim=model_config_dict["lstm_cell_size"],
+                hidden_weights_initializer=model_config_dict[
+                    "lstm_weights_initializer"
+                ],
+                hidden_weights_initializer_config=model_config_dict[
+                    "lstm_weights_initializer_config"
+                ],
+                hidden_bias_initializer=model_config_dict["lstm_bias_initializer"],
+                hidden_bias_initializer_config=model_config_dict[
+                    "lstm_bias_initializer_config"
+                ],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
                 tokenizer_config=cls.get_tokenizer_config(
@@ -297,8 +307,32 @@ class Catalog:
                     input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
+                    hidden_layer_weights_initializer=model_config_dict[
+                        "fcnet_weights_initializer"
+                    ],
+                    hidden_layer_weights_initializer_config=model_config_dict[
+                        "fcnet_weights_initializer_config"
+                    ],
+                    hidden_layer_bias_initializer=model_config_dict[
+                        "fcnet_bias_initializer"
+                    ],
+                    hidden_layer_bias_initializer_config=model_config_dict[
+                        "fcnet_bias_initializer_config"
+                    ],
                     output_layer_dim=encoder_latent_dim,
                     output_layer_activation=output_activation,
+                    output_layer_weights_initializer=model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    output_layer_weights_initializer_config=model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    output_layer_bias_initializer=model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    output_layer_bias_initializer_config=model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
                 )
 
             # input_space is a 3D Box
@@ -317,6 +351,14 @@ class Catalog:
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
+                    cnn_kernel_initializer=model_config_dict["conv_kernel_initializer"],
+                    cnn_kernel_initializer_config=model_config_dict[
+                        "conv_kernel_initializer_config"
+                    ],
+                    cnn_bias_initializer=model_config_dict["conv_bias_initializer"],
+                    cnn_bias_initializer_config=model_config_dict[
+                        "conv_bias_initializer_config"
+                    ],
                 )
             # input_space is a 2D Box
             elif (

@@ -16,7 +16,6 @@ from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -154,27 +153,6 @@ def local_fs():
 
 
 @pytest.fixture(scope="function")
-def mock_block_write_path_provider():
-    class MockBlockWritePathProvider(BlockWritePathProvider):
-        def _get_write_path_for_block(
-            self,
-            base_path,
-            *,
-            filesystem=None,
-            dataset_uuid=None,
-            task_index=None,
-            block_index=None,
-            file_format=None,
-        ):
-            suffix = (
-                f"{task_index:06}_{block_index:06}_{dataset_uuid}.test.{file_format}"
-            )
-            return posixpath.join(base_path, suffix)
-
-    yield MockBlockWritePathProvider()
-
-
-@pytest.fixture(scope="function")
 def base_partitioned_df():
     yield pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
@@ -265,13 +243,11 @@ def assert_base_partitioned_ds():
                 ds_str = ds_str.replace(c, "")
             return ds_str
 
-        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
-            num_input_files,
+        assert "Dataset(num_rows={},schema={})".format(
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(str(ds)), ds
-        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
-            num_input_files,
+        assert "Dataset(num_rows={},schema={})".format(
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(repr(ds)), ds
@@ -337,30 +313,6 @@ def target_max_block_size(request):
     ctx.target_max_block_size = request.param
     yield request.param
     ctx.target_max_block_size = original
-
-
-@pytest.fixture
-def enable_optimizer():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = True
-    ctx.optimizer_enabled = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.optimizer_enabled = original_optimizer
-
-
-@pytest.fixture
-def enable_streaming_executor():
-    ctx = ray.data.context.DataContext.get_current()
-    original_backend = ctx.new_execution_backend
-    use_streaming_executor = ctx.use_streaming_executor
-    ctx.new_execution_backend = True
-    ctx.use_streaming_executor = True
-    yield
-    ctx.new_execution_backend = original_backend
-    ctx.use_streaming_executor = use_streaming_executor
 
 
 # ===== Pandas dataset formats =====
@@ -450,13 +402,14 @@ def disable_pyarrow_version_check():
 
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
-def stage_two_block():
+def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
         "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
+        "udf_time": [1.1, 1.7],
         "node_id": ["a1", "b2"],
         "task_idx": [0, 1],
     }
@@ -472,6 +425,7 @@ def stage_two_block():
         )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
+        block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
         block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
         block_exec_stats.task_idx = block_params["task_idx"][i]

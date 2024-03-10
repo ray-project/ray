@@ -19,7 +19,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
 from dataclasses import dataclass
 
@@ -423,6 +423,40 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     return out
 
 
+def run_string_as_driver_stdout_stderr(
+    driver_script: str, env: Dict = None, encode: str = "utf-8"
+) -> Tuple[str, str]:
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
+
+    Returns:
+        The script's stdout and stderr.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    with proc:
+        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        out_str, err_str = [
+            ray._private.utils.decode(output, encode_type=encode)
+            for output in outputs_bytes
+        ]
+        if proc.returncode:
+            print(out_str)
+            print(err_str)
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args, out_str, err_str
+            )
+        return out_str, err_str
+
+
 def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
@@ -668,7 +702,7 @@ def get_metric_check_condition(
 
     def f():
         for metric_pattern in metrics_to_check:
-            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            _, _, metric_samples = fetch_prometheus([prom_addr])
             for metric_sample in metric_samples:
                 if metric_pattern.matches(metric_sample):
                     break
@@ -1073,7 +1107,7 @@ def fetch_raw_prometheus(prom_addresses):
 
 def fetch_prometheus(prom_addresses):
     components_dict = {}
-    metric_names = set()
+    metric_descriptors = {}
     metric_samples = []
 
     for address in prom_addresses:
@@ -1081,14 +1115,13 @@ def fetch_prometheus(prom_addresses):
             components_dict[address] = set()
 
     for address, response in fetch_raw_prometheus(prom_addresses):
-        for line in response.split("\n"):
-            for family in text_string_to_metric_families(line):
-                for sample in family.samples:
-                    metric_names.add(sample.name)
-                    metric_samples.append(sample)
-                    if "Component" in sample.labels:
-                        components_dict[address].add(sample.labels["Component"])
-    return components_dict, metric_names, metric_samples
+        for metric in text_string_to_metric_families(response):
+            for sample in metric.samples:
+                metric_descriptors[sample.name] = metric
+                metric_samples.append(sample)
+                if "Component" in sample.labels:
+                    components_dict[address].add(sample.labels["Component"])
+    return components_dict, metric_descriptors, metric_samples
 
 
 def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
@@ -2117,3 +2150,11 @@ def skip_flaky_core_test_premerge(reason: str):
         )(func)
 
     return wrapper
+
+
+def get_ray_default_worker_file_path():
+    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    return (
+        f"/home/ray/anaconda3/lib/python{py_version}/"
+        "site-packages/ray/_private/workers/default_worker.py"
+    )

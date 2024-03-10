@@ -25,8 +25,15 @@ if [ -d "/tmp/artifacts" ]; then
     find /tmp/artifacts -print || true
 fi
 
-echo "Creating var/ artifact directory..."
-docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'chown -R 2000 /artifact-mount/' || true
+echo "Creating artifact directory..."
+if [[ "${OSTYPE}" == linux* ]]; then
+  docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'chown -R 2000 /artifact-mount/' || true
+elif [[ "${OSTYPE}" == msys ]]; then
+  if [[ -d "/c/tmp/artifacts" ]]; then
+    rm -rf /c/tmp/artifacts/*
+  fi
+  mkdir -p /c/tmp/artifacts
+fi
 
 
 RAYCI_CHECKOUT_DIR="$(pwd)"

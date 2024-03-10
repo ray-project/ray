@@ -111,59 +111,24 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   return std::tuple(system_used_bytes, system_total_bytes);
 }
 
-int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
-  std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
-  if (!memstat_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
-    return kNull;
-  }
-
-  std::string line;
-  std::string title;
-  int64_t value;
-
-  int64_t rss_bytes = kNull;
-  int64_t cache_bytes = kNull;
-  int64_t inactive_file_bytes = kNull;
-  while (std::getline(memstat_ifs, line)) {
-    std::istringstream iss(line);
-    iss >> title >> value;
-    if (title == "total_rss") {
-      rss_bytes = value;
-    } else if (title == "total_cache") {
-      cache_bytes = value;
-    } else if (title == "total_inactive_file") {
-      inactive_file_bytes = value;
-    }
-  }
-  if (rss_bytes == kNull || cache_bytes == kNull || inactive_file_bytes == kNull) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup v1 mem stat. rss " << rss_bytes << " cache "
-        << cache_bytes << " inactive " << inactive_file_bytes;
-    return kNull;
-  }
-  // Working set, used by cadvisor for cgroup oom killing, is calculcated as (usage -
-  // inactive files)
-  // https://medium.com/@eng.mohamed.m.saeed/memory-working-set-vs-memory-rss-in-kubernetes-which-one-you-should-monitor-8ef77bf0acee
-  int64_t used = rss_bytes + cache_bytes - inactive_file_bytes;
-  return used;
-}
-
-int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
-                                                  const char *usage_path) {
-  // Uses same calculation as libcontainer, that is: memory.current -
-  // memory.stat[inactive_file]. Source:
-  // https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836
+int64_t MemoryMonitor::GetCGroupMemoryUsedBytes(const char *stat_path,
+                                                const char *usage_path,
+                                                const char *inactive_file_key,
+                                                const char *active_file_key) {
+  // CGroup reported memory usage includes file page caches
+  // and we should exclude those since they are reclaimable
+  // by the kernel and are considered available memory from
+  // the OOM killer's perspective.
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << " cgroups v2 memory.stat file not found: " << stat_path;
+        << " memory stat file not found: " << stat_path;
     return kNull;
   }
   std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
   if (!memusage_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << " cgroups v2 memory.current file not found: " << usage_path;
+        << " memory usage file not found: " << usage_path;
     return kNull;
   }
 
@@ -172,24 +137,30 @@ int64_t MemoryMonitor::GetCGroupV2MemoryUsedBytes(const char *stat_path,
   std::string line;
 
   int64_t inactive_file_bytes = kNull;
+  int64_t active_file_bytes = kNull;
   while (std::getline(memstat_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value;
-    if (title == kCgroupsV2MemoryStatInactiveKey) {
+    if (title == inactive_file_key) {
       inactive_file_bytes = value;
-      break;
+    } else if (title == active_file_key) {
+      active_file_bytes = value;
     }
   }
 
   int64_t current_usage_bytes = kNull;
   memusage_ifs >> current_usage_bytes;
-  if (current_usage_bytes == kNull || inactive_file_bytes == kNull) {
+  if (current_usage_bytes == kNull || inactive_file_bytes == kNull ||
+      active_file_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup v2 memory usage. memory.current "
-        << current_usage_bytes << " inactive " << inactive_file_bytes;
+        << "Failed to parse cgroup memory usage. memory usage " << current_usage_bytes
+        << " inactive file " << inactive_file_bytes << " active file "
+        << active_file_bytes;
     return kNull;
   }
-  return current_usage_bytes - inactive_file_bytes;
+  // The total file cache is inactive + active per
+  // https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/resource_management_guide/sec-memory
+  return current_usage_bytes - inactive_file_bytes - active_file_bytes;
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
@@ -205,10 +176,16 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   int64_t used_bytes = kNull;
   if (std::filesystem::exists(kCgroupsV2MemoryUsagePath) &&
       std::filesystem::exists(kCgroupsV2MemoryStatPath)) {
-    used_bytes =
-        GetCGroupV2MemoryUsedBytes(kCgroupsV2MemoryStatPath, kCgroupsV2MemoryUsagePath);
-  } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
-    used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
+    used_bytes = GetCGroupMemoryUsedBytes(kCgroupsV2MemoryStatPath,
+                                          kCgroupsV2MemoryUsagePath,
+                                          kCgroupsV2MemoryStatInactiveFileKey,
+                                          kCgroupsV2MemoryStatActiveFileKey);
+  } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath) &&
+             std::filesystem::exists(kCgroupsV1MemoryUsagePath)) {
+    used_bytes = GetCGroupMemoryUsedBytes(kCgroupsV1MemoryStatPath,
+                                          kCgroupsV1MemoryUsagePath,
+                                          kCgroupsV1MemoryStatInactiveFileKey,
+                                          kCgroupsV1MemoryStatActiveFileKey);
   }
 
   /// This can be zero if the memory limit is not set for cgroup v2.

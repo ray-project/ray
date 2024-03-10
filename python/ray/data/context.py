@@ -1,9 +1,9 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import env_bool, env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -51,21 +51,9 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Whether to enable stage-fusion optimizations for dataset pipelines.
-DEFAULT_OPTIMIZE_FUSE_STAGES = True
-
-# Whether to enable stage-reorder optimizations for dataset pipelines.
-DEFAULT_OPTIMIZE_REORDER_STAGES = True
-
-# Whether to furthermore fuse read stages.
-DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
-
-# Whether to furthermore fuse prior map tasks with shuffle stages.
-DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
-
-# Minimum amount of parallelism to auto-detect for a dataset. Note that the min
+# Minimum number of read output blocks for a dataset. Note that the min
 # block size config takes precedence over this.
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 # Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -91,22 +79,6 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
-# Whether to use the new executor backend.
-DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_BACKEND", "1"))
-)
-
-# Whether to use the streaming executor. This only has an effect if the new execution
-# backend is enabled.
-DEFAULT_USE_STREAMING_EXECUTOR = bool(
-    int(os.environ.get("RAY_DATA_USE_STREAMING_EXECUTOR", "1"))
-)
-
-# Whether to use the runtime object store memory metrics for scheduling.
-DEFAULT_USE_RUNTIME_METRICS_SCHEDULING = bool(
-    int(os.environ.get("DEFAULT_USE_RUNTIME_METRICS_SCHEDULING", "0"))
-)
-
 # Whether to eagerly free memory (new backend only).
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
@@ -125,13 +97,22 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 # If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
-# Whether to enable optimizer.
-DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "1"))
-)
+# Whether stats logs should be verbose. This will include fields such
+# as `extra_metrics` in the stats output, which are excluded by default.
+DEFAULT_VERBOSE_STATS_LOG = False
+
+# Whether to include internal Ray Data/Ray Core code stack frames
+# when logging to stdout. The full stack trace is always written to the
+# Ray Data log file.
+DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = False
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
+
+# If driver memory exceeds this threshold, warn the user.
+# For now, this only applies to shuffle ops because most other ops are unlikely
+# to use as much driver memory.
+DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
@@ -140,10 +121,7 @@ WARN_PREFIX = "⚠️ "
 OK_PREFIX = "✔️ "
 
 # Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 4096
-
-# Default batch size for batch transformations in strict mode.
-STRICT_MODE_DEFAULT_BATCH_SIZE = 1024
+DEFAULT_BATCH_SIZE = 1024
 
 # Whether to enable progress bars.
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(
@@ -153,7 +131,36 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 # Whether to enable get_object_locations for metric
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
-DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = ["AWS Error INTERNAL_FAILURE"]
+DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error SLOW_DOWN",
+]
+
+# The application-level errors that actor task would retry.
+# Default to `False` to not retry on any errors.
+# Set to `True` to retry all errors, or set to a list of errors to retry.
+# This follows same format as `retry_exceptions` in Ray Core.
+DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
+
+# Whether to enable ReservationOpResourceAllocator by default.
+DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
+    "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
+)
+
+# The default reservation ratio for ReservationOpResourceAllocator.
+DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
+    os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
+)
+
+# Default value of the max number of blocks that can be buffered at the
+# streaming generator of each `DataOpTask`.
+# Note, if this value is too large, we'll need to allocate more memory
+# buffer for the pending task outputs, which may lead to bad performance
+# as we may not have enough memory buffer for the operator outputs.
+# If the value is too small, the task may be frequently blocked due to
+# streaming generator backpressure.
+DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
 
 @DeveloperAPI
@@ -171,10 +178,6 @@ class DataContext:
         target_min_block_size: int,
         streaming_read_buffer_size: int,
         enable_pandas_block: bool,
-        optimize_fuse_stages: bool,
-        optimize_fuse_read_stages: bool,
-        optimize_fuse_shuffle_stages: bool,
-        optimize_reorder_stages: bool,
         actor_prefetcher_enabled: bool,
         use_push_based_shuffle: bool,
         pipeline_push_based_shuffle_reduce_tasks: bool,
@@ -182,21 +185,21 @@ class DataContext:
         scheduling_strategy_large_args: SchedulingStrategyT,
         large_args_threshold: int,
         use_polars: bool,
-        new_execution_backend: bool,
-        use_streaming_executor: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
-        min_parallelism: bool,
+        min_parallelism: int,
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
+        verbose_stats_log: bool,
+        log_internal_stack_trace_to_stdout: bool,
         trace_allocations: bool,
-        optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         enable_progress_bars: bool,
         enable_get_object_locations_for_metrics: bool,
-        use_runtime_metrics_scheduling: bool,
         write_file_retry_on_errors: List[str],
+        warn_on_driver_memory_usage_bytes: int,
+        actor_task_retry_on_errors: Union[bool, List[BaseException]],
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -204,10 +207,6 @@ class DataContext:
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
         self.enable_pandas_block = enable_pandas_block
-        self.optimize_fuse_stages = optimize_fuse_stages
-        self.optimize_fuse_read_stages = optimize_fuse_read_stages
-        self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
-        self.optimize_reorder_stages = optimize_reorder_stages
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
         self.use_push_based_shuffle = use_push_based_shuffle
         self.pipeline_push_based_shuffle_reduce_tasks = (
@@ -217,15 +216,14 @@ class DataContext:
         self.scheduling_strategy_large_args = scheduling_strategy_large_args
         self.large_args_threshold = large_args_threshold
         self.use_polars = use_polars
-        self.new_execution_backend = new_execution_backend
-        self.use_streaming_executor = use_streaming_executor
         self.eager_free = eager_free
         self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
+        self.verbose_stats_logs = verbose_stats_log
+        self.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
         self.trace_allocations = trace_allocations
-        self.optimizer_enabled = optimizer_enabled
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
@@ -233,8 +231,9 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
-        self.use_runtime_metrics_scheduling = use_runtime_metrics_scheduling
         self.write_file_retry_on_errors = write_file_retry_on_errors
+        self.warn_on_driver_memory_usage_bytes = warn_on_driver_memory_usage_bytes
+        self.actor_task_retry_on_errors = actor_task_retry_on_errors
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
@@ -253,6 +252,15 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+        self._max_num_blocks_in_streaming_gen_buffer = (
+            DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
+        )
+        # Whether to enable ReservationOpResourceAllocator.
+        self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
+        # The reservation ratio for ReservationOpResourceAllocator.
+        self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+        # Minimum number of read output blocks for a dataset.
+        self.read_op_min_num_blocks = DEFAULT_READ_OP_MIN_NUM_BLOCKS
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -272,10 +280,6 @@ class DataContext:
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
-                    optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
-                    optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
-                    optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
-                    optimize_reorder_stages=DEFAULT_OPTIMIZE_REORDER_STAGES,
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
                     use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
                     # NOTE(swang): We have to pipeline reduce tasks right now
@@ -288,23 +292,28 @@ class DataContext:
                     ),
                     large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
                     use_polars=DEFAULT_USE_POLARS,
-                    new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
-                    use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
                     eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
-                    min_parallelism=DEFAULT_MIN_PARALLELISM,
+                    # NOTE: This parameter is deprecated. Use `read_op_min_num_blocks`.
+                    min_parallelism=DEFAULT_READ_OP_MIN_NUM_BLOCKS,
                     enable_tensor_extension_casting=(
                         DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
+                    verbose_stats_log=DEFAULT_VERBOSE_STATS_LOG,
+                    log_internal_stack_trace_to_stdout=(
+                        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
+                    ),
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
-                    optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
-                    use_runtime_metrics_scheduling=DEFAULT_USE_RUNTIME_METRICS_SCHEDULING,  # noqa: E501
                     write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
+                    warn_on_driver_memory_usage_bytes=(
+                        DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
+                    ),
+                    actor_task_retry_on_errors=DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS,
                 )
 
             return _default_context

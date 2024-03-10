@@ -1,4 +1,3 @@
-import os
 import sys
 import pytest
 
@@ -114,7 +113,7 @@ def test_trial_logdir_length():
         storage=mock_storage_context(),
     )
     trial.init_local_path()
-    assert len(os.path.basename(trial.local_path)) < 200
+    assert len(trial.storage.trial_dir_name) < 200
 
 
 if __name__ == "__main__":

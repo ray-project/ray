@@ -216,6 +216,10 @@ Here's an overview of all available search algorithms in Tune:
      - Bayesian Opt/HyperBand
      - [`BOHB <https://github.com/automl/HpBandSter>`__]
      - :doc:`/tune/examples/includes/bohb_example`
+   * - :ref:`NevergradSearch <nevergrad>`
+     - Gradient-free Optimization
+     - [`Nevergrad <https://github.com/facebookresearch/nevergrad>`__]
+     - :doc:`/tune/examples/includes/nevergrad_example`
    * - :ref:`OptunaSearch <tune-optuna>`
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]

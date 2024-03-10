@@ -102,10 +102,10 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
         logger.debug("Detected class for trainable.")
     elif isinstance(trainable, FunctionType) or isinstance(trainable, partial):
         logger.debug("Detected function for trainable.")
-        trainable = wrap_function(trainable, warn=warn)
+        trainable = wrap_function(trainable)
     elif callable(trainable):
         logger.info("Detected unknown callable for trainable. Converting to class.")
-        trainable = wrap_function(trainable, warn=warn)
+        trainable = wrap_function(trainable)
 
     if not issubclass(trainable, Trainable):
         raise TypeError("Second argument must be convertable to Trainable", trainable)
@@ -246,7 +246,7 @@ class _Registry:
 
     def unregister_all(self, category: Optional[str] = None):
         remaining = set()
-        for (cat, key) in self._registered:
+        for cat, key in self._registered:
             if category and category == cat:
                 self.unregister(cat, key)
             else:

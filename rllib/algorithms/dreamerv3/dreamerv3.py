@@ -25,6 +25,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -599,15 +600,15 @@ class DreamerV3(Algorithm):
                 replayed_steps_this_iter += replayed_steps
 
                 if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
-                    sample["actions_ints"] = sample[SampleBatch.ACTIONS]
-                    sample[SampleBatch.ACTIONS] = one_hot(
+                    sample["actions_ints"] = sample[Columns.ACTIONS]
+                    sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
                         depth=env_runner.env.single_action_space.n,
                     )
 
                 # Perform the actual update via our learner group.
-                train_results = self.learner_group.update(
-                    SampleBatch(sample).as_multi_agent(),
+                train_results = self.learner_group.update_from_batch(
+                    batch=SampleBatch(sample).as_multi_agent(),
                     reduce_fn=self._reduce_results,
                 )
                 self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps

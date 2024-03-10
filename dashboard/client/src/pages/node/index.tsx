@@ -278,6 +278,7 @@ const Nodes = () => {
               label="State"
               onChange={(value) => changeFilter("state", value.trim())}
               options={["ALIVE", "DEAD"]}
+              showAllOption={true}
             />
           </Grid>
           <Grid item>
@@ -301,6 +302,7 @@ const Nodes = () => {
                 ["disk./.used", "Used Disk"],
               ]}
               onChange={(val) => setSortKey(val)}
+              showAllOption={true}
             />
           </Grid>
           <Grid item>

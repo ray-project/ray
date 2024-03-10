@@ -496,36 +496,9 @@ message StoredConfig {
   string config = 1;
 }
 
-// A notification message about one node's resources being changed.
-message NodeResourceChange {
-  // ID of the node whose resources have changed.
-  bytes node_id = 1;
-  // Labels of the updated resources and their latest capacities.
-  map<string, double> updated_resources = 2;
-  // Labels of the resources that were deleted.
-  repeated string deleted_resources = 3;
-}
-
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
-}
-
-// A notification that the resource table has changed.
-message ResourceUpdate {
-  oneof resource_change_or_data {
-    // The total resources on a node have changed.
-    NodeResourceChange change = 1;
-    // The available resources on a node have changed.
-    ResourcesData data = 2;
-  }
-}
-
-message ResourceUsageBroadcastData {
-  // An incrementing sequence number, used for correcting network errors.
-  int64 seq_no = 1;
-  // The changes to the state of the cluster.
-  repeated ResourceUpdate batch = 2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -591,6 +564,11 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
+  // This is only meaningful if is_draining
+  // is true.
+  // The value is the timestamp when
+  // the node will be force killed.
+  int64 draining_deadline_timestamp_ms = 18;
 }
 
 message ResourceUsageBatchData {
@@ -712,11 +690,16 @@ message PlacementGroupTableData {
   PlacementGroupStats stats = 12;
   // The maximum fraction of CPU cores that this placement group can use on each node.
   double max_cpu_fraction_per_node = 13;
+  // Binary ID of the target node where bundles should be placed
+  // iff the target node has enough available resources and alive.
+  // Otherwise, the bundles can be placed elsewhere.
+  // This only applies to STRICT_PACK pg.
+  bytes soft_target_node_id = 14;
   // The time that the placement group was created at.
-  int64 placement_group_creation_timestamp_ms = 14;
+  int64 placement_group_creation_timestamp_ms = 15;
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
-  int64 placement_group_final_bundle_placement_timestamp_ms = 15;
+  int64 placement_group_final_bundle_placement_timestamp_ms = 16;
 }
 
 message JobTableData {

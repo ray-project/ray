@@ -85,14 +85,6 @@ message MemoryProfilingReply {
   optional string warning = 3;
 }
 
-message ReportMetricsRequest {
-  repeated MetricPoint metrics_points = 1;
-}
-
-message ReportMetricsReply {
-  bool metrcs_description_required = 1;
-}
-
 message ReportOCMetricsRequest {
   repeated opencensus.proto.metrics.v1.Metric metrics = 1;
   bytes worker_id = 2;
@@ -104,8 +96,6 @@ message ReportOCMetricsReply {}
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
-  // Report metrics to the local metrics agents.
-  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
   rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);

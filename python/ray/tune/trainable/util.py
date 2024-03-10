@@ -8,9 +8,7 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
-from ray.tune.utils import _detect_checkpoint_function
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -124,12 +122,6 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         trainable_with_params = _Inner
     else:
         # Function trainable
-        if _detect_checkpoint_function(trainable, partial=True):
-            from ray.tune.trainable.function_trainable import (
-                _CHECKPOINT_DIR_ARG_DEPRECATION_MSG,
-            )
-
-            raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
 
         def inner(config):
             fn_kwargs = {}
@@ -157,7 +149,6 @@ def with_resources(
     resources: Union[
         Dict[str, float],
         PlacementGroupFactory,
-        ScalingConfig,
         Callable[[dict], PlacementGroupFactory],
     ],
 ):
@@ -175,9 +166,8 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, ``ScalingConfig``
-            or callable that takes in a config dict and returns a placement
-            group factory.
+        resources: Resource dict, placement group factory, or callable that takes
+            in a config dict and returns a placement group factory.
 
     Example:
 
@@ -209,8 +199,6 @@ def with_resources(
 
     if isinstance(resources, PlacementGroupFactory):
         pgf = resources
-    elif isinstance(resources, ScalingConfig):
-        pgf = resources.as_placement_group_factory()
     elif isinstance(resources, dict):
         pgf = resource_dict_to_pg_factory(resources)
     elif callable(resources):
@@ -223,13 +211,6 @@ def with_resources(
     if not inspect.isclass(trainable):
         if isinstance(trainable, types.MethodType):
             # Methods cannot set arbitrary attributes, so we have to wrap them
-            if _detect_checkpoint_function(trainable, partial=True):
-                from ray.tune.trainable.function_trainable import (
-                    _CHECKPOINT_DIR_ARG_DEPRECATION_MSG,
-                )
-
-                raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
-
             def _trainable(config):
                 return trainable(config)
 

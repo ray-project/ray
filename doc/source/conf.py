@@ -19,6 +19,7 @@ from custom_directives import (  # noqa
     LinkcheckSummarizer,
     parse_navbar_config,
     setup_context,
+    pregenerate_example_rsts,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -77,26 +78,6 @@ remove_from_toctrees = [
     "rllib/package_ref/replay-buffers/*",
     "rllib/package_ref/utils/*",
 ]
-
-# Prune deep toc-trees on demand for smaller html and faster builds.
-# This only effects the navigation bar, not the content.
-if os.getenv("FAST", False):
-    remove_from_toctrees += [
-        "ray-observability/api/state/doc/*",
-        "workflows/api/doc/*",
-        "serve/production-guide/*",
-        "serve/tutorials/deployment-graph-patterns/*",
-        "workflows/api/*",
-        "cluster/kubernetes/user-guides/*",
-        "cluster/kubernetes/examples/*",
-        "cluster/vms/user-guides/*",
-        "cluster/running-applications/job-submission/*",
-        "ray-core/actors/*",
-        "ray-core/objects/*",
-        "ray-core/scheduling/*",
-        "ray-core/tasks/*",
-        "ray-core/patterns/*",
-    ]
 
 myst_enable_extensions = [
     "dollarmath",
@@ -293,6 +274,7 @@ html_theme_options = {
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
     "navbar_persistent": [
+        "search-button-field",
         "theme-switcher",
     ],
     "secondary_sidebar_items": [
@@ -317,7 +299,7 @@ html_context = {
 
 html_sidebars = {
     "**": ["main-sidebar"],
-    "ray-overview/examples": ["examples-sidebar"],
+    "ray-overview/examples": [],
 }
 
 # The name for this set of Sphinx documents.  If None, it defaults to
@@ -405,21 +387,34 @@ def add_custom_assets(
     See documentation on Sphinx Core Events for more information:
     https://www.sphinx-doc.org/en/master/extdev/appapi.html#sphinx-core-events
     """
-    if pagename == "train/train":
-        app.add_css_file("css/ray-train.css")
-    elif pagename == "index":
-        # CSS for HTML part of index.html
-        app.add_css_file("css/splash.css")
-        app.add_js_file("js/splash.js")
-    elif pagename == "ray-overview/examples":
-        # Example gallery
+    if pagename == "index":
+        app.add_css_file("css/index.css")
+        app.add_js_file("js/index.js")
+        return "index.html"  # Use the special index.html template for this page
+
+    if pagename == "ray-overview/examples":
         app.add_css_file("css/examples.css")
         app.add_js_file("js/examples.js")
+        return "ray-overview/examples.html"
+
+    if pagename in [
+        "data/examples",
+        "train/examples",
+        "serve/examples",
+    ]:
+        return "examples.html"
+
+    if pagename == "train/train":
+        app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
+    elif pagename == "ray-overview/use-cases":
+        app.add_css_file("css/use_cases.css")
 
 
 def setup(app):
+    pregenerate_example_rsts(app)
+
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
     # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
     # warnings when we build the documentation.
@@ -494,6 +489,7 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
+    "nevergrad",
     "numpy",
     "pandas",
     "pyarrow",
@@ -509,6 +505,7 @@ autodoc_mock_imports = [
     "torchvision",
     "transformers",
     "tree",
+    "typer",
     "uvicorn",
     "wandb",
     "watchfiles",
@@ -558,6 +555,7 @@ intersphinx_mapping = {
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
+    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
     "pyarrow": ("https://arrow.apache.org/docs", None),

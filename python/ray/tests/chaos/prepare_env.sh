@@ -42,5 +42,7 @@ helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh \
     --set chaosDaemon.runtime=containerd \
     --set chaosDaemon.socketPath=/run/containerd/containerd.sock \
     --version 2.6.1
-kubectl wait pod --namespace chaos-mesh \
+
+echo "--- Waiting for chaos-mesh to be ready."
+kubectl wait pod --namespace chaos-mesh --timeout=300s \
     -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True

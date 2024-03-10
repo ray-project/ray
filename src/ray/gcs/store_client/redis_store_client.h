@@ -88,7 +88,6 @@ class RedisStoreClient : public StoreClient {
     void Scan(const std::string &match_pattern, const StatusCallback &callback);
 
     void OnScanCallback(const std::string &match_pattern,
-                        size_t shard_index,
                         const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
     /// The table name that the scanner will scan.
@@ -97,15 +96,15 @@ class RedisStoreClient : public StoreClient {
     // The namespace of the external storage. Used for isolation.
     std::string external_storage_namespace_;
 
-    /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
+    /// Mutex to protect the cursor_ field and the keys_ field and the
     /// key_value_map_ field.
     absl::Mutex mutex_;
 
     /// All keys that scanned from redis.
     absl::flat_hash_map<std::string, std::string> results_;
 
-    /// The scan cursor for each shard.
-    absl::flat_hash_map<size_t, size_t> shard_to_cursor_;
+    /// The scan cursor.
+    std::optional<size_t> cursor_;
 
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};

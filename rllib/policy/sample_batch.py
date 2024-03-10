@@ -9,6 +9,7 @@ from typing import List, Optional
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
@@ -110,65 +111,43 @@ class SampleBatch(dict):
     # action based on the reset-observation and so on. This scheme is derived from
     # RLlib's sampling logic.
 
-    # Outputs from interacting with the environment:
+    # The following fields have all been moved to `Columns` and are only left here
+    # for backward compatibility.
+    OBS = Columns.OBS
+    ACTIONS = Columns.ACTIONS
+    REWARDS = Columns.REWARDS
+    TERMINATEDS = Columns.TERMINATEDS
+    TRUNCATEDS = Columns.TRUNCATEDS
+    INFOS = Columns.INFOS
+    SEQ_LENS = Columns.SEQ_LENS
+    T = Columns.T
+    ACTION_DIST_INPUTS = Columns.ACTION_DIST_INPUTS
+    ACTION_PROB = Columns.ACTION_PROB
+    ACTION_LOGP = Columns.ACTION_LOGP
+    VF_PREDS = Columns.VF_PREDS
+    VALUES_BOOTSTRAPPED = Columns.VALUES_BOOTSTRAPPED
+    EPS_ID = Columns.EPS_ID
+    NEXT_OBS = Columns.NEXT_OBS
 
-    # Observation that we compute SampleBatch.ACTIONS from.
-    OBS = "obs"
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
-    # Action based on SampleBatch.OBS.
-    ACTIONS = "actions"
-    # Reward returned after stepping with SampleBatch.ACTIONS.
-    REWARDS = "rewards"
+    # Action distribution object.
+    ACTION_DIST = "action_dist"
     # Action chosen before SampleBatch.ACTIONS.
     PREV_ACTIONS = "prev_actions"
     # Reward received before SampleBatch.REWARDS.
     PREV_REWARDS = "prev_rewards"
-    # Is the episode finished after stepping via SampleBatch.ACTIONS?
-    TERMINATEDS = "terminateds"
-    # Is the episode truncated (e.g. time limit) after stepping via SampleBatch.ACTIONS?
-    TRUNCATEDS = "truncateds"
-    # Infos returned after stepping with SampleBatch.ACTIONS
-    INFOS = "infos"
-
-    # Additional keys filled by RLlib to manage the data above:
-
-    SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
-    T = "t"  # Timestep counter
-    EPS_ID = "eps_id"  # Uniquely identifies an episode
     ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
     AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
-
     # Uniquely identifies a sample batch. This is important to distinguish RNN
     # sequences from the same episode when multiple sample batches are
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Algorithm-specific keys:
-
-    # Extra action fetches keys.
-    ACTION_DIST_INPUTS = "action_dist_inputs"
-    ACTION_PROB = "action_prob"
-    ACTION_LOGP = "action_logp"
-    ACTION_DIST = "action_dist"
-
-    # Value function predictions emitted by the behaviour policy.
-    VF_PREDS = "vf_preds"
-    # Values one ts beyond the last ts taken. These are usually calculated via the value
-    # function network using the final observation (and in case of an RNN: the last
-    # returned internal state).
-    VALUES_BOOTSTRAPPED = "values_bootstrapped"
-
     # RE 3
     # This is only computed and used when RE3 exploration strategy is enabled.
     OBS_EMBEDS = "obs_embeds"
-
     # Decision Transformer
     RETURNS_TO_GO = "returns_to_go"
     ATTENTION_MASKS = "attention_masks"
-
-    # Deprecated keys:
-
     # Do not set this key directly. Instead, the values under this key are
     # auto-computed via the values of the TERMINATEDS and TRUNCATEDS keys.
     DONES = "dones"
@@ -1169,34 +1148,15 @@ class SampleBatch(dict):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
                     "state_in_"
                 ):
-                    if path[0] != SampleBatch.INFOS:
-                        return value[start_padded:stop_padded]
-                    else:
-                        if (
-                            (isinstance(value, np.ndarray) and value.size > 0)
-                            or (
-                                torch
-                                and torch.is_tensor(value)
-                                and len(list(value.shape)) > 0
-                            )
-                            or (tf and tf.is_tensor(value) and tf.size(value) > 0)
-                        ):
-                            return value[start_unpadded:stop_unpadded]
-                        else:
-                            # Since infos should be stored as lists and not arrays,
-                            # we return the values here and slice them separately
-                            # TODO(Artur): Clean this hack up.
-                            return value
+                    return value[start_padded:stop_padded]
                 else:
                     return value[start_seq_len:stop_seq_len]
 
+            infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure_with_path(map_, self)
-
-            # Since we don't slice in the above map_ function, we do it here.
-            if isinstance(data.get(SampleBatch.INFOS), list):
-                data[SampleBatch.INFOS] = data[SampleBatch.INFOS][
-                    start_unpadded:stop_unpadded
-                ]
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start_unpadded:stop_unpadded]
 
             return SampleBatch(
                 data,
@@ -1207,21 +1167,11 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
         else:
-
-            def map_(value):
-                if (
-                    isinstance(value, np.ndarray)
-                    or (torch and torch.is_tensor(value))
-                    or (tf and tf.is_tensor(value))
-                ):
-                    return value[start:stop]
-                else:
-                    # Since infos should be stored as lists and not arrays,
-                    # we return the values here and slice them separately
-                    # TODO(Artur): Clean this hack up.
-                    return value
-
-            data = tree.map_structure(map_, self)
+            infos = self.pop(SampleBatch.INFOS, None)
+            data = tree.map_structure(lambda s: s[start:stop], self)
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start:stop]
 
             return SampleBatch(
                 data,

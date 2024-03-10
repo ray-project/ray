@@ -44,6 +44,7 @@ RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
 AUTOSCALER_PRIVATE_DIR = os.path.join("autoscaler", "_private")
+AUTOSCALER_V2_DIR = os.path.join("autoscaler", "v2")
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(
@@ -1234,7 +1235,7 @@ def start_api_server(
         # dashboard inclusion, the install is not minimal.
         if include_dashboard and minimal:
             logger.error(
-                "--include-dashboard is not supported when minimal ray is used."
+                "--include-dashboard is not supported when minimal ray is used. "
                 "Download ray[default] to use the dashboard."
             )
             raise Exception("Cannot include dashboard with missing packages.")
@@ -1661,7 +1662,6 @@ def start_raylet(
             f"--object-store-name={plasma_store_name}",
             f"--raylet-name={raylet_name}",
             f"--redis-address={redis_address}",
-            f"--temp-dir={temp_dir}",
             f"--metrics-agent-port={metrics_agent_port}",
             f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
@@ -1975,7 +1975,7 @@ def determine_plasma_store_config(
             shm_avail = ray._private.utils.get_shared_memory_bytes()
             # Compare the requested memory size to the memory available in
             # /dev/shm.
-            if shm_avail > object_store_memory:
+            if shm_avail >= object_store_memory:
                 plasma_directory = "/dev/shm"
             elif (
                 not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
@@ -2079,6 +2079,7 @@ def start_monitor(
     max_bytes: int = 0,
     backup_count: int = 0,
     monitor_ip: Optional[str] = None,
+    autoscaler_v2: bool = False,
 ):
     """Run a process to monitor the other processes.
 
@@ -2099,12 +2100,15 @@ def start_monitor(
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
+    if autoscaler_v2:
+        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_V2_DIR, "monitor.py")
+    else:
+        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
 
     command = [
         sys.executable,
         "-u",
-        monitor_path,
+        entrypoint,
         f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",

@@ -14,9 +14,9 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Stateful Transforms <stateful_transforms>`
+* :ref:`Stateful transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
-* :ref:`Shuffle rows <shuffling_rows>`
+* :ref:`Shuffle data <shuffling_data>`
 * :ref:`Repartition data <repartitioning_data>`
 
 .. _transforming_rows:
@@ -305,12 +305,77 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
                 .map_groups(normalize_features)
             )
 
-.. _shuffling_rows:
+.. _shuffling_data:
 
-Shuffling rows
+Shuffling data
 ==============
 
-To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
+.. _shuffling_file_order:
+
+Shuffle the ordering of files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To randomly shuffle the ordering of input files before reading, call a function like
+:func:`~ray.data.read_images` and specify ``shuffle="files"``. This randomly assigns
+input files to workers for reading.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_images(
+        "s3://anonymous@ray-example-data/image-datasets/simple",
+        shuffle="files",
+    )
+
+.. tip::
+
+    This is the fastest option for shuffle, and is a purely metadata operation. This
+    option doesn't shuffle the actual rows inside files, so the randomness might be
+    poor if each file has many rows.
+
+.. _local_shuffle_buffer:
+
+Local shuffle when iterating over batches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To locally shuffle a subset of rows, call a function like :meth:`~ray.data.Dataset.iter_batches`
+and specify `local_shuffle_buffer_size`. This shuffles the rows up to a provided buffer
+size during iteration. See more details in
+:ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+
+    for batch in ds.iter_batches(
+        batch_size=2,
+        batch_format="numpy",
+        local_shuffle_buffer_size=250,
+    ):
+        print(batch)
+
+.. tip::
+
+    This is slower than shuffling ordering of files, and shuffles rows locally without
+    network transfer. This local shuffle buffer can be used together with shuffling
+    ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order>`.
+
+    If you observe reduced throughput when using ``local_shuffle_buffer_size``;
+    one way to diagnose this is to check the total time spent in batch creation by
+    examining the ``ds.stats()`` output (``In batch formatting``, under
+    ``Batch iteration time breakdown``).
+    
+    If this time is significantly larger than the
+    time spent in other steps, one way to improve performance is to decrease
+    ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
+
+Shuffle all rows
+~~~~~~~~~~~~~~~~
+
+To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
 
 .. testcode::
 
@@ -323,8 +388,8 @@ To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
 
 .. tip::
 
-    :meth:`~ray.data.Dataset.random_shuffle` is slow. For better performance, try
-    :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+    This is the slowest option for shuffle, and requires transferring data across
+    network between workers. This option achieves the best randomness among all options.
 
 .. _repartitioning_data:
 
@@ -333,7 +398,7 @@ Repartitioning data
 
 A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
 :term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
-increase the number of blocks by setting a higher ``parallelism`` at read time.
+increase the number of blocks by setting a higher ``override_num_blocks`` at read time.
 
 To change the number of blocks for an existing Dataset, call
 :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
@@ -342,7 +407,7 @@ To change the number of blocks for an existing Dataset, call
 
     import ray
 
-    ds = ray.data.range(10000, parallelism=1000)
+    ds = ray.data.range(10000, override_num_blocks=1000)
 
     # Repartition the data into 100 blocks. Since shuffle=False, Ray Data will minimize
     # data movement during this operation by merging adjacent blocks.

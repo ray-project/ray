@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import subprocess
 
@@ -8,6 +9,14 @@ from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class RayInstallError:
+    # Instance manager's instance id.
+    im_instance_id: str
+    # Error details.
+    details: str
 
 
 class RayInstaller(object):
