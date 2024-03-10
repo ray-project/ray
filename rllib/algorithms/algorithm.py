@@ -975,6 +975,8 @@ class Algorithm(Trainable, AlgorithmBase):
         else:
             pass
 
+        # TODO: Don't dump sampler results into top-level.
+        eval_results = dict({"sampler_results": eval_results}, **eval_results)
         eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
         eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
         # TODO: Remove this key at some point. Here for backward compatibility.
