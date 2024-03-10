@@ -1,9 +1,14 @@
 import os
 
-HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", "10.0.0.183") 
+HEAD_NODE_IP = os.getenv("HEAD_NODE_IP", None) 
+
+if HEAD_NODE_IP is None:
+    raise ValueError("to run experiments, environemtn HEAD_NODE_IP must be set")
+
 SERVER_IP = "http://" + HEAD_NODE_IP + ":8000"
-print(SERVER_IP)
+# print(SERVER_IP)
 NODE_USER_NAME = "ec2-user"
+
 DATA_IP= HEAD_NODE_IP
 
 MAX_COMPLEXITY_SCORE = 100000000000

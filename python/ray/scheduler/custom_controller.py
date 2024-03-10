@@ -154,15 +154,7 @@ class Controller():
                     ray.get_runtime_context().set_label({label: label})
 
                 else:
-                    # os.system("rsync --mkpath -a -P {} {}".format(NODE_USER_NAME + "@" + DATA_IP+":"+label,label))
-                    # try to simulate a huge file transfer by repeating
-                    # repeat_times = 9
-                    # while repeat_times > 0:
-                    #     os.system(f"rsync --mkpath -r -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
-                    #     # remove the file
-                    #     os.system(f"rm {label}")
-                    #     repeat_times -= 1
-                    os.system(f"rsync --mkpath -r -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
+                    os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -r -a -P {NODE_USER_NAME}@{DATA_IP}:{label} {label}")
                     ray.get_runtime_context().set_label({label: label})
             return FINISHED
 
