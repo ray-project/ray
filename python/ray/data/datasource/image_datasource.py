@@ -1,7 +1,7 @@
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union, Callable
 
 import numpy as np
 
@@ -40,6 +40,7 @@ class ImageDatasource(FileBasedDatasource):
         paths: Union[str, List[str]],
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
+        transform: Optional[Callable] = None,  # @ron
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -59,6 +60,7 @@ class ImageDatasource(FileBasedDatasource):
 
         self.size = size
         self.mode = mode
+        self.transform = transform
 
         meta_provider = file_based_datasource_kwargs.get("meta_provider", None)
         if isinstance(meta_provider, _ImageFileMetadataProvider):
@@ -86,7 +88,10 @@ class ImageDatasource(FileBasedDatasource):
             image = image.resize((width, height), resample=Image.BILINEAR)
         if self.mode is not None:
             image = image.convert(self.mode)
+        if self.transform is not None:
+            image = self.transform(image)
 
+        # @ronyw: Casting to `np.array` type here so we don't need to do it in the `collate_fn`
         array = np.array(image)
         item = {"image": array}
         yield item
