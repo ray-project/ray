@@ -43,7 +43,6 @@ class ImageDatasource(FileBasedDatasource):
         transform: Optional[Callable] = None,  # @ron
         **file_based_datasource_kwargs,
     ):
-        # print(self._NUM_THREADS_PER_TASK)
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="PIL", package="Pillow")
