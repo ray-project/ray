@@ -44,12 +44,13 @@ def test_invalid_conda_env(
             pass
 
     # TODO(somebody): track cache hit/miss statistics.
+    error_message = "PackagesNotFoundError"
 
     bad_env = runtime_env_class(conda={"dependencies": ["this_doesnt_exist"]})
     with pytest.raises(
         RuntimeEnvSetupError,
         # The actual error message should be included in the exception.
-        match="ResolvePackageNotFound",
+        match=error_message,
     ):
         ray.get(f.options(runtime_env=bad_env).remote())
 
@@ -57,18 +58,16 @@ def test_invalid_conda_env(
     ray.get(f.remote())
 
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(
-        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
-    ):
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError, match=error_message):
         ray.get(a.f.remote())
 
-    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
+    with pytest.raises(RuntimeEnvSetupError, match=error_message):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     # Sleep to wait bad runtime env cache removed.
     time.sleep(bad_runtime_env_cache_ttl_seconds)
 
-    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
+    with pytest.raises(RuntimeEnvSetupError, match=error_message):
         ray.get(f.options(runtime_env=bad_env).remote())
 
 
