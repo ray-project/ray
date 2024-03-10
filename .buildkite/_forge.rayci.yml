@@ -15,6 +15,7 @@ steps:
     matrix:
       setup:
         python:
+          - "3.8"
           - "3.9"
           - "3.10"
           - "3.11"
@@ -38,6 +39,7 @@ steps:
       - serve
     wanda: ci/docker/ray.cpu.base.wanda.yaml
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -54,6 +56,7 @@ steps:
     matrix:
       setup:
         python:
+          - "3.8"
           - "3.9"
           - "3.10"
         cuda:
@@ -70,6 +73,7 @@ steps:
     wanda: ci/docker/ray-ml.cpu.base.wanda.yaml
     depends_on: raycpubase
     matrix:
+      - "3.8"
       - "3.9"
       - "3.10"
     env:
