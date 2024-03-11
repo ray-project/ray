@@ -11,7 +11,9 @@ import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
+from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
+    AssertEvalCallback
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 

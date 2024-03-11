@@ -933,6 +933,7 @@ class Algorithm(Trainable, AlgorithmBase):
         self.callbacks.on_evaluate_start(algorithm=self)
 
         env_steps = agent_steps = 0
+        batches = []
 
         # We will use a user provided evaluation function.
         if self.config.custom_evaluation_function:
@@ -963,14 +964,14 @@ class Algorithm(Trainable, AlgorithmBase):
                         eval_results,
                         env_steps,
                         agent_steps,
-                        all_batches,
+                        batches,
                     ) = self._evaluate_with_auto_duration(parallel_train_future)
                 else:
                     (
                         eval_results,
                         env_steps,
                         agent_steps,
-                        all_batches,
+                        batches,
                     ) = self._evaluate_with_fixed_duration()
             # Can't find a good way to run this evaluation -> Wait for next iteration.
             else:
