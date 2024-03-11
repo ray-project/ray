@@ -44,7 +44,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
+from ray.serve.schema import DeploymentDetails, ServeApplicationSchema, TracingConfig
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -420,6 +420,7 @@ class ApplicationState:
                 runtime_env=config.runtime_env
             ).remote(
                 config.import_path,
+                config.tracing_config,
                 config.deployment_names,
                 config_version,
                 config.name,
@@ -946,6 +947,7 @@ class ApplicationStateManager:
 @ray.remote(num_cpus=0, max_calls=1)
 def build_serve_application(
     import_path: str,
+    tracing_config: TracingConfig,
     config_deployments: List[str],
     code_version: str,
     name: str,
@@ -972,7 +974,7 @@ def build_serve_application(
         Error message: a string if an error was raised, otherwise None.
     """
     try:
-        from ray.serve._private.api import call_app_builder_with_args_if_necessary
+        from ray.serve._private.api import call_app_builder_with_args_if_necessary, import_tracing_exporter
         from ray.serve._private.deployment_graph_build import build as pipeline_build
         from ray.serve._private.deployment_graph_build import (
             get_and_validate_ingress_deployment,
@@ -983,9 +985,12 @@ def build_serve_application(
         deployments = pipeline_build(app._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
 
+        tracing_exporter_def = import_tracing_exporter(tracing_config)
+
         deploy_args_list = []
         for deployment in deployments:
             is_ingress = deployment.name == ingress.name
+            deployment._replica_config.serialized_exporter_def = tracing_exporter_def
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,

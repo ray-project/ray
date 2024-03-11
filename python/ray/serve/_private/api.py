@@ -20,7 +20,16 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import LoggingConfig, TracingConfig
+from ray._private.utils import import_attr
+from ray._private.serialization import pickle_dumps
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import (
+    ConsoleSpanExporter,
+    SimpleSpanProcessor,
+)
+import os
 
 logger = logging.getLogger(__file__)
 
@@ -350,3 +359,28 @@ def call_app_builder_with_args_if_necessary(
         )
 
     return app
+
+def default_tracing_exporter():
+    os.makedirs("/tmp/spans", exist_ok=True)
+    return [
+        SimpleSpanProcessor(
+            ConsoleSpanExporter(
+                out=open(f"/tmp/spans/{os.getpid()}.json", "a")
+                )
+        )
+    ]
+
+
+def import_tracing_exporter(tracing_config: TracingConfig) -> Any:
+    if not tracing_config or tracing_config.enable_tracing is False:
+        return None
+
+    # If tracing is enabled, but an export path is not set
+    # Use the default tracing exporter
+    if tracing_config.export_path:
+        return import_attr(tracing_config.export_path)
+    else:
+        return pickle_dumps(
+            default_tracing_exporter,
+            f"Could not serialize the exporter {repr(default_tracing_exporter)}",
+        )

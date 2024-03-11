@@ -62,6 +62,9 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -86,6 +89,18 @@ def _load_deployment_def_from_import_path(import_path: str) -> Callable:
 
     return deployment_def
 
+
+def setup_tracing(tracing_exporter) -> None:
+    # Sets the tracer_provider. This is only allowed once per execution
+    # context and will log a warning if attempted multiple times.
+    tracing_exporters = tracing_exporter()
+    
+    trace.set_tracer_provider(TracerProvider())
+
+    for tracing_exporter in tracing_exporters:
+        trace.get_tracer_provider().add_span_processor(
+            tracing_exporter
+        )
 
 class ReplicaMetricsManager:
     """Manages metrics for the replica.
@@ -260,6 +275,7 @@ class ReplicaActor:
         serialized_init_kwargs: bytes,
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
+        serialized_exporter_def: bytes,
     ):
         self._version = version
         self._replica_tag = replica_tag
@@ -293,6 +309,10 @@ class ReplicaActor:
             replica_tag, deployment_id, self._deployment_config.autoscaling_config
         )
         self._metrics_manager.start()
+
+        tracing_exporter = cloudpickle.loads(serialized_exporter_def)
+        if tracing_exporter:
+            setup_tracing(tracing_exporter)
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(

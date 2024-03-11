@@ -203,6 +203,64 @@ class LoggingConfig(BaseModel):
             return False
         return self._compute_hash() == other._compute_hash()
 
+@PublicAPI(stability="alpha")
+class TracingConfig(BaseModel):
+    """Tracing config for configuring serve tracing.
+    """
+    class Config:
+        extra = Extra.forbid
+
+    export_path: str = Field(
+        default=None,
+        description=(
+            "An export path to export traces. Should be of the "
+            'form "module.submodule_1...submodule_n.'
+            'export_tracing". This is equivalent to '
+            '"from module.submodule_1...submodule_n import export_tracing.'
+        ),
+    )
+
+    enable_tracing: bool = Field(
+        default=False,
+        description=(
+            "Whether to enable tracing. Default to False."
+        ),
+    )
+
+
+    @validator("export_path")
+    def export_path_format_valid(cls, v: str):
+        if v is None:
+            return
+
+        if ":" in v:
+            if v.count(":") > 1:
+                raise ValueError(
+                    f'Got invalid export path "{v}". An '
+                    "export path may have at most one colon."
+                )
+            if v.rfind(":") == 0 or v.rfind(":") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid export path "{v}". An '
+                    "export path may not start or end with a colon."
+                )
+            return v
+        else:
+            if v.count(".") < 1:
+                raise ValueError(
+                    f'Got invalid export path "{v}". An '
+                    "export path must contain at least on dot or colon "
+                    "separating the module (and potentially submodules) from "
+                    'the export function. E.g.: "module.export_tracing".'
+                )
+            if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid export path "{v}". An '
+                    "export path may not start or end with a dot."
+                )
+
+        return v
+
 
 @PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
@@ -552,6 +610,11 @@ class ServeApplicationSchema(BaseModel):
         description="Logging config for configuring serve application logs.",
     )
 
+    tracing_config: TracingConfig = Field(
+        default=None,
+        description="Tracing config for configuring serve tracing.",
+    )
+
     @property
     def deployment_names(self) -> List[str]:
         return [d.name for d in self.deployments]
@@ -726,6 +789,10 @@ class ServeDeploySchema(BaseModel):
     logging_config: LoggingConfig = Field(
         default=None,
         description="Logging config for configuring serve components logs.",
+    )
+    tracing_config: TracingConfig = Field(
+        default=None,
+        description="Tracing config for configuring serve tracing.",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."

@@ -812,6 +812,12 @@ class ServeController:
             if app_config.logging_config is None and config.logging_config:
                 app_config.logging_config = config.logging_config
 
+            # If the tracing config is not set, use the global tracing
+            # config.
+            if app_config.tracing_config is None and config.tracing_config:
+                app_config.tracing_config = config.tracing_config
+
+
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 

@@ -373,6 +373,7 @@ class ReplicaConfig:
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
+        serialized_exporter_def: bytes = None,
     ):
         """Construct a ReplicaConfig with serialized properties.
 
@@ -407,6 +408,9 @@ class ReplicaConfig:
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
+
+        # Store tracing exporter
+        self.serialized_exporter_def = serialized_exporter_def
 
     def update_ray_actor_options(self, ray_actor_options):
         self.ray_actor_options = ray_actor_options
@@ -696,6 +700,7 @@ class ReplicaConfig:
             else None,
             proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
+            serialized_exporter_def=proto.exporter_def if proto.exporter_def != b"" else None
         )
 
     @classmethod
@@ -717,6 +722,7 @@ class ReplicaConfig:
             max_replicas_per_node=self.max_replicas_per_node
             if self.max_replicas_per_node is not None
             else 0,
+            exporter_def=self.serialized_exporter_def if self.serialized_exporter_def else b"",
         )
 
     def to_proto_bytes(self):
