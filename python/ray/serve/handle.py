@@ -289,8 +289,17 @@ class _DeploymentResponseBase:
 
         # Cached result of the `object_ref_future`.
         self._object_ref_or_gen = None
-        # Guards self._object_ref_or_gen.
-        self._object_ref_or_gen_lock = asyncio.Lock()
+        # Guards self._object_ref_or_gen, lazily constructed in
+        # the `_lazy_object_ref_or_gen_lock` property.
+        self.__object_ref_or_gen_lock = None
+
+    @property
+    def _lazy_object_ref_or_gen_lock(self) -> asyncio.Lock:
+        """Lazy `asyncio.Lock` object because the constructor does not run on a loop."""
+        if self.__object_ref_or_gen_lock is None:
+            self.__object_ref_or_gen_lock = asyncio.Lock()
+        
+        return self.__object_ref_or_gen_lock
 
     def _should_resolve_gen_to_obj_ref(
         self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
@@ -322,7 +331,7 @@ class _DeploymentResponseBase:
         # resolve to the underlying object ref more than once.
         #
         # See: https://github.com/ray-project/ray/issues/43879.
-        async with self._object_ref_or_gen_lock:
+        async with self._lazy_object_ref_or_gen_lock:
             if self._object_ref_or_gen is None:
                 # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
                 # safely from any asyncio loop.
