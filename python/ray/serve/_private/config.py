@@ -456,7 +456,6 @@ class ReplicaConfig:
         max_replicas_per_node: Optional[int] = None,
     ):
         self.ray_actor_options = ray_actor_options
-        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
@@ -464,6 +463,8 @@ class ReplicaConfig:
         self.max_replicas_per_node = max_replicas_per_node
 
         self._validate()
+
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
     @classmethod
     def create(
