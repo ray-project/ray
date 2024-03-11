@@ -422,6 +422,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         return ret
 
+    # TODO (simon): Adjust docstring.
     def sample_with_keys(
         self,
         num_items: Optional[int] = None,
@@ -484,8 +485,10 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         Returns:
             A sample batch (observations, actions, rewards, new observations,
-            terminateds, truncateds, weights) and if requested infos of dimension
-            [B, 1].
+            terminateds, truncateds, weights) and if requested infos and extra model
+            outputs. Extra model outputs are extracted to single columns in the batch
+            and infos are kept as a list of dictionaries. The batch keys are the episode
+            ids.
         """
         assert beta >= 0.0
 
