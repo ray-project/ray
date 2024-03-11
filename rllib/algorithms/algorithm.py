@@ -1187,14 +1187,15 @@ class Algorithm(Trainable, AlgorithmBase):
                         #  the dataset gets huge (should be ok for now).
                         all_batches.append(batch)
 
-                if len(results) != num_healthy_workers:
-                    logger.warning(
-                        "Calling `sample()` on your remote evaluation worker(s) "
-                        "resulted in a timeout (after the configured "
-                        f"{self.config.evaluation_sample_timeout_s} seconds)! "
-                        "Try to set `evaluation_sample_timeout_s` in your config"
-                        " to a larger value."
-                    )
+            if len(results) != num_healthy_workers:
+                logger.warning(
+                    "Calling `sample()` on your remote evaluation worker(s) "
+                    "resulted in a timeout (after the configured "
+                    f"{self.config.evaluation_sample_timeout_s} seconds)! "
+                    "Try to set `evaluation_sample_timeout_s` in your config"
+                    " to a larger value."
+                )
+                break
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
@@ -1323,22 +1324,6 @@ class Algorithm(Trainable, AlgorithmBase):
                         #  the dataset gets huge (should be ok for now).
                         all_batches.append(batch)
 
-                if len(results) != len(selected_eval_worker_ids):
-                    logger.warning(
-                        "Calling `sample()` on your remote evaluation worker(s) "
-                        "resulted in a timeout (after the configured "
-                        f"{self.config.evaluation_sample_timeout_s} seconds)! "
-                        "Try to set `evaluation_sample_timeout_s` in your config"
-                        " to a larger value."
-                        + (
-                            " If your episodes don't terminate easily, you may "
-                            "also want to set `evaluation_duration_unit` to "
-                            "'timesteps' (instead of 'episodes')."
-                            if unit == "episodes"
-                            else ""
-                        )
-                    )
-
                 # 1 episode per returned batch.
                 if unit == "episodes":
                     num_units_done += len(results)
@@ -1349,6 +1334,23 @@ class Algorithm(Trainable, AlgorithmBase):
                         if self.config.count_steps_by == "env_steps"
                         else agent_steps
                     )
+
+            if len(results) != len(selected_eval_worker_ids):
+                logger.warning(
+                    "Calling `sample()` on your remote evaluation worker(s) "
+                    "resulted in a timeout (after the configured "
+                    f"{self.config.evaluation_sample_timeout_s} seconds)! "
+                    "Try to set `evaluation_sample_timeout_s` in your config"
+                    " to a larger value."
+                    + (
+                        " If your episodes don't terminate easily, you may "
+                        "also want to set `evaluation_duration_unit` to "
+                        "'timesteps' (instead of 'episodes')."
+                        if unit == "episodes"
+                        else ""
+                    )
+                )
+                break
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
