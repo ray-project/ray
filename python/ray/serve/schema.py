@@ -185,10 +185,11 @@ class LoggingConfig(BaseModel):
             return False
         return self._compute_hash() == other._compute_hash()
 
+
 @PublicAPI(stability="alpha")
 class TracingConfig(BaseModel):
-    """Tracing config for configuring serve tracing.
-    """
+    """Tracing config for configuring serve tracing."""
+
     class Config:
         extra = Extra.forbid
 
@@ -204,11 +205,8 @@ class TracingConfig(BaseModel):
 
     enable_tracing: bool = Field(
         default=False,
-        description=(
-            "Whether to enable tracing. Default to False."
-        ),
+        description=("Whether to enable tracing. Default to False."),
     )
-
 
     @validator("export_path")
     def export_path_format_valid(cls, v: str):

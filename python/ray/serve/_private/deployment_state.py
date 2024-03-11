@@ -415,7 +415,9 @@ class ActorReplicaWrapper:
                     else deployment_info.replica_config.serialized_init_args
                 )
             serialized_exporter_def = (
-                cloudpickle.dumps(deployment_info.replica_config.serialized_exporter_def) 
+                cloudpickle.dumps(
+                    deployment_info.replica_config.serialized_exporter_def
+                )
                 if deployment_info.replica_config.serialized_exporter_def
                 else cloudpickle.dumps(())
             )

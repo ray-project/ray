@@ -1,12 +1,17 @@
 import inspect
 import logging
+import os
 from types import FunctionType
 from typing import Any, Dict, Union
+
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
 import ray
 from ray._private.pydantic_compat import is_subclass_of_base_model
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.serialization import pickle_dumps
 from ray._private.usage import usage_lib
+from ray._private.utils import import_attr
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
@@ -22,15 +27,6 @@ from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig, TracingConfig
-from ray._private.utils import import_attr
-from ray._private.serialization import pickle_dumps
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import (
-    ConsoleSpanExporter,
-    SimpleSpanProcessor,
-)
-import os
 
 logger = logging.getLogger(__file__)
 
@@ -339,13 +335,12 @@ def call_app_builder_with_args_if_necessary(
 
     return app
 
+
 def default_tracing_exporter():
     os.makedirs("/tmp/spans", exist_ok=True)
     return [
         SimpleSpanProcessor(
-            ConsoleSpanExporter(
-                out=open(f"/tmp/spans/{os.getpid()}.json", "a")
-                )
+            ConsoleSpanExporter(out=open(f"/tmp/spans/{os.getpid()}.json", "a"))
         )
     ]
 

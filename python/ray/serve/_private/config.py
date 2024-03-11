@@ -727,7 +727,9 @@ class ReplicaConfig:
             else None,
             proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
-            serialized_exporter_def=proto.exporter_def if proto.exporter_def != b"" else None
+            serialized_exporter_def=proto.exporter_def
+            if proto.exporter_def != b""
+            else None,
         )
 
     @classmethod
@@ -749,7 +751,9 @@ class ReplicaConfig:
             max_replicas_per_node=self.max_replicas_per_node
             if self.max_replicas_per_node is not None
             else 0,
-            exporter_def=self.serialized_exporter_def if self.serialized_exporter_def else b"",
+            exporter_def=self.serialized_exporter_def
+            if self.serialized_exporter_def
+            else b"",
         )
 
     def to_proto_bytes(self):

@@ -12,6 +12,8 @@ from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import starlette.responses
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 
 import ray
 from ray import cloudpickle
@@ -61,9 +63,6 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -93,13 +92,12 @@ def setup_tracing(tracing_exporter) -> None:
     # Sets the tracer_provider. This is only allowed once per execution
     # context and will log a warning if attempted multiple times.
     tracing_exporters = tracing_exporter()
-    
+
     trace.set_tracer_provider(TracerProvider())
 
     for tracing_exporter in tracing_exporters:
-        trace.get_tracer_provider().add_span_processor(
-            tracing_exporter
-        )
+        trace.get_tracer_provider().add_span_processor(tracing_exporter)
+
 
 class ReplicaMetricsManager:
     """Manages metrics for the replica.

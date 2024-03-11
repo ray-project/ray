@@ -975,7 +975,10 @@ def build_serve_application(
         Error message: a string if an error was raised, otherwise None.
     """
     try:
-        from ray.serve._private.api import call_app_builder_with_args_if_necessary, import_tracing_exporter
+        from ray.serve._private.api import (
+            call_app_builder_with_args_if_necessary,
+            import_tracing_exporter,
+        )
         from ray.serve._private.deployment_graph_build import build as pipeline_build
         from ray.serve._private.deployment_graph_build import (
             get_and_validate_ingress_deployment,
