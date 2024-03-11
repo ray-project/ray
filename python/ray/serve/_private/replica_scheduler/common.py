@@ -195,19 +195,20 @@ class ActorReplicaWrapper:
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
 
-        obj_ref_gen = self._send_request_python(pr, with_rejection=True)
         try:
+            obj_ref_gen = self._send_request_python(pr, with_rejection=True)
             first_ref = await obj_ref_gen.__anext__()
             queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
 
             if not queue_len_info.accepted:
-                ray.cancel(obj_ref_gen)
                 return None, queue_len_info
             else:
                 return obj_ref_gen, queue_len_info
         except asyncio.CancelledError as e:
             ray.cancel(obj_ref_gen)
             raise e from None
+        finally:
+            ray.cancel(obj_ref_gen)
 
 
 @dataclass(frozen=True)
