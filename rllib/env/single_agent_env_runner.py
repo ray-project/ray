@@ -54,13 +54,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # needed for schedulers used by `RLModule`s.
         self.global_num_env_steps_sampled = 0
 
-        # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            env=self.env,
-            env_config=self.config.env_config,
-        )
-
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
@@ -665,6 +658,13 @@ class SingleAgentEnvRunner(EnvRunner):
         )
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
+
+        # Call the `on_environment_created` callback.
+        self._callbacks.on_environment_created(
+            env_runner=self,
+            env=self.env,
+            env_context=env_ctx,
+        )
 
     def _new_episode(self):
         return SingleAgentEpisode(

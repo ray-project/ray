@@ -38,7 +38,7 @@ class MultiAgentEnvRunner(EnvRunner):
         if not self.config.is_multi_agent():
             raise ValueError(
                 f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
-                "setup is nt multi-agent! Try adding multi-agent information to your "
+                "setup is not multi-agent! Try adding multi-agent information to your "
                 "AlgorithmConfig via calling the `config.multi_agent(policies=..., "
                 "policy_mapping_fn=...)`."
             )
@@ -57,13 +57,6 @@ class MultiAgentEnvRunner(EnvRunner):
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
         self.global_num_env_steps_sampled = 0
-
-        # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            env=self.env,
-            env_config=self.config.env_config,
-        )
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
@@ -332,6 +325,8 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Create a new episode instance.
                 self._episode = self._new_episode()
+                self._make_on_episode_callback("on_episode_created", self._episode)
+
                 # Reset the environment.
                 obs, infos = self.env.reset()
                 # Add initial observations and infos.
@@ -698,6 +693,13 @@ class MultiAgentEnvRunner(EnvRunner):
         assert isinstance(self.env.unwrapped, MultiAgentEnv), (
             "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
             "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
+        )
+
+        # Call the `on_environment_created` callback.
+        self._callbacks.on_environment_created(
+            env_runner=self,
+            env=self.env,
+            env_context=env_ctx,
         )
 
     def _make_module(self):

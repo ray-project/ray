@@ -53,10 +53,21 @@ class AutoscalingConfig(BaseModel):
     # Time window to average over for metrics.
     look_back_period_s: PositiveFloat = 30.0
 
-    # Multiplicative "gain" factor to limit scaling decisions
+    # DEPRECATED
     smoothing_factor: PositiveFloat = 1.0
-    upscale_smoothing_factor: Optional[PositiveFloat] = None
-    downscale_smoothing_factor: Optional[PositiveFloat] = None
+    # DEPRECATED: replaced by `downscaling_factor`
+    upscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
+    )
+    # DEPRECATED: replaced by `upscaling_factor`
+    downscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description="[DEPRECATED] Please use `downscaling_factor` instead.",
+    )
+
+    # Multiplicative "gain" factor to limit scaling decisions
+    upscaling_factor: Optional[PositiveFloat] = None
+    downscaling_factor: Optional[PositiveFloat] = None
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
@@ -133,10 +144,16 @@ class AutoscalingConfig(BaseModel):
         """Deserialize policy from cloudpickled bytes."""
         return cloudpickle.loads(self._serialized_policy_def)
 
-    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+    def get_upscaling_factor(self) -> PositiveFloat:
+        if self.upscaling_factor:
+            return self.upscaling_factor
+
         return self.upscale_smoothing_factor or self.smoothing_factor
 
-    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+    def get_downscaling_factor(self) -> PositiveFloat:
+        if self.downscaling_factor:
+            return self.downscaling_factor
+
         return self.downscale_smoothing_factor or self.smoothing_factor
 
     def get_target_ongoing_requests(self) -> PositiveFloat:

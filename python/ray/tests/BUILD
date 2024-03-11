@@ -67,6 +67,7 @@ py_test_module_list(
     "test_global_gc.py",
     "test_job.py",
     "test_memstat.py",
+    "test_kill_subprocesses.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "no_windows", "team:core"],
@@ -198,6 +199,7 @@ py_test_module_list(
     "test_streaming_generator_3.py",
     "test_streaming_generator_4.py",
     "test_streaming_generator_backpressure.py",
+    "test_streaming_generator_regression.py",
     "test_scheduling_performance.py",
     "test_implicit_resource.py",
   ],
@@ -272,7 +274,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
-    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
@@ -333,6 +334,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_e2e.py",
+    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],

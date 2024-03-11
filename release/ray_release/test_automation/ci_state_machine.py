@@ -61,6 +61,7 @@ class CITestStateMachine(TestStateMachine):
             "ci-test",
             "ray-test-bot",
             "flaky-tracker",
+            "stability",
             "triage",
             self.test.get_oncall(),
             WEEKLY_RELEASE_BLOCKER_TAG,
@@ -77,12 +78,23 @@ class CITestStateMachine(TestStateMachine):
         # This line is to match the regex in https://shorturl.at/aiK25
         body += f"\nDataCaseName-{self.test.get_name()}-END\n"
         body += "Managed by OSS Test Policy"
-        issue_number = self.ray_repo.create_issue(
-            title=f"CI test {self.test.get_name()} is {self.test.get_state().value}",
-            body=body,
-            labels=labels,
-        ).number
-        self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
+        title = f"CI test {self.test.get_name()} is {self.test.get_state().value}"
+
+        # If the issue already exists, update the issue; otherwise creating a new one
+        github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if not github_issue_number:
+            issue_number = self.ray_repo.create_issue(
+                title=title,
+                body=body,
+                labels=labels,
+            ).number
+            self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
+            return
+        else:
+            issue = self.ray_repo.get_issue(github_issue_number)
+            issue.edit(title=title, state="open")
+            issue.create_comment(body)
+            return
 
     def _consistently_failing_to_jailed(self) -> bool:
         return False
@@ -112,7 +124,10 @@ class CITestStateMachine(TestStateMachine):
         )
 
     def _flaky_to_passing(self) -> bool:
-        return self._is_recently_stable()
+        # A flaky test is considered passing if it has been passing for a certain
+        # period and the github issue is closed (by a human).
+        issue = self.ray_repo.get_issue(self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER))
+        return self._is_recently_stable() and issue.state == "closed"
 
     def _is_recently_stable(self) -> bool:
         return len(self.test_results) >= CONTINUOUS_PASSING_TO_PASSING and all(
