@@ -31,10 +31,17 @@ def test_basic(serve_instance):
             response = self._handle.remote()
             assert isinstance(response, DeploymentResponse)
             val = await response
+
+            # Check that the response can be awaited twice.
+            assert (await response) == val
+
             return val
 
     handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
     assert isinstance(handle, DeploymentHandle)
+    assert handle.remote().result() == "hello"
+
+    # Check that `.result()` can be called twice.
     assert handle.remote().result() == "hello"
 
 

@@ -287,6 +287,11 @@ class _DeploymentResponseBase:
         # The result of `object_ref_future` must be an ObjectRef or ObjectRefGenerator.
         self._object_ref_future = object_ref_future
 
+        # Cached result of the `object_ref_future`.
+        self._object_ref_or_gen = None
+        # Guards self._object_ref_or_gen.
+        self._object_ref_or_gen_lock = asyncio.Lock()
+
     def _should_resolve_gen_to_obj_ref(
         self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
     ) -> bool:
@@ -312,13 +317,22 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
-        # from any asyncio loop.
-        obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
-        if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-            obj_ref_or_gen = await obj_ref_or_gen.__anext__()
+        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
+        # object ref or generator cached in order to avoid calling `__anext__()` to
+        # resolve to the underlying object ref more than once.
+        #
+        # See: https://github.com/ray-project/ray/issues/43879.
+        async with self._object_ref_or_gen_lock:
+            if self._object_ref_or_gen is None:
+                # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
+                # from any asyncio loop.
+                obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
+                if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+                    obj_ref_or_gen = await obj_ref_or_gen.__anext__()
 
-        return obj_ref_or_gen
+                self._object_ref_or_gen = obj_ref_or_gen
+
+            return self._object_ref_or_gen
 
     def _to_object_ref_or_gen_sync(
         self,
