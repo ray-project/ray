@@ -1697,12 +1697,14 @@
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_4.yaml
 
   run:
     timeout: 86400
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
+    wait_for_nodes:
+      num_nodes: 4
 
   smoke_test:
     frequency: nightly
@@ -1722,7 +1724,7 @@
         run:
           timeout: 3600
       cluster:
-        cluster_compute: tpl_cpu_1_gce.yaml
+        cluster_compute: tpl_cpu_4_gce.yaml
 
 - name: long_running_many_ppo
   group: Long running tests
