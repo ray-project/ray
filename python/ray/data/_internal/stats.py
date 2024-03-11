@@ -776,7 +776,7 @@ class DatasetStats:
         stats_summary_parents = []
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
-        streaming_exec_schedule = (
+        streaming_exec_schedule_s = (
             self.streaming_exec_schedule_s.get()
             if self.streaming_exec_schedule_s
             else 0
@@ -793,7 +793,7 @@ class DatasetStats:
             self.global_bytes_spilled,
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
-            streaming_exec_schedule,
+            streaming_exec_schedule_s,
         )
 
     def runtime_metrics(self) -> str:
