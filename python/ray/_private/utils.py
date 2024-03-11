@@ -240,7 +240,8 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
     if isinstance(s, str):
         return s
     else:
-        assert isinstance(s, bytes)
+        if not isinstance(s, bytes):
+            raise ValueError(f"Expected str or bytes, got {s!r}")
         return s.decode(encoding, errors)
 
 
