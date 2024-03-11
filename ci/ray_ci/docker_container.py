@@ -62,9 +62,9 @@ class DockerContainer(LinuxContainer):
         formatted_date = datetime.now().strftime("%y%m%d")
 
         if branch == "master":
-            if external:
+            if external and os.environ.get("RAYCI_SCHEDULE") == "nightly":
                 return [f"nightly.{formatted_date}.{sha_tag}", "nightly"]
-            return [sha_tag, "nightly"]
+            return [sha_tag]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
