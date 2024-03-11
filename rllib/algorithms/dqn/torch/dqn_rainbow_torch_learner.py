@@ -64,7 +64,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # Then we evaluate the target Q-function at the best action (greedy action)
             # over the online Q-function.
             batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
-            qf_next_outs = self.module.qf(batch_next)
+            qf_next_outs = self.module[module_id]._qf(batch_next)
             # Mark the best online Q-value of the next state.
             q_next_best_idx = (
                 torch.argmax(qf_next_outs[QF_PREDS], dim=1).unsqueeze(dim=-1).long()
