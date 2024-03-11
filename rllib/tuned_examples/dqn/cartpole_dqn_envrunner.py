@@ -24,7 +24,7 @@ config = (
         model={
             "fcnet_hiddens": [256],
             "fcnet_activation": "linear",
-            "epsilon": [(0, 1.0), (50000, 0.05)],
+            "epsilon": [(0, 1.0), (10000, 0.05)],
             # "fcnet_weights_initializer": "xavier_uniform_",
             # "post_fcnet_weights_initializer": "xavier_uniform_",
             "fcnet_bias_initializer": "zeros_",
@@ -47,24 +47,24 @@ config = (
 
 stop = {
     "sampler_results/episode_reward_mean": 450.0,
-    "timesteps_total": 50000,
+    "timesteps_total": 10000,
 }
 
-#ray.init(local_mode=True)
-#tuner = tune.Tuner(
-#    "DQN",
-#    param_space=config,
-#    run_config=train.RunConfig(
-#        stop=stop,
-#        name="test_rainbow",
-#    ),
-#    # tune_config=tune.TuneConfig(
-#    #     num_samples=10,
-#    # )
-#)
-#tuner.fit()
+ray.init(local_mode=True)
+tuner = tune.Tuner(
+    "DQN",
+    param_space=config,
+    run_config=train.RunConfig(
+        stop=stop,
+        name="test_rainbow",
+    ),
+    # tune_config=tune.TuneConfig(
+    #     num_samples=10,
+    # )
+)
+tuner.fit()
 
-algo = config.build()
-for _ in range(10000):
-     results = algo.train()
-     print(f"R={results['sampler_results']['episode_reward_mean']}")
+# algo = config.build()
+# for _ in range(10000):
+#     results = algo.train()
+#     print(f"R={results['sampler_results']['episode_reward_mean']}")

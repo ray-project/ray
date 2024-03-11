@@ -9,6 +9,7 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
     QF_MEAN_KEY,
     QF_MAX_KEY,
     QF_MIN_KEY,
+    QF_NEXT_PREDS,
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
     QF_PREDS,
@@ -63,12 +64,11 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         if self.config.double_q:
             # Then we evaluate the target Q-function at the best action (greedy action)
             # over the online Q-function.
-            batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
-            qf_next_outs = self.module[module_id]._qf(batch_next)
+            # batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
+            # qf_next_outs = self.module[module_id]._qf(batch_next)
+            qf_next_outs = fwd_out[QF_NEXT_PREDS]
             # Mark the best online Q-value of the next state.
-            q_next_best_idx = (
-                torch.argmax(qf_next_outs[QF_PREDS], dim=1).unsqueeze(dim=-1).long()
-            )
+            q_next_best_idx = torch.argmax(qf_next_outs, dim=1).unsqueeze(dim=-1).long()
             # Get the Q-value of the target network at maximum of the online network
             # (bootstrap action).
             q_next_best = torch.nan_to_num(

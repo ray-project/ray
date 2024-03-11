@@ -4,6 +4,7 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
     ATOMS,
     QF_LOGITS,
+    QF_NEXT_PREDS,
     QF_PROBS,
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
@@ -118,14 +119,30 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         output = {}
 
         # DQN needs the Q-values for the current and the next observation.
-        batch_curr = {Columns.OBS: batch[Columns.OBS]}
-        batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
+        if self.uses_double_q:
+            # In this case we need to make one forward pass for both the current
+            # and the next observation to keep the graph backpropagatable (this
+            # is specifically for the noise net as per forward pass we create new
+            # noise).
+            batch_base = {
+                Columns.OBS: torch.concat(
+                    [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=0
+                )
+            }
+        else:
+            batch_base = {Columns.OBS: batch[Columns.OBS]}
+        batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Q-network forward passes.
-        qf_outs = self._qf(batch_curr)
-        output[QF_PREDS] = qf_outs[QF_PREDS]
+        qf_outs = self._qf(batch_base)
+        if self.uses_double_q:
+            output[QF_PREDS], output[QF_NEXT_PREDS] = torch.chunk(
+                qf_outs[QF_PREDS], 2, dim=0
+            )
+        else:
+            output[QF_PREDS] = qf_outs[QF_PREDS]
         # The target Q-values for the next observations.
-        qf_target_next_outs = self._qf_target(batch_next)
+        qf_target_next_outs = self._qf_target(batch_target)
         output[QF_TARGET_NEXT_PREDS] = qf_target_next_outs[QF_PREDS]
         # We are learning a Q-value distribution.
         if self.num_atoms > 1:

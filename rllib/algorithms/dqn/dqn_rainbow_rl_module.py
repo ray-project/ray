@@ -20,6 +20,7 @@ from ray.rllib.utils.typing import TensorType
 
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
+QF_NEXT_PREDS = "qf_next_preds"
 QF_PROBS = "qf_probs"
 QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
 QF_TARGET_NEXT_PROBS = "qf_target_next_probs"

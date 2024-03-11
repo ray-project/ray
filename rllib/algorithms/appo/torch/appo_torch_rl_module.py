@@ -15,7 +15,6 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 
 class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
-
     @override(PPOTorchRLModule)
     def setup(self):
         super().setup()
