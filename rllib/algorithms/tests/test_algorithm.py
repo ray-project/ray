@@ -241,6 +241,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
+                always_attach_evaluation_results=False,
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
