@@ -1336,7 +1336,7 @@ class Algorithm(Trainable, AlgorithmBase):
                         else agent_steps
                     )
 
-            if len(results) != len(num_healthy_workers):
+            if len(results) != num_healthy_workers:
                 logger.warning(
                     "Calling `sample()` on your remote evaluation worker(s) "
                     "resulted in a timeout (after the configured "
