@@ -2,12 +2,13 @@ from typing import Callable
 
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.context import DataContext
+from ray.exceptions import UserCodeException
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class UserCodeException(Exception):
+class RayDataUserCodeException(UserCodeException):
     """Represents an Exception originating from user code, e.g.
     user-specified UDF used in a Ray Data transformation.
 

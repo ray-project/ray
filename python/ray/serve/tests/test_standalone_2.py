@@ -351,20 +351,14 @@ serve.run(B.bind())"""
         # Driver 1 (starts Serve controller)
         output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert (
-            "Adding 1 replica to deployment 'A' in application 'default'"
-            in output.decode("utf-8")
-        )
+        assert "Adding 1 replica to Deployment(name='A'" in output.decode("utf-8")
 
         f2.write(file2.encode("utf-8"))
         f2.seek(0)
         # Driver 2 (reconnects to the same Serve controller)
         output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert (
-            "Adding 1 replica to deployment 'B' in application 'default'"
-            in output.decode("utf-8")
-        )
+        assert "Adding 1 replica to Deployment(name='B'" in output.decode("utf-8")
 
 
 def test_checkpoint_deleted_on_serve_shutdown(start_and_shutdown_ray_cli_function):

@@ -423,7 +423,7 @@ def test_controller_restore_checkpoint_overwrite(
             for fname in os.listdir(cdir)
         )
 
-    tmpdir = storage.experiment_local_path
+    tmpdir = storage.experiment_driver_staging_path
     # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
     # to match the directory structure assumed by `TrialRunner.resume`.
     # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`

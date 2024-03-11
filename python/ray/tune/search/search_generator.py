@@ -210,7 +210,7 @@ class SearchGenerator(SearchAlgorithm):
                     if key.startswith("name:")
                 ]
                 logger.warning(
-                    "{} was not found in the experiment checkpoint "
+                    "{} was not found in the experiment "
                     "state when restoring. Found {}.".format(searcher_name, names)
                 )
             else:

@@ -251,10 +251,20 @@ def test_handle_early_detect_failure(shutdown_ray):
         serve.shutdown()
 
 
+@pytest.mark.parametrize(
+    "autoscaler_v2",
+    [False, True],
+    ids=["v1", "v2"],
+)
 def test_autoscaler_shutdown_node_http_everynode(
-    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+    autoscaler_v2, monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
+    # Faster health check interval to speed up the test.
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "1")
+    monkeypatch.setenv("RAY_health_check_timeout_ms", "2000")
+    monkeypatch.setenv("RAY_health_check_period_ms", "3000")
+
     cluster = AutoscalingCluster(
         head_resources={"CPU": 4},
         worker_node_types={
@@ -267,6 +277,7 @@ def test_autoscaler_shutdown_node_http_everynode(
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
         idle_timeout_minutes=0.05,
     )
     cluster.start()
@@ -326,6 +337,8 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     # Clean up serve.
     serve.shutdown()
+    cluster.shutdown()
+    ray.shutdown()
 
 
 def test_drain_and_undrain_http_proxy_actors(

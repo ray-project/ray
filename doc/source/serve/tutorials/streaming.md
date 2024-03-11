@@ -1,3 +1,6 @@
+---
+orphan: true
+---
 (serve-streaming-tutorial)=
 
 # Serve a Chatbot with Request and Response Streaming

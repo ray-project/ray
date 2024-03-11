@@ -2,6 +2,7 @@ import os
 import random
 import subprocess
 import tempfile
+from copy import deepcopy
 
 import pytest
 import requests
@@ -46,7 +47,10 @@ def ray_cluster():
 
 @pytest.fixture
 def ray_autoscaling_cluster(request):
-    cluster = AutoscalingCluster(**request.param)
+    # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
+    # modifies the dictionary that's passed in.
+    params = deepcopy(request.param)
+    cluster = AutoscalingCluster(**params)
     cluster.start()
     yield
     serve.shutdown()
@@ -164,7 +168,6 @@ def ray_instance(request):
         requested_env_vars = {}
 
     os.environ.update(requested_env_vars)
-
     yield ray.init(
         _metrics_export_port=9999,
         _system_config={
