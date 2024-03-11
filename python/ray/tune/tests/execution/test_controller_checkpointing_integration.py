@@ -274,7 +274,7 @@ def test_checkpoint_num_to_keep(
     assert len(cp_dirs) == 2, f"Checkpoint dirs: {cp_dirs}"
 
     # Re-instantiate trial runner and resume
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
