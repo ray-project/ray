@@ -425,6 +425,49 @@ class TestAutoscalingConfig:
         )
         assert autoscaling_config.get_target_ongoing_requests() == 7
 
+    def test_scaling_factor(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(upscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(downscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.1
+        assert autoscaling_config.get_downscaling_factor() == 0.01
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
+
 
 def test_config_schemas_forward_compatible():
     # Test configs ignoring unknown keys (required for forward-compatibility)
@@ -471,17 +514,22 @@ def test_with_proto():
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
 
-def test_zero_default_proto():
+@pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+def test_zero_default_proto(use_deprecated_smoothing_factor):
     # Test that options set to zero (protobuf default value) still retain their
     # original value after being serialized and deserialized.
-    config = DeploymentConfig(
-        autoscaling_config={
-            "min_replicas": 1,
-            "max_replicas": 2,
-            "smoothing_factor": 0.123,
-            "downscale_delay_s": 0,
-        }
-    )
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 2,
+        "downscale_delay_s": 0,
+    }
+    if use_deprecated_smoothing_factor:
+        autoscaling_config["smoothing_factor"] = 0.123
+    else:
+        autoscaling_config["upscaling_factor"] = 0.123
+        autoscaling_config["downscaling_factor"] = 0.123
+
+    config = DeploymentConfig(autoscaling_config=autoscaling_config)
     serialized_config = config.to_proto_bytes()
     deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
     new_delay_s = deserialized_config.autoscaling_config.downscale_delay_s

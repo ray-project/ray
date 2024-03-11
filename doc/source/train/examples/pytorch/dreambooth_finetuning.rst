@@ -1,7 +1,5 @@
 :orphan:
 
-.. _torch_finetune_dreambooth_ex:
-
 Fine-tune of Stable Diffusion with DreamBooth and Ray Train
 ===========================================================
 
@@ -294,6 +292,6 @@ For example, for the dog subject, you can try:
 See also
 --------
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases
+* :doc:`Ray Train Examples <../../examples>` for more use cases
 
 * :ref:`Ray Train User Guides <train-user-guides>` for how-to guides

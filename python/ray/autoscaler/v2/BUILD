@@ -12,133 +12,46 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
-py_test(
-    name = "test_instance_storage",
+# Unit test. (These should not have ray started)
+py_test_module_list(
+    files = [
+        "tests/test_instance_storage.py",
+        "tests/test_storage.py",
+        "tests/test_config.py",
+        "tests/test_node_provider.py",
+        "tests/test_ray_installer.py",
+        "tests/test_subscribers.py",
+        "tests/test_reconciler.py",
+        "tests/test_threaded_ray_installer.py",
+        "tests/test_utils.py",
+        "tests/test_scheduler.py",
+        "tests/test_instance_manager.py",
+        "tests/test_instance_util.py",
+        "tests/test_schema.py",
+        "tests/test_event_logger.py",
+        "tests/test_metrics_reporter.py",
+    ],
     size = "small",
-    srcs = ["tests/test_instance_storage.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_storage",
-    size = "small",
-    srcs = ["tests/test_storage.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_config",
-    size = "small",
-    srcs = ["tests/test_config.py"],
-    tags = ["team:core"],
-    deps = [
-        "//:ray_lib",
-    ]
-)
-
-py_test(
-    name = "test_node_provider",
-    size = "small",
-    srcs = ["tests/test_node_provider.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_ray_installer",
-    size = "small",
-    srcs = ["tests/test_ray_installer.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_subscribers",
-    size = "small",
-    srcs = ["tests/test_subscribers.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-
-py_test(
-    name = "test_reconciler",
-    size = "small",
-    srcs = ["tests/test_reconciler.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_threaded_ray_installer",
-    size = "small",
-    srcs = ["tests/test_threaded_ray_installer.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib",],
-)
-
-py_test(
-    name = "test_sdk",
-    size = "medium",
-    srcs = ["tests/test_sdk.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_utils",
-    size = "small",
-    srcs = ["tests/test_utils.py"],
     tags = ["team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
-py_test(
-    name = "test_e2e",
-    size = "medium",
-    srcs = ["tests/test_e2e.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
+# Integration test.
+py_test_module_list(
+    files=[
+        "tests/test_sdk.py",
+        "tests/test_autoscaler.py",
+    ],
+    size="medium",
+    tags=["team:core", "exclusive"],
+    deps=["//:ray_lib", ":conftest"],
 )
 
-py_test(
-    name = "test_scheduler",
-    size = "small",
-    srcs = ["tests/test_scheduler.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_instance_manager",
-    size = "small",
-    srcs = ["tests/test_instance_manager.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_instance_util",
-    size = "small",
-    srcs = ["tests/test_instance_util.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_schema",
-    size = "small",
-    srcs = ["tests/test_schema.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_autoscaler",
-    size = "medium",
-    srcs = ["tests/test_autoscaler.py"],
-    tags = ["team:core", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
+py_test_module_list(
+    files=[
+        "tests/test_e2e.py",
+    ],
+    size="large",
+    tags=["team:core", "exclusive"],
+    deps=["//:ray_lib", ":conftest"],
 )

@@ -21,7 +21,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
-    ReplicaName,
+    ReplicaID,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
@@ -1287,6 +1287,8 @@ def test_num_replicas_auto(client: ServeControllerClient):
         "downscale_delay_s": 600.0,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
     }
@@ -1411,17 +1413,16 @@ class TestDeploywithLoggingConfig:
             lambda: requests.post("http://localhost:8000/app1").status_code == 200
         )
 
-        def get_replica_info_format(replica_name: ReplicaName) -> str:
-            return (
-                f"{replica_name.app_name}_{replica_name.deployment_name} "
-                f"{replica_name.replica_suffix}"
-            )
+        def get_replica_info_format(replica_id: ReplicaID) -> str:
+            app_name = replica_id.deployment_id.app_name
+            deployment_name = replica_id.deployment_id.name
+            return f"{app_name}_{deployment_name} {replica_id.unique_id}"
 
         # By default, log level is "INFO"
         r = requests.post("http://localhost:8000/app1")
         r.raise_for_status()
         request_id = r.headers["X-Request-Id"]
-        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+        replica_id = ReplicaID.from_full_id_str(r.json()["replica"])
 
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
@@ -1430,7 +1431,7 @@ class TestDeploywithLoggingConfig:
         # Check the log formatting.
         check_log_file(
             r.json()["log_file"],
-            f" {get_replica_info_format(replica_name)} {request_id} ",
+            f" {get_replica_info_format(replica_id)} {request_id} ",
         )
 
         # Set log level to "DEBUG"
@@ -1448,14 +1449,14 @@ class TestDeploywithLoggingConfig:
         r = requests.post("http://localhost:8000/app1")
         r.raise_for_status()
         request_id = r.headers["X-Request-Id"]
-        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+        replica_id = ReplicaID.from_full_id_str(r.json()["replica"])
         check_log_file(
             r.json()["log_file"],
             [
                 # Check for DEBUG-level log statement.
                 ".*this_is_debug_info.*",
                 # Check that the log formatting has remained the same.
-                f" {get_replica_info_format(replica_name)} {request_id} ",
+                f" {get_replica_info_format(replica_id)} {request_id} ",
             ],
         )
 

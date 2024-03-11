@@ -15,6 +15,7 @@ from ray.autoscaler._private.resource_demand_scheduler import (
     _fits,
     _inplace_subtract,
 )
+from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
@@ -364,6 +365,7 @@ class SchedulingNode:
             status: The status of the node.
             node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
+            node_kind: The node kind.
         """
         return SchedulingNode(
             node_type=node_config.name,
@@ -533,8 +535,6 @@ class SchedulingNode:
 
         available_resources_dict = self.get_available_resources(resource_request_source)
 
-        available_resources_dict = self.get_available_resources(resource_request_source)
-
         # Check if there's enough resources to schedule the request.
         if not _fits(available_resources_dict, dict(request.resources_bundle)):
             return False
@@ -630,6 +630,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         3. Schedule the gang resource requests.
         4. Schedule the tasks/actor resource requests
     """
+
+    def __init__(self, event_logger: Optional[AutoscalerEventLogger] = None):
+        self._event_logger = event_logger
 
     @dataclass
     class ScheduleContext:
@@ -874,6 +877,20 @@ class ResourceDemandScheduler(IResourceScheduler):
             to_launch=ctx.get_launch_requests(),
             to_terminate=ctx.get_terminate_requests(),
         )
+
+        if self._event_logger is not None:
+            try:
+                self._event_logger.log_cluster_scheduling_update(
+                    launch_requests=reply.to_launch,
+                    terminate_requests=reply.to_terminate,
+                    infeasible_requests=infeasible_requests,
+                    infeasible_gang_requests=infeasible_gang_requests,
+                    infeasible_cluster_resource_constraints=infeasible_constraints,
+                    cluster_shape=ctx.get_cluster_shape(),
+                    node_type_configs=ctx.get_node_type_configs(),
+                )
+            except Exception:
+                logger.exception("Failed to emit event logs.")
 
         return reply
 
@@ -1533,6 +1550,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     id=str(time.time_ns()),
                     instance_id=node.im_instance_id,
                     ray_node_id=node.ray_node_id,
+                    instance_type=node.node_type,
                     cause=TerminationRequest.Cause.OUTDATED,
                     details=f"node from {node.node_type} has outdated config",
                 )
@@ -1589,6 +1607,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 instance_id=node.im_instance_id,
                 ray_node_id=node.ray_node_id,
                 cause=TerminationRequest.Cause.IDLE,
+                instance_type=node.node_type,
                 idle_duration_ms=node.idle_duration_ms,
                 details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
                 f"timeout={idle_timeout_s} secs",

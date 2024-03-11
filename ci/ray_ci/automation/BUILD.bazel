@@ -151,3 +151,14 @@ py_test(
         ":pypi_lib",
     ],
 )
+
+py_binary(
+    name = "upload_wheels_pypi",
+    srcs = ["upload_wheels_pypi.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_wheels_lib",
+        ":pypi_lib",
+        ci_require("click"),
+    ],
+)

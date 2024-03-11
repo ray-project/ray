@@ -1,12 +1,13 @@
 # coding: utf-8
 import os
 import sys
+import tempfile
 
 import pytest  # noqa
 
 from ray._private.test_utils import get_test_config_path
 from ray.autoscaler import AUTOSCALER_DIR_PATH
-from ray.autoscaler.v2.instance_manager.config import FileConfigReader
+from ray.autoscaler.v2.instance_manager.config import FileConfigReader, Provider
 
 
 @pytest.mark.parametrize(
@@ -16,7 +17,7 @@ from ray.autoscaler.v2.instance_manager.config import FileConfigReader
 def test_simple(skip_hash):
     config = FileConfigReader(
         get_test_config_path("test_multi_node.yaml"), skip_content_hash=skip_hash
-    ).get_autoscaling_config()
+    ).get_cached_autoscaling_config()
     assert config.get_cloud_node_config("head_node") == {"InstanceType": "m5.large"}
     assert config.get_docker_config("head_node") == {
         "image": "anyscale/ray-ml:latest",
@@ -29,7 +30,7 @@ def test_simple(skip_hash):
 def test_complex():
     config = FileConfigReader(
         get_test_config_path("test_ray_complex.yaml")
-    ).get_autoscaling_config()
+    ).get_cached_autoscaling_config()
     assert config.get_head_setup_commands() == [
         "echo a",
         "echo b",
@@ -96,7 +97,7 @@ def test_complex():
 def test_multi_provider_instance_type():
     def load_config(file):
         path = os.path.join(AUTOSCALER_DIR_PATH, file)
-        return FileConfigReader(path).get_autoscaling_config()
+        return FileConfigReader(path).get_cached_autoscaling_config()
 
     aws_config = load_config("aws/defaults.yaml")
     assert aws_config.get_provider_instance_type("ray.head.default") == "m5.large"
@@ -122,7 +123,7 @@ def test_multi_provider_instance_type():
 def test_node_type_configs():
     config = FileConfigReader(
         get_test_config_path("test_ray_complex.yaml")
-    ).get_autoscaling_config()
+    ).get_cached_autoscaling_config()
 
     node_type_configs = config.get_node_type_configs()
     assert config.get_max_num_worker_nodes() == 10
@@ -146,6 +147,36 @@ def test_node_type_configs():
     assert node_type_configs["worker_nodes1"].min_worker_nodes == 1
     assert node_type_configs["worker_nodes1"].resources == {"CPU": 2}
     assert node_type_configs["worker_nodes1"].labels == {"foo": "bar"}
+
+
+def test_read_config():
+    # Make a temp config file from aws/defaults.yaml
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+        # Write "aws/defaults.yaml" to the temp file
+        with open(
+            os.path.join(AUTOSCALER_DIR_PATH, "aws/defaults.yaml"), "r"
+        ) as default_file:
+            f.write(default_file.read())
+
+    config_reader = FileConfigReader(f.name)
+
+    # Check that the config is read correctly
+    assert config_reader.get_cached_autoscaling_config().provider == Provider.AWS
+
+    # Now override the file with a different provider
+    with open(f.name, "w") as f:
+        # Replace the file with "gcp/defaults.yaml"
+        with open(
+            os.path.join(AUTOSCALER_DIR_PATH, "gcp/defaults.yaml"), "r"
+        ) as default_file:
+            f.write(default_file.read())
+
+    # Still the same.
+    assert config_reader.get_cached_autoscaling_config().provider == Provider.AWS
+
+    # Reload
+    config_reader.refresh_cached_autoscaling_config()
+    assert config_reader.get_cached_autoscaling_config().provider == Provider.GCP
 
 
 if __name__ == "__main__":
