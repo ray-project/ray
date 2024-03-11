@@ -1309,6 +1309,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
+                num_healthy_workers = len(selected_eval_worker_ids)
                 results = self.evaluation_workers.foreach_worker(
                     func=lambda w: (w.sample(), w.get_metrics()),
                     local_worker=False,
@@ -1335,7 +1336,7 @@ class Algorithm(Trainable, AlgorithmBase):
                         else agent_steps
                     )
 
-            if len(results) != len(selected_eval_worker_ids):
+            if len(results) != len(num_healthy_workers):
                 logger.warning(
                     "Calling `sample()` on your remote evaluation worker(s) "
                     "resulted in a timeout (after the configured "
