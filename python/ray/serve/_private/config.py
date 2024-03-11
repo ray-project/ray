@@ -426,13 +426,13 @@ class ReplicaConfig:
 
         self.max_replicas_per_node = max_replicas_per_node
 
+        self._validate()
+
         # Create resource_dict. This contains info about the replica's resource
         # needs. It does NOT set the replica's resource usage. That's done by
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
-
-        self._validate()
 
     def _validate(self):
         self._validate_ray_actor_options()
