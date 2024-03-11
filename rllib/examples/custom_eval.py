@@ -283,5 +283,5 @@ if __name__ == "__main__":
     # Check eval results (from eval workers using the custom function),
     # not results from the regular workers.
     if args.as_test:
-        check_learning_achieved(results, args.stop_reward, evaluation=True)
+        check_learning_achieved(results, args.stop_reward)
     ray.shutdown()

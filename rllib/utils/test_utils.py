@@ -597,8 +597,8 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
 
 def check_learning_achieved(
     tune_results: "tune.ResultGrid",
-    min_value,
-    evaluation=False,
+    min_value: float,
+    evaluation: Optional[bool] = None,
     metric: str = "episode_reward_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
@@ -609,16 +609,21 @@ def check_learning_achieved(
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
         min_reward: The min reward that must be reached.
+        evaluation: If True, use `evaluation/sampler_results/[metric]`, if False, use
+            `sampler_results/[metric]`, if None, use evaluation sampler results if
+            available otherwise, use train sampler results.
 
     Raises:
         ValueError: If `min_reward` not reached.
     """
     # Get maximum reward of all trials
     # (check if at least one trial achieved some learning)
-    recorded_values = [
-        (row[metric] if not evaluation else row[f"evaluation/{metric}"])
-        for _, row in tune_results.get_dataframe().iterrows()
-    ]
+    recorded_values = []
+    for _, row in tune_results.get_dataframe().iterrows():
+        if evaluation or (evaluation is None and f"evaluation/{metric}" in row):
+            recorded_values.append(row[f"evaluation/{metric}"])
+        else:
+            recorded_values.append(row[metric])
     best_value = max(recorded_values)
     if best_value < min_value:
         raise ValueError(f"`{metric}` of {min_value} not reached!")
