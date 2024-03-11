@@ -212,7 +212,7 @@ class ServeController:
         # Track the number of times the controller has started
         metrics.Counter(
             "serve_controller_num_starts",
-            description="The number of times that controller has started.",
+            description="The number of times the controller has started.",
         ).inc()
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):

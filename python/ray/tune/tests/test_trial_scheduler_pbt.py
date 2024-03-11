@@ -111,7 +111,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
-        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
 
     def tearDown(self):
         ray.shutdown()

@@ -9,7 +9,7 @@ from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
-from ci.ray_ci.utils import RAY_VERSION
+from ci.ray_ci.utils import RAY_VERSION, POSTMERGE_PIPELINE
 
 
 class TestRayDockerContainer(RayCITestBase):
@@ -312,6 +312,61 @@ class TestRayDockerContainer(RayCITestBase):
 
         container = RayDockerContainer(v, "cu11.8.0", "ray")
         assert container.get_platform_tag() == "-cu118"
+
+    def test_should_upload(self) -> None:
+        v = DEFAULT_PYTHON_VERSION
+        test_cases = [
+            # environment_variables, expected_result (with upload flag on)
+            (
+                {
+                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_BRANCH": "releases/1.0.0",
+                },
+                True,  # satisfy upload requirements
+            ),
+            (
+                {
+                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_BRANCH": "master",
+                    "RAYCI_SCHEDULE": "nightly",
+                },
+                True,  # satisfy upload requirements
+            ),
+            (
+                {
+                    "BUILDKITE_PIPELINE_ID": "123456",
+                    "RAYCI_SCHEDULE": "nightly",
+                    "BUILDKITE_BRANCH": "master",
+                },
+                False,  # not satisfied: pipeline is not postmerge
+            ),
+            (
+                {
+                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_BRANCH": "non-release/1.2.3",
+                },
+                False,  # not satisfied: branch is not release/master
+            ),
+            (
+                {
+                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_BRANCH": "123",
+                    "RAYCI_SCHEDULE": "nightly",
+                },
+                False,  # not satisfied: branch is not master with nightly schedule
+            ),
+        ]
+        # Run with upload flag on
+        container = RayDockerContainer(v, "cpu", "ray", upload=True)
+        for env_var, expected_result in test_cases:
+            with mock.patch.dict(os.environ, env_var):
+                assert container._should_upload() is expected_result
+
+        # Run with upload flag off
+        container = RayDockerContainer(v, "cpu", "ray", upload=False)
+        for env_var, _ in test_cases:
+            with mock.patch.dict(os.environ, env_var):
+                assert container._should_upload() is False
 
 
 if __name__ == "__main__":
