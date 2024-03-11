@@ -314,7 +314,7 @@ class TestAlgorithm(unittest.TestCase):
             algo_wo_env_on_local_worker = config.build()
             self.assertRaisesRegex(
                 ValueError,
-                "Cannot evaluate w/o an evaluation worker set",
+                "Cannot evaluate on a local worker",
                 algo_wo_env_on_local_worker.evaluate,
             )
             algo_wo_env_on_local_worker.stop()

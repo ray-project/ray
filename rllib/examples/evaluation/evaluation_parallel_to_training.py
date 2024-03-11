@@ -69,7 +69,10 @@ class AssertEvalCallback(DefaultCallbacks):
                 # Compare number of entries in episode_lengths (this is the
                 # number of episodes actually run) with desired number of
                 # episodes from the config.
-                assert num_episodes_done == algorithm.config.evaluation_duration
+                assert num_episodes_done == algorithm.config.evaluation_duration, (
+                    num_episodes_done,
+                    algorithm.config.evaluation_duration,
+                )
                 print(
                     "Number of run evaluation episodes: " f"{num_episodes_done} (ok)!"
                 )
@@ -87,7 +90,10 @@ class AssertEvalCallback(DefaultCallbacks):
                     "Number of run evaluation timesteps: "
                     f"{num_timesteps_reported} (ok)!"
                 )
-        else:
+        # Expect at least evaluation/sampler_results to be always available.
+        elif (
+            "evaluation" not in result or "sampler_results" not in result["evaluation"]
+        ):
             raise KeyError(
                 "`evaluation->sampler_results->hist_stats` not found in result dict!"
             )

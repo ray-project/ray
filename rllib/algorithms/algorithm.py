@@ -1042,7 +1042,7 @@ class Algorithm(Trainable, AlgorithmBase):
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
             raise ValueError(
-                "Cannot evaluate on a local worker (wither there is no evaluation "
+                "Cannot evaluate on a local worker (wether there is no evaluation "
                 "WorkerSet OR no remote evaluation workers) in the Algorithm or w/o an "
                 "environment on that local worker!\nTry one of the following:\n1) Set "
                 "`evaluation_interval` > 0 to force creating a separate evaluation "
@@ -1072,6 +1072,13 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             agent_steps += sum(e.agent_steps() for e in episodes)
             env_steps += sum(e.env_steps() for e in episodes)
+        elif unit == "episodes":
+            for _ in range(duration):
+                batch = env_runner.sample()
+                agent_steps += batch.agent_steps()
+                env_steps += batch.env_steps()
+                if self.reward_estimators:
+                    all_batches.append(batch)
         else:
             batch = env_runner.sample()
             agent_steps += batch.agent_steps()
