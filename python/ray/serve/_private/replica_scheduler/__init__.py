@@ -1,5 +1,5 @@
 from ray.serve._private.replica_scheduler.common import (  # noqa: F401
-    Query,
+    PendingRequest,
     ReplicaScheduler,
     ReplicaWrapper,
 )

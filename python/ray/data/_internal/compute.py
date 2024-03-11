@@ -83,9 +83,6 @@ class ActorPoolStrategy(ComputeStrategy):
 
     def __init__(
         self,
-        # Deprecated: kwargs will be required for all args in a future release.
-        legacy_min_size: Optional[int] = None,
-        legacy_max_size: Optional[int] = None,
         *,
         size: Optional[int] = None,
         min_size: Optional[int] = None,
@@ -105,11 +102,6 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
-        if legacy_min_size is not None or legacy_max_size is not None:
-            raise ValueError(
-                "In Ray 2.5, ActorPoolStrategy requires min_size and "
-                "max_size to be explicit kwargs."
-            )
         if size:
             if size < 1:
                 raise ValueError("size must be >= 1", size)

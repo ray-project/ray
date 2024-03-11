@@ -77,7 +77,7 @@ class InvalidValuesTest(unittest.TestCase):
             yield
 
         assert not any(
-            "Trial Runner checkpointing failed: Can't pickle local object" in x
+            "Experiment state snapshotting failed: Can't pickle local object" in x
             for x in buffer
         ), "Searcher checkpointing failed (unable to serialize)."
 

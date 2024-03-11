@@ -7,10 +7,14 @@ import gymnasium as gym
 from gymnasium.core import ActType, ObsType
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.typing import AgentID, ModuleID
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SingleAgentEpisode:
     """A class representing RL environment episodes for individual agents.
 
@@ -141,6 +145,25 @@ class SingleAgentEpisode:
         prev_4_actions_col = batch(prev_4_a)
     """
 
+    __slots__ = (
+        "id_",
+        "agent_id",
+        "module_id",
+        "multi_agent_episode_id",
+        "_observation_space",
+        "_action_space",
+        "observations",
+        "infos",
+        "actions",
+        "rewards",
+        "extra_model_outputs",
+        "is_terminated",
+        "is_truncated",
+        "render_images",
+        "t_started",
+        "t",
+    )
+
     def __init__(
         self,
         id_: Optional[str] = None,
@@ -157,6 +180,9 @@ class SingleAgentEpisode:
         render_images: Optional[List[np.ndarray]] = None,
         t_started: Optional[int] = None,
         len_lookback_buffer: Union[int, str] = "auto",
+        agent_id: Optional[AgentID] = None,
+        module_id: Optional[ModuleID] = None,
+        multi_agent_episode_id: Optional[int] = None,
     ):
         """Initializes a SingleAgentEpisode instance.
 
@@ -217,8 +243,21 @@ class SingleAgentEpisode:
                 chunk's data.
                 If `len_lookback_buffer` is "auto" (default), will interpret all
                 provided data in the constructor as part of the lookback buffers.
+            agent_id: An optional AgentID indicating which agent this episode belongs
+                to. This information is stored under `self.agent_id` and only serves
+                reference purposes.
+            module_id: An optional ModuleID indicating which RLModule this episode
+                belongs to. Normally, this information is obtained by querying an
+                `agent_to_module_mapping_fn` with a given agent ID. This information
+                is stored under `self.module_id` and only serves reference purposes.
+            multi_agent_episode_id: An optional EpisodeID of the encapsulating
+                `MultiAgentEpisode` that this `SingleAgentEpisode` belongs to.
         """
         self.id_ = id_ or uuid.uuid4().hex
+
+        self.agent_id = agent_id
+        self.module_id = module_id
+        self.multi_agent_episode_id = multi_agent_episode_id
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.
@@ -230,15 +269,15 @@ class SingleAgentEpisode:
         infos = infos or [{} for _ in range(len(observations or []))]
 
         # Observations: t0 (initial obs) to T.
-        self.observation_space = observation_space
+        self._observation_space = None
         if isinstance(observations, InfiniteLookbackBuffer):
             self.observations = observations
         else:
             self.observations = InfiniteLookbackBuffer(
                 data=observations,
                 lookback=len_lookback_buffer,
-                space=observation_space,
             )
+        self.observation_space = observation_space
         # Infos: t0 (initial info) to T.
         if isinstance(infos, InfiniteLookbackBuffer):
             self.infos = infos
@@ -248,15 +287,15 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         # Actions: t1 to T.
-        self.action_space = action_space
+        self._action_space = None
         if isinstance(actions, InfiniteLookbackBuffer):
             self.actions = actions
         else:
             self.actions = InfiniteLookbackBuffer(
                 data=actions,
                 lookback=len_lookback_buffer,
-                space=action_space,
             )
+        self.action_space = action_space
         # Rewards: t1 to T.
         if isinstance(rewards, InfiniteLookbackBuffer):
             self.rewards = rewards
@@ -323,7 +362,9 @@ class SingleAgentEpisode:
             from both episodes.
         """
         assert episode_chunk.id_ == self.id_
-        assert not self.is_done and not self.is_finalized
+        # NOTE (sven): This is what we agreed on. As the replay buffers must be
+        # able to concatenate.
+        assert not self.is_done
         # Make sure the timesteps match.
         assert self.t == episode_chunk.t_started
 
@@ -525,7 +566,7 @@ class SingleAgentEpisode:
         structs, whose leafs are now numpy arrays. Each of these leaf numpy arrays will
         have the same length (batch dimension) as the length of the original lists.
 
-        Note that SampleBatch.INFOS are NEVER numpy'ized and will remain a list
+        Note that Columns.INFOS are NEVER numpy'ized and will remain a list
         (normally, a list of the original, env-returned dicts). This is due to the
         herterogenous nature of INFOS returned by envs, which would make it unwieldy to
         convert this information to numpy arrays.
@@ -583,11 +624,12 @@ class SingleAgentEpisode:
         """
 
         self.observations.finalize()
-        self.actions.finalize()
-        self.rewards.finalize()
         self.render_images = np.array(self.render_images, dtype=np.uint8)
-        for k, v in self.extra_model_outputs.items():
-            self.extra_model_outputs[k].finalize()
+        if len(self) > 0:
+            self.actions.finalize()
+            self.rewards.finalize()
+            for k, v in self.extra_model_outputs.items():
+                self.extra_model_outputs[k].finalize()
 
         return self
 
@@ -1427,7 +1469,7 @@ class SingleAgentEpisode:
         """Converts a SingleAgentEpisode into a data dict mapping str keys to data.
 
         The keys used are:
-        SampleBatch.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,
+        Columns.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,
         and those in `self.extra_model_outputs`.
 
         Returns:
@@ -1447,18 +1489,18 @@ class SingleAgentEpisode:
         return dict(
             {
                 # Trivial 1D data (compiled above).
-                SampleBatch.TERMINATEDS: terminateds,
-                SampleBatch.TRUNCATEDS: truncateds,
-                SampleBatch.T: t,
-                SampleBatch.EPS_ID: eps_id,
+                Columns.TERMINATEDS: terminateds,
+                Columns.TRUNCATEDS: truncateds,
+                Columns.T: t,
+                Columns.EPS_ID: eps_id,
                 # Retrieve obs, infos, actions, rewards using our get_... APIs,
                 # which return all relevant timesteps (excluding the lookback
                 # buffer!). Slice off last obs and infos to have the same number
                 # of them as we have actions and rewards.
-                SampleBatch.OBS: self.get_observations(slice(None, -1)),
-                SampleBatch.INFOS: self.get_infos(slice(None, -1)),
-                SampleBatch.ACTIONS: self.get_actions(),
-                SampleBatch.REWARDS: self.get_rewards(),
+                Columns.OBS: self.get_observations(slice(None, -1)),
+                Columns.INFOS: self.get_infos(slice(None, -1)),
+                Columns.ACTIONS: self.get_actions(),
+                Columns.REWARDS: self.get_rewards(),
             },
             # All `extra_model_outs`: Same as obs: Use get_... API.
             **{
@@ -1489,6 +1531,44 @@ class SingleAgentEpisode:
             chunk.
         """
         return sum(self.get_rewards())
+
+    def env_steps(self) -> int:
+        """Returns the number of environment steps.
+
+        Note, this episode instance could be a chunk of an actual episode.
+
+        Returns:
+            An integer that counts the number of environment steps this episode instance
+            has seen.
+        """
+        return len(self)
+
+    def agent_steps(self) -> int:
+        """Number of agent steps.
+
+        Note, these are identical to the environment steps for a single-agent episode.
+
+        Returns:
+            An integer counting the number of agent steps executed during the time this
+            episode instance records.
+        """
+        return self.env_steps()
+
+    @property
+    def observation_space(self):
+        return self._observation_space
+
+    @observation_space.setter
+    def observation_space(self, value):
+        self._observation_space = self.observations.space = value
+
+    @property
+    def action_space(self):
+        return self._action_space
+
+    @action_space.setter
+    def action_space(self, value):
+        self._action_space = self.actions.space = value
 
     def __len__(self) -> int:
         """Returning the length of an episode.

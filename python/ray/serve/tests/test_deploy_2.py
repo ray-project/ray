@@ -120,7 +120,7 @@ def test_http_proxy_request_cancellation(serve_instance):
     # https://github.com/ray-project/ray/issues/21425
     s = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class A:
         def __init__(self) -> None:
             self.counter = 0
@@ -256,7 +256,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         def __call__(self):
             return "hello world"
 
-    serve.run(Model.bind(), _blocking=False)
+    serve._run(Model.bind(), _blocking=False)
 
     def check_fail():
         app_status = serve.status().applications["default"]
@@ -327,9 +327,10 @@ def test_num_replicas_auto(serve_instance, use_options):
     deployment_config = app_details["deployments"]["A"]["deployment_config"]
     # Set by `num_replicas="auto"`
     assert "num_replicas" not in deployment_config
-    assert deployment_config["max_concurrent_queries"] == 5
+    assert deployment_config["max_ongoing_requests"] == 5
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
         "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
@@ -341,9 +342,10 @@ def test_num_replicas_auto(serve_instance, use_options):
         "downscale_delay_s": 600.0,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
-        "policy": "ray.serve.autoscaling_policy:default_autoscaling_policy",
     }
 
     for i in range(3):

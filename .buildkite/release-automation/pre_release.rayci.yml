@@ -1,0 +1,70 @@
+group: Pre-release checks
+steps:
+  - label: "Check release blockers"
+    key: check-release-blockers
+    depends_on: forge
+    job_env: forge
+    instance_type: small_branch
+    commands:
+      - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
+
+  - label: "Check commit hash"
+    key: check-commit-hash
+    job_env: forge
+    depends_on: check-release-blockers
+    allow_dependency_failure: true
+    commands:
+      - bash .buildkite/release-automation/check-commit-hash.sh
+
+  - label: "Trigger Postmerge test"
+    trigger: "postmerge"
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_CONTINUOUS_BUILD: 1
+  
+  - label: "Trigger Release nightly test"
+    key: trigger-release-nightly
+    trigger: "release"
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Nightly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly"
+
+  - block: "Trigger Release nightly-3x test"
+    key: block-release-nightly-3x-test
+    depends_on: check-commit-hash
+
+  - label: "Trigger Release nightly-3x test"
+    key: trigger-release-nightly-3x
+    depends_on: block-release-nightly-3x-test
+    trigger: "release"
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Nightly-3x test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly-3x"
+
+  - block: "Trigger Release weekly test"
+    key: block-release-weekly-test
+    depends_on: check-commit-hash
+
+  - label: "Trigger Release weekly test"
+    trigger: "release"
+    depends_on: block-release-weekly-test
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Weekly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "weekly"

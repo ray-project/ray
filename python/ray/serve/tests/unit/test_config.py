@@ -43,8 +43,10 @@ def test_autoscaling_config_validation():
         # max_replicas must be positive
         AutoscalingConfig(max_replicas=0)
 
+    # target_ongoing_requests must be nonnegative
     with pytest.raises(ValidationError):
-        # max_replicas must be nonnegative
+        AutoscalingConfig(target_ongoing_requests=-1)
+    with pytest.raises(ValidationError):
         AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
 
     # max_replicas must be greater than or equal to min_replicas
@@ -85,17 +87,17 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError, match="value_error"):
             DeploymentConfig(num_replicas=-1)
 
-        # Test dynamic default for max_concurrent_queries.
-        assert DeploymentConfig().max_concurrent_queries == 100
+        # Test dynamic default for max_ongoing_requests.
+        assert DeploymentConfig().max_ongoing_requests == 100
 
     def test_deployment_config_update(self):
-        b = DeploymentConfig(num_replicas=1, max_concurrent_queries=1)
+        b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
 
         # Test updating a key works.
         b.num_replicas = 2
         assert b.num_replicas == 2
         # Check that not specifying a key doesn't update it.
-        assert b.max_concurrent_queries == 1
+        assert b.max_ongoing_requests == 1
 
         # Check that input is validated.
         with pytest.raises(ValidationError):
@@ -405,6 +407,68 @@ class TestReplicaConfig:
         assert config.init_kwargs == dict()
 
 
+class TestAutoscalingConfig:
+    def test_target_ongoing_requests(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_target_ongoing_requests() == 1
+
+        autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+        autoscaling_config = AutoscalingConfig(
+            target_num_ongoing_requests_per_replica=7
+        )
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+        autoscaling_config = AutoscalingConfig(
+            target_ongoing_requests=7, target_num_ongoing_requests_per_replica=70
+        )
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+    def test_scaling_factor(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(upscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(downscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.1
+        assert autoscaling_config.get_downscaling_factor() == 0.01
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
+
+
 def test_config_schemas_forward_compatible():
     # Test configs ignoring unknown keys (required for forward-compatibility)
     ServeDeploySchema(
@@ -442,7 +506,7 @@ def test_http_options():
 
 def test_with_proto():
     # Test roundtrip
-    config = DeploymentConfig(num_replicas=100, max_concurrent_queries=16)
+    config = DeploymentConfig(num_replicas=100, max_ongoing_requests=16)
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
     # Test user_config object
@@ -450,17 +514,22 @@ def test_with_proto():
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
 
-def test_zero_default_proto():
+@pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+def test_zero_default_proto(use_deprecated_smoothing_factor):
     # Test that options set to zero (protobuf default value) still retain their
     # original value after being serialized and deserialized.
-    config = DeploymentConfig(
-        autoscaling_config={
-            "min_replicas": 1,
-            "max_replicas": 2,
-            "smoothing_factor": 0.123,
-            "downscale_delay_s": 0,
-        }
-    )
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 2,
+        "downscale_delay_s": 0,
+    }
+    if use_deprecated_smoothing_factor:
+        autoscaling_config["smoothing_factor"] = 0.123
+    else:
+        autoscaling_config["upscaling_factor"] = 0.123
+        autoscaling_config["downscaling_factor"] = 0.123
+
+    config = DeploymentConfig(autoscaling_config=autoscaling_config)
     serialized_config = config.to_proto_bytes()
     deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
     new_delay_s = deserialized_config.autoscaling_config.downscale_delay_s
@@ -576,17 +645,16 @@ def test_autoscaling_policy_serializations(policy):
     """
     autoscaling_config = AutoscalingConfig()
     if policy:
-        autoscaling_config = AutoscalingConfig(policy=policy)
+        autoscaling_config = AutoscalingConfig(_policy=policy)
 
     config = DeploymentConfig.from_default(autoscaling_config=autoscaling_config)
     deserialized_autoscaling_policy = DeploymentConfig.from_proto_bytes(
         config.to_proto_bytes()
     ).autoscaling_config.get_policy()
 
-    if policy is None:
-        assert deserialized_autoscaling_policy == default_autoscaling_policy
-    else:
-        assert deserialized_autoscaling_policy() == fake_policy_return_value
+    # Right now we don't allow modifying the autoscaling policy, so this will always
+    # be the default autoscaling policy
+    assert deserialized_autoscaling_policy == default_autoscaling_policy
 
 
 def test_autoscaling_policy_import_fails_for_non_existing_policy():
@@ -595,9 +663,9 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
     This test will ensure non-existing policy will be caught. It can happen when we
     moved the default policy or when user pass in a non-existing policy.
     """
+    # Right now we don't allow modifying the autoscaling policy, so this will not fail
     policy = "i.dont.exist:fake_policy"
-    with pytest.raises(ModuleNotFoundError):
-        AutoscalingConfig(policy=policy)
+    AutoscalingConfig(_policy=policy)
 
 
 def test_default_autoscaling_policy_import_path():
@@ -615,7 +683,7 @@ class TestProtoToDict:
 
         # Defaults are filled.
         assert result["num_replicas"] == 0
-        assert result["max_concurrent_queries"] == 0
+        assert result["max_ongoing_requests"] == 0
         assert result["user_config"] == b""
         assert result["user_configured_option_names"] == []
 
@@ -625,16 +693,16 @@ class TestProtoToDict:
     def test_non_empty_fields(self):
         """Test _proto_to_dict() to deserialize protobuf with non-empty fields"""
         num_replicas = 111
-        max_concurrent_queries = 222
+        max_ongoing_requests = 222
         proto = DeploymentConfigProto(
             num_replicas=num_replicas,
-            max_concurrent_queries=max_concurrent_queries,
+            max_ongoing_requests=max_ongoing_requests,
         )
         result = _proto_to_dict(proto)
 
         # Fields with non-empty values are filled correctly.
         assert result["num_replicas"] == num_replicas
-        assert result["max_concurrent_queries"] == max_concurrent_queries
+        assert result["max_ongoing_requests"] == max_ongoing_requests
 
         # Empty fields are continue to be filled with default values.
         assert result["user_config"] == b""
@@ -642,11 +710,11 @@ class TestProtoToDict:
     def test_nested_protobufs(self):
         """Test _proto_to_dict() to deserialize protobuf with nested protobufs"""
         num_replicas = 111
-        max_concurrent_queries = 222
+        max_ongoing_requests = 222
         min_replicas = 333
         proto = DeploymentConfigProto(
             num_replicas=num_replicas,
-            max_concurrent_queries=max_concurrent_queries,
+            max_ongoing_requests=max_ongoing_requests,
             autoscaling_config=AutoscalingConfigProto(
                 min_replicas=min_replicas,
             ),
@@ -655,7 +723,7 @@ class TestProtoToDict:
 
         # Non-empty field is filled correctly.
         assert result["num_replicas"] == num_replicas
-        assert result["max_concurrent_queries"] == max_concurrent_queries
+        assert result["max_ongoing_requests"] == max_ongoing_requests
 
         # Nested protobuf is filled correctly.
         assert result["autoscaling_config"]["min_replicas"] == min_replicas

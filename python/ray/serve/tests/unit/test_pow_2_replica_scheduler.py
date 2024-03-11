@@ -1,21 +1,30 @@
 import asyncio
 import importlib
 import os
+import random
 import sys
 import time
-from typing import Optional, Set, Tuple, Union
+import uuid
+from typing import Optional, Set, Union
 
 import pytest
 
 import ray
+from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import DeploymentID, RequestMetadata
+from ray.serve._private.common import DeploymentID, ReplicaID, RequestMetadata
+from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_scheduler import (
+    PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
-    Query,
     ReplicaWrapper,
 )
+from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.test_utils import MockTimer
 
+TIMER = MockTimer()
+
+DEFAULT_MAX_ONGOING_REQUESTS = 10
 SCHEDULER_NODE_ID = "scheduler_node_id"
 SCHEDULER_AZ = "scheduler_az"
 
@@ -23,29 +32,33 @@ SCHEDULER_AZ = "scheduler_az"
 class FakeReplicaWrapper(ReplicaWrapper):
     def __init__(
         self,
-        replica_id: str,
+        replica_unique_id: str,
         *,
         node_id: str = "",
         availability_zone: Optional[str] = None,
         reset_after_response: bool = False,
         model_ids: Optional[Set[str]] = None,
-        sleep_time_s: float = 0.0
+        sleep_time_s: float = 0.0,
+        max_ongoing_requests: int = DEFAULT_MAX_ONGOING_REQUESTS,
     ):
-        self._replica_id = replica_id
+        self._replica_id = ReplicaID(
+            unique_id=replica_unique_id,
+            deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        )
         self._node_id = node_id
         self._availability_zone = availability_zone
         self._queue_len = 0
-        self._accepted = False
+        self._max_ongoing_requests = max_ongoing_requests
         self._has_queue_len_response = asyncio.Event()
         self._reset_after_response = reset_after_response
         self._model_ids = model_ids or set()
         self._sleep_time_s = sleep_time_s
 
-        self.get_queue_state_was_cancelled = False
+        self.get_queue_len_was_cancelled = False
         self.queue_len_deadline_history = list()
 
     @property
-    def replica_id(self) -> str:
+    def replica_id(self) -> ReplicaID:
         return self._replica_id
 
     @property
@@ -60,18 +73,20 @@ class FakeReplicaWrapper(ReplicaWrapper):
     def multiplexed_model_ids(self) -> Set[str]:
         return self._model_ids
 
-    def set_queue_state_response(
+    @property
+    def max_ongoing_requests(self) -> int:
+        return self._max_ongoing_requests
+
+    def set_queue_len_response(
         self,
         queue_len: int,
-        accepted: bool = True,
         exception: Optional[Exception] = None,
     ):
         self._queue_len = queue_len
-        self._accepted = accepted
         self._exception = exception
         self._has_queue_len_response.set()
 
-    async def get_queue_state(self, *, deadline_s: float) -> Tuple[int, bool]:
+    async def get_queue_len(self, *, deadline_s: float) -> int:
         self.queue_len_deadline_history.append(deadline_s)
         try:
             while not self._has_queue_len_response.is_set():
@@ -86,14 +101,14 @@ class FakeReplicaWrapper(ReplicaWrapper):
             if self._exception is not None:
                 raise self._exception
 
-            return self._queue_len, self._accepted
+            return self._queue_len
         except asyncio.CancelledError:
-            self.get_queue_state_was_cancelled = True
+            self.get_queue_len_was_cancelled = True
             raise
 
-    def send_query(
-        self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.ObjectRefGenerator"]:
+    def send_request(
+        self, pr: PendingRequest
+    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
         raise NotImplementedError()
 
 
@@ -107,12 +122,16 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     async def construct_scheduler(loop: asyncio.AbstractEventLoop):
         return PowerOfTwoChoicesReplicaScheduler(
             loop,
-            DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
+            DeploymentID(name="TEST_DEPLOYMENT"),
             prefer_local_node_routing=request.param.get("prefer_local_node", False),
             prefer_local_az_routing=request.param.get("prefer_local_az", False),
             self_node_id=SCHEDULER_NODE_ID,
             self_actor_id="fake-actor-id",
             self_availability_zone=request.param.get("az", None),
+            use_replica_queue_len_cache=request.param.get(
+                "use_replica_queue_len_cache", False
+            ),
+            get_curr_time_s=TIMER.time,
         )
 
     s = asyncio.new_event_loop().run_until_complete(
@@ -125,6 +144,9 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     importlib.reload(ray.serve._private.constants)
     importlib.reload(ray.serve._private.replica_scheduler.pow_2_scheduler)
 
+    # Reset mock timer to avoid state leakage.
+    TIMER.reset()
+
     yield s
 
     # Always verify that all scheduling tasks exit once all queries are satisfied.
@@ -132,19 +154,30 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     assert s.num_pending_requests == 0
 
 
-@pytest.fixture
-def fake_query() -> Query:
-    meta = RequestMetadata(request_id="req_id", endpoint="endpoint")
-    return Query([], {}, meta)
-
-
-def query_with_model_id(model_id: str):
-    meta = RequestMetadata(
-        request_id="req_id",
-        endpoint="endpoint",
-        multiplexed_model_id=model_id,
-    )
-    return Query([], {}, meta)
+def fake_pending_request(
+    *, created_at: Optional[float] = None, model_id: str = ""
+) -> PendingRequest:
+    if created_at is not None:
+        return PendingRequest(
+            args=list(),
+            kwargs=dict(),
+            metadata=RequestMetadata(
+                request_id=str(uuid.uuid4()),
+                endpoint="endpoint",
+                multiplexed_model_id=model_id,
+            ),
+            created_at=created_at,
+        )
+    else:
+        return PendingRequest(
+            args=list(),
+            kwargs=dict(),
+            metadata=RequestMetadata(
+                request_id=str(uuid.uuid4()),
+                endpoint="endpoint",
+                multiplexed_model_id=model_id,
+            ),
+        )
 
 
 @pytest.mark.asyncio
@@ -158,7 +191,7 @@ def query_with_model_id(model_id: str):
     ],
     indirect=True,
 )
-async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_query):
+async def test_no_replicas_available_then_one_available(pow_2_scheduler):
     """
     If there are replicas available, we should wait until one is added. Once a
     replica is added via `update_replicas`, the pending assignment should be fulfilled.
@@ -166,12 +199,12 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_qu
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     assert (await task) == r1
@@ -188,7 +221,7 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_qu
     ],
     indirect=True,
 )
-async def test_replica_does_not_accept_then_accepts(pow_2_scheduler, fake_query):
+async def test_replica_does_not_accept_then_accepts(pow_2_scheduler):
     """
     If none of the replicas accept the request, we should repeatedly try with backoff.
     Once one accepts, the pending assignment should be fulfilled.
@@ -196,18 +229,18 @@ async def test_replica_does_not_accept_then_accepts(pow_2_scheduler, fake_query)
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 
@@ -222,7 +255,7 @@ async def test_replica_does_not_accept_then_accepts(pow_2_scheduler, fake_query)
     ],
     indirect=True,
 )
-async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler, fake_query):
+async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler):
     """
     If none of the replicas accept the request, we should repeatedly try with backoff.
     Once one accepts, the pending assignment should be fulfilled.
@@ -230,19 +263,19 @@ async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler, fake_que
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0)
+    r2.set_queue_len_response(0)
     s.update_replicas([r1, r2])
 
     assert (await task) == r2
@@ -259,7 +292,7 @@ async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler, fake_que
     ],
     indirect=True,
 )
-async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_query):
+async def test_one_replica_available_then_none_then_one(pow_2_scheduler):
     """
     If a replica stops accepting requests, it should stop being scheduled. When it then
     accepts, pending assingments should be scheduled on it.
@@ -268,10 +301,10 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
     loop = get_or_create_event_loop()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1])
 
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
@@ -279,7 +312,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     assert (await task) == r1
@@ -296,7 +329,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
     ],
     indirect=True,
 )
-async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
+async def test_two_replicas_available_then_one(pow_2_scheduler):
     """
     If two replicas are available and accepting requests, they should both get
     scheduled. If one is removed, only the other should be scheduled.
@@ -304,20 +337,20 @@ async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0)
+    r2.set_queue_len_response(0)
 
     s.update_replicas([r1, r2])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_query(fake_query)) in {r1, r2}
+        assert (await s.choose_replica_for_request(fake_pending_request())) in {r1, r2}
 
     s.update_replicas([r1])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_query(fake_query)) == r1
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
 
 
 @pytest.mark.asyncio
@@ -331,22 +364,22 @@ async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
+async def test_two_replicas_one_accepts(pow_2_scheduler):
     """
     If two replicas are available but only one accepts, only it should be scheduled.
     """
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
 
     s.update_replicas([r1, r2])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_query(fake_query)) == r1
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
 
 
 @pytest.mark.asyncio
@@ -360,25 +393,25 @@ async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
+async def test_three_replicas_two_accept(pow_2_scheduler):
     """
     If three replicas are available but only two accept, only those should be scheduled.
     """
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
 
     r3 = FakeReplicaWrapper("r3")
-    r3.set_queue_state_response(0)
+    r3.set_queue_len_response(0)
 
     s.update_replicas([r1, r2, r3])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_query(fake_query)) in {r1, r3}
+        assert (await s.choose_replica_for_request(fake_pending_request())) in {r1, r3}
 
 
 @pytest.mark.asyncio
@@ -392,7 +425,7 @@ async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
+async def test_two_replicas_choose_shorter_queue(pow_2_scheduler):
     """
     If two replicas are available and accept requests, the one with the shorter
     queue should be scheduled.
@@ -400,15 +433,15 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(1)
+    r1.set_queue_len_response(1)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0)
+    r2.set_queue_len_response(0)
 
     s.update_replicas([r1, r2])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_query(fake_query)) == r2
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
 
 
 @pytest.mark.asyncio
@@ -422,7 +455,7 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
+async def test_tasks_scheduled_fifo(pow_2_scheduler):
     """
     Verify that requests are always scheduled in FIFO order, even if many are being
     assigned concurrently.
@@ -433,7 +466,9 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
     # Schedule many requests in parallel; they cannot be fulfilled yet.
     tasks = []
     for _ in range(10):
-        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+        tasks.append(
+            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+        )
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
     assert len(done) == 0
@@ -444,13 +479,58 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
     s.update_replicas([r1])
 
     for i in range(len(tasks)):
-        r1.set_queue_state_response(0)
+        r1.set_queue_len_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
         # If the order was not FIFO, the fulfilled assignment may not be the front of
         # the list.
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
+
+
+@pytest.mark.asyncio
+async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
+    """
+    Verify that pending requests whose scheduling is retried are still scheduled in fifo
+    order based on creation time, even if they are inserted in a different order.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    start = time.time()
+    pending_requests = [fake_pending_request(created_at=start + i) for i in range(10)]
+
+    random_order_index = list(range(len(pending_requests)))
+    random.shuffle(random_order_index)
+
+    # Schedule the requests in parallel; they cannot be fulfilled yet.
+    tasks = []
+    for idx in random_order_index:
+        tasks.append(
+            loop.create_task(
+                s.choose_replica_for_request(pending_requests[idx], is_retry=True),
+                name=f"request-{idx}",
+            )
+        )
+
+    done, _ = await asyncio.wait(tasks, timeout=0.1)
+    assert len(done) == 0
+
+    # Only a single request will be accepted at a time due to
+    # `reset_after_response=True`.
+    r1 = FakeReplicaWrapper("r1", reset_after_response=True)
+    s.update_replicas([r1])
+
+    # Check that the tasks are scheduled in the order they were created (not the.
+    # order they were retried).
+    for expected_idx in range(len(pending_requests)):
+        r1.set_queue_len_response(0)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        assert len(done) == 1
+
+        t = done.pop()
+        assert t.get_name() == f"request-{expected_idx}"
+        tasks.remove(t)
 
 
 @pytest.mark.asyncio
@@ -464,7 +544,7 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_cancellation(pow_2_scheduler, fake_query):
+async def test_cancellation(pow_2_scheduler):
     """
     If a pending assignment is cancelled, it shouldn't get fulfilled and the next
     request in the queue should be.
@@ -472,8 +552,8 @@ async def test_cancellation(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
-    task1 = loop.create_task(s.choose_replica_for_query(fake_query))
-    task2 = loop.create_task(s.choose_replica_for_query(fake_query))
+    task1 = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task2 = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
 
     done, _ = await asyncio.wait([task1, task2], timeout=0.1)
     assert len(done) == 0
@@ -481,7 +561,7 @@ async def test_cancellation(pow_2_scheduler, fake_query):
     task1.cancel()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     assert (await task2) == r1
@@ -502,7 +582,7 @@ async def test_cancellation(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_only_task_cancelled(pow_2_scheduler, fake_query):
+async def test_only_task_cancelled(pow_2_scheduler):
     """
     If a pending assignment is cancelled and it's the only one in the queue, it should
     be passed over and the scheduling task should exit.
@@ -510,7 +590,7 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
 
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
@@ -518,7 +598,7 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     task.cancel()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_state_response(0)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
     start = time.time()
@@ -544,7 +624,7 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
+async def test_scheduling_task_cap(pow_2_scheduler):
     """
     Verify that the number of scheduling tasks never exceeds the cap (2 * num_replicas).
     """
@@ -553,7 +633,9 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
 
     tasks = []
     for _ in range(10):
-        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+        tasks.append(
+            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+        )
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
     assert len(done) == 0
@@ -562,7 +644,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     assert s.curr_num_scheduling_tasks == 0
 
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -576,14 +658,14 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     # Number of tasks should increase when more replicas are available.
     scheduling_tasks_one_replica = s.curr_num_scheduling_tasks
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1, r2])
     assert s.curr_num_scheduling_tasks > scheduling_tasks_one_replica
     assert s.curr_num_scheduling_tasks == s.max_num_scheduling_tasks
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
@@ -604,7 +686,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
+async def test_scheduling_task_cap_hard_limit(pow_2_scheduler):
     """
     Verify that the number of scheduling tasks never exceeds the hard limit if set.
     """
@@ -616,7 +698,9 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
 
     tasks = []
     for _ in range(10):
-        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+        tasks.append(
+            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+        )
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
     assert len(done) == 0
@@ -625,7 +709,7 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
     assert s.curr_num_scheduling_tasks == 0
 
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -638,13 +722,13 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
 
     # Number of tasks should not increase when adding another replica due to the limit.
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1, r2])
     assert s.curr_num_scheduling_tasks == hard_limit
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
@@ -663,7 +747,7 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
-async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query):
+async def test_replica_responds_after_being_removed(pow_2_scheduler):
     """
     Verify that if a replica is removed from the active set while the queue length
     message is in flight, it won't be scheduled and a new replica will be.
@@ -679,7 +763,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     s.update_replicas([r1])
 
     # Start the scheduling task, which will hang waiting for the queue length response.
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
 
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
@@ -689,7 +773,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     # Also set the queue length response on the existing replica.
     r2 = FakeReplicaWrapper("r2")
     s.update_replicas([r2])
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
 
     # The original replica should *not* be scheduled.
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -697,7 +781,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     assert s.curr_num_scheduling_tasks == 1
 
     # Set the new replica to accept, it should be scheduled.
-    r2.set_queue_state_response(0, accepted=True)
+    r2.set_queue_len_response(0)
     assert (await task) == r2
 
 
@@ -710,7 +794,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     ],
     indirect=True,
 )
-async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
+async def test_prefer_replica_on_same_node(pow_2_scheduler):
     """
     Verify that the scheduler prefers replicas that are colocated on the same node ID
     as itself. If the first candidate replicas on the same node reject the request,
@@ -720,27 +804,29 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
     loop = get_or_create_event_loop()
 
     r1 = FakeReplicaWrapper("r1", node_id=SCHEDULER_NODE_ID)
-    print(r1.node_id)
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     r2 = FakeReplicaWrapper("r2", node_id="some_other_node_in_the_stratosphere")
-    print(r2.node_id)
-    r2.set_queue_state_response(0, accepted=True)
+    r2.set_queue_len_response(0)
     s.update_replicas([r1, r2])
 
     tasks = []
     for _ in range(10):
-        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+        tasks.append(
+            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+        )
 
     # All requests should be scheduled to the replica on the same node if it accepts.
     assert all(replica == r1 for replica in await asyncio.gather(*tasks))
 
     # Update the replica on the same node to reject requests -- now requests should
-    # fall back to the other replica..
-    r1.set_queue_state_response(0, accepted=False)
+    # fall back to the other replica.
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
 
     tasks = []
     for _ in range(10):
-        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+        tasks.append(
+            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+        )
 
     # All requests should be scheduled to the other replica.
     assert all(replica == r2 for replica in await asyncio.gather(*tasks))
@@ -752,7 +838,7 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
     [{"prefer_local_node": True, "prefer_local_az": True, "az": SCHEDULER_AZ}],
     indirect=True,
 )
-async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
+async def test_prefer_replica_in_same_az(pow_2_scheduler):
     """
     When prefer routing on same node and prefer routing to same AZ is
     on, verify that the scheduler prefers
@@ -777,15 +863,17 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
         node_id="some_other_node_in_the_stratosphere",
         availability_zone="some_other_az_in_the_solar_system",
     )
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
         tasks = []
         for _ in range(10):
-            tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+            tasks.append(
+                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            )
         return await asyncio.gather(*tasks)
 
     # All requests should be scheduled to the replica on the same node if it accepts.
@@ -793,12 +881,12 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
 
     # Update the replica on the same node to reject requests -- now requests should
     # fall back to replica in the same az.
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     assert all(replica == r2 for replica in await choose_replicas())
 
     # Update the replica on the same az to reject requests -- now requests should
     # fall back to the last replica.
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     assert all(replica == r3 for replica in await choose_replicas())
 
 
@@ -808,7 +896,7 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
     [{"prefer_local_az": False, "az": SCHEDULER_AZ}],
     indirect=True,
 )
-async def test_prefer_az_off(pow_2_scheduler, fake_query):
+async def test_prefer_az_off(pow_2_scheduler):
     """
     When prefer routing to same AZ is OFF, verify that requests are
     spread to replicas across AZs
@@ -820,15 +908,17 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
     r1 = FakeReplicaWrapper("r1", availability_zone=SCHEDULER_AZ)
     r2 = FakeReplicaWrapper("r2", availability_zone=SCHEDULER_AZ)
     r3 = FakeReplicaWrapper("r3", availability_zone="western-hemisphere")
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
         tasks = []
         for _ in range(10):
-            tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+            tasks.append(
+                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            )
         replicas = await asyncio.gather(*tasks)
         return {r.replica_id for r in replicas}
 
@@ -846,7 +936,7 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
     # This deflakes the test, but also makes sure the test runs fast on average
     await verify_replicas_batched({r1.replica_id, r2.replica_id, r3.replica_id})
 
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     await verify_replicas_batched({r2.replica_id, r3.replica_id})
 
 
@@ -856,9 +946,7 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
     [{"prefer_local_node": False, "prefer_local_az": True, "az": SCHEDULER_AZ}],
     indirect=True,
 )
-async def test_prefer_replica_in_same_az_without_prefer_node(
-    pow_2_scheduler, fake_query
-):
+async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_scheduler):
     """
     When prefer routing on same node is OFF and prefer routing to same
     AZ is ON, verify that the scheduler prefers
@@ -874,15 +962,17 @@ async def test_prefer_replica_in_same_az_without_prefer_node(
     )
     r2 = FakeReplicaWrapper("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
     r3 = FakeReplicaWrapper("r3", node_id="node-beta", availability_zone="some_zone")
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
         tasks = []
         for _ in range(10):
-            tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+            tasks.append(
+                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            )
         return await asyncio.gather(*tasks)
 
     # All requests should be scheduled to the two nodes in the same AZ
@@ -893,12 +983,12 @@ async def test_prefer_replica_in_same_az_without_prefer_node(
     # Update replica on one of the nodes in the same AZ to reject
     # requests. Now requests should only go to the remaining node in the
     # same AZ
-    r2.set_queue_state_response(0, accepted=False)
+    r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     assert all(replica == r1 for replica in await choose_replicas())
 
     # Update the replica on last node in the same AZ to reject requests.
     # Now requests should fall back to the last replica.
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     assert all(replica == r3 for replica in await choose_replicas())
 
 
@@ -908,9 +998,7 @@ async def test_prefer_replica_in_same_az_without_prefer_node(
     [{"prefer_local_node": True, "prefer_local_az": False, "az": SCHEDULER_AZ}],
     indirect=True,
 )
-async def test_prefer_replica_on_same_node_without_prefer_az(
-    pow_2_scheduler, fake_query
-):
+async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_scheduler):
     """
     When prefer routing to same node is ON and prefer routing to same AZ
     is OFF, verify that requests are first scheduled to same-node
@@ -925,15 +1013,17 @@ async def test_prefer_replica_on_same_node_without_prefer_az(
     )  # noqa
     r2 = FakeReplicaWrapper("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
     r3 = FakeReplicaWrapper("r3", node_id="node-beta", availability_zone="west")
-    r1.set_queue_state_response(0, accepted=True)
-    r2.set_queue_state_response(0, accepted=True)
-    r3.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
         tasks = []
         for _ in range(10):
-            tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+            tasks.append(
+                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            )
         return await asyncio.gather(*tasks)
 
     # Requests should be sent to replica on same node
@@ -941,7 +1031,7 @@ async def test_prefer_replica_on_same_node_without_prefer_az(
 
     # If replica on same node is blocked, there should be no preference between
     # remaining replicas even if the availability zones are different.
-    r1.set_queue_state_response(0, accepted=False)
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     assert set(await choose_replicas()) == {r2, r3}
 
 
@@ -966,16 +1056,16 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
-        r1.set_queue_state_response(100, accepted=True)
+        r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
-        r2.set_queue_state_response(100, accepted=True)
+        r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
         r3 = FakeReplicaWrapper("r3", model_ids={})
-        r3.set_queue_state_response(0, accepted=True)
+        r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
-            query = query_with_model_id("m2")
-            task = loop.create_task(s.choose_replica_for_query(query))
+            request = fake_pending_request(model_id="m2")
+            task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) in {r1, r2}
 
     async def test_choose_least_number_of_models_replicas(self, pow_2_scheduler):
@@ -986,12 +1076,12 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
         r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
-        r1.set_queue_state_response(0, accepted=True)
-        r2.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
+        r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
         for _ in range(10):
-            query = query_with_model_id("m3")
-            task = loop.create_task(s.choose_replica_for_query(query))
+            request = fake_pending_request(model_id="m3")
+            task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r2
 
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
@@ -1002,12 +1092,12 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={})
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         s.update_replicas([r1])
 
         for _ in range(10):
-            query = query_with_model_id("m1")
-            task = loop.create_task(s.choose_replica_for_query(query))
+            request = fake_pending_request(model_id="m1")
+            task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r1
 
     async def test_fall_back_to_replica_without_model_id(self, pow_2_scheduler):
@@ -1019,16 +1109,16 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
-        r1.set_queue_state_response(0, accepted=False)
+        r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
-        r2.set_queue_state_response(100, accepted=False)
+        r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
         r3 = FakeReplicaWrapper("r3", model_ids={})
-        r3.set_queue_state_response(0, accepted=True)
+        r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
-            query = query_with_model_id("m2")
-            task = loop.create_task(s.choose_replica_for_query(query))
+            request = fake_pending_request(model_id="m2")
+            task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r3
 
     async def test_multiple_queries_with_different_model_ids(self, pow_2_scheduler):
@@ -1040,21 +1130,33 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1"})
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
-        r2.set_queue_state_response(0, accepted=True)
+        r2.set_queue_len_response(0)
         r3 = FakeReplicaWrapper("r3", model_ids={"m3"})
-        r3.set_queue_state_response(0, accepted=True)
+        r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
             tasks = [
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m1"))),
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m2"))),
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m3"))),
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m1"))),
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m2"))),
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m3"))),
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                ),
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
+                ),
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m3"))
+                ),
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                ),
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
+                ),
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m3"))
+                ),
             ]
 
             done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -1080,10 +1182,12 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1")
-        r1.set_queue_state_response(0, accepted=False)
+        r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
 
         tasks = [
-            loop.create_task(s.choose_replica_for_query(query_with_model_id("m1")))
+            loop.create_task(
+                s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+            )
             for _ in range(100)
         ]
 
@@ -1094,18 +1198,16 @@ class TestModelMultiplexing:
         # Now add two more replicas, one of which has the model ID.
         # That one should be chosen for all of the tasks.
         r2 = FakeReplicaWrapper("r2")
-        r2.set_queue_state_response(0, accepted=False)
+        r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
         r3 = FakeReplicaWrapper("r3", model_ids={"m1"})
-        r3.set_queue_state_response(100, accepted=True)
+        r3.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
 
         s.update_replicas([r1, r2, r3])
 
         assert all(replica == r3 for replica in await asyncio.gather(*tasks))
 
     @pytest.mark.asyncio
-    async def test_tasks_scheduled_fifo_among_model_ids(
-        self, pow_2_scheduler, fake_query
-    ):
+    async def test_tasks_scheduled_fifo_among_model_ids(self, pow_2_scheduler):
         """
         Verify that requests are scheduled FIFO based on model ID.
         """
@@ -1118,26 +1220,30 @@ class TestModelMultiplexing:
         m2_tasks = []
         for _ in range(10):
             m1_tasks.append(
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m1")))
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                )
             )
             m2_tasks.append(
-                loop.create_task(s.choose_replica_for_query(query_with_model_id("m2")))
+                loop.create_task(
+                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
+                )
             )
 
         done, _ = await asyncio.wait(m1_tasks + m2_tasks, timeout=0.1)
         assert len(done) == 0
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1"}, reset_after_response=True)
-        r1.set_queue_state_response(0, accepted=True)
+        r1.set_queue_len_response(0)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2"}, reset_after_response=True)
-        r2.set_queue_state_response(0, accepted=True)
+        r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
 
         # In each iteration, allow one replica of w/ each model ID to be scheduled.
         # The tasks for each model ID should be scheduled in FIFO order.
         for i in range(10):
-            r1.set_queue_state_response(0, accepted=True)
-            r2.set_queue_state_response(0, accepted=True)
+            r1.set_queue_len_response(0)
+            r2.set_queue_len_response(0)
 
             done, pending = await asyncio.wait(
                 m1_tasks, return_when=asyncio.FIRST_COMPLETED
@@ -1153,9 +1259,9 @@ class TestModelMultiplexing:
 
 
 @pytest.mark.asyncio
-async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query):
+async def test_get_queue_len_cancelled_on_timeout(pow_2_scheduler):
     """
-    Verify that `get_queue_state` is cancelled if the `queue_len_response_deadline_s`
+    Verify that `get_queue_len` is cancelled if the `queue_len_response_deadline_s`
     is reached.
     """
     s = pow_2_scheduler
@@ -1167,19 +1273,19 @@ async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query)
 
     # Attempt to schedule; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    # The `get_queue_state` method should be cancelled.
-    assert r1.get_queue_state_was_cancelled
+    # The `get_queue_len` method should be cancelled.
+    assert r1.get_queue_len_was_cancelled
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 
 @pytest.mark.asyncio
-async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
+async def test_queue_len_response_deadline_backoff(pow_2_scheduler):
     """
     Verify that the response deadline is exponentially backed off up to the max.
     """
@@ -1193,7 +1299,7 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
 
     # Attempt to schedule; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.2)
     assert len(done) == 0
 
@@ -1205,7 +1311,6 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
     ):
         deadline_i = r1.queue_len_deadline_history[i]
         deadline_j = r1.queue_len_deadline_history[j]
-        print(deadline_i, deadline_j)
         assert (
             deadline_i <= deadline_j
             and deadline_j <= s.max_queue_len_response_deadline_s
@@ -1216,12 +1321,12 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler, fake_query):
                 or deadline_j == 2 * deadline_i
             )
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 
 @pytest.mark.asyncio
-async def test_max_queue_len_response_deadline(pow_2_scheduler, fake_query):
+async def test_max_queue_len_response_deadline(pow_2_scheduler):
     """
     Verify that if the max response deadline is > the initial deadline, the initial is
     always used.
@@ -1236,7 +1341,7 @@ async def test_max_queue_len_response_deadline(pow_2_scheduler, fake_query):
 
     # Attempt to schedule; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.2)
     assert len(done) == 0
 
@@ -1244,7 +1349,7 @@ async def test_max_queue_len_response_deadline(pow_2_scheduler, fake_query):
         d == s.queue_len_response_deadline_s for d in r1.queue_len_deadline_history
     )
 
-    r1.set_queue_state_response(0, accepted=True)
+    r1.set_queue_len_response(0)
     assert (await task) == r1
 
 
@@ -1262,6 +1367,218 @@ async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
 
     pow_2_scheduler._replicas_updated_event.set()
     await pow_2_scheduler._replicas_updated_event.wait()
+
+
+@pytest.mark.asyncio
+async def test_queue_len_cache():
+    TIMER.reset()
+
+    staleness_timeout_s = 10.0
+    c = ReplicaQueueLengthCache(
+        staleness_timeout_s=staleness_timeout_s, get_curr_time_s=TIMER.time
+    )
+
+    d_id = DeploymentID(name="TEST_DEPLOYMENT")
+    replica_id_1 = ReplicaID(
+        "r1",
+        deployment_id=d_id,
+    )
+    replica_id_2 = ReplicaID(
+        "r2",
+        deployment_id=d_id,
+    )
+    replica_id_3 = ReplicaID(
+        "r3",
+        deployment_id=d_id,
+    )
+    replica_id_4 = ReplicaID(
+        "r4",
+        deployment_id=d_id,
+    )
+
+    # Get nonexistent key.
+    assert c.get(replica_id_1) is None
+
+    # Insert and get a valid key.
+    c.update(replica_id_1, 123)
+    assert c.get(replica_id_1) == 123
+
+    # Get timed out key.
+    TIMER.advance(staleness_timeout_s + 1)
+    assert c.get(replica_id_1) is None
+
+    # Reset timed out key.
+    c.update(replica_id_1, 456)
+    assert c.get(replica_id_1) == 456
+
+    # Insert multiple keys and remove an inactive set of them.
+    c.update(replica_id_1, 1)
+    c.update(replica_id_2, 2)
+    c.update(replica_id_3, 3)
+    c.update(replica_id_4, 4)
+    c.remove_inactive_replicas(
+        active_replica_ids={replica_id_1, replica_id_3},
+    )
+    assert all(
+        [
+            c.get(replica_id_1) == 1,
+            c.get(replica_id_2) is None,
+            c.get(replica_id_3) == 3,
+            c.get(replica_id_4) is None,
+        ]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_active_probing(pow_2_scheduler):
+    """
+    Verify that if a replica has a valid queue entry, it is not actively probed.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+    staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
+
+    # Add an entry for replica "r1" -- it shouldn't be actively probed.
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+    s.replica_queue_len_cache.update(r1.replica_id, 0)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+    assert len(r1.queue_len_deadline_history) == 0
+
+    # Now time out the entry in the cache -- replica should be probed.
+    TIMER.advance(staleness_timeout_s + 1)
+    r1.set_queue_len_response(0)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+    assert len(r1.queue_len_deadline_history) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
+    """
+    Verify that if a replica has a cache entry but is at max_ongoing_requests, it's
+    actively probed.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    # Add an entry for replica "r1" -- it shouldn't be actively probed.
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+    s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+    assert len(r1.queue_len_deadline_history) == 1
+
+    # Now let the replica respond and accept the request, it should be scheduled.
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_background_probing(pow_2_scheduler):
+    """
+    Verify that if there are two replicas, one with a valid queue entry and one without,
+    the one in the queue is chosen and the other is probed in the background.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    # Add an entry for replica "r1" -- it shouldn't be actively probed.
+    r1 = FakeReplicaWrapper("r1")
+    r2 = FakeReplicaWrapper("r2")
+    s.update_replicas([r1, r2])
+    s.replica_queue_len_cache.update(r1.replica_id, 0)
+
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+    assert len(r1.queue_len_deadline_history) == 0
+
+    r2.set_queue_len_response(3)
+
+    def r2_was_probed():
+        # Check that r2 was probed and the response was added to the cache.
+        assert (
+            len(r2.queue_len_deadline_history) == 1
+            and s._replica_queue_len_cache.get(r2.replica_id) == 3
+        )
+        return True
+
+    await async_wait_for_condition(r2_was_probed)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
+    """
+    Verify that the cache entries are updated for probed replicas correctly.
+    """
+    s = pow_2_scheduler
+    staleness_timeout_s = RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
+
+    r1 = FakeReplicaWrapper("r1")
+    r2 = FakeReplicaWrapper("r2")
+    s.update_replicas([r1, r2])
+
+    for i in range(100):
+        r1_queue_len = int(DEFAULT_MAX_ONGOING_REQUESTS * random.random())
+        r2_queue_len = int(DEFAULT_MAX_ONGOING_REQUESTS * random.random())
+        r1.set_queue_len_response(r1_queue_len)
+        r2.set_queue_len_response(r2_queue_len)
+
+        replica = await s.choose_replica_for_request(fake_pending_request())
+        if r1_queue_len < r2_queue_len:
+            assert replica == r1
+        elif r2_queue_len < r1_queue_len:
+            assert replica == r2
+        else:
+            assert replica in {r1, r2}
+
+        assert len(r1.queue_len_deadline_history) == i + 1
+        assert len(r2.queue_len_deadline_history) == i + 1
+        assert s._replica_queue_len_cache.get(r1.replica_id) == r1_queue_len
+        assert s._replica_queue_len_cache.get(r2.replica_id) == r2_queue_len
+        TIMER.advance(staleness_timeout_s + 1)
 
 
 if __name__ == "__main__":

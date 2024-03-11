@@ -56,9 +56,15 @@ class RayDockerContainer(DockerContainer):
         self.run_script(cmds)
 
     def _should_upload(self) -> bool:
+        if not self.upload:
+            return False
+        if os.environ.get("BUILDKITE_PIPELINE_ID") != POSTMERGE_PIPELINE:
+            return False
+        if os.environ.get("BUILDKITE_BRANCH", "").startswith("releases/"):
+            return True
         return (
-            os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
-            and self.upload
+            os.environ.get("BUILDKITE_BRANCH") == "master"
+            and os.environ.get("RAYCI_SCHEDULE") == "nightly"
         )
 
     def _get_image_names(self) -> List[str]:

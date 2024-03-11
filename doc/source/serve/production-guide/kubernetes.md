@@ -30,18 +30,12 @@ Once the KubeRay controller is running, manage your Ray Serve application by cre
 
 Under the `spec` section in the `RayService` CR, set the following fields:
 
-**`serviceUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when a service is considered unhealthy (application status is not RUNNING status). The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
-
-**`deploymentUnhealthySecondThreshold`**: Represents the number of seconds that the Serve application status can be unavailable before the service is considered unhealthy. The Serve application status is unavailable whenever the Ray dashboard is unavailable. The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
-
 **`serveConfigV2`**: Represents the configuration that Ray Serve uses to deploy the application. Using `serve build` to print the Serve configuration and copy-paste it directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
 
 **`rayClusterConfig`**: Populate this field with the contents of the `spec` field from the `RayCluster` CR YAML file. Refer to [KubeRay configuration](kuberay-config) for more details.
 
 :::{tip}
-To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `deploymentUnhealthySecondThreshold` to avoid a cluster restart. 
-
-Alternatively, include the dependencies in your image's Dockerfile, so the dependencies are available as soon as the pods start.
+To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider including the dependencies in your image's Dockerfile, so the dependencies are available as soon as the pods start.
 :::
 
 (serve-deploy-app-on-kuberay)=
@@ -98,7 +92,7 @@ This service can be queried directly from inside the cluster, but to access it f
 
 ```console
 $ kubectl port-forward service/rayservice-sample-serve-svc 8000
-$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+$ curl -X POST -H "Content-Type: application/json" localhost:8000/summarize_translate -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
@@ -187,7 +181,7 @@ $ kubectl describe rayservice rayservice-sample
 Query the application to see a different translation in German:
 
 ```console
-$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+$ curl -X POST -H "Content-Type: application/json" localhost:8000/summarize_translate -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
 Es war die beste Zeit, es war die schlimmste Zeit .
 ```
 

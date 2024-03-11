@@ -522,6 +522,26 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::GetClusterResourceState(int64_t timeout_ms,
+                                                std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterResourceStateRequest request;
+  rpc::autoscaler::GetClusterResourceStateReply reply;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  grpc::Status status =
+      autoscaler_stub_->GetClusterResourceState(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterResourceState");
+    }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
                                          std::string &serialized_reply) {
   rpc::autoscaler::GetClusterStatusRequest request;
@@ -541,15 +561,40 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::ReportAutoscalingState(int64_t timeout_ms,
+                                               const std::string &serialized_state) {
+  rpc::autoscaler::ReportAutoscalingStateRequest request;
+  rpc::autoscaler::ReportAutoscalingStateReply reply;
+  rpc::autoscaler::AutoscalingState state;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  if (!state.ParseFromString(serialized_state)) {
+    return Status::IOError("Failed to parse ReportAutoscalingState");
+  }
+  request.mutable_autoscaling_state()->CopyFrom(state);
+  grpc::Status status =
+      autoscaler_stub_->ReportAutoscalingState(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::DrainNode(const std::string &node_id,
                                   int32_t reason,
                                   const std::string &reason_message,
+                                  int64_t deadline_timestamp_ms,
                                   int64_t timeout_ms,
-                                  bool &is_accepted) {
+                                  bool &is_accepted,
+                                  std::string &rejection_reason_message) {
   rpc::autoscaler::DrainNodeRequest request;
   request.set_node_id(NodeID::FromHex(node_id).Binary());
   request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));
   request.set_reason_message(reason_message);
+  request.set_deadline_timestamp_ms(deadline_timestamp_ms);
 
   rpc::autoscaler::DrainNodeReply reply;
 
@@ -561,6 +606,9 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
 
   if (status.ok()) {
     is_accepted = reply.is_accepted();
+    if (!is_accepted) {
+      rejection_reason_message = reply.rejection_reason_message();
+    }
     return Status::OK();
   }
   return Status::RpcError(status.error_message(), status.error_code());

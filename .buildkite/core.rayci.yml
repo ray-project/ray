@@ -72,25 +72,6 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
 
-  - label: ":ray: core: :windows: python tests"
-    if: pipeline.id == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("RAYCI_CONTINUOUS_BUILD") == "1"
-    tags: python
-    job_env: WINDOWS
-    mount_windows_artifacts: true
-    instance_type: windows
-    parallelism: 5
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --build-name windowsbuild
-        --operating-system windows
-        --except-tags no_windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
-    depends_on: windowsbuild
-
   - label: ":ray: core: memory pressure tests"
     tags:
       - python
@@ -162,10 +143,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- 
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --build-name data14build
+        --build-name data15build
         --parallelism-per-worker 2
     depends_on:
-      - data14build
+      - data15build
       - forge
 
   - label: ":ray: core: dashboard tests"
@@ -232,7 +213,9 @@ steps:
     job_env: forge-aarch64
 
   - label: ":ray: core: minimal tests {{matrix}}"
-    tags: python
+    tags:
+      - python
+      - oss
     instance_type: medium
     commands:
       # validate minimal installation
@@ -309,24 +292,6 @@ steps:
         --except-tags no_tsan
         --parallelism-per-worker 2
 
-  - label: ":ray: core: :windows: cpp tests"
-    if: pipeline.id == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("RAYCI_CONTINUOUS_BUILD") == "1"
-    tags: core_cpp
-    job_env: WINDOWS
-    mount_windows_artifacts: true
-    instance_type: windows
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
-        --build-name windowsbuild
-        --operating-system windows
-        --except-tags no_windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-        --parallelism-per-worker 2
-    depends_on: windowsbuild
-
   - label: ":ray: core: flaky tests"
     tags:
       - python
@@ -379,7 +344,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
-      - docker build --build-arg BASE_IMAGE="rayproject/ray:test_container"
+      - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container
     depends_on:

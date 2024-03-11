@@ -22,10 +22,6 @@ def test_put_local_get(ray_start_regular):
         val = i.to_bytes(8, "little")
         chan.write(val, num_readers=1)
         assert chan.begin_read() == val
-
-        # Begin read multiple times will return the same value.
-        assert chan.begin_read() == val
-
         chan.end_read()
 
 
@@ -40,20 +36,8 @@ def test_errors(ray_start_regular):
             return self.chan
 
     a = Actor.remote()
-    # Only original creator can write.
-    chan = ray.get(a.make_chan.remote(do_write=False))
-    with pytest.raises(ray.exceptions.RaySystemError):
-        chan.write(b"hi")
-
-    # Only original creator can write.
-    chan = ray.get(a.make_chan.remote(do_write=True))
-    assert chan.begin_read() == b"hello"
-    with pytest.raises(ray.exceptions.RaySystemError):
-        chan.write(b"hi")
-
     # Multiple consecutive reads from the same process are fine.
     chan = ray.get(a.make_chan.remote(do_write=True))
-    assert chan.begin_read() == b"hello"
     assert chan.begin_read() == b"hello"
     chan.end_read()
 

@@ -134,6 +134,7 @@ def get_default_fixure_system_config():
         "health_check_initial_delay_ms": 0,
         "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
+        "local_gc_min_interval_s": 1,
     }
     return system_config
 
@@ -1173,7 +1174,7 @@ def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
     if not commit:
         return file, ""
 
-    path = os.path.relpath(file, "/ray")
+    path = file.split("com_github_ray_project_ray/")[-1]
 
     return path, base_url.format(commit=commit, path=path, lineno=lineno)
 
