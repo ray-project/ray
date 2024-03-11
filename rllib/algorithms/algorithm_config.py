@@ -3925,8 +3925,14 @@ class AlgorithmConfig(_Config):
         )
 
         # Check and error if `on_episode_created` callback has been overridden on the
-        # new API stack.
-        if self.uses_new_env_runners and self.callbacks_class is not DefaultCallbacks:
+        # new API stack AND this is a single-agent setup (multi-agent does not use
+        # gym.vector.Env yet and therefore the reset call is still made manually,
+        # allowing for the callback to be fired).
+        if (
+            self.uses_new_env_runners
+            and not self.is_multi_agent()
+            and self.callbacks_class is not DefaultCallbacks
+        ):
             default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
             try:
                 user_src = inspect.getsource(self.callbacks_class.on_episode_created)
@@ -3935,13 +3941,13 @@ class AlgorithmConfig(_Config):
                 user_src = default_src
             if default_src != user_src:
                 raise ValueError(
-                    "When using the new API stack with EnvRunners, you cannot override "
-                    "the `DefaultCallbacks.on_episode_created()` method anymore! "
-                    "This particular callback is no longer supported as we are now "
-                    "using gym.vector.Env, which automatically resets individual "
-                    "sub-environments when they are terminated. Override the "
-                    "`on_episode_start` method instead, which gets fired right after "
-                    "the `env.reset()` call."
+                    "When using the new API stack in single-agent and with EnvRunners, "
+                    "you cannot override the `DefaultCallbacks.on_episode_created()` "
+                    "method anymore! This particular callback is no longer supported "
+                    "b/c we are using `gym.vector.Env`, which automatically resets "
+                    "individual sub-environments when they are terminated. Instead, "
+                    "override the `on_episode_start` method, which gets fired right "
+                    "after the `env.reset()` call."
                 )
 
         # This is not compatible with RLModules, which all have a method

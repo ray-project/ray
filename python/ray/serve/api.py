@@ -16,7 +16,12 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -55,7 +60,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -152,9 +157,6 @@ def get_replica_context() -> ReplicaContext:
                 def __init__(self):
                     # Prints "MyDeployment"
                     print(serve.get_replica_context().deployment)
-
-                    # Prints "MyDeployment#<replica_tag>"
-                    print(serve.get_replica_context().replica_tag)
 
     """
     internal_replica_context = _get_internal_replica_context()
@@ -331,6 +333,39 @@ def deployment(
         `Deployment`
     """
 
+    if autoscaling_config not in [DEFAULT.VALUE, None]:
+        if (
+            isinstance(autoscaling_config, dict)
+            and "target_num_ongoing_requests_per_replica" in autoscaling_config
+        ) or (
+            isinstance(autoscaling_config, AutoscalingConfig)
+            and "target_num_ongoing_requests_per_replica"
+            in autoscaling_config.dict(exclude_unset=True)
+        ):
+            logger.warning(
+                "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
+                "`autoscaling_config` has been deprecated and replaced by "
+                "`target_ongoing_requests`. Note that "
+                "`target_num_ongoing_requests_per_replica` will be removed in a future "
+                "version."
+            )
+
+        if (
+            isinstance(autoscaling_config, dict)
+            and "target_num_ongoing_requests_per_replica" not in autoscaling_config
+            and "target_ongoing_requests" not in autoscaling_config
+        ) or (
+            isinstance(autoscaling_config, AutoscalingConfig)
+            and "target_num_ongoing_requests_per_replica"
+            not in autoscaling_config.dict(exclude_unset=True)
+            and "target_ongoing_requests"
+            not in autoscaling_config.dict(exclude_unset=True)
+        ):
+            logger.warning(
+                "The default value for `target_ongoing_requests` is currently 1.0, "
+                "but will change to 2.0 in an upcoming release."
+            )
+
     max_ongoing_requests = (
         max_ongoing_requests
         if max_ongoing_requests is not DEFAULT.VALUE
@@ -383,6 +418,13 @@ def deployment(
         logger.warning(
             "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
             "been deprecated and replaced by `max_ongoing_requests`."
+        )
+
+    if max_concurrent_queries is DEFAULT.VALUE:
+        logger.warning(
+            "The default value for `max_ongoing_requests` is currently "
+            f"{DEFAULT_MAX_ONGOING_REQUESTS}, but will change to "
+            f"{NEW_DEFAULT_MAX_ONGOING_REQUESTS} in the next upcoming release."
         )
 
     if isinstance(logging_config, LoggingConfig):
@@ -556,6 +598,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
     )
+    logger.info(f"Deployed app '{name}' successfully.")
 
     if blocking:
         try:
@@ -563,7 +606,7 @@ def run(
                 # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
         except KeyboardInterrupt:
-            logger.info("Got KeyboardInterrupt, release blocking...")
+            logger.warning("Got KeyboardInterrupt, exiting...")
     return handle
 
 

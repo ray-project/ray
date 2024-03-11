@@ -406,7 +406,7 @@ class PPO(Algorithm):
         if not self.config.uses_new_env_runners:
             return self._training_step_old_and_hybrid_api_stacks()
 
-        # Collect SampleBatches from sample workers until we have a full batch.
+        # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
 
             # Sample in parallel from the workers.
@@ -480,7 +480,7 @@ class PPO(Algorithm):
         return train_results
 
     def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
-        # Collect SampleBatches from sample workers until we have a full batch.
+        # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
                 train_batch = synchronous_parallel_sample(

@@ -4,6 +4,7 @@ from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     PPOConfig,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -146,14 +147,14 @@ class PPOLearner(Learner):
             module_value_targets = compute_value_targets(
                 values=module_vf_preds,
                 rewards=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.REWARDS]
+                    episode_lens_plus_1, batch_for_vf[module_id][Columns.REWARDS]
                 ),
                 terminateds=unpad_data_if_necessary(
                     episode_lens_plus_1,
-                    batch_for_vf[module_id][SampleBatch.TERMINATEDS],
+                    batch_for_vf[module_id][Columns.TERMINATEDS],
                 ),
                 truncateds=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.TRUNCATEDS]
+                    episode_lens_plus_1, batch_for_vf[module_id][Columns.TRUNCATEDS]
                 ),
                 gamma=self.config.gamma,
                 lambda_=self.config.lambda_,
@@ -240,7 +241,7 @@ class PPOLearner(Learner):
     @OverrideToImplementCustomLogic
     def _compute_values(
         self,
-        batch_for_vf: MultiAgentBatch,
+        batch_for_vf: Dict[str, Any],
     ) -> Union[TensorType, Dict[str, Any]]:
         """Computes the value function predictions for the module being optimized.
 
@@ -249,8 +250,8 @@ class PPOLearner(Learner):
         (or independent multi-agent), there should be no need to override this method.
 
         Args:
-            batch_for_vf: The multi-agent batch to be used for value function
-                predictions.
+            batch_for_vf: The multi-agent batch (mapping ModuleIDs to module data) to
+                be used for value function predictions.
 
         Returns:
             A dictionary mapping module IDs to individual value function prediction
@@ -261,5 +262,5 @@ class PPOLearner(Learner):
                 module_batch, self._device
             )
             for module_id, module_batch in batch_for_vf.policy_batches.items()
-            if self.should_module_be_updated(module_id, module_batch)
+            if self.should_module_be_updated(module_id, batch_for_vf)
         }

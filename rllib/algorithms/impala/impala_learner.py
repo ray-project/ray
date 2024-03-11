@@ -7,6 +7,7 @@ from ray.rllib.algorithms.impala.impala import (
     ImpalaConfig,
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -126,7 +127,7 @@ class ImpalaLearner(Learner):
             # GAE computations.
             module_vf_preds = unpad_data_if_necessary(episode_lens_plus_1, module_vf_preds)
             # Generate the bootstrap value column (with only one entry per batch row).
-            batch[module_id][SampleBatch.VALUES_BOOTSTRAPPED] = extract_bootstrapped_values(
+            batch[module_id][Columns.VALUES_BOOTSTRAPPED] = extract_bootstrapped_values(
                 vf_preds=module_vf_preds,
                 episode_lengths=orig_episode_lens,
                 T=self.config.get_rollout_fragment_length(),
@@ -148,14 +149,14 @@ class ImpalaLearner(Learner):
                 len_ = len(eps) - 1
                 self._learner_connector.add_n_batch_items(
                     batch=batch,
-                    column=Postprocessing.ADVANTAGES,
+                    column=Columns.ADVANTAGES,
                     items_to_add=module_advantages[batch_pos : batch_pos + len_],
                     num_items=len_,
                     single_agent_episode=eps,
                 )
                 self._learner_connector.add_n_batch_items(
                     batch=batch,
-                    column=Postprocessing.VALUE_TARGETS,
+                    column=Columns.VALUE_TARGETS,
                     items_to_add=module_value_targets[batch_pos : batch_pos + len_],
                     num_items=len_,
                     single_agent_episode=eps,

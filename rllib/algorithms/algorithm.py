@@ -37,6 +37,7 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     DEFAULT_MODULE_ID,
@@ -1803,7 +1804,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 and prev_reward is None
                 and state is None
             ), err_msg
-            observation = input_dict[SampleBatch.OBS]
+            observation = input_dict[Columns.OBS]
         else:
             assert observation is not None, err_msg
 
@@ -1845,9 +1846,9 @@ class Algorithm(Trainable, AlgorithmBase):
                     # in eval mode. would that be a problem?
                     pp.in_eval()
                     if observation is not None:
-                        _input_dict = {SampleBatch.OBS: observation}
+                        _input_dict = {Columns.OBS: observation}
                     elif input_dict is not None:
-                        _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
+                        _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
                     else:
                         raise ValueError(
                             "Either observation or input_dict must be provided."
@@ -1861,11 +1862,11 @@ class Algorithm(Trainable, AlgorithmBase):
                     # preprocessor
                     pp.reset(env_id="0")
                     ac_o = pp([acd])[0]
-                    observation = ac_o.data[SampleBatch.OBS]
+                    observation = ac_o.data[Columns.OBS]
 
         # Input-dict.
         if input_dict is not None:
-            input_dict[SampleBatch.OBS] = observation
+            input_dict[Columns.OBS] = observation
             action, state, extra = policy.compute_single_action(
                 input_dict=input_dict,
                 explore=explore,
@@ -1991,7 +1992,7 @@ class Algorithm(Trainable, AlgorithmBase):
             state = list(zip(*filtered_state))
             state = [np.stack(s) for s in state]
 
-        input_dict = {SampleBatch.OBS: obs_batch}
+        input_dict = {Columns.OBS: obs_batch}
 
         # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
         # Explicitly check for None here to avoid the error message "The truth value of
@@ -2002,7 +2003,7 @@ class Algorithm(Trainable, AlgorithmBase):
         if prev_reward is not None:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward
         if info:
-            input_dict[SampleBatch.INFOS] = info
+            input_dict[Columns.INFOS] = info
         for i, s in enumerate(state):
             input_dict[f"state_in_{i}"] = s
 

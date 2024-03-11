@@ -286,7 +286,7 @@ def _create_map_transformer_for_map_batches_op(
             zero_copy_batch=zero_copy_batch,
         ),
         # Apply the UDF.
-        BatchMapTransformFn(batch_fn),
+        BatchMapTransformFn(batch_fn, is_udf=True),
         # Convert output batches to blocks.
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
@@ -303,7 +303,7 @@ def _create_map_transformer_for_row_based_map_op(
         # Convert input blocks to rows.
         BlocksToRowsMapTransformFn.instance(),
         # Apply the UDF.
-        RowMapTransformFn(row_fn),
+        RowMapTransformFn(row_fn, is_udf=True),
         # Convert output rows to blocks.
         BuildOutputBlocksMapTransformFn.for_rows(),
     ]

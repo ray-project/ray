@@ -16,6 +16,10 @@ Autoscaling can reduce workload costs, but adds node launch overheads and can be
 We recommend starting with non-autoscaling clusters if you're new to Ray.
 ```
 
+```{admonition} Ray Autoscaling V2 alpha with KubeRay (@ray 2.10.0) 
+With Ray 2.10, Ray Autoscaler V2 alpha is available with KubeRay. It has improvements on observability and stability. Please see the [section](kuberay-autoscaler-v2) for more details.
+```
+
 ## Overview
 
 The following diagram illustrates the integration of the Ray Autoscaler with the KubeRay operator.
@@ -316,3 +320,103 @@ for container environment variables.
 ## Next steps
 
 See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](ray-k8s-autoscaler-comparison) for more details about the relationship between the Ray Autoscaler and Kubernetes autoscalers.
+
+(kuberay-autoscaler-v2)=
+### Autosclaer V2 with KubeRay
+
+#### Prerequisites
+* Ray 2.10.0 or nightly Ray version
+* KubeRay 1.1.0 or later
+
+The release of Ray 2.10.0 introduces the alpha version of Ray Autoscaler V2 integrated with KubeRay, bringing enhancements in terms of observability and stability:
+
+
+1. **Observability**: The Autoscaler V2 provides instance level tracing on each Ray worker's lifecycle, making it easier to debug and understand the Autoscaler behavior. It also reports 
+the idle information (why it's idle, why it's not idle) of each node:
+
+```bash
+
+> ray status -v
+
+======== Autoscaler status: 2024-03-08 21:06:21.023751 ========
+GCS request time: 0.003238s
+
+Node status
+---------------------------------------------------------------
+Active:
+ 1 node_40f427230584b2d9c9f113d8db51d10eaf914aa9bf61f81dc7fabc64
+Idle:
+ 1 node_2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
+Pending:
+ (no pending nodes)
+Recent failures:
+ (no failures)
+
+Resources
+---------------------------------------------------------------
+Total Usage:
+ 1.0/64.0 CPU
+ 0B/72.63GiB memory
+ 0B/33.53GiB object_store_memory
+
+Total Demands:
+ (no resource demands)
+
+Node: 40f427230584b2d9c9f113d8db51d10eaf914aa9bf61f81dc7fabc64
+ Usage:
+  1.0/32.0 CPU
+  0B/33.58GiB memory
+  0B/16.79GiB object_store_memory
+ # New in autoscaler V2: activity information
+ Activity:
+  Busy workers on node.
+  Resource: CPU currently in use.
+
+Node: 2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
+ # New in autoscaler V2: idle information
+ Idle: 107356 ms
+ Usage:
+  0.0/32.0 CPU
+  0B/39.05GiB memory
+  0B/16.74GiB object_store_memory
+ Activity:
+  (no activity)
+```
+
+2. **Stability**
+Improvements in the termination of idle nodes have been made in Autoscaler V2. Unlike the V1 Autoscaler, which could prematurely terminate nodes no longer idle at the time of termination processing (potentially leading to task or actor failures), V2 employs Ray's graceful draining mechanism to ensure idle nodes are terminated without disrupting ongoing tasks or actors.
+
+
+In order to enable Autoscaler V2, one could modify the `ray-cluster.autoscaler.yaml` like below.
+
+```bash
+# Change 1: Select the Ray version to either the nightly build or version 2.10.0+
+
+spec:
+  # Specify Ray version 2.10.0 or use the nightly build.
+  rayVersion: '2.10.0'
+...
+
+
+# Change 2: Enable Autoscaler V2 by setting the RAY_enable_autoscaler_v2 environment variable on the Ray head container.
+  headGroupSpec:
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.10.0
+          # Include the environment variable.
+          env:
+            - name: RAY_enable_autoscaler_v2
+              value: "1"
+        restartPolicy: Never # Prevent container restart to maintain Ray health.
+
+
+# Change 3: Prevent Kubernetes from restarting Ray worker pod containers, enabling correct instance management by Ray.
+  workerGroupSpecs:
+  - replicas: 1
+    template:
+      spec:
+        restartPolicy: Never 
+        ...
+```
