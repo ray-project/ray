@@ -4223,7 +4223,7 @@
 
   run:
     timeout: 3600
-    script: python distributed/test_many_actors.py
+    script: python distributed/benchmark.py
     wait_for_nodes:
       num_nodes: 65
 
