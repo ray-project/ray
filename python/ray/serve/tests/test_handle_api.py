@@ -32,17 +32,20 @@ def test_basic(serve_instance):
             assert isinstance(response, DeploymentResponse)
             val = await response
 
-            # Check that the response can be awaited twice.
-            assert (await response) == val
+            # Check that the response can be awaited multiple times.
+            for _ in range(10):
+                assert (await response) == val
 
             return val
 
     handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
     assert isinstance(handle, DeploymentHandle)
-    assert handle.remote().result() == "hello"
+    r = handle.remote()
+    assert r.result() == "hello"
 
-    # Check that `.result()` can be called twice.
-    assert handle.remote().result() == "hello"
+    # Check that `.result()` can be called multiple times.
+    for _ in range(10):
+        assert r.result() == "hello"
 
 
 def test_result_timeout(serve_instance):
