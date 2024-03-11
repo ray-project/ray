@@ -350,6 +350,22 @@ def deployment(
                 "version."
             )
 
+        if (
+            isinstance(autoscaling_config, dict)
+            and "target_num_ongoing_requests_per_replica" not in autoscaling_config
+            and "target_ongoing_requests" not in autoscaling_config
+        ) or (
+            isinstance(autoscaling_config, AutoscalingConfig)
+            and "target_num_ongoing_requests_per_replica"
+            not in autoscaling_config.dict(exclude_unset=True)
+            and "target_ongoing_requests"
+            not in autoscaling_config.dict(exclude_unset=True)
+        ):
+            logger.warning(
+                "The default value for `target_ongoing_requests` is currently 1.0, "
+                "but will change to 2.0 in an upcoming release."
+            )
+
     max_ongoing_requests = (
         max_ongoing_requests
         if max_ongoing_requests is not DEFAULT.VALUE
