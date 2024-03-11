@@ -324,8 +324,8 @@ class _DeploymentResponseBase:
         # See: https://github.com/ray-project/ray/issues/43879.
         async with self._object_ref_or_gen_lock:
             if self._object_ref_or_gen is None:
-                # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
-                # from any asyncio loop.
+                # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
+                # safely from any asyncio loop.
                 obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
                 if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
                     obj_ref_or_gen = await obj_ref_or_gen.__anext__()
