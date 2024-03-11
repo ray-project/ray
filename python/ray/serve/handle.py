@@ -298,7 +298,7 @@ class _DeploymentResponseBase:
         """Lazy `asyncio.Lock` object because the constructor does not run on a loop."""
         if self.__object_ref_or_gen_lock is None:
             self.__object_ref_or_gen_lock = asyncio.Lock()
-        
+
         return self.__object_ref_or_gen_lock
 
     def _should_resolve_gen_to_obj_ref(
