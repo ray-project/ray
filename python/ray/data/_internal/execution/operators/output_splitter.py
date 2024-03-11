@@ -173,6 +173,7 @@ class OutputSplitter(PhysicalOperator):
             else:
                 # Put it back and abort.
                 self._buffer.insert(0, target_bundle)
+                self._metrics.on_input_queued(target_bundle)
                 break
         self._output_splitter_overhead_time += time.perf_counter() - start_time
 
@@ -215,6 +216,7 @@ class OutputSplitter(PhysicalOperator):
         acc = 0
         while acc < nrow:
             b = self._buffer.pop()
+            self._metrics.on_input_dequeued(b)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
                 acc += b.num_rows()
@@ -223,6 +225,7 @@ class OutputSplitter(PhysicalOperator):
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.append(right)
+                self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)

@@ -9,7 +9,12 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import DeploymentID, EndpointInfo, RunningReplicaInfo
+from ray.serve._private.common import (
+    DeploymentID,
+    EndpointInfo,
+    ReplicaID,
+    RunningReplicaInfo,
+)
 from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,
@@ -222,8 +227,9 @@ def test_listen_for_change_java(serve_instance):
     request_3 = {"keys_to_snapshot_ids": {"(RUNNING_REPLICAS,deployment_name)": -1}}
     replicas = [
         RunningReplicaInfo(
-            deployment_name="deployment_name",
-            replica_tag=str(i),
+            replica_id=ReplicaID(
+                str(i), deployment_id=DeploymentID(name="deployment_name")
+            ),
             node_id="node_id",
             availability_zone="some-az",
             actor_handle=host,
@@ -246,7 +252,10 @@ def test_listen_for_change_java(serve_instance):
             "(RUNNING_REPLICAS,deployment_name)"
         ].object_snapshot
     )
-    assert replica_name_list.names == ["SERVE_REPLICA::0", "SERVE_REPLICA::1"]
+    assert replica_name_list.names == [
+        "SERVE_REPLICA::default#deployment_name#0",
+        "SERVE_REPLICA::default#deployment_name#1",
+    ]
 
 
 if __name__ == "__main__":

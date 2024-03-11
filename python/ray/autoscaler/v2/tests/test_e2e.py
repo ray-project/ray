@@ -8,8 +8,11 @@ import pytest
 import ray
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
+from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
+from ray._raylet import GcsClient
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
+from ray.core.generated.usage_pb2 import TagKey
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.state.api import list_placement_groups, list_tasks
 
@@ -237,6 +240,38 @@ while True:
             print(has_pg_demand, has_pg_usage)
             assert not (has_pg_demand and has_pg_usage), status
             time.sleep(0.1)
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+def test_autoscaler_v2_usage_report():
+
+    # Test that nodes become idle after placement group removal.
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 2},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": 2},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+        },
+        autoscaler_v2=True,
+    )
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_client = GcsClient(ray.get_runtime_context().gcs_address)
+
+        def verify():
+            tags = get_extra_usage_tags_to_report(gcs_client)
+            print(tags)
+            assert tags[TagKey.Name(TagKey.AUTOSCALER_VERSION).lower()] == "v2", tags
+            return True
+
+        wait_for_condition(verify)
     finally:
         ray.shutdown()
         cluster.shutdown()
