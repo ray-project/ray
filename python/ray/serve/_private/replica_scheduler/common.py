@@ -201,6 +201,7 @@ class ActorReplicaWrapper:
             queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
 
             if not queue_len_info.accepted:
+                ray.cancel(obj_ref_gen)
                 return None, queue_len_info
             else:
                 return obj_ref_gen, queue_len_info
