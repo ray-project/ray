@@ -26,6 +26,22 @@ torch, nn = try_import_torch()
 class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     framework: str = "torch"
 
+    @override(DQNRainbowRLModule)
+    def setup(self):
+        super().setup()
+
+        # We do not want to train the target networks.
+        # AND sync all target nets with the actual (trained) ones.
+        self.target_encoder.trainable = False
+        self.target_encoder.load_state_dict(self.encoder.state_dict())
+
+        self.af_target.trainable = False
+        self.af_target.load_state_dict(self.af.state_dict())
+
+        if self.is_dueling:
+            self.vf_target.trainable = False
+            self.vf_target.load_state_dict(self.vf.state_dict())
+
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         output = {}
@@ -129,7 +145,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _qf(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values.
 
-        Note, these can be accompanied with logits and pobabilities
+        Note, these can be accompanied by logits and probabilities
         in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
 
         Args:
@@ -152,7 +168,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _qf_target(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values from the target network.
 
-        Note, these can be accompanied with logits and pobabilities
+        Note, these can be accompanied by logits and probabilities
         in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
 
         Args:

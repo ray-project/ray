@@ -70,12 +70,6 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if self.is_dueling:
             self.vf_target = catalog.build_vf_head(framework=self.framework)
 
-        # We do not want to train the target networks.
-        self.target_encoder.trainable = False
-        self.af_target.trainable = False
-        if self.is_dueling:
-            self.vf_target.trainable = False
-
         # Define the action distribution for sampling the exploit action
         # during exploration.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
