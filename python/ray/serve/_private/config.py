@@ -1,5 +1,6 @@
 import inspect
 import json
+import logging
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.descriptor import FieldDescriptor
@@ -14,7 +15,6 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
-    PrivateAttr,
     validator,
 )
 from ray._private.serialization import pickle_dumps
@@ -171,8 +171,6 @@ class DeploymentConfig(BaseModel):
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
-    _max_batch_size: NonNegativeInt = PrivateAttr(default=0)
-
     @staticmethod
     def _get_single_max_batch_size_from_method(method: Callable) -> int:
         """Helper to get a single max_batch_size form a method.
@@ -184,24 +182,39 @@ class DeploymentConfig(BaseModel):
 
         return method._get_max_batch_size()
 
-    def set_max_batch_size(self, user_callable: Callable) -> int:
-        """Helper to set the max of max_batch_size for the user callable.
+    def check_max_batch_size_bounded(
+        self, user_callable: Callable, _logger: logging.Logger
+    ) -> bool:
+        """Helper to check whether the max of max_batch_size for the user callable is
+        bounded.
 
-        If no methods use batching, set to 0.
+        Log a warning to configure `max_ongoing_requests` if it's bounded. Return True
+        when the max_batch_size is bounded. Return False when not.
         """
         if inspect.isfunction(user_callable):
-            self._max_batch_size = self._get_single_max_batch_size_from_method(
-                user_callable
+            max_batch_size = self._get_single_max_batch_size_from_method(user_callable)
+        else:
+            max_batch_sizes = {0}
+            for method_name in dir(user_callable):
+                method = getattr(user_callable, method_name)
+                if callable(method):
+                    max_batch_sizes.add(
+                        self._get_single_max_batch_size_from_method(method)
+                    )
+
+            max_batch_size = max(max_batch_sizes)
+
+        if self.max_ongoing_requests < max_batch_size:
+            _logger.warning(
+                f"`max_batch_size` ({max_batch_size}) is larger than "
+                f"`max_ongoing_requests` ({self.max_ongoing_requests}). The maximum "
+                f"ongoing request will be bounded by {self.max_ongoing_requests}. "
+                "To allow batching reach the `max_batch_size` limits, please configue "
+                "`max_ongoing_requests` to be >= `max_batch_size`."
             )
-            return
+            return True
 
-        max_batch_sizes = {0}
-        for method_name in dir(user_callable):
-            method = getattr(user_callable, method_name)
-            if callable(method):
-                max_batch_sizes.add(self._get_single_max_batch_size_from_method(method))
-
-        self._max_batch_size = max(max_batch_sizes)
+        return False
 
     class Config:
         validate_assignment = True
@@ -269,7 +282,6 @@ class DeploymentConfig(BaseModel):
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
-        data["_max_batch_size"] = self._max_batch_size
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -319,9 +331,7 @@ class DeploymentConfig(BaseModel):
                 data["logging_config"]["encoding"] = EncodingTypeProto.Name(
                     data["logging_config"]["encoding"]
                 )
-        deployment_config = cls(**data)
-        deployment_config._max_batch_size = proto._max_batch_size
-        return deployment_config
+        return cls(**data)
 
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):

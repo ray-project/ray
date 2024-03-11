@@ -496,7 +496,7 @@ class ReplicaActor:
         user request handler (which must be a generator).
         """
         request_metadata = pickle.loads(pickled_request_metadata)
-        limit = self._deployment_config.max_ongoing_requests_limit
+        limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
             logger.warning(
@@ -635,10 +635,10 @@ class ReplicaActor:
                 await self._user_callable_wrapper.call_reconfigure(
                     deployment_config.user_config
                 )
-                # `max_batch_size` could be reconfigured. Update deployment_config with
-                # the latest value.
-                deployment_config.set_max_batch_size(
-                    self._user_callable_wrapper.user_callable
+                # `max_batch_size` cold be reconfigured.
+                deployment_config.check_max_batch_size_bounded(
+                    user_callable=self._user_callable_wrapper.user_callable,
+                    _logger=logger,
                 )
 
             return self._get_metadata()

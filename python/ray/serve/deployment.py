@@ -493,17 +493,12 @@ class Deployment:
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
-        new_deployment_config.set_max_batch_size(func_or_class)
-        if (
-            new_deployment_config._max_batch_size
-            > new_deployment_config.max_ongoing_requests
-        ):
-            logger.warning(
-                f"`max_batch_size` ({new_deployment_config._max_batch_size}) is larger "
-                "than `max_ongoing_requests` "
-                f"({new_deployment_config.max_ongoing_requests}). The maximum "
-                "ongoing request will use `max_batch_size` to allow batching limits."
-            )
+        # If the max_batch_size is less than max_ongoing_requests, then the request will
+        # be bounded by max_ongoing_requests, log a warning for it.
+        new_deployment_config.check_max_batch_size_bounded(
+            user_callable=func_or_class,
+            _logger=logger,
+        )
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
