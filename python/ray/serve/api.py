@@ -253,8 +253,8 @@ def deployment(
     num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
-    placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Default[str] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
@@ -301,6 +301,7 @@ def deployment(
             actors and tasks created by the replica actor will be scheduled in the
             placement group by default (`placement_group_capture_child_tasks` is set
             to True).
+            This cannot be set together with max_replicas_per_node.
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
         user_config: Config to pass to the reconfigure method of the deployment. This
@@ -328,6 +329,7 @@ def deployment(
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
+            This cannot be set together with placement_group_bundles.
 
     Returns:
         `Deployment`

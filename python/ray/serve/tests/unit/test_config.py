@@ -381,6 +381,53 @@ class TestReplicaConfig:
                 placement_group_bundles=[{"CPU": 1}],
             )
 
+    def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
+        class Class:
+            pass
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            max_replicas_per_node=5,
+        )
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1.0}],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            config = ReplicaConfig.create(Class, tuple(), dict())
+            config.update(
+                ray_actor_options={},
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
     def test_replica_config_lazy_deserialization(self):
         def f():
             return "Check this out!"
