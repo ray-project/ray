@@ -312,7 +312,9 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        obj_ref_or_gen = self._object_ref_future.result()
+        # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
+        # from any asyncio loop.
+        obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
         if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
             obj_ref_or_gen = await obj_ref_or_gen.__anext__()
 
