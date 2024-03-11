@@ -331,6 +331,7 @@ class DeploymentConfig(BaseModel):
                 data["logging_config"]["encoding"] = EncodingTypeProto.Name(
                     data["logging_config"]["encoding"]
                 )
+
         return cls(**data)
 
     @classmethod
@@ -368,12 +369,6 @@ class DeploymentConfig(BaseModel):
             config.__setattr__(key, val)
 
         return config
-
-    @property
-    def max_ongoing_requests_limit(self) -> int:
-        if self._max_batch_size > self.max_ongoing_requests:
-            return self._max_batch_size
-        return self.max_ongoing_requests
 
 
 def handle_num_replicas_auto(

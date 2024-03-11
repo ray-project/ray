@@ -209,7 +209,7 @@ class TestDeploymentConfig:
         fake_logger.reset_warning_message()
 
         @serve.deployment
-        class NotoundedMultiMethodClass:
+        class NotBoundedMultiMethodClass:
             @serve.batch(max_batch_size=under_bound, batch_wait_timeout_s=5)
             async def batch_predict(self, inputs: list[str]):
                 return [f"batch_predict({input})" for input in inputs]
@@ -220,7 +220,7 @@ class TestDeploymentConfig:
 
         assert (
             deployment_config.check_max_batch_size_bounded(
-                NotoundedMultiMethodClass.func_or_class,
+                NotBoundedMultiMethodClass.func_or_class,
                 _logger=fake_logger,
             )
             is False
