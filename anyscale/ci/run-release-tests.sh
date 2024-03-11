@@ -33,8 +33,8 @@ fi
 install_tools
 aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 830883877497.dkr.ecr.us-west-2.amazonaws.com
 
-curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-441.0.0-linux-arm.tar.gz
-tar -xf google-cloud-cli-441.0.0-linux-arm.tar.gz
+curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-467.0.0-linux-x86_64.tar.gz
+tar -xf google-cloud-cli-467.0.0-linux-x86_64.tar.gz
 ./google-cloud-sdk/install.sh -q
 PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
 export PATH
