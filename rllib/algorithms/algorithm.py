@@ -1113,7 +1113,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Remote function used on healthy EnvRunners to sample, get metrics, and
         # step counts.
-        def _env_runner_remote(worker, num, round):
+        def _env_runner_remote(worker, num, round, iter):
             # Sample AND get_metrics, but only return metrics (and steps actually taken)
             # to save time.
             episodes = worker.sample(
@@ -1122,7 +1122,7 @@ class Algorithm(Trainable, AlgorithmBase):
             metrics = worker.get_metrics()
             env_steps = sum(e.env_steps() for e in episodes)
             agent_steps = sum(e.agent_steps() for e in episodes)
-            return env_steps, agent_steps, metrics
+            return env_steps, agent_steps, metrics, iter
 
         env_steps = agent_steps = 0
         train_mean_time = self._timers[TRAINING_ITERATION_TIMER].mean
@@ -1160,25 +1160,34 @@ class Algorithm(Trainable, AlgorithmBase):
                     ),
                 )
 
-                results = self.evaluation_workers.foreach_worker(
-                    func=functools.partial(_env_runner_remote, num=_num, round=_round),
-                    local_worker=False,
+                self.evaluation_workers.foreach_worker_async(
+                    func=functools.partial(
+                        _env_runner_remote, num=_num, round=_round, iter=self.iteration
+                    ),
                     healthy_only=True,
-                    timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                for (env_s, ag_s, metrics) in results:
+                results = self.evaluation_workers.fetch_ready_async_reqs(
+                    mark_healthy=True, return_obj_refs=False
+                )
+                for (env_s, ag_s, metrics, iter) in results:
+                    if iter != self.iteration:
+                        continue
                     env_steps += env_s
                     agent_steps += ag_s
                     all_metrics.extend(metrics)
             # Old API Stack -> RolloutWorkers return batches.
             else:
-                results = self.evaluation_workers.foreach_worker(
-                    func=lambda w: (w.sample(), w.get_metrics()),
-                    local_worker=False,
+                iter = self.iteration
+                self.evaluation_workers.foreach_worker_async(
+                    func=lambda w: (w.sample(), w.get_metrics(), iter),
                     healthy_only=True,
-                    timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                for (batch, metrics) in results:
+                results = self.evaluation_workers.fetch_ready_async_reqs(
+                    mark_healthy=True, return_obj_refs=False
+                )
+                for (batch, metrics, iter) in results:
+                    if iter != self.iteration:
+                        continue
                     env_steps += batch.env_steps()
                     agent_steps += batch.agent_steps()
                     all_metrics.extend(metrics)
@@ -1187,18 +1196,18 @@ class Algorithm(Trainable, AlgorithmBase):
                         #  the dataset gets huge (should be ok for now).
                         all_batches.append(batch)
 
-            if len(results) != num_healthy_workers:
-                logger.warning(
-                    "Calling `sample()` on your remote evaluation worker(s) "
-                    "resulted in a timeout (after the configured "
-                    f"{self.config.evaluation_sample_timeout_s} seconds)! "
-                    "Try to set `evaluation_sample_timeout_s` in your config"
-                    " to a larger value."
-                )
-                break
-
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
+
+        if num_healthy_workers == 0:
+            logger.warning(
+                "Calling `sample()` on your remote evaluation worker(s) "
+                "resulted in all workers crashing! Make sure a) your environment is not"
+                " too unstable, b) you have enough evaluation workers "
+                "(`config.evaluation(evaluation_num_workers=...)`) to cover for "
+                "occasional losses, and c) you use the `config.fault_tolerance("
+                "recreate_failed_workers=True)` setting."
+            )
 
         episode_summary = summarize_episodes(
             all_metrics,
@@ -1237,9 +1246,10 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Remote function used on healthy EnvRunners to sample, get metrics, and
         # step counts.
-        def _env_runner_remote(worker, num, round):
+        def _env_runner_remote(worker, num, round, iter):
             # Sample AND get_metrics, but only return metrics (and steps actually taken)
-            # to save time.
+            # to save time. Also return the iteration to check, whether we should
+            # discard and outdated result (from a slow worker).
             episodes = worker.sample(
                 num_timesteps=(
                     num[worker.worker_index] if unit == "timesteps" else None
@@ -1250,7 +1260,7 @@ class Algorithm(Trainable, AlgorithmBase):
             metrics = worker.get_metrics()
             env_steps = sum(e.env_steps() for e in episodes)
             agent_steps = sum(e.agent_steps() for e in episodes)
-            return env_steps, agent_steps, metrics
+            return env_steps, agent_steps, metrics, iter
 
         all_metrics = []
         all_batches = []
@@ -1277,22 +1287,26 @@ class Algorithm(Trainable, AlgorithmBase):
                     + bool(i <= (units_left_to_do % num_healthy_workers))
                     for i in range(1, num_workers + 1)
                 ]
-                results = self.evaluation_workers.foreach_worker(
-                    # Sample AND get_metrics, but only return metrics to save time.
-                    func=functools.partial(_env_runner_remote, num=_num, round=_round),
-                    local_worker=False,
+                self.evaluation_workers.foreach_worker_async(
+                    func=functools.partial(
+                        _env_runner_remote, num=_num, round=_round, iter=self.iteration
+                    ),
                     healthy_only=True,
-                    timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                for r in results:
-                    env_steps += r[0]
-                    agent_steps += r[1]
-                    all_metrics.extend(r[2])
+                results = self.evaluation_workers.fetch_ready_async_reqs(
+                    mark_healthy=True, return_obj_refs=False
+                )
+                for (wid, (env_s, ag_s, met, iter)) in results:
+                    if iter != self.iteration:
+                        continue
+                    env_steps += env_s
+                    agent_steps += ag_s
+                    all_metrics.extend(met)
                     num_units_done += (
-                        len(r[2])
+                        len(met)
                         if unit == "episodes"
                         else (
-                            r[0] if self.config.count_steps_by == "env_steps" else r[1]
+                            env_s if self.config.count_steps_by == "env_steps" else ag_s
                         )
                     )
             else:
@@ -1309,14 +1323,17 @@ class Algorithm(Trainable, AlgorithmBase):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                num_healthy_workers = len(selected_eval_worker_ids)
-                results = self.evaluation_workers.foreach_worker(
-                    func=lambda w: (w.sample(), w.get_metrics()),
-                    local_worker=False,
+                iter = self.iteration
+                self.evaluation_workers.foreach_worker_async(
+                    func=lambda w: (w.sample(), w.get_metrics(), iter),
                     remote_worker_ids=selected_eval_worker_ids,
-                    timeout_seconds=self.config.evaluation_sample_timeout_s,
                 )
-                for (batch, metrics) in results:
+                results = self.evaluation_workers.fetch_ready_async_reqs(
+                    mark_healthy=True, return_obj_refs=False
+                )
+                for (batch, metrics, iter) in results:
+                    if iter != self.iteration:
+                        continue
                     env_steps += batch.env_steps()
                     agent_steps += batch.agent_steps()
                     all_metrics.extend(metrics)
@@ -1336,25 +1353,18 @@ class Algorithm(Trainable, AlgorithmBase):
                         else agent_steps
                     )
 
-            if len(results) != num_healthy_workers:
-                logger.warning(
-                    "Calling `sample()` on your remote evaluation worker(s) "
-                    "resulted in a timeout (after the configured "
-                    f"{self.config.evaluation_sample_timeout_s} seconds)! "
-                    "Try to set `evaluation_sample_timeout_s` in your config"
-                    " to a larger value."
-                    + (
-                        " If your episodes don't terminate easily, you may "
-                        "also want to set `evaluation_duration_unit` to "
-                        "'timesteps' (instead of 'episodes')."
-                        if unit == "episodes"
-                        else ""
-                    )
-                )
-                break
-
             # Update correct number of healthy remote workers.
             num_healthy_workers = self.evaluation_workers.num_healthy_remote_workers()
+
+        if num_healthy_workers == 0:
+            logger.warning(
+                "Calling `sample()` on your remote evaluation worker(s) "
+                "resulted in all workers crashing! Make sure a) your environment is not"
+                " too unstable, b) you have enough evaluation workers "
+                "(`config.evaluation(evaluation_num_workers=...)`) to cover for "
+                "occasional losses, and c) you use the `config.fault_tolerance("
+                "recreate_failed_workers=True)` setting."
+            )
 
         episode_summary = summarize_episodes(
             all_metrics,
