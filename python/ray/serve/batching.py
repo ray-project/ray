@@ -15,7 +15,6 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Type,
     TypeVar,
     overload,
 )
