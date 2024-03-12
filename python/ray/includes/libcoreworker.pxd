@@ -99,6 +99,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
         int MaxPendingCalls() const
         int MaxTaskRetries() const
+        c_bool EnableTaskEvents() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
@@ -162,11 +163,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
             const CObjectID& generator_id)
-        void DelObjectRefStream(const CObjectID &generator_id)
+        void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        c_bool IsFinished(const CObjectID &generator_id) const
+        c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(

@@ -608,7 +608,7 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
-/// This requires RAY_task_events_report_interval_ms > 0, so that events will
+/// This requires RAY_task_events_report_interval_ms=0, so that events will
 /// be sent to GCS.
 RAY_CONFIG(bool, enable_timeline, true)
 
@@ -880,6 +880,13 @@ RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 // See https://github.com/ray-project/ray/pull/33976 for more
 // info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
+
+// Make Raylet and CoreWorker to become Linux subreaper, and let Raylet to kill
+// the child processes of the worker when the worker exits. This is useful for
+// the case where the worker crashed and had no chance to clean up its child processes.
+// Only works on Linux>=3.4. On other platforms, this flag is ignored.
+// See https://github.com/ray-project/ray/pull/42992 for more info.
+RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)

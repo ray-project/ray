@@ -232,7 +232,7 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1, self.op._estimated_output_blocks)
+            self.progress_bar.update(1, self.op.num_outputs_total())
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -521,14 +521,18 @@ def select_operator_to_run(
             )
         else:
             under_resource_limits = _execution_allowed(op, resource_manager)
+        in_backpressure = not under_resource_limits or any(
+            not p.can_add_input(op) for p in backpressure_policies
+        )
         if (
-            under_resource_limits
+            not in_backpressure
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and all(p.can_add_input(op) for p in backpressure_policies)
         ):
             ops.append(op)
+        # Signal whether op in backpressure for stats collections
+        op.notify_in_task_submission_backpressure(in_backpressure)
         # Update the op in all cases to enable internal autoscaling, etc.
         op.notify_resource_usage(state.num_queued(), under_resource_limits)
 
@@ -674,7 +678,7 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     # only bottleneck and this wouldn't impact downstream memory limits. This avoids
     # stalling the execution for memory bottlenecks that occur upstream.
     # See for more context: https://github.com/ray-project/ray/pull/32673
-    global_limits_sans_memory = ExecutionResources(
+    global_limits_sans_memory = ExecutionResources.for_limits(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)

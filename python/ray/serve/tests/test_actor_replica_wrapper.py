@@ -11,6 +11,8 @@ from ray._private.test_utils import SignalActor
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
@@ -90,12 +92,13 @@ def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
     return (
         ActorReplicaWrapper(
             RunningReplicaInfo(
-                deployment_name="fake_deployment",
-                replica_tag="fake_replica",
+                ReplicaID(
+                    "fake_replica", deployment_id=DeploymentID(name="fake_deployment")
+                ),
                 node_id=None,
                 availability_zone=None,
                 actor_handle=actor_handle,
-                max_concurrent_queries=10,
+                max_ongoing_requests=10,
                 is_cross_language=False,
             )
         ),

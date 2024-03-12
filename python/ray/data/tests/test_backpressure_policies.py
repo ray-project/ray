@@ -111,10 +111,10 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         map_func1 = self._get_map_func(actor, 1)
         map_func2 = self._get_map_func(actor, 2)
 
-        # Creat a dataset with 2 map ops. Each map op has N tasks, where N is
+        # Create a dataset with 2 map ops. Each map op has N tasks, where N is
         # the number of cluster CPUs.
         N = self.__class__._cluster_cpus
-        ds = ray.data.range(N, parallelism=N)
+        ds = ray.data.range(N, override_num_blocks=N)
         # Use different `num_cpus` to make sure they don't fuse.
         ds = ds.map_batches(map_func1, batch_size=None, num_cpus=1, concurrency=1)
         ds = ds.map_batches(map_func2, batch_size=None, num_cpus=1.1, concurrency=1)

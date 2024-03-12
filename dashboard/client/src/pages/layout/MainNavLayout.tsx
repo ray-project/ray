@@ -143,7 +143,7 @@ const NAV_ITEMS = [
     id: "jobs",
   },
   {
-    title: "Serve Deployments",
+    title: "Serve",
     path: "/serve",
     id: "serve",
   },

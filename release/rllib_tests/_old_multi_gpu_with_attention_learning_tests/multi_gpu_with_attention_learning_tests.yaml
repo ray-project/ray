@@ -1,0 +1,191 @@
+
+appo-stateless-cartpole-no-vtrace:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        sampler_results/episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        vtrace: false
+        num_gpus: 2
+        num_workers: 5
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+            # Test w/ GTrXL net.
+            use_attention: true
+            max_seq_len: 10
+            attention_num_transformer_units: 1
+            attention_dim: 32
+            attention_memory_inference: 10
+            attention_memory_training: 10
+            attention_num_heads: 1
+            attention_head_dim: 32
+            attention_position_wise_mlp_dim: 32
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+appo-stateless-cartpole-vtrace:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        sampler_results/episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 5
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+            # Test w/ GTrXL net.
+            use_attention: true
+            max_seq_len: 10
+            attention_num_transformer_units: 1
+            attention_dim: 32
+            attention_memory_inference: 10
+            attention_memory_training: 10
+            attention_num_heads: 1
+            attention_head_dim: 32
+            attention_position_wise_mlp_dim: 32
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+impala-stateless-cartpole:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: IMPALA
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        sampler_results/episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+        # Test w/ GTrXL net.
+        model:
+            use_attention: true
+            max_seq_len: 10
+            attention_num_transformer_units: 1
+            attention_dim: 32
+            attention_memory_inference: 10
+            attention_memory_training: 10
+            attention_num_heads: 1
+            attention_head_dim: 32
+            attention_position_wise_mlp_dim: 32
+
+pg-stateless-cartpole:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: PG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        sampler_results/episode_reward_mean: 130.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        # Double batch size (2 GPUs).
+        train_batch_size: 400
+        model:
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
+            # Test w/ GTrXL net.
+            use_attention: true
+            max_seq_len: 10
+            attention_num_transformer_units: 1
+            attention_dim: 32
+            attention_memory_inference: 10
+            attention_memory_training: 10
+            attention_num_heads: 1
+            attention_head_dim: 32
+            attention_position_wise_mlp_dim: 32
+
+ppo-stateless-cartpole:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: PPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        sampler_results/episode_reward_mean: 150.0
+        timesteps_total: 200000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+            # Test w/ GTrXL net.
+            use_attention: true
+            max_seq_len: 10
+            attention_num_transformer_units: 1
+            attention_dim: 32
+            attention_memory_inference: 10
+            attention_memory_training: 10
+            attention_num_heads: 1
+            attention_head_dim: 32
+            attention_position_wise_mlp_dim: 32
+        # Double batch size (2 GPUs).
+        train_batch_size: 8000
+        _enable_new_api_stack: false
+
+# TODO (Kourosh): Activate these tests back when the new modeling stack is merged
+# r2d2-stateless-cartpole:
+#     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+#     run: R2D2
+#     # Minimum reward and total ts (in given time_total_s) to pass this test.
+#     pass_criteria:
+#         sampler_results/episode_reward_mean: 150.0
+#         timesteps_total: 130000
+#     stop:
+#         time_total_s: 1200
+#     config:
+#         num_gpus: 2
+#         num_workers: 0
+#         # R2D2 settings.
+#         burn_in: 20
+#         zero_init_states: true
+#         lr: 0.0005
+#         # Give some more time to explore.
+#         exploration_config:
+#           epsilon_timesteps: 50000
+#         model:
+#             # Test w/ GTrXL net.
+#             use_attention: true
+#             max_seq_len: 20
+#             attention_num_transformer_units: 1
+#             attention_dim: 32
+#             attention_memory_inference: 10
+#             attention_memory_training: 10
+#             attention_num_heads: 1
+#             attention_head_dim: 32
+#             attention_position_wise_mlp_dim: 32
+#             # Use a very simple base-model.
+#             fcnet_hiddens: [64]
+#             fcnet_activation: linear

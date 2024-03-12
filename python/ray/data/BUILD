@@ -317,7 +317,7 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/test_tfrecords.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "tfxbsl"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -363,7 +363,7 @@ py_test(
 
 py_test(
     name = "test_huggingface",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_huggingface.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -539,6 +539,14 @@ py_test(
 )
 
 py_test(
+    name = "test_zip",
+    size = "small",
+    srcs = ["tests/test_zip.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_backpressure_policies",
     size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
@@ -548,7 +556,7 @@ py_test(
 
 py_test(
     name = "test_backpressure_e2e",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_backpressure_e2e.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
