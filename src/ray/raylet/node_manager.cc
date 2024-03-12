@@ -328,16 +328,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
            "return values are greater than the remaining capacity.";
     max_task_args_memory = 0;
   }
-  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
-                               const NodeID &owner_node_id) {
-    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
-             failed_nodes_cache_.count(owner_node_id) > 0);
-  };
   local_task_manager_ = std::make_shared<LocalTaskManager>(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
-      is_owner_alive,
+      [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
+        return !this->IsWorkerDead(owner_worker_id, owner_node_id);
+      },
       get_node_info_func,
       worker_pool_,
       leased_workers_,
@@ -387,6 +384,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms(),
                                        "NodeManager.GCTaskFailureReason");
+}
+
+bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {
+  return failed_workers_cache_.count(worker_id) > 0 ||
+         failed_nodes_cache_.count(node_id) > 0;
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -1714,6 +1716,20 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
+  const auto &caller_addr = request.resource_spec().caller_address();
+  const auto caller_worker = WorkerID::FromBinary(caller_addr.worker_id());
+  const auto caller_node = NodeID::FromBinary(caller_addr.raylet_id());
+  if (IsWorkerDead(caller_worker, caller_node)) {
+    RAY_LOG(INFO) << "Caller of RequestWorkerLease is dead. worker = " << caller_worker
+                  << ", node = " << caller_node << ". Skip leasing.";
+    reply->set_canceled(true);
+    reply->set_failure_type(rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+    reply->set_scheduling_failure_message(
+        "Cancelled leasing because the caller worker is dead.");
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  };
+
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(task_message);
