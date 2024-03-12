@@ -179,7 +179,7 @@ Run this deployment using the `serve run` CLI command:
 $ serve run monitoring:say_hello
 
 2023-04-10 15:57:32,100	INFO scripts.py:380 -- Deploying from import path: "monitoring:say_hello".
-[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,822 controller 63503 deployment_state.py:1168 - Deploying new version of deployment SayHello.
 (ProxyActor pid=63513) INFO:     Started server process [63513]
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,882 controller 63503 deployment_state.py:1386 - Adding 1 replica to deployment SayHello.
@@ -480,19 +480,19 @@ The following metrics are exposed by Ray Serve:
    * - Name
      - Fields
      - Description
-   * - ``ray_serve_deployment_request_counter`` [**]
+   * - ``ray_serve_deployment_request_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of queries that have been processed in this replica.
-   * - ``ray_serve_deployment_error_counter`` [**]
+   * - ``ray_serve_deployment_error_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of exceptions that have occurred in the deployment.
-   * - ``ray_serve_deployment_replica_starts`` [**]
+   * - ``ray_serve_deployment_replica_starts_total`` [**]
      - * deployment
        * replica
        * application

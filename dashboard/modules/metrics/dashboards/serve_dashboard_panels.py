@@ -189,7 +189,7 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
+                expr='sum(rate(ray_serve_deployment_request_counter_total{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
                 legend="{{application, deployment}}",
             ),
         ],
@@ -202,7 +202,7 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_error_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
+                expr='sum(rate(ray_serve_deployment_error_counter_total{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
                 legend="{{application, deployment}}",
             ),
         ],

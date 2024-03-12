@@ -94,6 +94,14 @@ class Counter(metrics.Counter):
                     if self.num_requests % 2 == 1:
                         self.my_counter.inc()
 
+    .. note::
+
+        Before Ray 2.10, this exports a Prometheus gauge metric instead of
+        a counter metric, which is wrong.
+        Since 2.10, this exports both counter (with a suffix "_total") and
+        gauge metrics (for bug compatibility).
+        Use `RAY_EXPORT_COUNTER_AS_GAUGE=0` to disable exporting the gauge metric.
+
     Args:
         name: Name of the metric.
         description: Description of the metric.
