@@ -406,7 +406,7 @@ class FakeMultiNodeProvider(NodeProvider):
         node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return cluster_config
 
     ############################
@@ -721,5 +721,5 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         self._save_node_state()
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return cluster_config

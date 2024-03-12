@@ -222,7 +222,7 @@ def log_to_cli(config: Dict[str, Any]) -> None:
     cli_logger.newline()
 
 
-def bootstrap_aws(config):
+def bootstrap_aws(config, no_create):
     # create a copy of the input config to modify
     config = copy.deepcopy(config)
 
@@ -256,7 +256,7 @@ def bootstrap_aws(config):
 
     # Cluster workers should be in a security group that permits traffic within
     # the group, and also SSH access from outside.
-    config = _configure_security_group(config)
+    config = _configure_security_group(config, no_create)
 
     # Provide a helpful message for missing AMI.
     _check_ami(config)
@@ -652,7 +652,7 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
     return vpc_ids[0]
 
 
-def _configure_security_group(config):
+def _configure_security_group(config, no_create):
     # map from node type key -> source of SecurityGroupIds field
     security_group_info_src = {}
     _set_config_info(security_group_src=security_group_info_src)
@@ -673,7 +673,9 @@ def _configure_security_group(config):
         # in tests
         node_types_to_configure.remove(head_node_type)
         node_types_to_configure.append(head_node_type)
-    security_groups = _upsert_security_groups(config, node_types_to_configure)
+    security_groups = _upsert_security_groups(
+        config, node_types_to_configure, no_create
+    )
 
     for node_type_key in node_types_to_configure:
         node_config = config["available_node_types"][node_type_key]["node_config"]
@@ -709,14 +711,14 @@ def _check_ami(config):
                 ami_src_info[key] = "dlami"
 
 
-def _upsert_security_groups(config, node_types):
-    security_groups = _get_or_create_vpc_security_groups(config, node_types)
+def _upsert_security_groups(config, node_types, no_create):
+    security_groups = _get_or_create_vpc_security_groups(config, node_types, no_create)
     _upsert_security_group_rules(config, security_groups)
 
     return security_groups
 
 
-def _get_or_create_vpc_security_groups(conf, node_types):
+def _get_or_create_vpc_security_groups(conf, node_types, no_create):
     # Figure out which VPC each node_type is in...
     ec2 = _resource("ec2", conf)
     node_type_to_vpc = {
@@ -744,16 +746,23 @@ def _get_or_create_vpc_security_groups(conf, node_types):
         )
     }
 
-    # Lazily create any security group we're missing for each VPC...
-    vpc_to_sg = LazyDefaultDict(
-        partial(_create_security_group, conf, group_name=expected_sg_name),
-        vpc_to_existing_sg,
-    )
-
-    # Then return a mapping from each node_type to its security group...
-    return {
-        node_type: vpc_to_sg[vpc_id] for node_type, vpc_id in node_type_to_vpc.items()
-    }
+    if no_create:
+        return {
+            node_type: vpc_to_existing_sg[vpc_id]
+            for node_type, vpc_id in node_type_to_vpc.items()
+            if vpc_id in vpc_to_existing_sg
+        }
+    else:
+        # Lazily create any security group we're missing for each VPC...
+        vpc_to_sg = LazyDefaultDict(
+            partial(_create_security_group, conf, group_name=expected_sg_name),
+            vpc_to_existing_sg,
+        )
+        # Then return a mapping from each node_type to its security group...
+        return {
+            node_type: vpc_to_sg[vpc_id]
+            for node_type, vpc_id in node_type_to_vpc.items()
+        }
 
 
 def _get_vpc_id_or_die(ec2, subnet_id: str):

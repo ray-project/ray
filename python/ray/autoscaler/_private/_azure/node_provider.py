@@ -365,5 +365,5 @@ class AzureNodeProvider(NodeProvider):
         return self._get_node(node_id=node_id)
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return bootstrap_azure(cluster_config)

@@ -273,7 +273,7 @@ class GCPNodeProvider(NodeProvider):
         return self._get_node(node_id)
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return bootstrap_gcp(cluster_config)
 
     @staticmethod

@@ -72,7 +72,7 @@ class VsphereNodeProvider(NodeProvider):
         return self.get_pyvmomi_sdk_provider().wait_until_vm_is_frozen(frozen_vm_name)
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return bootstrap_vsphere(cluster_config)
 
     def non_terminated_nodes(self, tag_filters):
