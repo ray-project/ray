@@ -699,7 +699,7 @@ class MultiAgentEnvRunner(EnvRunner):
         self._callbacks.on_environment_created(
             env_runner=self,
             env=self.env,
-            env_config=env_ctx,
+            env_context=env_ctx,
         )
 
     def _make_module(self):

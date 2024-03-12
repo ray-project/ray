@@ -776,6 +776,11 @@ class DatasetStats:
         stats_summary_parents = []
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
+        streaming_exec_schedule_s = (
+            self.streaming_exec_schedule_s.get()
+            if self.streaming_exec_schedule_s
+            else 0
+        )
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -788,7 +793,7 @@ class DatasetStats:
             self.global_bytes_spilled,
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
-            self.streaming_exec_schedule_s.get(),
+            streaming_exec_schedule_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1049,17 +1054,18 @@ class OperatorStatsSummary:
         rounded_total = 0
         time_total_s = 0
 
+        if exec_stats:
+            # Calculate the total execution time of operator as
+            # the difference between the latest end time and
+            # the earliest start time of all blocks in the operator.
+            earliest_start_time = min(s.start_time_s for s in exec_stats)
+            latest_end_time = max(s.end_time_s for s in exec_stats)
+            time_total_s = latest_end_time - earliest_start_time
+
         if is_sub_operator:
             exec_summary_str = "{} blocks produced\n".format(len(exec_stats))
         else:
             if exec_stats:
-                # Calculate the total execution time of operator as
-                # the difference between the latest end time and
-                # the earliest start time of all blocks in the operator.
-                earliest_start_time = min(s.start_time_s for s in exec_stats)
-                latest_end_time = max(s.end_time_s for s in exec_stats)
-                time_total_s = latest_end_time - earliest_start_time
-
                 rounded_total = round(time_total_s, 2)
                 if rounded_total <= 0:
                     # Handle -0.0 case.

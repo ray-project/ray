@@ -166,7 +166,7 @@ enum TagKey {
   // Ray AIR environment variable usage stored in JSON list format
   // This lists which of the environment variables exposed by the AIR libraries
   // are provided by the user.
-  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR", "TUNE_FALLBACK_TO_LATEST_CHECKPOINT"]
+  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR"]
   AIR_ENV_VARS = 503;
   // Fully user-controlled experiment tracking integrations ("1" if used)
   // NOTE: These tags + the callback metrics can be aggregated to extract

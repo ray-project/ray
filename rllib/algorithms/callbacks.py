@@ -175,20 +175,23 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         *,
         env_runner: "EnvRunner",
         env: gym.Env,
-        env_config: EnvContext,
+        env_context: EnvContext,
         **kwargs,
     ) -> None:
         """Callback run when a new environment object has been created.
 
         Note: This only applies to the new API stack. The env used is usually a
-        gym.Env (or more specificallly a gym.vector.Env).
+        gym.Env (or more specifically a gym.vector.Env).
 
         Args:
             env_runner: Reference to the current EnvRunner instance.
             env: The environment object that has been created on `env_runner`. This is
                 usually a gym.Env (or a gym.vector.Env) object.
-            env_config: The config dict that has been passed to the `gym.make()` call
-                as kwargs.
+            env_context: The `EnvContext` object that has been passed to the
+                `gym.make()` call as kwargs (and to the gym.Env as `config`). It should
+                have all the config key/value pairs in it as well as the
+                EnvContext-typical properties: `worker_index`, `num_workers`, and
+                `remote`.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -692,7 +695,6 @@ def make_multi_callbacks(
             env_runner: "EnvRunner",
             env: gym.Env,
             env_context: EnvContext,
-            env_index: Optional[int] = None,
             **kwargs,
         ) -> None:
             for callback in self._callback_list:
@@ -700,7 +702,6 @@ def make_multi_callbacks(
                     env_runner=env_runner,
                     env=env,
                     env_context=env_context,
-                    env_index=env_index,
                     **kwargs,
                 )
 
