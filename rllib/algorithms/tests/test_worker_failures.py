@@ -11,13 +11,11 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
 
@@ -216,11 +214,7 @@ class AddPolicyCallback(DefaultCallbacks):
         # Add a custom policy to algorithm.
         algorithm.add_policy(
             policy_id="test_policy",
-            policy_cls=(
-                PGTorchPolicy
-                if algorithm.config.framework_str == "torch"
-                else PGTF2Policy
-            ),
+            policy_cls=PGTorchPolicy,
             observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
             action_space=gym.spaces.Discrete(2),
             config={},
@@ -268,19 +262,16 @@ class TestWorkerFailures(unittest.TestCase):
 
         print(config)
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            algo = config.build()
-            algo.train()
+        algo = config.build()
+        algo.train()
 
-            # One of the rollout workers failed.
-            self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
-            if fail_eval:
-                # One of the eval workers failed.
-                self.assertEqual(
-                    algo.evaluation_workers.num_healthy_remote_workers(), 1
-                )
+        # One of the rollout workers failed.
+        self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
+        if fail_eval:
+            # One of the eval workers failed.
+            self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 1)
 
-            algo.stop()
+        algo.stop()
 
     def _do_test_fault_fatal(self, config, fail_eval=False):
         # Test raises real error when out of workers.
@@ -299,10 +290,9 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             }
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            a = config.build()
-            self.assertRaises(Exception, lambda: a.train())
-            a.stop()
+        a = config.build()
+        self.assertRaises(Exception, lambda: a.train())
+        a.stop()
 
     def _do_test_fault_fatal_but_recreate(self, config, multi_agent=False):
         # Counter that will survive restarts.
@@ -346,29 +336,28 @@ class TestWorkerFailures(unittest.TestCase):
             ),
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaction counter.
-            ray.wait([counter.reset.remote()])
+        # Reset interaction counter.
+        ray.wait([counter.reset.remote()])
 
-            a = config.build()
+        a = config.build()
 
-            # This should also work several times.
-            for _ in range(2):
-                a.train()
-                wait_for_restore()
-                a.train()
+        # This should also work several times.
+        for _ in range(2):
+            a.train()
+            wait_for_restore()
+            a.train()
 
-                self.assertEqual(a.workers.num_healthy_remote_workers(), 1)
-                self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
-                if multi_agent:
-                    # Make a dummy call to the eval worker's policy_mapping_fn and
-                    # make sure the restored eval worker received the correct one from
-                    # the eval config (not the main workers' one).
-                    test = a.evaluation_workers.foreach_worker(
-                        lambda w: w.policy_mapping_fn(0, None, None)
-                    )
-                    self.assertEqual(test[0], "This is the eval mapping fn")
-            a.stop()
+            self.assertEqual(a.workers.num_healthy_remote_workers(), 1)
+            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
+            if multi_agent:
+                # Make a dummy call to the eval worker's policy_mapping_fn and
+                # make sure the restored eval worker received the correct one from
+                # the eval config (not the main workers' one).
+                test = a.evaluation_workers.foreach_worker(
+                    lambda w: w.policy_mapping_fn(0, None, None)
+                )
+                self.assertEqual(test[0], "This is the eval mapping fn")
+        a.stop()
 
     def test_fatal(self):
         # Test the case where all workers fail (w/o recovery).
@@ -501,26 +490,25 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
-            ray.wait([counter.reset.remote()])
+        # Reset interaciton counter.
+        ray.wait([counter.reset.remote()])
 
-            a = config.build()
+        a = config.build()
 
-            # Before training, 2 healthy workers.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            # Nothing is restarted.
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
+        # Before training, 2 healthy workers.
+        self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
+        # Nothing is restarted.
+        self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
 
-            a.train()
-            wait_for_restore()
-            # One more iteration. Workers will be recovered during this round.
-            a.train()
+        a.train()
+        wait_for_restore()
+        # One more iteration. Workers will be recovered during this round.
+        a.train()
 
-            # After training, still 2 healthy workers.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            # Both workers are restarted.
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 2)
+        # After training, still 2 healthy workers.
+        self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
+        # Both workers are restarted.
+        self.assertEqual(a.workers.num_remote_worker_restarts(), 2)
 
     def test_policies_are_restored_on_recovered_worker(self):
         # Counter that will survive restarts.
@@ -574,48 +562,45 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaction counter.
-            ray.wait([counter.reset.remote()])
+        # Reset interaction counter.
+        ray.wait([counter.reset.remote()])
 
-            a = config.build()
+        a = config.build()
 
-            # Should have the custom policy.
-            self.assertIsNotNone(a.get_policy("test_policy"))
+        # Should have the custom policy.
+        self.assertIsNotNone(a.get_policy("test_policy"))
 
-            # Before train loop, workers are fresh and not recreated.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
-            self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 0)
+        # Before train loop, workers are fresh and not recreated.
+        self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
+        self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
+        self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
+        self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 0)
 
-            a.train()
-            wait_for_restore()
-            # One more iteration. Workers will be recovered during this round.
-            a.train()
+        a.train()
+        wait_for_restore()
+        # One more iteration. Workers will be recovered during this round.
+        a.train()
 
-            # Everything still healthy. And all workers are restarted.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 2)
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
-            self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 1)
+        # Everything still healthy. And all workers are restarted.
+        self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
+        self.assertEqual(a.workers.num_remote_worker_restarts(), 2)
+        self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 1)
+        self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 1)
 
-            # Let's verify that our custom policy exists on both recovered workers.
-            def has_test_policy(w):
-                return "test_policy" in w.policy_map
+        # Let's verify that our custom policy exists on both recovered workers.
+        def has_test_policy(w):
+            return "test_policy" in w.policy_map
 
-            # Rollout worker has test policy.
-            self.assertTrue(
-                all(a.workers.foreach_worker(has_test_policy, local_worker=False))
+        # Rollout worker has test policy.
+        self.assertTrue(
+            all(a.workers.foreach_worker(has_test_policy, local_worker=False))
+        )
+        # Eval worker has test policy.
+        self.assertTrue(
+            all(
+                a.evaluation_workers.foreach_worker(has_test_policy, local_worker=False)
             )
-            # Eval worker has test policy.
-            self.assertTrue(
-                all(
-                    a.evaluation_workers.foreach_worker(
-                        has_test_policy, local_worker=False
-                    )
-                )
-            )
+        )
 
     def test_eval_workers_fault_but_recover(self):
         # Counter that will survive restarts.
@@ -658,23 +643,22 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
-            ray.wait([counter.reset.remote()])
+        # Reset interaciton counter.
+        ray.wait([counter.reset.remote()])
 
-            a = config.build()
+        a = config.build()
 
-            # Before train loop, workers are fresh and not recreated.
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 0)
+        # Before train loop, workers are fresh and not recreated.
+        self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
+        self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 0)
 
-            a.train()
-            wait_for_restore()
-            a.train()
+        a.train()
+        wait_for_restore()
+        a.train()
 
-            # Everything still healthy. And all workers are restarted.
-            self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
-            self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 2)
+        # Everything still healthy. And all workers are restarted.
+        self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
+        self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 2)
 
     def test_worker_recover_with_hanging_workers(self):
         # Counter that will survive restarts.
@@ -731,29 +715,29 @@ class TestWorkerFailures(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            # Reset interaciton counter.
-            ray.wait([counter.reset.remote()])
+        # Reset interaciton counter.
+        ray.wait([counter.reset.remote()])
 
-            a = config.build()
+        a = config.build()
 
-            # Before train loop, workers are fresh and not recreated.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 3)
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
+        # Before train loop, workers are fresh and not recreated.
+        self.assertEqual(a.workers.num_healthy_remote_workers(), 3)
+        self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
 
-            a.train()
-            wait_for_restore(num_restarting_allowed=1)
-            # Most importantly, training progressed fine.
-            a.train()
+        a.train()
+        wait_for_restore(num_restarting_allowed=1)
+        # Most importantly, training progressed fine.
+        a.train()
 
-            # 2 healthy remote workers left, although worker 3 is stuck in rollout.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
-            # Only 1 successful restore, since worker 2 is stuck in indefinite init
-            # and can not be properly restored.
-            self.assertEqual(a.workers.num_remote_worker_restarts(), 1)
+        # 2 healthy remote workers left, although worker 3 is stuck in rollout.
+        self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
+        # Only 1 successful restore, since worker 2 is stuck in indefinite init
+        # and can not be properly restored.
+        self.assertEqual(a.workers.num_remote_worker_restarts(), 1)
 
     def test_eval_workers_on_infinite_episodes(self):
         """Tests whether eval workers warn appropriately after some episode timeout."""
+
         # Create infinitely running episodes, but with horizon setting (RLlib will
         # auto-terminate the episode). However, in the eval workers, don't set a
         # horizon -> Expect warning and no proper evaluation results.
@@ -766,9 +750,16 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_interval=1,
             )
         )
-        algo = config.build()
-        results = algo.train()
-        self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
+
+        for parallel in [False, True]:
+            config.evaluation_parallel_to_training = parallel
+            for auto in [False, True]:
+                if auto and not parallel:
+                    continue
+                config.evaluation_duration = "auto" if auto else 10
+                algo = config.build()
+                results = algo.train()
+                self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
 
 
 if __name__ == "__main__":

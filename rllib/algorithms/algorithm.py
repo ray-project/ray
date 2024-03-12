@@ -1243,6 +1243,7 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_cfg = self.evaluation_config
         num_workers = self.config.evaluation_num_workers
         force_reset = self.config.evaluation_force_reset_envs_before_iteration
+        time_out = self.config.evaluation_sample_timeout_s
 
         # Remote function used on healthy EnvRunners to sample, get metrics, and
         # step counts.
@@ -1271,6 +1272,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         env_steps = agent_steps = 0
 
+        t_last_result = time.time()
         _round = -1
         # In case all the remote evaluation workers die during a round of
         # evaluation, we need to stop.
@@ -1296,6 +1298,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
+                if not results and time.time() - t_last_result > time_out:
+                    break
                 for wid, (env_s, ag_s, met, iter) in results:
                     if iter != self.iteration:
                         continue
@@ -1331,6 +1335,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
+                if not results and time.time() - t_last_result > time_out:
+                    break
                 for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
                         continue
