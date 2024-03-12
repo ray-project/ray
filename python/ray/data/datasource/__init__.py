@@ -64,7 +64,7 @@ from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 # we want to only import the Hugging Face datasets library when we use
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
-    "AvroDataSource",
+    "AvroDatasource",
     "BaseFileMetadataProvider",
     "BinaryDatasource",
     "_BigQueryDatasink",
