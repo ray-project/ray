@@ -1553,7 +1553,7 @@ def read_avro(
         paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSIONS)
+        meta_provider = get_generic_metadata_provider(AvroDatasource._FILE_EXTENSIONS)
 
     datasource = AvroDatasource(
         paths,
