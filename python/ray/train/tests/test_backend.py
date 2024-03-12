@@ -399,7 +399,7 @@ def test_amd_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
         )
 
     def get_resources():
-        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["ROCR_VISIBLE_DEVICES"]
         # Sort the cuda visible devices to have exact match with expected result.
         sorted_devices = [
             int(device) for device in sorted(cuda_visible_devices.split(","))
