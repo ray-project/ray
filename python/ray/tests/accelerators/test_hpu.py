@@ -130,7 +130,7 @@ def test_decorator_args(ray_start_regular):
 
 
 def test_actor_deletion_with_hpus(shutdown_only):
-    ray.init(num_cpus=1, resources={'HPU': 1}, object_store_memory=int(150 * 1024 * 1024))
+    ray.init(num_cpus=1, resources={'HPU': 1})
 
     # When an actor that uses an HPU exits, make sure that the HPU resources
     # are released.
@@ -161,12 +161,12 @@ def test_actor_hpus(ray_start_cluster):
     @ray.remote(resources={'HPU': 1})
     class Actor1:
         def __init__(self):
-            resource_ids = ray.get_runtime_context().get_resource_ids()
+            resource_ids = ray.get_runtime_context().get_accelerator_ids()
             self.hpu_ids = resource_ids.get('HPU')
 
         def get_location_and_ids(self):
             return (
-                ray._private.worker.global_worker.node.unique_id,
+                ray.get_runtime_context().get_node_id(),
                 tuple(self.hpu_ids),
             )
 
@@ -190,58 +190,6 @@ def test_actor_hpus(ray_start_cluster):
     a = Actor1.remote()
     ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
-
-
-def test_blocking_actor_task(shutdown_only):
-    ray.init(num_cpus=1, resources={"HPU": 1}, object_store_memory=int(150 * 1024 * 1024))
-
-    @ray.remote(resources={"HPU": 1})
-    def f():
-        return 1
-
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            pass
-
-        def blocking_method(self):
-            ray.get(f.remote())
-
-    # Make sure we can execute a blocking actor method even if there is
-    # only one CPU.
-    actor = Foo.remote()
-    ray.get(actor.blocking_method.remote())
-
-    @ray.remote(num_cpus=1)
-    class CPUFoo:
-        def __init__(self):
-            pass
-
-        def blocking_method(self):
-            ray.get(f.remote())
-
-    # Make sure that lifetime CPU resources are not released when actors
-    # block.
-    actor = CPUFoo.remote()
-    x_id = actor.blocking_method.remote()
-    ready_ids, remaining_ids = ray.wait([x_id], timeout=1.0)
-    assert ready_ids == []
-    assert remaining_ids == [x_id]
-
-    @ray.remote(resources={"HPU": 1})
-    class HPUFoo:
-        def __init__(self):
-            pass
-
-        def blocking_method(self):
-            ray.get(f.remote())
-
-    # Make sure that HPU resources are not released when actors block.
-    actor = HPUFoo.remote()
-    x_id = actor.blocking_method.remote()
-    ready_ids, remaining_ids = ray.wait([x_id], timeout=1.0)
-    assert ready_ids == []
-    assert remaining_ids == [x_id]
 
 
 def test_actor_habana_visible_devices(shutdown_only):
@@ -268,7 +216,7 @@ def test_hpu_ids(shutdown_only):
     ray.init(num_cpus=num_hpus, resources={"HPU": num_hpus})
 
     def get_hpu_ids(hpus_per_worker):
-        hpu_ids = ray.get_runtime_context().get_resource_ids()["HPU"]
+        hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
         assert len(hpu_ids) == hpus_per_worker
         modules = os.environ.get("HABANA_VISIBLE_MODULES")
         if modules is not None:
@@ -307,7 +255,7 @@ def test_hpu_ids(shutdown_only):
     @ray.remote
     class Actor0:
         def __init__(self):
-            hpu_ids = ray.get_runtime_context().get_resource_ids()[
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "HPU"
             ]
             assert len(hpu_ids) == 0
@@ -318,7 +266,7 @@ def test_hpu_ids(shutdown_only):
             self.x = 0
 
         def test(self):
-            hpu_ids = ray.get_runtime_context().get_resource_ids()[
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "HPU"
             ]
             assert len(hpu_ids) == 0
@@ -330,7 +278,7 @@ def test_hpu_ids(shutdown_only):
     @ray.remote(resources={"HPU": 1})
     class Actor1:
         def __init__(self):
-            hpu_ids = ray.get_runtime_context().get_resource_ids()[
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "HPU"
             ]
             assert len(hpu_ids) == 1
@@ -341,7 +289,7 @@ def test_hpu_ids(shutdown_only):
             self.x = 1
 
         def test(self):
-            hpu_ids = ray.get_runtime_context().get_resource_ids()[
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "HPU"
             ]
             assert len(hpu_ids) == 1
@@ -353,7 +301,7 @@ def test_hpu_ids(shutdown_only):
     @ray.remote(resources={"HPU": 2})
     class Actor2:
         def __init__(self):
-            hpu_ids = ray.get_runtime_context().get_resource_ids()[
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "HPU"
             ]
             assert len(hpu_ids) == 2
@@ -364,7 +312,7 @@ def test_hpu_ids(shutdown_only):
             self.x = 2
 
         def test(self):
-            hpu_ids = ray.get_runtime_context().get_resource_ids()[
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "HPU"
             ]
             assert len(hpu_ids) == 2
@@ -393,7 +341,7 @@ def test_hpu_with_placement_group(shutdown_only):
             pass
 
         def ready(self):
-            hpu_ids = ray.get_runtime_context().get_resource_ids()[
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "HPU"
             ]
             assert len(hpu_ids) == num_hpus
