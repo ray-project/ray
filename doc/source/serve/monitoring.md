@@ -623,7 +623,7 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
        * model_id
-     - The mutlplexed model ID registered on the current replica.
+     - The mutliplexed model ID registered on the current replica.
    * - ``ray_serve_multiplexed_get_model_requests_counter``
      - * deployment
        * replica
