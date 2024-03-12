@@ -90,12 +90,8 @@ class AssertEvalCallback(DefaultCallbacks):
                     f"{num_timesteps_reported} (ok)!"
                 )
         # Expect at least evaluation/sampler_results to be always available.
-        elif (
-            algorithm.config.always_attach_evaluation_results
-            and (
-                "evaluation" not in result
-                or "sampler_results" not in result["evaluation"]
-            )
+        elif algorithm.config.always_attach_evaluation_results and (
+            "evaluation" not in result or "sampler_results" not in result["evaluation"]
         ):
             raise KeyError(
                 "`evaluation->sampler_results->hist_stats` not found in result dict!"

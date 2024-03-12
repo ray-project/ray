@@ -425,11 +425,11 @@ class PPO(Algorithm):
                     max_env_steps=self.config.total_train_batch_size,
                     uses_new_env_runners=self.config.uses_new_env_runners,
                 )
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += (
-                sum(e.agent_steps() for e in episodes)
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                e.agent_steps() for e in episodes
             )
-            self._counters[NUM_ENV_STEPS_SAMPLED] += (
-                sum(e.env_steps() for e in episodes)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                e.env_steps() for e in episodes
             )
 
         # Perform a train step on the collected batch.
