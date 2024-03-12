@@ -1108,11 +1108,13 @@ def override_deployment_info(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
         override_actor_options.update({"runtime_env": merged_env})
-        replica_config.update_ray_actor_options(override_actor_options)
-        replica_config.update_placement_group_options(
-            override_placement_group_bundles, override_placement_group_strategy
+
+        replica_config.update(
+            ray_actor_options=override_actor_options,
+            placement_group_bundles=override_placement_group_bundles,
+            placement_group_strategy=override_placement_group_strategy,
+            max_replicas_per_node=override_max_replicas_per_node,
         )
-        replica_config.update_max_replicas_per_node(override_max_replicas_per_node)
         override_options["replica_config"] = replica_config
 
         # Override deployment config options

@@ -7,7 +7,7 @@ from ray_release.test import Test, TestState
 
 
 CONTINUOUS_FAILURE_TO_FLAKY = 10  # Number of continuous failures before flaky
-CONTINUOUS_PASSING_TO_PASSING = 20  # Number of continuous passing before passing
+CONTINUOUS_PASSING_TO_PASSING = 30  # Number of continuous passing before passing
 FLAKY_PERCENTAGE_THRESHOLD = 5  # Percentage threshold to be considered as flaky
 FAILING_TO_FLAKY_MESSAGE = (
     "This test is now considered as flaky because it has been "
@@ -126,8 +126,7 @@ class CITestStateMachine(TestStateMachine):
     def _flaky_to_passing(self) -> bool:
         # A flaky test is considered passing if it has been passing for a certain
         # period and the github issue is closed (by a human).
-        issue = self.ray_repo.get_issue(self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER))
-        return self._is_recently_stable() and issue.state == "closed"
+        return self._is_recently_stable()
 
     def _is_recently_stable(self) -> bool:
         return len(self.test_results) >= CONTINUOUS_PASSING_TO_PASSING and all(
