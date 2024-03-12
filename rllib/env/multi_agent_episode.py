@@ -23,10 +23,12 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.error import MultiAgentEnvError
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
+from ray.util.annotations import PublicAPI
 
 
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
+@PublicAPI(stability="alpha")
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
 
@@ -659,7 +661,7 @@ class MultiAgentEpisode:
         Each of these leaf numpy arrays will have the same length (batch dimension)
         as the length of the original lists.
 
-        Note that SampleBatch.INFOS are NEVER numpy'ized and will remain a list
+        Note that Columns.INFOS are NEVER numpy'ized and will remain a list
         (normally, a list of the original, env-returned dicts). This is due to the
         herterogenous nature of INFOS returned by envs, which would make it unwieldy to
         convert this information to numpy arrays.

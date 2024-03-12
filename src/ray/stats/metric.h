@@ -200,15 +200,6 @@ class Sum : public Metric {
 
 };  // class Sum
 
-/// Raw metric view point for exporter.
-struct MetricPoint {
-  std::string metric_name;
-  int64_t timestamp;
-  double value;
-  std::unordered_map<std::string, std::string> tags;
-  const opencensus::stats::MeasureDescriptor &measure_descriptor;
-};
-
 enum StatsType : int { COUNT, SUM, GAUGE, HISTOGRAM };
 
 namespace internal {

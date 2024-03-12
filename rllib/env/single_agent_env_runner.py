@@ -7,23 +7,26 @@ from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType, ModelWeights
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class SingleAgentEnvRunner(EnvRunner):
     """The generic environment runner for the single agent case."""
 
@@ -37,53 +40,19 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         super().__init__(config=config)
 
-        # Get the worker index on which this instance is running.
-        self.worker_index: int = kwargs.get("worker_index")
-
         # Create our callbacks object.
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
+        self.worker_index = kwargs.get("worker_index")
+
         # Create the vectorized gymnasium env.
-
-        # Register env for the local context.
-        # Note, `gym.register` has to be called on each worker.
-        if isinstance(self.config.env, str) and _global_registry.contains(
-            ENV_CREATOR, self.config.env
-        ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                self.config.env_config,
-            )
-
-        else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_context=self.config.env_config,
-                env_descriptor=self.config.env,
-            )
-        gym.register("rllib-single-agent-env-runner-v0", entry_point=entry_point)
-
-        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
-        self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
-            gym.vector.make(
-                "rllib-single-agent-env-runner-v0",
-                num_envs=self.config.num_envs_per_worker,
-                asynchronous=self.config.remote_worker_envs,
-            )
-        )
-        self.num_envs: int = self.env.num_envs
-        assert self.num_envs == self.config.num_envs_per_worker
+        self.env: Optional[gym.Wrapper] = None
+        self.num_envs: int = 0
+        self._make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
         self.global_num_env_steps_sampled = 0
-
-        # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            env=self.env,
-            env_config=self.config.env_config,
-        )
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
@@ -259,7 +228,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Act randomly.
             if random_actions:
                 to_env = {
-                    SampleBatch.ACTIONS: self.env.action_space.sample(),
+                    Columns.ACTIONS: self.env.action_space.sample(),
                 }
             # Compute an action using the RLModule.
             else:
@@ -294,8 +263,8 @@ class SingleAgentEnvRunner(EnvRunner):
             # already unsquashed/clipped) to be sent to the environment) and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(SampleBatch.ACTIONS)
-            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            actions = to_env.pop(Columns.ACTIONS)
+            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
             obs, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env
@@ -456,7 +425,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Act randomly.
             if random_actions:
                 to_env = {
-                    SampleBatch.ACTIONS: self.env.action_space.sample(),
+                    Columns.ACTIONS: self.env.action_space.sample(),
                 }
             # Compute an action using the RLModule.
             else:
@@ -490,8 +459,8 @@ class SingleAgentEnvRunner(EnvRunner):
             # already unsquashed/clipped) to be sent to the environment) and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(SampleBatch.ACTIONS)
-            actions_for_env = to_env.pop(SampleBatch.ACTIONS_FOR_ENV, actions)
+            actions = to_env.pop(Columns.ACTIONS)
+            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
             obs, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env
@@ -649,6 +618,53 @@ class SingleAgentEnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
+
+    def _make_env(self):
+        """Creates a vectorized gymnasium env."""
+        env_ctx = self.config.env_config
+        if not isinstance(env_ctx, EnvContext):
+            env_ctx = EnvContext(
+                env_ctx,
+                worker_index=self.worker_index,
+                num_workers=self.config.num_rollout_workers,
+                remote=self.config.remote_worker_envs,
+            )
+
+        # Register env for the local context.
+        # Note, `gym.register` has to be called on each worker.
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
+        ):
+            entry_point = partial(
+                _global_registry.get(ENV_CREATOR, self.config.env),
+                env_ctx,
+            )
+
+        else:
+            entry_point = partial(
+                _gym_env_creator,
+                env_descriptor=self.config.env,
+                env_context=env_ctx,
+            )
+        gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
+
+        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
+        self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
+            gym.vector.make(
+                "rllib-single-agent-env-v0",
+                num_envs=self.config.num_envs_per_worker,
+                asynchronous=self.config.remote_worker_envs,
+            )
+        )
+        self.num_envs: int = self.env.num_envs
+        assert self.num_envs == self.config.num_envs_per_worker
+
+        # Call the `on_environment_created` callback.
+        self._callbacks.on_environment_created(
+            env_runner=self,
+            env=self.env,
+            env_context=env_ctx,
+        )
 
     def _new_episode(self):
         return SingleAgentEpisode(

@@ -2,7 +2,7 @@ import time
 import uuid
 from typing import Dict, List, Optional, Set
 
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 
 class InstanceUtil:
@@ -69,6 +69,44 @@ class InstanceUtil:
         }
 
     @staticmethod
+    def is_ray_running(instance_status: Instance.InstanceStatus) -> bool:
+        """
+        Returns True if the instance is in a status where the ray process is
+        running on the cloud instance.
+            i.e. RAY_RUNNING, RAY_STOP_REQUESTED, RAY_STOPPING
+        """
+        assert instance_status != Instance.UNKNOWN
+
+        if instance_status in InstanceUtil.get_reachable_statuses(
+            Instance.RAY_STOPPING
+        ):
+            return False
+
+        if instance_status in InstanceUtil.get_reachable_statuses(Instance.RAY_RUNNING):
+            return True
+
+        return False
+
+    @staticmethod
+    def is_ray_pending(instance_status: Instance.InstanceStatus) -> bool:
+        """
+        Returns True if the instance is in a status where the ray process is
+        pending to be started on the cloud instance.
+
+        """
+        assert instance_status != Instance.UNKNOWN
+        # Not gonna be in a RAY_RUNNING status.
+        if Instance.RAY_RUNNING not in InstanceUtil.get_reachable_statuses(
+            instance_status
+        ):
+            return False
+
+        # Already running ray.
+        if instance_status in InstanceUtil.get_reachable_statuses(Instance.RAY_RUNNING):
+            return False
+
+        return True
+
     def is_ray_running_reachable(instance_status: Instance.InstanceStatus) -> bool:
         """
         Returns True if the instance is in a status where it may transition
@@ -160,7 +198,7 @@ class InstanceUtil:
             Instance.QUEUED: {
                 # Cloud provider requested to launch a node for the instance.
                 # This happens when the a launch request is made to the node provider.
-                Instance.REQUESTED
+                Instance.REQUESTED,
             },
             # When in this status, a launch request to the node provider is made.
             Instance.REQUESTED: {
@@ -385,6 +423,26 @@ class InstanceUtil:
         if cls._reachable_from is None:
             cls._compute_reachable()
         return cls._reachable_from[instance_status]
+
+    @staticmethod
+    def get_log_str_for_update(instance: Instance, update: InstanceUpdateEvent) -> str:
+        """Returns a log string for the given instance update."""
+        if update.upsert:
+            return (
+                f"New instance "
+                f"{Instance.InstanceStatus.Name(update.new_instance_status)} (id="
+                f"{instance.instance_id}, type={instance.instance_type}, "
+                f"cloud_instance_id={instance.cloud_instance_id}, "
+                f"ray_id={instance.node_id}): {update.details}"
+            )
+        return (
+            f"Update instance "
+            f"{Instance.InstanceStatus.Name(instance.status)}->"
+            f"{Instance.InstanceStatus.Name(update.new_instance_status)} (id="
+            f"{instance.instance_id}, type={instance.instance_type}, "
+            f"cloud_instance_id={instance.cloud_instance_id}, "
+            f"ray_id={instance.node_id}): {update.details}"
+        )
 
     @classmethod
     def _compute_reachable(cls):

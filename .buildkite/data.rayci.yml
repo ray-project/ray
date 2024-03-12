@@ -13,7 +13,7 @@ steps:
   - name: databuild-multipy
     label: "wanda: databuild-py{{matrix}}"
     wanda: ci/docker/data.build.wanda.yaml
-    matrix: ["3.8", "3.10"]
+    matrix: ["3.10"]
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
@@ -55,23 +55,6 @@ steps:
         --build-name data15build
         --except-tags data_integration,doctest
     depends_on: data15build
-
-  - label: ":database: data: python {{matrix.python}} tests ({{matrix.worker_id}})"
-    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
-    tags: 
-      - python
-      - data
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
-        --except-tags data_integration,doctest
-        --python-version {{matrix.python}}
-    depends_on: databuild-multipy
-    matrix:
-      setup:
-        python: ["3.8"]
-        worker_id: ["0", "1"]
 
   - label: ":database: data: arrow nightly tests"
     tags: 
