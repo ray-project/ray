@@ -179,8 +179,9 @@ class ActorReplicaWrapper:
         else:
             method = self._actor_handle.handle_request
 
-        obj_ref_gen = method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
-        print("in _send_request_python!!!", type(obj_ref_gen), obj_ref_gen)
+        pickled_metadata = pickle.dumps(pr.metadata)
+        obj_ref_gen = method.remote(pickled_metadata, *pr.args, **pr.kwargs)
+        print("in _send_request_python!!!", type(obj_ref_gen), obj_ref_gen, pr.metadata, with_rejection, self)
         return obj_ref_gen
 
     def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
