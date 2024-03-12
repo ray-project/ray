@@ -23,29 +23,14 @@ from ray.serve._private.replica_scheduler import (
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
 from ray.serve._private.router import Router, RouterMetricsManager
-from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.test_utils import (  # FakeObjectRef,; FakeObjectRefGen,
+    FakeCounter,
+    FakeGauge,
+    MockTimer,
+)
+from ray.serve._private.utils import FakeObjectRef, FakeObjectRefGen, get_random_string
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
-
-
-class FakeObjectRefOrGen:
-    def __init__(self, replica_id: ReplicaID):
-        self._replica_id = replica_id
-
-    @property
-    def replica_id(self) -> ReplicaID:
-        return self._replica_id
-
-
-class FakeObjectRef(FakeObjectRefOrGen):
-    def __await__(self):
-        raise NotImplementedError
-
-
-class FakeObjectRefGen(FakeObjectRefOrGen):
-    def __anext__(self):
-        raise NotImplementedError
 
 
 class FakeReplica(ReplicaWrapper):

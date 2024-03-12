@@ -251,7 +251,7 @@ Composed Ray Serve applications let you deploy each part of your machine learnin
 - Dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
 - View details about your Serve application in the Ray Dashboard: {ref}`dash-serve-view`.
 - Learn more about how to deploy your Ray Serve application to production: {ref}`serve-in-production`.
-- Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
+- Check more in-depth tutorials for popular machine learning frameworks: {doc}`examples`.
 
 ```{rubric} Footnotes
 ```

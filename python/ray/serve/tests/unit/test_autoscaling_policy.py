@@ -104,14 +104,26 @@ class TestCalculateDesiredNumReplicas:
         "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
         [(True, True), (True, False), (False, True), (False, False)],
     )
-    def test_smoothing_factor(
-        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+    def test_scaling_factor(
+        self,
+        use_target_ongoing_requests,
+        use_target_num_ongoing_requests_per_replica,
+        use_deprecated_smoothing_factor,
     ):
-        config = {"min_replicas": 0, "max_replicas": 100, "smoothing_factor": 0.5}
+        config = {"min_replicas": 0, "max_replicas": 100}
+
         if use_target_ongoing_requests:
             config["target_ongoing_requests"] = 1
         if use_target_num_ongoing_requests_per_replica:
             config["target_num_ongoing_requests_per_replica"] = 1
+
+        if use_deprecated_smoothing_factor:
+            config["smoothing_factor"] = 0.5
+        else:
+            config["upscaling_factor"] = 0.5
+            config["downscaling_factor"] = 0.5
+
         config = AutoscalingConfig(**config)
         num_replicas = 10
 
@@ -135,18 +147,24 @@ class TestCalculateDesiredNumReplicas:
         "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
         [(True, True), (True, False), (False, True), (False, False)],
     )
-    def test_upscaling_smoothing_factor(
-        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+    def test_upscaling_factor(
+        self,
+        use_target_ongoing_requests,
+        use_target_num_ongoing_requests_per_replica,
+        use_deprecated_smoothing_factor,
     ):
-        config = {
-            "min_replicas": 0,
-            "max_replicas": 100,
-            "upscale_smoothing_factor": 0.5,
-        }
+        config = {"min_replicas": 0, "max_replicas": 100}
         if use_target_ongoing_requests:
             config["target_ongoing_requests"] = 1
         if use_target_num_ongoing_requests_per_replica:
             config["target_num_ongoing_requests_per_replica"] = 1
+
+        if use_deprecated_smoothing_factor:
+            config["upscale_smoothing_factor"] = 0.5
+        else:
+            config["upscaling_factor"] = 0.5
+
         config = AutoscalingConfig(**config)
         num_replicas = 10
 
@@ -172,18 +190,24 @@ class TestCalculateDesiredNumReplicas:
         "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
         [(True, True), (True, False), (False, True), (False, False)],
     )
-    def test_downscale_smoothing_factor(
-        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+    def test_downscaling_factor(
+        self,
+        use_target_ongoing_requests,
+        use_target_num_ongoing_requests_per_replica,
+        use_deprecated_smoothing_factor,
     ):
-        config = {
-            "min_replicas": 0,
-            "max_replicas": 100,
-            "downscale_smoothing_factor": 0.5,
-        }
+        config = {"min_replicas": 0, "max_replicas": 100}
         if use_target_ongoing_requests:
             config["target_ongoing_requests"] = 1
         if use_target_num_ongoing_requests_per_replica:
             config["target_num_ongoing_requests_per_replica"] = 1
+
+        if use_deprecated_smoothing_factor:
+            config["downscale_smoothing_factor"] = 0.5
+        else:
+            config["downscaling_factor"] = 0.5
+
         config = AutoscalingConfig(**config)
         num_replicas = 10
 
@@ -206,7 +230,7 @@ class TestCalculateDesiredNumReplicas:
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
     @pytest.mark.parametrize(
-        "num_replicas,ratio,smoothing_factor",
+        "num_replicas,ratio,scaling_factor",
         [
             # All of the parametrized scenarios should downscale by 1
             # replica. Compare the first theoretical calculation that's
@@ -222,23 +246,30 @@ class TestCalculateDesiredNumReplicas:
         "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
         [(True, True), (True, False), (False, True), (False, False)],
     )
-    def test_downscaling_with_fractional_smoothing_factor(
+    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+    def test_downscaling_with_fractional_scaling_factor(
         self,
         num_replicas: int,
         ratio: float,
-        smoothing_factor: float,
+        scaling_factor: float,
         use_target_ongoing_requests,
         use_target_num_ongoing_requests_per_replica,
+        use_deprecated_smoothing_factor,
     ):
         config = {
             "min_replicas": 0,
             "max_replicas": 100,
-            "downscale_smoothing_factor": smoothing_factor,
         }
         if use_target_ongoing_requests:
             config["target_ongoing_requests"] = 1
         if use_target_num_ongoing_requests_per_replica:
             config["target_num_ongoing_requests_per_replica"] = 1
+
+        if use_deprecated_smoothing_factor:
+            config["downscale_smoothing_factor"] = scaling_factor
+        else:
+            config["downscaling_factor"] = scaling_factor
+
         config = AutoscalingConfig(**config)
         total_num_requests = ratio * num_replicas
         desired_num_replicas = _calculate_desired_num_replicas(
@@ -250,15 +281,22 @@ class TestCalculateDesiredNumReplicas:
 
 
 class TestGetDecisionNumReplicas:
-    def test_smoothing_factor_scale_up_from_0_replicas(self):
-        """Test that the smoothing factor is respected when scaling up
+    @pytest.mark.parametrize(
+        "use_upscale_smoothing_factor,use_upscaling_factor",
+        [(True, True), (True, False), (False, True)],
+    )
+    def test_scaling_factor_scale_up_from_0_replicas(
+        self, use_upscale_smoothing_factor, use_upscaling_factor
+    ):
+        """Test that the scaling factor is respected when scaling up
         from 0 replicas.
         """
 
         config = AutoscalingConfig(
             min_replicas=0,
             max_replicas=2,
-            smoothing_factor=10,
+            upscale_smoothing_factor=10 if use_upscale_smoothing_factor else None,
+            upscaling_factor=10 if use_upscaling_factor else None,
         )
         policy_manager = AutoscalingPolicyManager(config)
         new_num_replicas = policy_manager.get_decision_num_replicas(
@@ -271,7 +309,11 @@ class TestGetDecisionNumReplicas:
         # 1 * 10
         assert new_num_replicas == 10
 
-        config.smoothing_factor = 0.5
+        if use_upscale_smoothing_factor:
+            config.upscale_smoothing_factor = 0.5
+        if use_upscaling_factor:
+            config.upscaling_factor = 0.5
+
         policy_manager = AutoscalingPolicyManager(config)
         new_num_replicas = policy_manager.get_decision_num_replicas(
             total_num_requests=1,
@@ -283,7 +325,13 @@ class TestGetDecisionNumReplicas:
         # math.ceil(1 * 0.5)
         assert new_num_replicas == 1
 
-    def test_smoothing_factor_scale_down_to_0_replicas(self):
+    @pytest.mark.parametrize(
+        "use_downscale_smoothing_factor,use_downscaling_factor",
+        [(True, True), (True, False), (False, True)],
+    )
+    def test_scaling_factor_scale_down_to_0_replicas(
+        self, use_downscale_smoothing_factor, use_downscaling_factor
+    ):
         """Test that a deployment scales down to 0 for non-default smoothing factors."""
 
         # With smoothing factor > 1, the desired number of replicas should
@@ -291,7 +339,8 @@ class TestGetDecisionNumReplicas:
         config = AutoscalingConfig(
             min_replicas=0,
             max_replicas=5,
-            smoothing_factor=10,
+            downscale_smoothing_factor=10 if use_downscale_smoothing_factor else None,
+            downscaling_factor=10 if use_downscaling_factor else None,
             upscale_delay_s=0,
             downscale_delay_s=0,
         )
@@ -307,7 +356,11 @@ class TestGetDecisionNumReplicas:
         # With smoothing factor < 1, the desired number of replicas shouldn't
         # get stuck at a positive number, and instead should eventually drop
         # to zero
-        config.smoothing_factor = 0.2
+        if use_downscale_smoothing_factor:
+            config.downscale_smoothing_factor = 0.2
+        if use_downscaling_factor:
+            config.downscaling_factor = 0.2
+
         policy_manager = AutoscalingPolicyManager(config)
         num_replicas = 5
         for _ in range(5):

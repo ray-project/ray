@@ -17,14 +17,13 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.train import CheckpointConfig
-from ray.train._internal.session import _FutureTrainingResult
+from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
-    _experiment_checkpoint_exists,
     _find_newest_experiment_checkpoint,
 )
 from ray.tune.experiment.trial import (
@@ -59,7 +58,7 @@ from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 
@@ -297,11 +296,6 @@ class TuneController:
         """Calls ``on_experiment_end`` method in callbacks."""
         self._callbacks.on_experiment_end(trials=self._trials)
 
-    @Deprecated("Use `TrialRunner.experiment_state_path` instead.")
-    @property
-    def checkpoint_file(self) -> str:
-        return self.experiment_state_path
-
     @property
     def experiment_state_file_name(self) -> str:
         return self.CKPT_FILE_TMPL.format(self._session_str)
@@ -324,13 +318,6 @@ class TuneController:
             checkpoint_period=self._checkpoint_period,
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
-
-    @classmethod
-    def checkpoint_exists(cls, directory: str) -> bool:
-        if not os.path.exists(directory):
-            return False
-
-        return _experiment_checkpoint_exists(directory)
 
     def save_to_dir(self):
         """Save TuneController state to the local staging experiment directory.
@@ -363,35 +350,9 @@ class TuneController:
         self._callbacks.save_to_dir(driver_staging_path, session_str=self._session_str)
 
     def checkpoint(self, force: bool = False, wait: bool = False):
-        """Saves execution state to the local experiment path.
-
-        Overwrites the current session checkpoint, which starts when self
-        is instantiated. Throttle depends on self._checkpoint_period.
-
-        Also automatically saves the search algorithm to the local
-        checkpoint dir.
-
-        Args:
-            force: Forces a checkpoint despite checkpoint_period.
-            wait: Wait until syncing to cloud has finished.
-
-        """
-        with warn_if_slow(
-            "experiment_checkpoint",
-            message="Checkpointing the experiment state took "
-            "{duration:.3f} s, which may be a performance "
-            "bottleneck. Please ensure the "
-            "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
-            "something significantly higher than this duration "
-            "to ensure compute time is mostly spent on the main "
-            "training loop.",
-            # No backlog warning if forced checkpoint as we wait
-            # for previous sync to finish.
-            disable=self._checkpoint_manager.auto_checkpoint_enabled or force or wait,
-        ):
-            self._checkpoint_manager.checkpoint(
-                save_fn=self.save_to_dir, force=force, wait=wait
-            )
+        self._checkpoint_manager.sync_up_experiment_state(
+            save_fn=self.save_to_dir, force=force, wait=wait
+        )
 
     def _requeue_restored_trials(
         self, trials: List[Trial], resume_config: ResumeConfig
@@ -1761,7 +1722,7 @@ class TuneController:
         # actor event manager when it is ready.
         return trial.temporary_state.saving_to
 
-    def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
+    def _on_saving_result(self, trial, checkpoint_value: _TrainingResult):
         with warn_if_slow("process_trial_save"):
             self._process_trial_save(trial, checkpoint_value)
 
@@ -1772,9 +1733,7 @@ class TuneController:
 
         self._maybe_execute_queued_decision(trial, after_save=True)
 
-    def _process_trial_save(
-        self, trial: Trial, checkpoint_value: Union[ray.ObjectRef, str]
-    ):
+    def _process_trial_save(self, trial: Trial, checkpoint_value: _TrainingResult):
         """Processes a trial save.
 
         Acts on the decision cached during the last `_process_trial` call.
@@ -1809,6 +1768,7 @@ class TuneController:
                 trial.on_checkpoint(checkpoint_value)
 
                 self._checkpoint_manager.on_trial_checkpoint(trial)
+
                 self._mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
