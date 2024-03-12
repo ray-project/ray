@@ -424,7 +424,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_workers=1,
-                evaluation_sample_timeout_s=5.0,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )
@@ -454,7 +453,6 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .evaluation(
                 evaluation_num_workers=1,
-                evaluation_sample_timeout_s=5.0,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )
@@ -766,7 +764,6 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_sample_timeout_s=5.0,
             )
         )
         algo = config.build()
