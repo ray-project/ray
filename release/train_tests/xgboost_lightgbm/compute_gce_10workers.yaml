@@ -25,4 +25,4 @@ gcp_advanced_configurations_json:
       - boot: true
         auto_delete: true
         initialize_params:
-          disk_size_gb: 1000
+          disk_size_gb: 250

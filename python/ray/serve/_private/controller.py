@@ -235,6 +235,11 @@ class ServeController:
             component_id=str(os.getpid()),
             logging_config=global_logging_config,
         )
+
+        logger.info(
+            f"Controller starting (version='{ray.__version__}').",
+            extra={"log_to_stderr": False},
+        )
         logger.debug(
             "Configure the serve controller logger "
             f"with logging config: {self.global_logging_config}"

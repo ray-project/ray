@@ -10,9 +10,7 @@ from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import ReplicaName
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.utils import format_actor_name
 from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
@@ -370,7 +368,7 @@ class LongPollHost:
         elif isinstance(key, tuple) and key[0] == LongPollNamespace.RUNNING_REPLICAS:
             # object_snapshot is List[RunningReplicaInfo]
             actor_name_list = [
-                f"{ReplicaName.prefix}{format_actor_name(replica_info.replica_tag)}"
+                replica_info.replica_id.to_full_id_str()
                 for replica_info in object_snapshot
             ]
             return ActorNameList(names=actor_name_list).SerializeToString()

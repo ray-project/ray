@@ -3,7 +3,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from ray._private.ray_constants import env_integer
+import ray
+from ray._private.ray_constants import env_bool, env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -44,6 +45,8 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
+DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -74,6 +77,8 @@ DEFAULT_VERBOSE_STATS_LOG = False
 
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
+DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = False
+
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(
@@ -93,8 +98,8 @@ DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
-DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = bool(
-    os.environ.get("RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", "1")
+DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
+    "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
 
 DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
@@ -141,8 +146,8 @@ class DataContext:
         won't take effect.
 
     .. note::
-        This object is automatically propagated to workers. You can access it
-        from the driver and remote workers via :meth:`DataContext.get_current()`.
+        This object is automatically propagated to workers. Access it from the driver
+        and remote workers with :meth:`DataContext.get_current()`.
 
     Examples:
         >>> from ray.data import DataContext
@@ -155,7 +160,7 @@ class DataContext:
             ops like ``random_shuffle``, ``sort``, and ``repartition``.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
             size in bytes on read. This takes precedence over
-            ``min_parallelism``.
+            ``read_op_min_num_blocks``.
         streaming_read_buffer_size: Buffer size when doing streaming reads from local or
             remote storage.
         enable_pandas_block: Whether pandas block format is enabled.
@@ -173,8 +178,9 @@ class DataContext:
         eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
-        min_parallelism: Minimum amount of parallelism to auto-detect for a dataset.
-            The ``target_min_block_size`` config takes precedence over this.
+        min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
+            instead.
+        read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         enable_auto_log_stats: Whether to automatically log stats after execution. If
@@ -183,11 +189,16 @@ class DataContext:
             such as `extra_metrics` in the stats output, which are excluded by default.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
+        execution_options: The
+            :class:`~ray.data._internal.execution.interfaces.execution_options.ExecutionOptions`
+            to use.
         use_ray_tqdm: Whether to enable distributed tqdm.
         enable_progress_bars: Whether to enable progress bars.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics.
-        write_file_retry_on_errors:
+        write_file_retry_on_errors: A list of substrings of error messages that should
+            trigger a retry when writing files. This is useful for handling transient
+            errors when writing to remote storage systems.
         warn_on_driver_memory_usage_bytes: If driver memory exceeds this threshold,
             Ray Data warns you. For now, this only applies to shuffle ops because most
             other ops are unlikely to use as much driver memory.
@@ -204,6 +215,9 @@ class DataContext:
             corrupted data samples) or IO errors. Data in the failed blocks are dropped.
             This option can be useful to prevent a long-running job from failing due to
             a small number of bad blocks.
+        log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
+            Core code stack frames when logging to stdout. The full stack trace is
+            always written to the Ray Data log file.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -223,6 +237,7 @@ class DataContext:
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
+    read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
@@ -243,9 +258,11 @@ class DataContext:
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
+    log_internal_stack_trace_to_stdout: bool = (
+        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
+    )
 
     def __post_init__(self):
-        """Private constructor (use get_current() instead)."""
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
