@@ -60,9 +60,8 @@ class AssertEvalCallback(DefaultCallbacks):
 
             # We run for automatic duration (as long as training takes).
             if algorithm.config.evaluation_duration == "auto":
-                # If auto-episodes: Expect at least as many episode as workers
+                # If duration=auto: Expect at least as many timesteps as workers
                 # (each worker's `sample()` is at least called once).
-                assert algorithm.config.evaluation_duration == "auto"
                 assert num_timesteps_reported >= algorithm.config.evaluation_num_workers
             # We count in episodes.
             elif algorithm.config.evaluation_duration_unit == "episodes":
@@ -92,7 +91,11 @@ class AssertEvalCallback(DefaultCallbacks):
                 )
         # Expect at least evaluation/sampler_results to be always available.
         elif (
-            "evaluation" not in result or "sampler_results" not in result["evaluation"]
+            algorithm.config.always_attach_evaluation_results
+            and (
+                "evaluation" not in result
+                or "sampler_results" not in result["evaluation"]
+            )
         ):
             raise KeyError(
                 "`evaluation->sampler_results->hist_stats` not found in result dict!"

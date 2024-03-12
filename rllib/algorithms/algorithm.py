@@ -1167,7 +1167,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False
+                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (env_s, ag_s, metrics, iter) in results:
                     if iter != self.iteration:
@@ -1183,7 +1183,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False
+                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
@@ -1294,7 +1294,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     healthy_only=True,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False
+                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (env_s, ag_s, met, iter) in results:
                     if iter != self.iteration:
@@ -1329,7 +1329,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     remote_worker_ids=selected_eval_worker_ids,
                 )
                 results = self.evaluation_workers.fetch_ready_async_reqs(
-                    mark_healthy=True, return_obj_refs=False
+                    mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
@@ -1502,7 +1502,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 train_results = multi_gpu_train_one_step(self, train_batch)
         else:
             # Wait 1 sec before probing again via weight syncing.
-            time.sleep(1)
+            time.sleep(1.0)
 
         # Update weights and global_vars - after learning on the local worker - on all
         # remote workers (only those policies that were actually trained).
