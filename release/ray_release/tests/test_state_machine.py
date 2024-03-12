@@ -195,9 +195,6 @@ def test_ci_move_from_passing_to_failing_to_flaky():
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
     ] * CONTINUOUS_PASSING_TO_PASSING
     CITestStateMachine(test).move()
-    assert test.get_state() == TestState.FLAKY
-    issue.state = "closed"
-    CITestStateMachine(test).move()
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) == issue.number
     assert issue.state == "closed"

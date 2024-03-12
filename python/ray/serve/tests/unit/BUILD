@@ -39,7 +39,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-  name_suffix="_with_handle_metrics_disabled",
+  name_suffix="_with_metr_disab",
   env={"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
   files = [
     "test_deployment_state.py",
