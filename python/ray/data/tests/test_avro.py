@@ -38,7 +38,7 @@ def test_read_basic_avro_file(ray_start_regular_shared, tmp_path):
     create_sample_avro_file(path)
     ds = ray.data.read_avro(path)
     expected = [{"test_field": "test_value1"}, {"test_field": "test_value2"}]
-    assert ds.take() == expected
+    assert ds.take_all() == expected
 
 
 def test_empty_avro_files(ray_start_regular_shared, tmp_path):
