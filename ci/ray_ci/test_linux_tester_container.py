@@ -35,6 +35,7 @@ def _persist_test_results(mock_upload_build_info, mock_upload_test_result) -> No
     with mock.patch.dict(os.environ, {
         "BUILDKITE_BRANCH": "master",
         "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
+
     }):
         container._persist_test_results("team", "log_dir")
         assert mock_upload_build_info.called
