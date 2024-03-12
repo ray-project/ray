@@ -443,6 +443,7 @@ class AlgorithmConfig(_Config):
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
+        self.evaluation_sample_timeout_s = 180.0
         self.evaluation_parallel_to_training = False
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
@@ -532,7 +533,6 @@ class AlgorithmConfig(_Config):
         self.sample_async = DEPRECATED_VALUE
         self.enable_async_evaluation = DEPRECATED_VALUE
         self.custom_async_evaluation_function = DEPRECATED_VALUE
-        self.evaluation_sample_timeout_s = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -2034,6 +2034,7 @@ class AlgorithmConfig(_Config):
         evaluation_interval: Optional[int] = NotProvided,
         evaluation_duration: Optional[Union[int, str]] = NotProvided,
         evaluation_duration_unit: Optional[str] = NotProvided,
+        evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
@@ -2048,7 +2049,6 @@ class AlgorithmConfig(_Config):
         evaluation_num_episodes=DEPRECATED_VALUE,
         enable_async_evaluation=DEPRECATED_VALUE,
         custom_async_evaluation_function=DEPRECATED_VALUE,
-        evaluation_sample_timeout_s=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -2074,6 +2074,11 @@ class AlgorithmConfig(_Config):
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps". Note that this
                 setting is ignored if `evaluation_duration="auto"`.
+            evaluation_sample_timeout_s: The timeout (in seconds) for the ray.get call
+                to the remote evaluation worker(s) `sample()` method. After this time,
+                the user will receive a warning and instructions on how to fix the
+                issue. This could be either to make sure the episode ends, increasing
+                the timeout, or switching to `evaluation_duration_unit=timesteps`.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
                 the `Algorithm.training_step()` call, using threading. Default=False.
                 E.g. for evaluation_interval=1 -> In every call to `Algorithm.train()`,
@@ -2155,13 +2160,6 @@ class AlgorithmConfig(_Config):
                 " custom_evaluation_function=...)",
                 error=True,
             )
-        elif evaluation_sample_timeout_s != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.evaluation(evaluation_sample_timeout_s=...)",
-                help="This setting has been deprecated due to a now generally applied "
-                "asynch'ness of all evaluation worker remote requests.",
-                error=True,
-            )
 
         if evaluation_interval is not NotProvided:
             self.evaluation_interval = evaluation_interval
@@ -2169,6 +2167,8 @@ class AlgorithmConfig(_Config):
             self.evaluation_duration = evaluation_duration
         if evaluation_duration_unit is not NotProvided:
             self.evaluation_duration_unit = evaluation_duration_unit
+        if evaluation_sample_timeout_s is not NotProvided:
+            self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_force_reset_envs_before_iteration is not NotProvided:

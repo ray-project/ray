@@ -1298,8 +1298,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
-                if not results and time.time() - t_last_result > time_out:
+                time_now = time.time()
+                if not results and time_now - t_last_result > time_out:
                     break
+                t_last_result = time_now
                 for wid, (env_s, ag_s, met, iter) in results:
                     if iter != self.iteration:
                         continue
@@ -1335,8 +1337,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
+                time_now = time.time()
                 if not results and time.time() - t_last_result > time_out:
                     break
+                t_last_result = time_now
                 for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
                         continue
@@ -1382,21 +1386,21 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Warn if results are empty, it could be that this is because the eval timesteps
         # are not enough to run through one full episode.
-        if (
-            self.config.evaluation_duration_unit == "timesteps"
-            and episode_summary["episodes_this_iter"] == 0
-        ):
+        if episode_summary["episodes_this_iter"] == 0:
             logger.warning(
                 "This evaluation iteration resulted in an empty set of episode summary "
                 "results! It's possible that your configured duration timesteps are not"
                 " enough to finish even a single episode. Your have configured "
-                f"{self.config.evaluation_duration}ts. Try increasing this value via "
-                "the `config.evaluation(evaluation_duration=...)` OR change the unit to"
-                " 'episodes' via `config.evaluation(evaluation_duration_unit='episodes'"
-                ")` OR you can also set `config.evaluation_force_reset_envs_before_"
-                "iteration` to False. However, keep in mind that then the evaluation "
-                "results may contain some episode stats generated with earlier weights "
-                "versions."
+                f"{self.config.evaluation_duration}"
+                f"{self.config.evaluation_duration_unit}. For 'timesteps', try "
+                "increasing this value via the `config.evaluation(evaluation_duration="
+                "...)` OR change the unit to 'episodes' via `config.evaluation("
+                "evaluation_duration_unit='episodes')` OR try increasing the timeout "
+                "threshold via `config.evaluation(evaluation_sample_timeout_s=...)` OR "
+                "you can also set `config.evaluation_force_reset_envs_before_iteration`"
+                " to False. However, keep in mind that in the latter case, the "
+                "evaluation results may contain some episode stats generated with "
+                "earlier weights versions."
             )
 
         return episode_summary, env_steps, agent_steps, all_batches
