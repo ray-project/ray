@@ -1475,8 +1475,6 @@ def read_text(
 def read_avro(
     paths: Union[str, List[str]],
     *,
-    encoding: str = "utf-8",
-    drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
