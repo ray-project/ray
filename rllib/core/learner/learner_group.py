@@ -466,6 +466,7 @@ class LearnerGroup:
                 for r_ in r:
                     if "_state_after_update" in r_:
                         w = r_.pop("_state_after_update")
+                        break
                 reduced_r = reduce_fn(r)
                 if w is not None:
                     reduced_r.update({"_state_after_update": w})

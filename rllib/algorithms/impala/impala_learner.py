@@ -84,12 +84,18 @@ class ImpalaLearner(Learner):
         episodes,
     ):
         batch = {}
-        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
+        sa_episodes_list = list(
+            self._learner_connector.single_agent_episode_iterator(
+                episodes, agents_that_stepped_only=False
+            )
+        )
 
         # Make all episodes one ts longer in order to just have a single batch
         # (and distributed forward pass) for both vf predictions AND the bootstrap
         # vf computations.
-        orig_truncateds = add_one_ts_to_episodes_and_truncate(episodes)
+        orig_truncateds_of_sa_episodes = add_one_ts_to_episodes_and_truncate(
+            sa_episodes_list
+        )
 
         # Call the learner connector (on the artificially elongated episodes)
         # in order to get the batch to pass through the module for vf (and
@@ -110,38 +116,33 @@ class ImpalaLearner(Learner):
 
         for module_id, module_vf_preds in vf_preds.items():
             # Collect new (single-agent) episode lengths.
-            if is_multi_agent:
-                episode_lens_plus_1 = [
-                    len(sa_eps)
-                    for ma_eps in episodes
-                    for sa_eps in ma_eps.agent_episodes.values()
-                    if sa_eps.module_id == module_id
-                ]
-            else:
-                episode_lens_plus_1 = [len(eps) for eps in episodes]
+            episode_lens_plus_1 = [
+                len(e)
+                for e in sa_episodes_list
+                if e.module_id is None or e.module_id == module_id
+            ]
             orig_episode_lens = [e - 1 for e in episode_lens_plus_1]
-
-            batch[module_id] = {}
 
             # Remove all zero-padding again, if applicable, for the upcoming
             # GAE computations.
-            module_vf_preds = unpad_data_if_necessary(episode_lens_plus_1, module_vf_preds)
+            module_vf_preds = unpad_data_if_necessary(
+                episode_lens_plus_1, module_vf_preds
+            )
             # Generate the bootstrap value column (with only one entry per batch row).
-            batch[module_id][Columns.VALUES_BOOTSTRAPPED] = extract_bootstrapped_values(
+            module_values_bootstrapped = extract_bootstrapped_values(
                 vf_preds=module_vf_preds,
                 episode_lengths=orig_episode_lens,
                 T=self.config.get_rollout_fragment_length(),
             )
             # Remove the extra timesteps again from vf_preds and value targets. Now that
-            # the GAE computation is done, we don't need this last timestep anymore in any
-            # of our data.
-            batch[module_id][SampleBatch.VF_PREDS] = remove_last_ts_from_data(
+            # the GAE computation is done, we don't need this last timestep anymore in
+            # any of our data.
+            module_vf_preds = remove_last_ts_from_data(
                 episode_lens_plus_1, module_vf_preds
             )
 
             # Restructure VF_PREDS and VALUES_BOOTSTRAPPED in a way that the Learner
             # connector can properly re-batch these new fields.
-            TODO: translate from PPO's GAE code
             batch_pos = 0
             for eps in sa_episodes_list:
                 if eps.module_id is not None and eps.module_id != module_id:
@@ -149,21 +150,18 @@ class ImpalaLearner(Learner):
                 len_ = len(eps) - 1
                 self._learner_connector.add_n_batch_items(
                     batch=batch,
-                    column=Columns.ADVANTAGES,
-                    items_to_add=module_advantages[batch_pos : batch_pos + len_],
-                    num_items=len_,
-                    single_agent_episode=eps,
-                )
-                self._learner_connector.add_n_batch_items(
-                    batch=batch,
-                    column=Columns.VALUE_TARGETS,
-                    items_to_add=module_value_targets[batch_pos : batch_pos + len_],
+                    column=Columns.VF_PREDS,
+                    items_to_add=module_vf_preds[batch_pos : batch_pos + len_],
                     num_items=len_,
                     single_agent_episode=eps,
                 )
                 batch_pos += len_
 
-            # Register agent timesteps for our metrics.
+            batch[module_id] = {
+                Columns.VALUES_BOOTSTRAPPED: module_values_bootstrapped,
+            }
+
+            # Register agent timesteps (per module) for our metrics.
             self.register_metric(
                 module_id=module_id,
                 key=NUM_AGENT_STEPS_TRAINED,
@@ -171,13 +169,18 @@ class ImpalaLearner(Learner):
             )
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
-        remove_last_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds)
+        remove_last_ts_from_episodes_and_restore_truncateds(
+            episodes,
+            orig_truncateds_of_sa_episodes,
+        )
 
         # Register env timesteps for our metrics.
-        self.register_metric(
+        self.register_metrics(
             module_id=ALL_MODULES,
-            key=NUM_ENV_STEPS_TRAINED,
-            value=sum(len(e) for e in episodes),
+            metrics_dict={
+                NUM_AGENT_STEPS_TRAINED: sum(e.agent_steps() for e in episodes),
+                NUM_ENV_STEPS_TRAINED: sum(e.env_steps() for e in episodes),
+            },
         )
 
         return batch, episodes
