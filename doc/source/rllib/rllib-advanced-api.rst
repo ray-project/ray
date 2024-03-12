@@ -431,7 +431,6 @@ This will run the parallel sampling of all evaluation EnvRunners, such that if o
 the workers takes too long to run through an episode and return data or fails entirely,
 the other evaluation EnvRunners will still complete the job.
 
-
 In case you would like to entirely customize the evaluation step,
 set ``custom_eval_function`` in your config to a callable, which takes the Algorithm
 object and a WorkerSet object (the Algorithm's ``self.evaluation_workers``

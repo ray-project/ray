@@ -112,7 +112,9 @@ config = AlgorithmConfig().evaluation(
 
 # __rllib-adv_api_evaluation_6_begin__
 # Having an environment that occasionally blocks completely for e.g. 10min would
-# also affect (and block) training:
+# also affect (and block) training. Here is how you can defend your evaluation setup
+# against oft-crashing or -stalling envs (or other unstable components on your evaluation
+# workers).
 config = AlgorithmConfig().evaluation(
     evaluation_interval=1,
     evaluation_parallel_to_training=True,
