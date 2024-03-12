@@ -35,7 +35,11 @@ from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
 from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
-from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
+from ray.util.placement_group import (
+    VALID_PLACEMENT_GROUP_STRATEGIES,
+    validate_bundles,
+    validate_strategy,
+)
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
@@ -595,77 +599,54 @@ class ReplicaConfig:
                 f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
             )
 
-        if (
-            self.placement_group_strategy is not None
-            and self.placement_group_bundles is None
-        ):
-            raise ValueError(
-                "If `placement_group_strategy` is provided, `placement_group_bundles` "
-                "must also be provided."
-            )
-
-        if self.placement_group_bundles is not None:
-            if (
-                not isinstance(self.placement_group_bundles, list)
-                or len(self.placement_group_bundles) == 0
-            ):
+        if self.placement_group_strategy is not None:
+            validate_strategy(self.placement_group_strategy)
+            if self.placement_group_bundles is None:
                 raise ValueError(
-                    "`placement_group_bundles` must be a non-empty list of resource "
-                    'dictionaries. For example: `[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+                    "If `placement_group_strategy` is provided, "
+                    "`placement_group_bundles` must also be provided."
                 )
 
-            for i, bundle in enumerate(self.placement_group_bundles):
-                if (
-                    not isinstance(bundle, dict)
-                    or not all(isinstance(k, str) for k in bundle.keys())
-                    or not all(isinstance(v, (int, float)) for v in bundle.values())
-                ):
+        if self.placement_group_bundles is not None:
+            validate_bundles(self.placement_group_bundles)
+
+            first_bundle = self.placement_group_bundles[0]
+
+            resource_error_prefix = (
+                "When using `placement_group_bundles`, the replica actor "
+                "will be placed in the first bundle, so the resource "
+                "requirements for the actor must be a subset of the first "
+                "bundle."
+            )
+
+            # Validate that the replica actor fits in the first bundle.
+            bundle_cpu = first_bundle.get("CPU", 0)
+            replica_actor_num_cpus = self.ray_actor_options.get("num_cpus", 0)
+            if bundle_cpu < replica_actor_num_cpus:
+                raise ValueError(
+                    f"{resource_error_prefix} `num_cpus` for the actor is "
+                    f"{replica_actor_num_cpus}, but the bundle only has "
+                    f"{bundle_cpu} `CPU` specified."
+                )
+
+            bundle_gpu = first_bundle.get("GPU", 0)
+            replica_actor_num_gpus = self.ray_actor_options.get("num_gpus", 0)
+            if bundle_gpu < replica_actor_num_gpus:
+                raise ValueError(
+                    f"{resource_error_prefix} `num_gpus` for the actor is "
+                    f"{replica_actor_num_gpus}, but the bundle only has "
+                    f"{bundle_gpu} `GPU` specified."
+                )
+
+            replica_actor_resources = self.ray_actor_options.get("resources", {})
+            for actor_resource, actor_value in replica_actor_resources.items():
+                bundle_value = first_bundle.get(actor_resource, 0)
+                if bundle_value < actor_value:
                     raise ValueError(
-                        "`placement_group_bundles` must be a non-empty list of "
-                        "resource dictionaries. For example: "
-                        '`[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+                        f"{resource_error_prefix} `{actor_resource}` requirement "
+                        f"for the actor is {actor_value}, but the bundle only "
+                        f"has {bundle_value} `{actor_resource}` specified."
                     )
-
-                # Validate that the replica actor fits in the first bundle.
-                if i == 0:
-                    bundle_cpu = bundle.get("CPU", 0)
-                    replica_actor_num_cpus = self.ray_actor_options.get("num_cpus", 0)
-                    if bundle_cpu < replica_actor_num_cpus:
-                        raise ValueError(
-                            "When using `placement_group_bundles`, the replica actor "
-                            "will be placed in the first bundle, so the resource "
-                            "requirements for the actor must be a subset of the first "
-                            "bundle. `num_cpus` for the actor is "
-                            f"{replica_actor_num_cpus} but the bundle only has "
-                            f"{bundle_cpu} `CPU` specified."
-                        )
-
-                    bundle_gpu = bundle.get("GPU", 0)
-                    replica_actor_num_gpus = self.ray_actor_options.get("num_gpus", 0)
-                    if bundle_gpu < replica_actor_num_gpus:
-                        raise ValueError(
-                            "When using `placement_group_bundles`, the replica actor "
-                            "will be placed in the first bundle, so the resource "
-                            "requirements for the actor must be a subset of the first "
-                            "bundle. `num_gpus` for the actor is "
-                            f"{replica_actor_num_gpus} but the bundle only has "
-                            f"{bundle_gpu} `GPU` specified."
-                        )
-
-                    replica_actor_resources = self.ray_actor_options.get(
-                        "resources", {}
-                    )
-                    for actor_resource, actor_value in replica_actor_resources.items():
-                        bundle_value = bundle.get(actor_resource, 0)
-                        if bundle_value < actor_value:
-                            raise ValueError(
-                                "When using `placement_group_bundles`, the replica "
-                                "actor will be placed in the first bundle, so the "
-                                "resource requirements for the actor must be a subset "
-                                f"of the first bundle. `{actor_resource}` requirement "
-                                f"for the actor is {actor_value} but the bundle only "
-                                f"has {bundle_value} `{actor_resource}` specified."
-                            )
 
     @property
     def deployment_def(self) -> Union[Callable, str]:

@@ -333,6 +333,18 @@ class TestReplicaConfig:
                 placement_group_bundles=[{"CPU": "1.0"}],
             )
 
+        # Invalid: invalid placement_group_bundles.
+        with pytest.raises(
+            ValueError,
+            match="cannot be an empty dictionary or resources with only 0",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 0, "GPU": 0}],
+            )
+
         # Invalid: replica actor does not fit in the first bundle (CPU).
         with pytest.raises(
             ValueError,
