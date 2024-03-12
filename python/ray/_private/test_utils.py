@@ -2129,6 +2129,7 @@ def find_available_port(start, end, port_num=1):
     # This is just to ensure no process is listening to these ports
     # https://github.com/ray-project/ray/issues/43777
     from signal import SIGKILL
+
     procs = []
     for proc in psutil.process_iter():
         for conns in proc.connections(kind="inet"):
