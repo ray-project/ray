@@ -1491,19 +1491,17 @@ def read_avro(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from lines stored in text files.
+    """Create a :class:`~ray.data.Dataset` from records stored in avro files.
 
     Examples:
-        Read a file in remote storage.
+        Read a avro file in remote storage or local storage.
 
         >>> import ray
-        >>> ds = ray.data.read_avro("s3://anonymous@ray-example-data/this.txt")
-        >>> ds.schema()
-        Column  Type
-        ------  ----
-        text    string
-
-        Read multiple local files.
+        >>> ds = ray.data.read_avro("s3://anonymous@ray-example-data/mnist.avro")
+        Dataset(
+            num_rows=4,
+            schema={features: list<item: int64>, label: int64, dataType: string}
+        )
 
         >>> ray.data.read_avro( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
