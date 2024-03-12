@@ -191,6 +191,11 @@ ray.get(f.options(num_cpus=99999999).remote())
     indirect=True,
 )
 def test_exiting_driver_clears_infeasible(call_ray_start):
+    # Test that there is no leaking infeasible demands
+    # from an exited driver.
+    # See https://github.com/ray-project/ray/issues/43687
+    # for a bug where it happened.
+
     driver = """
 import ray
 
