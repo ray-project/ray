@@ -14,10 +14,6 @@ from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.util import PublicAPI
 
-if HPU_PACKAGE_AVAILABLE:
-    import habana_frameworks.torch.core as htcore  # noqa: F401
-    import habana_frameworks.torch.distributed.hccl as hpu_dist  # noqa: F401
-
 logger = logging.getLogger(__name__)
 
 
@@ -109,6 +105,9 @@ def _setup_torch_process_group(
             "To override this behavior, you can set NCCL_ASYNC_ERROR_HANDLING=0."
         )
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
+    elif HPU_PACKAGE_AVAILABLE and backend == "hccl":
+        import habana_frameworks.torch.core as htcore  # noqa: F401
+        import habana_frameworks.torch.distributed.hccl as hpu_dist  # noqa: F401
 
     dist.init_process_group(
         backend=backend,
