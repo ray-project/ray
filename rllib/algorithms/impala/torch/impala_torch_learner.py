@@ -105,20 +105,14 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
         )
 
-        #batch_size = (
-        #    convert_to_torch_tensor(target_actions_logp_time_major.shape[-1])
-        #    .float()
-        #    .to(device)
-        #)
-
         # The policy gradients loss.
         pi_loss = -torch.sum(target_actions_logp_time_major * pg_advantages)
-        mean_pi_loss = torch.mean(pi_loss)# / batch_size
+        mean_pi_loss = torch.mean(pi_loss)
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
         vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
-        mean_vf_loss = torch.mean(vf_loss)# / batch_size
+        mean_vf_loss = torch.mean(vf_loss)
 
         # The entropy loss.
         mean_entropy_loss = -torch.mean(target_policy_dist.entropy())

@@ -680,18 +680,12 @@ class Impala(Algorithm):
         # different async update request to all Learners.
         if update_results:
             learner_state = update_results.pop("_state_after_update")
-            #print("LEARNER vf-1st-bias =", learner_state["module_state"]["default_policy"]["vf.net.mlp.0.bias"][0])
             module_ids_to_update = set(update_results.keys()) - {ALL_MODULES}
 
             # Update trained steps counters.
-
-            #TODO: counters seem completely off:
-            #update_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] is always the single-learner batch size (500), not the total one (1000), why??
-
             self._counters[NUM_ENV_STEPS_TRAINED] += (
                 update_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
             )
-            #TODO: update_results[mid][NUM_AGENT_STEPS_TRAINED] for default_policy is some weird number (573), why??
             self._counters[NUM_AGENT_STEPS_TRAINED] += sum(
                 update_results[mid][NUM_AGENT_STEPS_TRAINED]
                 for mid in module_ids_to_update
@@ -719,7 +713,6 @@ class Impala(Algorithm):
             if additional_update_results:
                 if async_updates:
                     additional_update_results = additional_update_results[-1]
-                #print("curr_entropy_coeff =", additional_update_results[-1]["default_policy"]["curr_entropy_coeff"])
                 for key, res in additional_update_results.items():
                     if key in update_results:
                         update_results[key].update(res)
@@ -737,12 +730,6 @@ class Impala(Algorithm):
                 timeout_seconds=0.0,
             )
 
-            #print("ENV RUNNER 0 vf-1st-bias =", self.workers.local_worker().module.state_dict()["vf.net.mlp.0.bias"][0])
-            #print("ENV RUNNER 1 vf-1st-bias =", learner_state["module_state"]["default_policy"]["vf.net.mlp.0.bias"][0])
-
-                #to_worker_indices=env_runners_to_update,
-            #)
-
         # Add already collected metrics to results for later processing.
         if env_runner_metrics:
             update_results.update({
@@ -752,7 +739,6 @@ class Impala(Algorithm):
         return update_results
 
     def _training_step_sample_and_get_states(self):
-        #workers_to_update = set()
         episode_refs = []
         env_runner_states = []
         env_runner_metrics = []
@@ -788,7 +774,6 @@ class Impala(Algorithm):
                 # Split up results from the n different async calls.
                 for async_result in async_results:
                     worker_id, ref = async_result
-                    #workers_to_update.add(worker_id)
                     episodes, states, metrics = ray.get(ref)
                     episode_refs.append(episodes)
                     env_runner_states.append(states)
@@ -804,7 +789,6 @@ class Impala(Algorithm):
                 #sample_batches = [(0, sample_batch)]
 
         return (
-            #workers_to_update,
             episode_refs,
             env_runner_states,
             tree.flatten_up_to(
@@ -812,90 +796,6 @@ class Impala(Algorithm):
                 env_runner_metrics,
             ),
         )
-
-    def XYZ_training_step_new_api_stack(self):
-        # Get sampled Episodes from our workers (by ray references).
-        unprocessed_episodes = self.get_samples_from_workers(
-            return_object_refs=True,
-        )
-
-        # Tag workers that actually produced ready sample batches this iteration.
-        # Those workers will have to get updated at the end of the iteration.
-        workers_that_need_updates = set()
-        episode_refs = []
-        for worker_id, episode_ref in unprocessed_episodes:
-            workers_that_need_updates.add(worker_id)
-            # Send episode refs directly to Learner workers.
-            episode_refs.append(episode_ref)
-
-        # Increase sampling counters. We know that each reference
-        # contains exactly `rollout_fragment_length` x `num_envs_per_worker` timesteps.
-        # TODO (sven): This might not be accurate for multi-agent.
-        self._counters[NUM_ENV_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += len(episode_refs) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
-
-        # Concatenate single batches into batches of size `train_batch_size`.
-        self._training_step_pre_queue_episode_refs(episode_refs)
-
-        # Using the Learner API. Call `update()` on our LearnerGroup object with
-        # all collected batches.
-        train_results, learner_state = self._learn_on_processed_samples()
-        module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
-        #print("additional_update ...")
-        if train_results:
-            async_update = self.config.num_learner_workers > 0
-            additional_results = self.learner_group.additional_update(
-                async_update=async_update,
-                module_ids_to_update=module_ids_to_update,
-                timestep=self._counters[
-                    NUM_ENV_STEPS_TRAINED
-                    if self.config.count_steps_by == "env_steps"
-                    else NUM_AGENT_STEPS_TRAINED
-                ],
-                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
-                #  from IMPALA (like APPO). In the old stack, we didn't have this
-                #  problem b/c IMPALA didn't need to call any additional update methods
-                #  as the entropy- and lr-schedules were handled by
-                #  `Policy.on_global_var_update()`.
-                **self._get_additional_update_kwargs(train_results),
-            )
-            if additional_results:
-                if async_update:
-                    additional_results = additional_results[-1]
-                for key, res in additional_results.items():
-                    if key in train_results:
-                        train_results[key].update(res)
-            # Sync worker weights (only those policies that were actually updated).
-            if learner_state:
-                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                    pids = list(set(train_results.keys()) - {ALL_MODULES})
-                    self.update_workers_from_learner_group(
-                        workers_that_need_updates=workers_that_need_updates,
-                        policy_ids=pids,
-                        weights=learner_state["module_state"],
-                    )
-
-        #print("done additional_update ...")
-
-        # With a training step done, try to bring any aggregators back to life
-        # if necessary.
-        # Aggregation workers are stateless, so we do not need to restore any
-        # state here.
-        if self._aggregator_actor_manager:
-            self._aggregator_actor_manager.probe_unhealthy_actors(
-                timeout_seconds=self.config.worker_health_probe_timeout_s,
-                mark_healthy=True,
-            )
-
-        self._counters.update(self.learner_group.get_stats())
-
-        if train_results:
-            # Store the most recent result and return it if no new result is
-            # available. This keeps backwards compatibility with the old
-            # training stack / results reporting stack. This is necessary
-            # any time we develop an asynchronous algorithm.
-            self._results = train_results
-        return self._results
 
     @classmethod
     @override(Algorithm)
@@ -1035,7 +935,7 @@ class Impala(Algorithm):
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
         if self.config._enable_new_api_stack:
-            train_results, _ = self._learn_on_processed_samples()
+            train_results = self._learn_on_processed_samples()
             module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=module_ids_to_update,
@@ -1135,10 +1035,6 @@ class Impala(Algorithm):
                     timeout_seconds=self.config.timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-                # TEST
-                #e = tree.flatten(ray.get([u[1] for u in sample_batches]))
-                #print(None in e)
-                # END TEST
             elif (
                 self.config.num_rollout_workers == 0
                 or (
@@ -1146,14 +1042,12 @@ class Impala(Algorithm):
                     and self.workers.local_worker().async_env is not None
                 )
             ):
-                raise NotImplementedError
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
                 if return_object_refs:
                     sample_batch = ray.put(sample_batch)
                 sample_batches = [(0, sample_batch)]
             else:
-                raise NotImplementedError
                 # Not much we can do. Return empty list and wait.
                 sample_batches = []
 
@@ -1286,7 +1180,7 @@ class Impala(Algorithm):
             aggregate_into_larger_batch()
 
     @OldAPIStack
-    def _learn_on_processed_samples(self) -> Tuple[ResultDict, Dict[str, Any]]:
+    def _learn_on_processed_samples(self) -> ResultDict:
         """Update the learner group with the latest batch of processed samples.
 
         Returns:
@@ -1297,30 +1191,26 @@ class Impala(Algorithm):
         # or no results ready (from previous `self.learner_group.update()` calls) for
         # reducing.
         if not self.data_to_place_on_learner:
-            return {}, {}
-
-        update_kwarg = "episodes" if self.config.uses_new_env_runners else "batch"
+            return {}
 
         # There are batches on the queue -> Send them all to the learner group.
-        data = self.data_to_place_on_learner[:]
+        batches = self.data_to_place_on_learner[:]
         self.data_to_place_on_learner.clear()
 
         # If there are no learner workers and learning is directly on the driver
         # Then we can't do async updates, so we need to block.
         async_update = self.config.num_learner_workers > 0
         results = []
-
-        for batch_or_episodes in data:
-            results = getattr(self.learner_group, f"update_from_{update_kwarg}")(
+        for batch in batches:
+            result = self.learner_group.update_from_batch(
+                batch=batch,
                 async_update=async_update,
                 reduce_fn=_reduce_impala_results,
-                return_state=True,
                 num_iters=self.config.num_sgd_iter,
                 minibatch_size=self.config.minibatch_size,
-                **{update_kwarg: batch_or_episodes},
             )
             if not async_update:
-                results = [results]
+                results = [result]
 
             for r in results:
                 self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
@@ -1331,21 +1221,14 @@ class Impala(Algorithm):
                 )
 
         self._counters.update(self.learner_group.get_stats())
-
         # If there are results, reduce-mean over each individual value and return.
         if results:
-            # TODO (sven): Hacky: Clean this up. I believe we can use the same impala
-            #  reduce function here, which should take care of the state extraction.
-            state = {}
-            for r in results:
-                if "_state_after_update" in r:
-                    state = r.pop("_state_after_update")
-            return tree.map_structure(lambda *x: np.mean(x), *results), state
+            return tree.map_structure(lambda *x: np.mean(x), *results)
 
         # Nothing on the queue -> Don't send requests to learner group
         # or no results ready (from previous `self.learner_group.update_from_batch()`
         # calls) for reducing.
-        return {}, {}
+        return {}
 
     @OldAPIStack
     def _place_processed_samples_on_learner_thread_queue(self) -> None:
@@ -1418,7 +1301,6 @@ class Impala(Algorithm):
         self,
         workers_that_need_updates: Set[int],
         policy_ids: Optional[List[PolicyID]] = None,
-        weights=None,#TODO : docstr
     ):
         """Updates all RolloutWorkers that require updating.
 
@@ -1441,7 +1323,7 @@ class Impala(Algorithm):
         ):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            weights = weights or self.learner_group.get_weights(policy_ids)
+            weights = self.learner_group.get_weights(policy_ids)
             # We only have a single (local) EnvRunner.
             if self.config.num_rollout_workers == 0:
                 worker = self.workers.local_worker()
@@ -1461,7 +1343,6 @@ class Impala(Algorithm):
                 #  their saved models from the local worker (instead of the
                 #  LearnerGroup) e.g. after checkpoint restoring. So do this now
                 #  regardless of an env being there or not.
-                # if self.config.create_env_on_local_worker:
                 self.workers.local_worker().set_weights(weights)
 
     @OldAPIStack

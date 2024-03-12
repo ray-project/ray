@@ -638,9 +638,6 @@ class Algorithm(Trainable, AlgorithmBase):
             logdir=self.logdir,
         )
 
-        # Ensure remote workers are initially in sync with the local worker.
-        #self.workers.sync_weights()
-
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
         self.evaluation_config.validate()
@@ -784,13 +781,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Sync the weights from the learner group to the rollout workers.
                 weights = self.learner_group.get_weights()
                 local_worker.set_weights(weights)
-                self.workers.sync_weights()
             # New stack/EnvRunner APIs: Use get/set_state (no more get/set_weights).
             else:
                 # Sync the weights from the learner group to the rollout workers.
                 weights = self.learner_group.get_weights()
                 local_worker.set_state({"rl_module": weights})
-                self.workers.sync_weights()
+
+        # Ensure remote workers are initially in sync with the local worker.
+        self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)

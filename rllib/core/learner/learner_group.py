@@ -594,52 +594,6 @@ class LearnerGroup:
         else:
             return reduce_fn(results)
 
-    def XYZ_remove_async_additional_update(
-        self,
-        *,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
-        **kwargs,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        raise NotImplementedError
-        """TODO: sven
-        """
-
-        if self.is_local:
-            raise ValueError(
-                "Cannot call `async_update` when running in local mode with "
-                "num_workers=0."
-            )
-
-        # Retrieve all ready results (kicked off by prior calls to this method).
-        results = None
-        if self._additional_update_request_tags:
-            results = self._worker_manager.fetch_ready_async_reqs(
-                tags=list(self._additional_update_request_tags)
-            )
-
-        update_tag = str(uuid.uuid4())
-        num_sent_requests = self._worker_manager.foreach_actor_async(
-            [lambda w: w.additional_update(**kwargs) for _ in self._workers], tag=update_tag
-        )
-        if num_sent_requests:
-            self._additional_update_request_tags[update_tag] = num_sent_requests
-
-        #count += 1
-
-        # NOTE: There is a strong assumption here that the requests launched to
-        # learner workers will return at the same time, since they are have a
-        # barrier inside of themselves for gradient aggregation. Therefore results
-        # should be a list of lists where each inner list should be the length of
-        # the number of learner workers, if results from an  non-blocking update are
-        # ready.
-        results = self._get_async_results(results)
-
-        # TODO(sven): Move reduce_fn to the training_step
-        if reduce_fn is None:
-            return results
-        else:
-            return [reduce_fn(r) for r in results]
-
     def add_module(
         self,
         *,

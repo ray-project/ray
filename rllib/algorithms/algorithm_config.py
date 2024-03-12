@@ -812,7 +812,7 @@ class AlgorithmConfig(_Config):
         # Check to-be-deprecated settings (however that are still in use).
         self._validate_to_be_deprecated_settings()
 
-    def build_algorithm(
+    def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
@@ -4300,10 +4300,6 @@ class AlgorithmConfig(_Config):
                 "eager_tracing=True in order to reach similar execution "
                 "speed as with static-graph mode."
             )
-
-    @Deprecated(new="AlgorithmConfig.build_algorithm()", error=False)
-    def build(self, *args, **kwargs):
-        return self.build_algorithm(*args, **kwargs)
 
     @property
     @Deprecated(

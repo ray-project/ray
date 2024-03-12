@@ -679,8 +679,6 @@ class FaultTolerantActorManager:
                     num_calls_to_make[i] += 1
                     limited_func.append(f)
                     limited_remote_actor_ids.append(i)
-                #else:
-                #    print("skipping a remote request due to overload of that actor.")
         else:
             limited_func = func
             limited_remote_actor_ids = []
@@ -694,25 +692,16 @@ class FaultTolerantActorManager:
                 ):
                     num_calls_to_make[i] += 1
                     limited_remote_actor_ids.append(i)
-                #else:
-                #    print("skipping a remote request due to overload of that actor.")
 
-        #print("Calling actors from within ActorManager")
         remote_calls = self._call_actors(
             func=limited_func,
             remote_actor_ids=limited_remote_actor_ids,
         )
-        #print(f"Called {len(remote_calls)} actors from within ActorManager")
 
         # Save these as outstanding requests.
         for id, call in zip(limited_remote_actor_ids, remote_calls):
             self._remote_actor_states[id].num_in_flight_async_requests += 1
             self._in_flight_req_to_actor_id[call] = (tag, id)
-
-        #if tag:
-        #    print(
-        #        f"AFTER `foreach_actor_async(tag={tag})` remote_actor_in_flight_reqs: {[self.__remote_actor_states[i].num_in_flight_async_requests for i in self.__remote_actor_states.keys()]}"
-        #    )
 
         return len(remote_calls)
 
@@ -798,11 +787,6 @@ class FaultTolerantActorManager:
             # obj_refs may have already been removed when we disable an actor.
             if obj_ref in self._in_flight_req_to_actor_id:
                 del self._in_flight_req_to_actor_id[obj_ref]
-
-        #if tags:
-        #    print(
-        #        f"AFTER `fetch_ready_async_reqs(tags={tags})` remote_actor_in_flight_reqs: {[self.__remote_actor_states[i].num_in_flight_async_requests for i in self.__remote_actor_states.keys()]}"
-        #    )
 
         return remote_results
 

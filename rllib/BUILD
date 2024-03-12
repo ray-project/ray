@@ -311,8 +311,9 @@ py_test(
 )
 
 # IMPALA
+# w/ new EnvRunner
 py_test(
-    name = "learning_tests_cartpole_impala_w_env_runner",
+    name = "learning_tests_cartpole_impala_envrunner",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -321,6 +322,7 @@ py_test(
     args = ["--dir=tuned_examples/impala/"]
 )
 
+# w/o EnvRunner (using RolloutWorker)
 py_test(
     name = "learning_tests_cartpole_separate_losses_impala",
     main = "tests/run_regression_tests.py",
