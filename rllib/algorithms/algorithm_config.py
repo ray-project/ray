@@ -2944,7 +2944,10 @@ class AlgorithmConfig(_Config):
             # -> 2000 / 4 -> 500
             # 4 workers, 3 envs per worker, 2500 train batch size:
             # -> 2500 / 12 -> 208.333 -> diff=4 (208 * 12 = 2496)
-            # -> worker 1: 209, workers 2-4: 208
+            # -> worker 1, 2: 209, workers 3, 4: 208
+            # 2 workers, 20 envs per worker, 512 train batch size:
+            # -> 512 / 40 -> 12.8 -> diff=32 (12 * 40 = 480)
+            # -> worker 1: 13, workers 2: 12
             rollout_fragment_length = self.total_train_batch_size / (
                 self.num_envs_per_worker * (self.num_rollout_workers or 1)
             )
@@ -2952,7 +2955,9 @@ class AlgorithmConfig(_Config):
                 diff = self.total_train_batch_size - int(
                     rollout_fragment_length
                 ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
-                if (worker_index * self.num_envs_per_worker) <= diff:
+                if ((worker_index - 1) * self.num_envs_per_worker) > diff:
+                    return int(rollout_fragment_length)
+                else:
                     return int(rollout_fragment_length) + 1
             return int(rollout_fragment_length)
         else:

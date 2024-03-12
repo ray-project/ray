@@ -13,7 +13,7 @@ config = (
     )
     .environment("Pendulum-v1")
     .training(
-        train_batch_size=512,
+        train_batch_size_per_learner=512,
         gamma=0.95,
         lr=0.0003,
         lambda_=0.1,
