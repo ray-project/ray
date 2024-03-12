@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, List, Mapping, Tuple, Union, Type
+from typing import Any, List, Mapping, Optional, Tuple, Union, Type
 
 from packaging import version
 
@@ -15,7 +15,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
-from ray.rllib.utils.typing import NetworkType
+from ray.rllib.utils.typing import DeviceType, NetworkType
 
 torch, nn = try_import_torch()
 
@@ -120,9 +120,13 @@ class TorchRLModule(nn.Module, RLModule):
         torch.save(self.state_dict(), path)
 
     @override(RLModule)
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+    def load_state(
+        self,
+        dir: Union[str, pathlib.Path],
+        map_location: Optional[Union[DeviceType, str]] = None,
+    ) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
-        self.set_state(torch.load(path))
+        self.set_state(torch.load(path, map_location=map_location))
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):

@@ -41,7 +41,7 @@ from ray.rllib.utils.serialization import (
     serialize_type,
     deserialize_type,
 )
-from ray.rllib.utils.typing import SampleBatchType, ViewRequirementsDict
+from ray.rllib.utils.typing import DeviceType, SampleBatchType, ViewRequirementsDict
 
 
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
@@ -688,7 +688,11 @@ class RLModule(abc.ABC):
         pass
 
     @OverrideToImplementCustomLogic
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+    def load_state(
+        self,
+        dir: Union[str, pathlib.Path],
+        map_location: Optional[Union[DeviceType, str]] = None,
+    ) -> None:
         """Loads the weights of an RLModule from the directory dir.
 
         Args:
@@ -806,11 +810,16 @@ class RLModule(abc.ABC):
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
+    def from_checkpoint(
+        cls,
+        checkpoint_dir_path: Union[str, pathlib.Path],
+        map_location: Optional[Union[DeviceType, str]] = None,
+    ) -> None:
         """Loads the module from a checkpoint directory.
 
         Args:
             checkpoint_dir_path: The directory to load the checkpoint from.
+            map_location: The device on which the module resides.
         """
         path = pathlib.Path(checkpoint_dir_path)
         if not path.exists():
@@ -826,7 +835,7 @@ class RLModule(abc.ABC):
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        module.load_state(module_state_dir)
+        module.load_state(module_state_dir, map_location=map_location)
         return module
 
     def as_multi_agent(self) -> "MultiAgentRLModule":

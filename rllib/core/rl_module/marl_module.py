@@ -32,7 +32,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import ModuleID, T
+from ray.rllib.utils.typing import DeviceType, ModuleID, T
 from ray.util.annotations import PublicAPI
 
 
@@ -354,6 +354,7 @@ class MultiAgentRLModule(RLModule):
         self,
         path: Union[str, pathlib.Path],
         modules_to_load: Optional[Set[ModuleID]] = None,
+        map_location: Optional[Union[DeviceType, str]] = None,
     ) -> None:
         """Loads the weights of an MultiAgentRLModule from dir.
 
@@ -367,6 +368,7 @@ class MultiAgentRLModule(RLModule):
             modules_to_load: The modules whose state is to be loaded from the path. If
                 this is None, all modules that are checkpointed will be loaded into this
                 marl module.
+            map_location: The device the module resides on.
 
 
         """
@@ -387,7 +389,7 @@ class MultiAgentRLModule(RLModule):
                     f"Submodule {submodule_id}'s module state directory: "
                     f"{submodule_weights_dir} not found in checkpoint dir {path}."
                 )
-            submodule.load_state(submodule_weights_dir)
+            submodule.load_state(submodule_weights_dir, map_location=map_location)
 
     @override(RLModule)
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
@@ -398,11 +400,15 @@ class MultiAgentRLModule(RLModule):
 
     @classmethod
     @override(RLModule)
-    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
+    def from_checkpoint(
+        cls,
+        checkpoint_dir_path: Union[str, pathlib.Path],
+        map_location: Optional[Union[DeviceType, str]] = None,
+    ) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         marl_module = cls._from_metadata_file(metadata_path)
-        marl_module.load_state(path)
+        marl_module.load_state(path, map_location=map_location)
         return marl_module
 
     def __repr__(self) -> str:

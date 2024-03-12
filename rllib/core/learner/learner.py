@@ -1544,7 +1544,9 @@ class Learner:
         del self._module
         # TODO (avnishn): from checkpoint doesn't currently support modules_to_load,
         #  but it should, so we will add it later.
-        self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
+        self._module_obj = MultiAgentRLModule.from_checkpoint(
+            path / "module_state", map_location=self._device
+        )
         self._reset()
         self.build()
         self._load_optimizers(path / "optimizer_state")
