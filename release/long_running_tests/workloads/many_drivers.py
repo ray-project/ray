@@ -27,7 +27,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 ray.init()
 
-nodes = {",".join(nodes)}.split(",")
+nodes = "{','.join(nodes)}".split(',')
 
 @ray.remote(num_cpus=1)
 def f():
