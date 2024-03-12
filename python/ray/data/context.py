@@ -184,7 +184,7 @@ class DataContext:
             columns in Pandas DataFrames to tensor extension columns.
         enable_auto_log_stats: Whether to automatically log stats after execution. If
             disabled, you can still manually print stats with ``Dataset.stats()``.
-        verbose_stats_log: Whether stats logs should be verbose. This includes fields
+        verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
