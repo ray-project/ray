@@ -2124,6 +2124,17 @@ def find_available_port(start, end, port_num=1):
         raise RuntimeError(
             f"Can't find {port_num} available port from {start} to {end}."
         )
+
+    # Kill the process which is listening to these ports
+    # This is just to ensure no process is listening to these ports
+    # https://github.com/ray-project/ray/issues/43777
+    from signal import SIGKILL
+
+    for proc in psutil.process_iter():
+        for conns in proc.connections(kind="inet"):
+            if conns.laddr.port in ports:
+                proc.send_signal(SIGKILL)  # or SIGKILL
+
     return ports
 
 
