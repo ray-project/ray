@@ -25,18 +25,30 @@ class MockPopen:
     def wait(self) -> int:
         return 1 if "bad_test" in self.test_targets or not self.test_targets else 0
 
+
 @mock.patch("ci.ray_ci.tester_container.TesterContainer._upload_build_info")
-@mock.patch("ci.ray_ci.tester_container.TesterContainer.upload_test_result")
-def _persist_test_results(mock_upload_build_info, mock_upload_test_result) -> None:
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.upload_test_results")
+def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -> None:
     container = LinuxTesterContainer("team", skip_ray_installation=True)
     with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "non-master"}):
         container._persist_test_results("team", "log_dir")
         assert not mock_upload_build_info.called
-    with mock.patch.dict(os.environ, {
-        "BUILDKITE_BRANCH": "master",
-        "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
-
-    }):
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "master",
+            "BUILDKITE_PIPELINE_ID": "non-id",
+        },
+    ):
+        container._persist_test_results("team", "log_dir")
+        assert not mock_upload_build_info.called
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "master",
+            "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
+        },
+    ):
         container._persist_test_results("team", "log_dir")
         assert mock_upload_build_info.called
 
