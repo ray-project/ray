@@ -44,7 +44,7 @@ PY_MATRIX = {
 }
 
 # Versions for which we build the ray-ml image
-ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
+ML_IMAGES_PY_VERSIONS = {"py39", "py310"}
 
 BASE_IMAGES = {
     "cu121": "nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04",
