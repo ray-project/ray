@@ -17,7 +17,6 @@ build() {
 
 test_a2c() {
   build "a2c"
-
   # BAZEL (learning and compilation) tests:
   bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/a2c/...
   bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/a2c/...
