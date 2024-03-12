@@ -286,7 +286,7 @@ def test_failed_task_runtime_env_setup(shutdown_only):
         verify_failed_task,
         name="task-runtime-env-failed",
         error_type="RUNTIME_ENV_SETUP_FAILED",
-        error_message="ResolvePackageNotFound",
+        error_message="PackagesNotFoundError",
     )
 
 
