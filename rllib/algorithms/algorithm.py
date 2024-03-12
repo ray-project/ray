@@ -1169,7 +1169,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False
                 )
-                for (env_s, ag_s, metrics, iter) in results:
+                for wid, (env_s, ag_s, metrics, iter) in results:
                     if iter != self.iteration:
                         continue
                     env_steps += env_s
@@ -1185,7 +1185,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False
                 )
-                for (batch, metrics, iter) in results:
+                for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
                         continue
                     env_steps += batch.env_steps()
@@ -1296,7 +1296,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False
                 )
-                for (wid, (env_s, ag_s, met, iter)) in results:
+                for wid, (env_s, ag_s, met, iter) in results:
                     if iter != self.iteration:
                         continue
                     env_steps += env_s
@@ -1331,7 +1331,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False
                 )
-                for (batch, metrics, iter) in results:
+                for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
                         continue
                     env_steps += batch.env_steps()
