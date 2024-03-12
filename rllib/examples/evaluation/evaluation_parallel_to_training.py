@@ -62,7 +62,13 @@ class AssertEvalCallback(DefaultCallbacks):
             if algorithm.config.evaluation_duration == "auto":
                 # If duration=auto: Expect at least as many timesteps as workers
                 # (each worker's `sample()` is at least called once).
-                assert num_timesteps_reported >= algorithm.config.evaluation_num_workers
+                # UNLESS: All eval workers were completely busy during the auto-time
+                # with older (async) requests and did NOT return anything from the async
+                # fetch.
+                assert (
+                    num_timesteps_reported == 0
+                    or num_timesteps_reported >= algorithm.config.evaluation_num_workers
+                )
             # We count in episodes.
             elif algorithm.config.evaluation_duration_unit == "episodes":
                 # Compare number of entries in episode_lengths (this is the
