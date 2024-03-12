@@ -1716,10 +1716,16 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  const auto &caller_addr = request.resource_spec().caller_address();
-  const auto caller_worker = WorkerID::FromBinary(caller_addr.worker_id());
-  const auto caller_node = NodeID::FromBinary(caller_addr.raylet_id());
-  if (IsWorkerDead(caller_worker, caller_node)) {
+  rpc::Task task_message;
+  task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
+  RayTask task(task_message);
+
+  const auto caller_worker =
+      WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
+  const auto caller_node =
+      NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().raylet_id());
+  if (!task.GetTaskSpecification().IsDetachedActor() &&
+      IsWorkerDead(caller_worker, caller_node)) {
     RAY_LOG(INFO) << "Caller of RequestWorkerLease is dead. worker = " << caller_worker
                   << ", node = " << caller_node << ". Skip leasing.";
     reply->set_canceled(true);
@@ -1730,9 +1736,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     return;
   };
 
-  rpc::Task task_message;
-  task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
-  RayTask task(task_message);
   const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
