@@ -862,16 +862,17 @@ class Algorithm(Trainable, AlgorithmBase):
             ), "Algorithm.evaluate() needs to return a dict."
             results.update(self.evaluation_metrics)
 
-        # Sync filters on workers.
+        # Sync EnvRunners on workers.
         if self.config.uses_new_env_runners:
-            # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
-            # states back to all workers.
-            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
-                # Merge connector states from all EnvRunners and broadcast updated
-                # states back to all EnvRunners.
-                self.workers.sync_env_runner_states(
-                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
-                )
+            if not self.config._dont_auto_sync_env_runner_states:
+                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
+                # new states back to all workers.
+                with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+                    # Merge connector states from all EnvRunners and broadcast updated
+                    # states back to all EnvRunners.
+                    self.workers.sync_env_runner_states(
+                        env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
+                    )
         else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),

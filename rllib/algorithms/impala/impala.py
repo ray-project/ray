@@ -133,6 +133,9 @@ class ImpalaConfig(AlgorithmConfig):
         self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
+        # Impala takes care of its own EnvRunner (weights, connector, counters)
+        # synching.
+        self._dont_auto_sync_env_runner_states = True
 
         self.grad_clip = 40.0
         # Note: Only when using _enable_new_api_stack=True can the clipping mode be
@@ -635,6 +638,7 @@ class Impala(Algorithm):
         if not self.config.uses_new_env_runners:
             return self._training_step_old_and_hybrid_api_stacks()
 
+        local_worker = self.workers.local_worker()
         async_updates = self.config.num_learner_workers > 0
 
         # Asynchronously request all EnvRunners to sample and return their current
@@ -717,17 +721,38 @@ class Impala(Algorithm):
                     if key in update_results:
                         update_results[key].update(res)
 
-        # Merge EnvRunner states into local worker's EnvRunner state.
-        #TODO: Merge Connector states into local worker, then broadcast from there
-        # back to all workers using a simpler API (e.g. `self.workers.broadcast_state(state={"connector": ..., "timesteps": ..., etc..})`).
-        #self.workers.local_worker().merge_states(env_runner_states)
+        # Merge available EnvRunner states into local worker's EnvRunner state.
+        env_to_module_connector_state = module_to_env_connector_state = None
+        if env_runner_states:
+            env_to_module_connector_state = local_worker._env_to_module.merge_states(
+                [s["env_to_module_connector"] for s in env_runner_states]
+            )
+            module_to_env_connector_state = local_worker._module_to_env.merge_states(
+                [s["module_to_env_connector"] for s in env_runner_states]
+            )
+            local_worker.set_state({
+                "env_to_module_connector": env_to_module_connector_state,
+                "module_to_env_connector": module_to_env_connector_state,
+            })
+        # Only if Learner's state is available: Broadcast together with (already merged)
+        # local worker's connector state and updated counter back to all EnvRunners
+        # (including the local one).
         if learner_state is not None:
-            self.workers.local_worker().set_state(learner_state)
+            new_state = {
+                # TODO (sven): Make these keys unified constants across RLlib. 
+                "rl_module": learner_state["module_state"],
+                NUM_ENV_STEPS_SAMPLED: self._counters[NUM_ENV_STEPS_SAMPLED],
+                **({
+                   "env_to_module_connector": local_worker._env_to_module.get_state(),
+                   "module_to_env_connector": local_worker._module_to_env.get_state(),
+                } if env_runner_states else {}),
+            }
             # Broadcast updated weights and (merged) EnvRunner states back to all
             # EnvRunner workers.
-            self.workers.sync_weights(
-                from_worker_or_learner_group=self.learner_group,
+            self.workers.foreach_worker(
+                func=lambda worker: worker.set_state(new_state),
                 timeout_seconds=0.0,
+                local_worker=True,
             )
 
         # Add already collected metrics to results for later processing.
