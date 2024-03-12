@@ -330,7 +330,9 @@ CONFIG_CACHE_VERSION = 1
 
 
 def _bootstrap_config(
-    config: Dict[str, Any], no_config_cache: bool = False
+    config: Dict[str, Any],
+    no_config_cache: bool = False,
+    no_create: bool = False,
 ) -> Dict[str, Any]:
     config = prepare_config(config)
     # NOTE: multi-node-type autoscaler is guaranteed to be in use after this.
@@ -413,7 +415,7 @@ def _bootstrap_config(
             'only be usable via `pip install "ray[default]"`. Please '
             "update your install command."
         )
-    resolved_config = provider_cls.bootstrap_config(config)
+    resolved_config = provider_cls.bootstrap_config(config, no_create=no_create)
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
@@ -438,7 +440,7 @@ def teardown_cluster(
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    config = _bootstrap_config(config)
+    config = _bootstrap_config(config, no_config_cache=True, no_create=True)
 
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
 
@@ -560,6 +562,8 @@ def teardown_cluster(
             cli_logger.print(
                 "{} nodes remaining after {} second(s).", cf.bold(len(A)), POLL_INTERVAL
             )
+
+        provider.cleanup(config)
         cli_logger.success("No nodes remaining.")
 
 

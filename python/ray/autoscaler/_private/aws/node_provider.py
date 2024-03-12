@@ -522,6 +522,22 @@ class AWSNodeProvider(NodeProvider):
                 cwa_installed = True
         return cwa_installed
 
+    def cleanup_security_groups(self, config):
+        node_types = [
+            node_type_key
+            for node_type_key, node_type in config["available_node_types"].items()
+            if "SecurityGroupIds" in node_type["node_config"]
+        ]
+        for node_type_key in node_types:
+            security_group_ids = config["available_node_types"][node_type_key][
+                "node_config"
+            ]["SecurityGroupIds"]
+            for security_group_id in security_group_ids:
+                self.ec2.meta.client.delete_security_group(GroupId=security_group_id)
+
+    def cleanup(self, config):
+        self.cleanup_security_groups(config)
+
     def terminate_nodes(self, node_ids):
         if not node_ids:
             return
@@ -602,8 +618,8 @@ class AWSNodeProvider(NodeProvider):
         return self._get_node(node_id)
 
     @staticmethod
-    def bootstrap_config(cluster_config):
-        return bootstrap_aws(cluster_config)
+    def bootstrap_config(cluster_config, **kwargs):
+        return bootstrap_aws(cluster_config, kwargs["no_create"])
 
     @staticmethod
     def fillout_available_node_types_resources(

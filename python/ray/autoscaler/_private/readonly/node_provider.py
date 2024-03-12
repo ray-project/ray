@@ -76,5 +76,5 @@ class ReadOnlyNodeProvider(NodeProvider):
         raise AssertionError("Readonly node provider cannot be updated")
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return cluster_config

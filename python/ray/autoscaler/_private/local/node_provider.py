@@ -274,7 +274,7 @@ class LocalNodeProvider(NodeProvider):
         self.state.put(node_id, info)
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return bootstrap_local(cluster_config)
 
 

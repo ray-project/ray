@@ -242,5 +242,5 @@ class SparkNodeProvider(NodeProvider):
         logger.info(f"Spark node provider terminates node {node_id}")
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config, **kwargs):
         return cluster_config
