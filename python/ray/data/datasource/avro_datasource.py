@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class AvroDatasource(FileBasedDatasource):
-    """Avro datasource, for reading and writing Avro files."""
+    """A datasource that reads Avro files."""
 
     _FILE_EXTENSIONS = ["avro"]
 
