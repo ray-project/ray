@@ -79,7 +79,7 @@ class TestMinibatchUtils(unittest.TestCase):
                         batch["obs"] = convert_to_torch_tensor(batch["obs"])
                         if seq_lens:
                             batch["seq_lens"] = convert_to_torch_tensor(
-                                batch["seq_lens"], dtype=tf.int32
+                                batch["seq_lens"]
                             )
 
                 mb = MultiAgentBatch(sample_batches, num_env_steps)
