@@ -342,6 +342,7 @@ class TestReplicaConfig:
                 Class,
                 tuple(),
                 dict(),
+                ray_actor_options={"num_cpus": 0, "num_gpus": 0},
                 placement_group_bundles=[{"CPU": 0, "GPU": 0}],
             )
 
