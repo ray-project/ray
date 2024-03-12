@@ -2,7 +2,6 @@ import asyncio
 import os
 import random
 import time
-from typing import List
 
 import pytest
 import requests
@@ -14,9 +13,12 @@ from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2
 from ray.serve._private.common import ReplicaState
 from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.test_utils import check_num_replicas_eq, check_num_replicas_gte
+from ray.serve._private.test_utils import (
+    check_num_replicas_eq,
+    check_num_replicas_gte,
+    get_node_id,
+)
 from ray.serve.context import _get_global_client
-from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeInstanceDetails
 from ray.tests.conftest import *  # noqa
 
@@ -32,10 +34,6 @@ def test_draining_with_traffic(monkeypatch, ray_start_cluster):
     cluster.add_node(num_cpus=1, resources={"worker1": 1})
     cluster.add_node(num_cpus=1, resources={"worker2": 1})
     cluster.wait_for_nodes()
-
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
 
     worker_node_ids = {
         ray.get(get_node_id.options(resources={"worker1": 1}).remote()),
@@ -161,10 +159,6 @@ def test_draining_without_traffic(monkeypatch, ray_start_cluster):
     cluster.add_node(num_cpus=1, resources={"worker3": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
     worker_node_ids = {
         ray.get(get_node_id.options(resources={"worker1": 1}).remote()),
         ray.get(get_node_id.options(resources={"worker2": 1}).remote()),
@@ -234,14 +228,6 @@ def test_draining_without_traffic(monkeypatch, ray_start_cluster):
     serve.shutdown()
 
 
-def send_requests(h: DeploymentHandle, n: int, m: int) -> List:
-    refs = list()
-    for _ in range(n):
-        refs.extend([h.remote() for _ in range(m)])
-        time.sleep(0.5)
-    return refs
-
-
 def test_start_then_stop_replicas(ray_start_cluster):
     """We should start replacement replicas before stopping replicas on draining node"""
 
@@ -254,8 +240,6 @@ def test_start_then_stop_replicas(ray_start_cluster):
 
     signal = SignalActor.remote()
     ray.get(signal.send.remote())
-    # head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
-    # worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
 
     @serve.deployment(num_replicas=3, ray_actor_options={"num_cpus": 1})
     class A:
@@ -266,8 +250,7 @@ def test_start_then_stop_replicas(ray_start_cluster):
             return os.getpid(), ray.get_runtime_context().get_node_id()
 
     h = serve.run(A.bind())
-    refs = send_requests(h, 3, 10)
-    pids, node_ids = zip(*[ref.result() for ref in refs])
+    pids, node_ids = zip(*[h.remote().result() for _ in range(10)])
 
     # Block initialization of new replicas to prepare for draining
     signal.send.remote(clear=True)
@@ -286,8 +269,7 @@ def test_start_then_stop_replicas(ray_start_cluster):
     # one new replacement replica should be started.
     wait_for_condition(check_num_replicas_gte, name="A", target=4)
 
-    refs = send_requests(h, 3, 10)
-    new_pids, node_ids = zip(*[ref.result() for ref in refs])
+    new_pids, _ = zip(*[h.remote().result() for _ in range(10)])
     assert set(pids) == set(new_pids)
 
     # Unblock initialization of new replicas.
@@ -297,8 +279,7 @@ def test_start_then_stop_replicas(ray_start_cluster):
     assert status.status == "HEALTHY"
 
     # At least one replica among the 3 currently running replicas is new
-    refs = send_requests(h, 3, 10)
-    new_pids, node_ids = zip(*[ref.result() for ref in refs])
+    new_pids, _ = zip(*[h.remote().result() for _ in range(10)])
     assert len(set(pids) & set(new_pids)) < 3
 
     # Shut down serve to avoid state sharing between tests.
