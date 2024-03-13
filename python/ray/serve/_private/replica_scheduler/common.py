@@ -180,10 +180,10 @@ class ActorReplicaWrapper:
             method = self._actor_handle.handle_request
 
         pickled_metadata = pickle.dumps(pr.metadata)
-        print(ray._private.internal_api.memory_summary())
+        # print(ray._private.internal_api.memory_summary())
         obj_ref_gen = method.remote(pickled_metadata, *pr.args, **pr.kwargs)
         print("in _send_request_python!!!", type(obj_ref_gen), obj_ref_gen, pr.metadata, with_rejection, self)
-        print(ray._private.internal_api.memory_summary())
+        # print(ray._private.internal_api.memory_summary())
         return obj_ref_gen
 
     def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
@@ -206,10 +206,13 @@ class ActorReplicaWrapper:
             queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
 
             if not queue_len_info.accepted:
+                print("in send_request_with_rejection!!! not accepted", queue_len_info)
                 return None, queue_len_info
             else:
+                print("in send_request_with_rejection!!! this is accepted", queue_len_info)
                 return obj_ref_gen, queue_len_info
         except asyncio.CancelledError as e:
+            print("in send_request_with_rejection!!! cancelled", queue_len_info)
             ray.cancel(obj_ref_gen)
             raise e from None
 
