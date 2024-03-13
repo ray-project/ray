@@ -233,7 +233,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         register_env(
             "fault_env",
-            lambda c: FaultInjectEnv(dict(c, **{"observation_space": obs_space}))
+            lambda c: FaultInjectEnv(dict(c, **{"observation_space": obs_space})),
         )
 
         def _ma(ctx):
@@ -305,9 +305,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def _do_test_fault_fatal_recreate(self, config, multi_agent=False):
         # Counter that will survive restarts.
-        COUNTER_NAME = (
-            f"_do_test_fault_fatal_recreate{'_ma' if multi_agent else ''}"
-        )
+        COUNTER_NAME = f"_do_test_fault_fatal_recreate{'_ma' if multi_agent else ''}"
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         # Test raises real error when out of workers.
@@ -375,7 +373,7 @@ class TestWorkerFailures(unittest.TestCase):
             .experimental(_enable_new_api_stack=True)
             .rollouts(
                 env_runner_cls=SingleAgentEnvRunner,
-                env_to_module_connector=lambda env: FlattenObservations()
+                env_to_module_connector=lambda env: FlattenObservations(),
             )
         )
 
