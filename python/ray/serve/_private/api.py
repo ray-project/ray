@@ -358,8 +358,12 @@ def validate_tracing_exporter(func: Callable):
         )
 
     output = func()
-    if not isinstance(output, list) or not all(isinstance(x, SimpleSpanProcessor) for x in output):
-        raise TypeError(f"Output needs to be of type List[SimpleSpanProcessor] {type(output[0])}")
+    if not isinstance(output, list) or not all(
+        isinstance(x, SimpleSpanProcessor) for x in output
+    ):
+        raise TypeError(
+            f"Output needs to be of type List[SimpleSpanProcessor] {type(output[0])}"
+        )
 
 
 def validate_and_import_tracing_exporter(tracing_config: TracingConfig) -> Any:
