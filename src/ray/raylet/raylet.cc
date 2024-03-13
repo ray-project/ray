@@ -165,7 +165,14 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
         "worker",
         node_manager_message_enum,
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
-  }
+  } else {
+    RAY_LOG(ERROR) << "Raylet failed to accept new connection: " << error.message();
+    if (error == boost::asio::error::operation_aborted) {
+      // The server is being destroyed. Don't continue accepting connections.
+      return;
+    }
+  };
+
   // We're ready to accept another client.
   DoAccept();
 }
