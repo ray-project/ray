@@ -598,7 +598,9 @@ class TestWorkerFailures(unittest.TestCase):
         # Eval worker has test policy.
         self.assertTrue(
             all(
-                algo.evaluation_workers.foreach_worker(has_test_policy, local_worker=False)
+                algo.evaluation_workers.foreach_worker(
+                    has_test_policy, local_worker=False
+                )
             )
         )
 

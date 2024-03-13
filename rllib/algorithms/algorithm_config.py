@@ -2955,7 +2955,7 @@ class AlgorithmConfig(_Config):
                 diff = self.total_train_batch_size - int(
                     rollout_fragment_length
                 ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
-                if ((worker_index - 1) * self.num_envs_per_worker) > diff:
+                if ((worker_index - 1) * self.num_envs_per_worker) >= diff:
                     return int(rollout_fragment_length)
                 else:
                     return int(rollout_fragment_length) + 1
