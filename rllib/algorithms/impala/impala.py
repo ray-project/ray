@@ -686,6 +686,7 @@ class Impala(Algorithm):
         # item in the list representing the (reduced-over-learners) results of a
         # different async update request to all Learners.
         if update_results:
+            update_results[ALL_MODULES].update(self.learner_group.get_stats())
             learner_state = update_results.pop("_state_after_update")
             module_ids_to_update = set(update_results.keys()) - {ALL_MODULES}
 
@@ -789,15 +790,16 @@ class Impala(Algorithm):
 
         num_healthy_remote_workers = self.workers.num_healthy_remote_workers()
 
-        with self._timers[SAMPLE_TIMER]:
+        with (self._timers[SAMPLE_TIMER]):
             # Perform asynchronous sampling on all (healthy) remote rollout workers.
             if num_healthy_remote_workers > 0:
-                num_requests_made = self.workers.foreach_worker_async(
+                #num_requests_made =
+                self.workers.foreach_worker_async(
                     _remote_sample_and_get_state, healthy_only=True
                 )
-                self._counters["_remote_env_runner_calls_dropped"] += (
-                    num_healthy_remote_workers - num_requests_made
-                )
+                #self._counters["_remote_env_runner_calls_dropped"] += (
+                #    num_healthy_remote_workers - num_requests_made
+                #)
                 async_results: List[
                     Tuple[int, ObjectRef]
                 ] = self.workers.fetch_ready_async_reqs(

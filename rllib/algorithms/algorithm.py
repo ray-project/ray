@@ -866,7 +866,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.config,
             )
 
-        episodes_this_iter = results.pop("_episodes_this_iter", None)
+        episodes_this_iter = train_results.pop("_episodes_this_iter", None)
         if episodes_this_iter is None:
             episodes_this_iter = collect_episodes(
                 self.workers,

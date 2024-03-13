@@ -10,13 +10,13 @@ config = (
     .environment("CartPole-v1")
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=2,
-        env_to_module_connector=lambda env: MeanStdFilter(),
+        num_rollout_workers=10,
+        #env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .resources(
-        num_learner_workers=1,
+        num_learner_workers=2,
         num_gpus=0,
-        num_cpus_for_local_worker=1,
+        num_cpus_for_local_worker=0,
     )
     .training(
         train_batch_size_per_learner=500,
@@ -32,6 +32,6 @@ config = (
 )
 
 stop = {
-    "sampler_results/episode_reward_mean": 400.0,
-    "timesteps_total": 1000000,
+    "sampler_results/episode_reward_mean": 450.0,
+    "timesteps_total": 2000000,
 }
