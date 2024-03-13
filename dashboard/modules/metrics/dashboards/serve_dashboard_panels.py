@@ -56,11 +56,11 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_num_http_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
+                expr='sum(rate(ray_serve_num_http_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
                 legend="{{application, route}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                expr='sum(rate(ray_serve_num_grpc_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
         ],
@@ -73,11 +73,11 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_num_http_error_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
+                expr='sum(rate(ray_serve_num_http_error_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
                 legend="{{application, route}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_error_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
         ],
@@ -90,11 +90,11 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_num_http_error_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, error_code)',
+                expr='sum(rate(ray_serve_num_http_error_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, error_code)',
                 legend="{{application, route, error_code}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_error_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, error_code)',
+                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, error_code)',
                 legend="{{application, method, error_code}}",
             ),
         ],

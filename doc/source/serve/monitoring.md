@@ -513,25 +513,25 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The current number of queries being processed.
-   * - ``ray_serve_num_http_requests`` [*]
+   * - ``ray_serve_num_http_requests_total`` [*]
      - * route
        * method
        * application
        * status_code
      - The number of HTTP requests processed.
-   * - ``ray_serve_num_grpc_requests`` [*]
+   * - ``ray_serve_num_grpc_requests_total`` [*]
      - * route
        * method
        * application
        * status_code
      - The number of gRPC requests processed.
-   * - ``ray_serve_num_http_error_requests`` [*]
+   * - ``ray_serve_num_http_error_requests_total`` [*]
      - * route
        * error_code
        * method
        * application
      - The number of non-200 HTTP responses.
-   * - ``ray_serve_num_grpc_error_requests`` [*]
+   * - ``ray_serve_num_grpc_error_requests_total`` [*]
      - * route
        * error_code
        * method
@@ -544,7 +544,7 @@ The following metrics are exposed by Ray Serve:
      - * node_id
        * node_ip_address
      - The number of ongoing requests in the gRPC Proxy.
-   * - ``ray_serve_num_router_requests`` [*]
+   * - ``ray_serve_num_router_requests_total`` [*]
      - * deployment
        * route
        * application
