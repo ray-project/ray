@@ -1394,11 +1394,13 @@ class Algorithm(Trainable, AlgorithmBase):
             # states back to all EnvRunners.
             self.evaluation_workers.broadcast_state(
                 state={
-                    self.workers.local_worker().get_state(components=[
-                        NUM_ENV_STEPS_SAMPLED,
-                        "env_to_module_connector",
-                        "module_to_env_connector",
-                    ])
+                    self.workers.local_worker().get_state(
+                        components=[
+                            NUM_ENV_STEPS_SAMPLED,
+                            "env_to_module_connector",
+                            "module_to_env_connector",
+                        ]
+                    )
                 },
                 local_worker=True,
             )

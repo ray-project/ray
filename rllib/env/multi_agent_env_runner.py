@@ -559,9 +559,7 @@ class MultiAgentEnvRunner(EnvRunner):
             episode_reward = eps.get_return()
             agent_steps = defaultdict(
                 int,
-                {
-                    aid: len(sa_eps) for aid, sa_eps in eps.agent_episodes.items()
-                },
+                {aid: len(sa_eps) for aid, sa_eps in eps.agent_episodes.items()},
             )
             module_rewards = defaultdict(
                 float,

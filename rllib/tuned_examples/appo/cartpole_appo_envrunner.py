@@ -40,16 +40,16 @@ stop = {
 
 
 if __name__ == "__main__":
-    #import ray
-    #ray.init()#TODO
+    # import ray
+    # ray.init()#TODO
 
-    #algo = config.build_algorithm()
-    #for _ in range(1000):
+    # algo = config.build_algorithm()
+    # for _ in range(1000):
     #    results = algo.train()
     #    print(f"R={results['episode_reward_mean']}")
     #    #print(f"sampled={algo._counters['num_env_steps_sampled']} trained={algo._counters['num_env_steps_trained']} learner_group_ts_dropped={algo._counters['learner_group_ts_dropped']} actor_manager_num_outstanding_async_reqs={algo._counters['actor_manager_num_outstanding_async_reqs']}")
-    #algo.stop()
-    #quit()
+    # algo.stop()
+    # quit()
 
     tuner = tune.Tuner(
         config.algo_class,

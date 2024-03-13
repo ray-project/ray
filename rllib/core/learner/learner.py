@@ -1340,9 +1340,8 @@ class Learner:
         # actual batch/episodes objects).
         if isinstance(batch, ray.ObjectRef):
             batch = ray.get(batch)
-        if (
-            isinstance(episodes, ray.ObjectRef)
-            or (isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef))
+        if isinstance(episodes, ray.ObjectRef) or (
+            isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef)
         ):
             episodes = ray.get(episodes)
             episodes = tree.flatten(episodes)

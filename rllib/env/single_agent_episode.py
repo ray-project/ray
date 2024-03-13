@@ -161,7 +161,6 @@ class SingleAgentEpisode:
         "rewards",
         "t",
         "t_started",
-
         "_action_space",
         "_last_step_time",
         "_observation_space",

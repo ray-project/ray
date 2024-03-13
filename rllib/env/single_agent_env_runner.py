@@ -722,7 +722,9 @@ class SingleAgentEnvRunner(EnvRunner):
         weights_seq_no: int = 0,
     ) -> None:
         assert global_vars is None
-        return self.set_state({
-            "rl_module": weights,
-            WEIGHTS_SEQ_NO: weights_seq_no,
-        })
+        return self.set_state(
+            {
+                "rl_module": weights,
+                WEIGHTS_SEQ_NO: weights_seq_no,
+            }
+        )

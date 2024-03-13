@@ -4,7 +4,7 @@ import logging
 import platform
 import queue
 import random
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Callable, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -645,20 +645,22 @@ class Impala(Algorithm):
         # (e.g. ConnectorV2) states and sampling metrics/stats.
         # Note that each returned item in `episode_refs` is itself a reference to a
         # list of Episodes.
-        episode_refs, env_runner_states, env_runner_metrics = (
-            self._training_step_sample_and_get_states()
-        )
+        (
+            episode_refs,
+            env_runner_states,
+            env_runner_metrics,
+        ) = self._training_step_sample_and_get_states()
         # Increase sampling counters.
         for rollout_metric in env_runner_metrics:
             self._counters[NUM_ENV_STEPS_SAMPLED] += rollout_metric.episode_length
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += (
-                sum(s for s in rollout_metric.agent_steps.values())
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                s for s in rollout_metric.agent_steps.values()
             )
 
         # "Batch" episode refs to groups (such that batching would result in
         # `train_batch_size`) to be sent to LearnerGroup.
-        episode_refs_for_learner_group = (
-            self._training_step_pre_queue_episode_refs(episode_refs)
+        episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
+            episode_refs
         )
         # Call the LearnerGroup's `update_from_episodes` method.
         update_results = {}
@@ -687,9 +689,9 @@ class Impala(Algorithm):
             module_ids_to_update = set(update_results.keys()) - {ALL_MODULES}
 
             # Update trained steps counters.
-            self._counters[NUM_ENV_STEPS_TRAINED] += (
-                update_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
-            )
+            self._counters[NUM_ENV_STEPS_TRAINED] += update_results[ALL_MODULES][
+                NUM_ENV_STEPS_TRAINED
+            ]
             self._counters[NUM_AGENT_STEPS_TRAINED] += sum(
                 update_results[mid][NUM_AGENT_STEPS_TRAINED]
                 for mid in module_ids_to_update
@@ -730,22 +732,29 @@ class Impala(Algorithm):
             module_to_env_connector_state = local_worker._module_to_env.merge_states(
                 [s["module_to_env_connector"] for s in env_runner_states]
             )
-            local_worker.set_state({
-                "env_to_module_connector": env_to_module_connector_state,
-                "module_to_env_connector": module_to_env_connector_state,
-            })
+            local_worker.set_state(
+                {
+                    "env_to_module_connector": env_to_module_connector_state,
+                    "module_to_env_connector": module_to_env_connector_state,
+                }
+            )
         # Only if Learner's state is available: Broadcast together with (already merged)
         # local worker's connector state and updated counter back to all EnvRunners
         # (including the local one).
         if learner_state is not None:
+            _kwargs = (
+                {
+                    "env_to_module_connector": local_worker._env_to_module.get_state(),
+                    "module_to_env_connector": local_worker._module_to_env.get_state(),
+                }
+                if env_runner_states
+                else {}
+            )
             new_state = {
-                # TODO (sven): Make these keys unified constants across RLlib. 
+                # TODO (sven): Make these keys unified constants across RLlib.
                 "rl_module": learner_state["module_state"],
                 NUM_ENV_STEPS_SAMPLED: self._counters[NUM_ENV_STEPS_SAMPLED],
-                **({
-                   "env_to_module_connector": local_worker._env_to_module.get_state(),
-                   "module_to_env_connector": local_worker._module_to_env.get_state(),
-                } if env_runner_states else {}),
+                **_kwargs,
             }
             # Broadcast updated weights and (merged) EnvRunner states back to all
             # EnvRunner workers.
@@ -757,9 +766,7 @@ class Impala(Algorithm):
 
         # Add already collected metrics to results for later processing.
         if env_runner_metrics:
-            update_results.update({
-                "_episodes_this_training_step": env_runner_metrics
-            })
+            update_results.update({"_episodes_this_training_step": env_runner_metrics})
 
         return update_results
 
@@ -790,11 +797,11 @@ class Impala(Algorithm):
                 self._counters["_remote_env_runner_calls_dropped"] += (
                     num_healthy_remote_workers - num_requests_made
                 )
-                async_results: List[Tuple[int, ObjectRef]] = (
-                    self.workers.fetch_ready_async_reqs(
-                        timeout_seconds=self.config.timeout_s_sampler_manager,
-                        return_obj_refs=True,
-                    )
+                async_results: List[
+                    Tuple[int, ObjectRef]
+                ] = self.workers.fetch_ready_async_reqs(
+                    timeout_seconds=self.config.timeout_s_sampler_manager,
+                    return_obj_refs=True,
                 )
                 # Split up results from the n different async calls.
                 for async_result in async_results:
@@ -803,19 +810,19 @@ class Impala(Algorithm):
                     episode_refs.append(episodes)
                     env_runner_states.append(states)
                     env_runner_metrics.append(metrics)
-
+            # Sample from the local EnvRunner worker.
             else:
-                raise NotImplementedError
-                ## Sample from the local EnvRunner worker.
-                #episodes = self.workers.local_worker().sample()
-                #metrics = self.workers.local_worker().get_metrics()
-                #episodes_ref = ray.put(episodes)
-                #return [], [episodes_ref],
-                #sample_batches = [(0, sample_batch)]
+                episodes = self.workers.local_worker().sample()
+                env_runner_metrics = self.workers.local_worker().get_metrics()
+                episode_refs = [ray.put(episodes)]
+                env_runner_states = self.workers.local_worker().get_state(
+                    components=["env_to_module_connector", "module_to_env_connector"]
+                )
 
         return (
             episode_refs,
             env_runner_states,
+            # `RolloutMetrics` is a tuple, need to carefully flatten the struct here.
             tree.flatten_up_to(
                 [[None] * len(e) for e in env_runner_metrics],
                 env_runner_metrics,
@@ -906,7 +913,9 @@ class Impala(Algorithm):
         for ref in episode_refs:
             self.batch_being_built.append(ref)
             if (
-                len(self.batch_being_built) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
+                len(self.batch_being_built)
+                * self.config.get_rollout_fragment_length()
+                * self.config.num_envs_per_worker
                 >= self.config.total_train_batch_size
             ):
                 episode_refs_for_learner_group.append(self.batch_being_built)
@@ -1060,12 +1069,9 @@ class Impala(Algorithm):
                     timeout_seconds=self.config.timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-            elif (
-                self.config.num_rollout_workers == 0
-                or (
-                    self.workers.local_worker()
-                    and self.workers.local_worker().async_env is not None
-                )
+            elif self.config.num_rollout_workers == 0 or (
+                self.workers.local_worker()
+                and self.workers.local_worker().async_env is not None
             ):
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
@@ -1165,6 +1171,7 @@ class Impala(Algorithm):
         Args:
             batches: List of batches of experiences from EnvRunners.
         """
+
         def aggregate_into_larger_batch():
             if (
                 sum(b.count for b in self.batch_being_built)
@@ -1477,11 +1484,11 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
         Final reduced results dict.
     """
     result = tree.map_structure(lambda *x: np.mean(x), *results)
-    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = (
-        sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
+    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = sum(
+        r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results
     )
-    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = (
-        sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
+    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = sum(
+        r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results
     )
     return result
 

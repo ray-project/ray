@@ -381,23 +381,36 @@ class LearnerGroup:
         else:
             if batch is not None:
                 partials = [
-                    partial(_learner_update, _batch_shard=batch_shard, _return_state=(return_state and i == 0))
-                    for i, batch_shard in enumerate(ShardBatchIterator(batch, len(self._workers)))
+                    partial(
+                        _learner_update,
+                        _batch_shard=batch_shard,
+                        _return_state=(return_state and i == 0),
+                    )
+                    for i, batch_shard in enumerate(
+                        ShardBatchIterator(batch, len(self._workers))
+                    )
                 ]
             elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
                 partials = [
-                    partial(_learner_update, _episodes_shard=episodes_shard,
-                            _return_state=(return_state and i == 0))
-                    for i, episodes_shard in enumerate(ShardObjectRefIterator(
-                        episodes, len(self._workers)
-                    ))
+                    partial(
+                        _learner_update,
+                        _episodes_shard=episodes_shard,
+                        _return_state=(return_state and i == 0),
+                    )
+                    for i, episodes_shard in enumerate(
+                        ShardObjectRefIterator(episodes, len(self._workers))
+                    )
                 ]
             else:
                 partials = [
-                    partial(_learner_update, _episodes_shard=episodes_shard, _return_state=(return_state and i == 0))
-                    for i, episodes_shard in enumerate(ShardEpisodesIterator(
-                        episodes, len(self._workers)
-                    ))
+                    partial(
+                        _learner_update,
+                        _episodes_shard=episodes_shard,
+                        _return_state=(return_state and i == 0),
+                    )
+                    for i, episodes_shard in enumerate(
+                        ShardEpisodesIterator(episodes, len(self._workers))
+                    )
                 ]
 
             if async_update:
@@ -427,7 +440,11 @@ class LearnerGroup:
                     # List of Ray ObjectRefs (each object ref is a list of episodes of total
                     # len=`rollout_fragment_length * num_envs_per_worker`)
                     elif isinstance(episodes[0], ObjectRef):
-                        dropped = len(episodes) * self.config.get_rollout_fragment_length() * self.config.num_envs_per_worker
+                        dropped = (
+                            len(episodes)
+                            * self.config.get_rollout_fragment_length()
+                            * self.config.num_envs_per_worker
+                        )
                     else:
                         dropped = sum(len(e) for e in episodes)
 
@@ -567,7 +584,7 @@ class LearnerGroup:
                 update_tag = str(uuid.uuid4())
                 num_sent_requests = self._worker_manager.foreach_actor_async(
                     [lambda w: w.additional_update(**kwargs) for _ in self._workers],
-                    tag=update_tag
+                    tag=update_tag,
                 )
                 if num_sent_requests:
                     self._additional_update_request_tags[update_tag] = num_sent_requests

@@ -54,7 +54,10 @@ parser.add_argument(
     "--stop-iters", type=int, default=2000000, help="Number of iterations to train."
 )
 parser.add_argument(
-    "--stop-timesteps", type=int, default=200000000, help="Number of timesteps to train."
+    "--stop-timesteps",
+    type=int,
+    default=200000000,
+    help="Number of timesteps to train.",
 )
 parser.add_argument(
     "--stop-reward", type=float, default=20.0, help="Reward at which we stop training."
@@ -72,6 +75,7 @@ def _make_env_to_module_connector(env):
         num_frames=args.num_frames,
     )
 
+
 def _make_learner_connector(input_observation_space, input_action_space):
     # Create the learner connector.
     return FrameStackingLearner(
@@ -80,7 +84,9 @@ def _make_learner_connector(input_observation_space, input_action_space):
         num_frames=args.num_frames,
     )
 
+
 from ray import tune
+
 # Create a custom Atari setup (w/o the usual RLlib-hard-coded framestacking in it).
 # We would like our frame stacking connector to do this job.
 tune.register_env(
@@ -91,18 +97,19 @@ tune.register_env(
                 MaxAndSkipEnv(  # frameskip=4 and take max over these 4 frames
                     NoopResetEnv(  # perform n noops after a reset
                         partial(FrameStack, k=4)(  # <- no env-based framestacking
-                        NormalizedImageEnv(
-                            partial(WarpFrame, dim=64)(  # grayscale + resize
-                                partial(
-                                    gym.wrappers.TimeLimit, max_episode_steps=108000
-                                )(
-                                    gym.make(
-                                        "ALE/Pong-v5",
-                                        **dict(cfg, **{"render_mode": "rgb_array"})
+                            NormalizedImageEnv(
+                                partial(WarpFrame, dim=64)(  # grayscale + resize
+                                    partial(
+                                        gym.wrappers.TimeLimit, max_episode_steps=108000
+                                    )(
+                                        gym.make(
+                                            "ALE/Pong-v5",
+                                            **dict(cfg, **{"render_mode": "rgb_array"})
+                                        )
                                     )
                                 )
                             )
-                        ))
+                        )
                     )
                 )
             )
@@ -132,7 +139,7 @@ config = (
     .rollouts(
         # ... new EnvRunner and our frame stacking env-to-module connector.
         env_runner_cls=SingleAgentEnvRunner,
-        #env_to_module_connector=_make_env_to_module_connector,
+        # env_to_module_connector=_make_env_to_module_connector,
         num_rollout_workers=args.num_env_runners,  # 31
         num_envs_per_worker=4,
         rollout_fragment_length=50,
@@ -145,7 +152,7 @@ config = (
     )
     .training(
         # Use our frame stacking learner connector.
-        #learner_connector=_make_learner_connector,
+        # learner_connector=_make_learner_connector,
         train_batch_size_per_learner=1000,
         use_kl_loss=False,
         grad_clip=10.0,
@@ -189,4 +196,3 @@ if __name__ == "__main__":
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
-

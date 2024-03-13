@@ -73,7 +73,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             The collected experience in any form.
         """
 
-    def get_state(self, components: Optional[Container[str]] = None,) -> Dict[str, Any]:
+    def get_state(
+        self,
+        components: Optional[Container[str]] = None,
+    ) -> Dict[str, Any]:
         """Returns this EnvRunner's (possibly serialized) current state as a dict.
 
         Args:
