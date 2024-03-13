@@ -323,7 +323,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
             )
-            tried_least_multiplexed_models = False
+            tried_fewest_multiplexed_models = False
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
