@@ -689,16 +689,22 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
                     backoff_index += 1
                     if backoff_index >= 50 and backoff_index % 50 == 0:
-                        if (
-                            request_metadata is not None
-                            and request_metadata.multiplexed_model_id
-                        ):
-                            scheduling_time_elapsed = time.time() - start_time
-                            logger.warning(
-                                "Failed to schedule request with metadata "
-                                f"{request_metadata} after {backoff_index} "
-                                f"attempts over {scheduling_time_elapsed}s."
+                        scheduling_time_elapsed = time.time() - start_time
+                        warning_log = (
+                            "Failed to schedule request after "
+                            f"{backoff_index} attempts over "
+                            f"{scheduling_time_elapsed:.2f}s. Retrying."
+                        )
+                        if request_metadata is not None:
+                            warning_log += (
+                                f" Request ID: {request_metadata.request_id}."
                             )
+                            if request_metadata.multiplexed_model_id:
+                                warning_log += (
+                                    " Multiplexed model ID: "
+                                    f"{request_metadata.multiplexed_model_id}."
+                                )
+                        logger.warning(warning_log)
 
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
