@@ -484,25 +484,6 @@ def deployment(
 
 
 @PublicAPI(stability="stable")
-def tracing_exporter(_func_or_class: Optional[Callable] = None):
-
-    if inspect.isfunction(_func_or_class) is False:
-        raise TypeError("@serve.tracing_exporter must be called on a function.")
-
-    if not isinstance(_func_or_class, (Callable, str)):
-        raise TypeError(
-            f'Got invalid type "{type(_func_or_class)}" for '
-            "exporter_def. Expected exporter_def to be a "
-            "function."
-        )
-
-    return pickle_dumps(
-        _func_or_class,
-        f"Could not serialize the exporter {repr(_func_or_class)}",
-    )
-
-
-@PublicAPI(stability="stable")
 def _run(
     target: Application,
     _blocking: bool = True,

@@ -977,7 +977,7 @@ def build_serve_application(
     try:
         from ray.serve._private.api import (
             call_app_builder_with_args_if_necessary,
-            import_tracing_exporter,
+            validate_and_import_tracing_exporter,
         )
         from ray.serve._private.deployment_graph_build import build as pipeline_build
         from ray.serve._private.deployment_graph_build import (
@@ -989,7 +989,7 @@ def build_serve_application(
         deployments = pipeline_build(app._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
 
-        tracing_exporter_def = import_tracing_exporter(tracing_config)
+        tracing_exporter_def = validate_and_import_tracing_exporter(tracing_config)
 
         deploy_args_list = []
         for deployment in deployments:

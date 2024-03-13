@@ -2,7 +2,7 @@ import inspect
 import logging
 import os
 from types import FunctionType
-from typing import Any, Dict, Union
+from typing import Any, Callable, Dict, List, Union
 
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
@@ -336,7 +336,7 @@ def call_app_builder_with_args_if_necessary(
     return app
 
 
-def default_tracing_exporter():
+def default_tracing_exporter() -> List[SimpleSpanProcessor]:
     os.makedirs("/tmp/spans", exist_ok=True)
     return [
         SimpleSpanProcessor(
@@ -345,15 +345,38 @@ def default_tracing_exporter():
     ]
 
 
-def import_tracing_exporter(tracing_config: TracingConfig) -> Any:
+def validate_tracing_exporter(func: Callable):
+
+    if inspect.isfunction(func) is False:
+        raise TypeError("Tracing exporter must be called on a function.")
+
+    if not isinstance(func, (Callable, str)):
+        raise TypeError(
+            f'Got invalid type "{type(func)}" for '
+            "exporter_def. Expected exporter_def to be a "
+            "function."
+        )
+
+    output = func()
+    if not isinstance(output, List[SimpleSpanProcessor]):
+        raise TypeError("Output needs to be of type List[SimpleSpanProcessor]")
+
+
+def validate_and_import_tracing_exporter(tracing_config: TracingConfig) -> Any:
     if not tracing_config or tracing_config.enable_tracing is False:
         return None
 
-    # If tracing is enabled, but an export path is not set
-    # Use the default tracing exporter
+    # Import, validate, and serialize tracing exporter
     if tracing_config.export_path:
-        return import_attr(tracing_config.export_path)
+        tracing_exporter = import_attr(tracing_config.export_path)
+        validate_tracing_exporter(tracing_exporter)
+        return pickle_dumps(
+            tracing_exporter,
+            f"Could not serialize the exporter {repr(tracing_exporter)}",
+        )
     else:
+        # If tracing is enabled, but an export path is not set
+        # Use the default tracing exporter
         return pickle_dumps(
             default_tracing_exporter,
             f"Could not serialize the exporter {repr(default_tracing_exporter)}",
