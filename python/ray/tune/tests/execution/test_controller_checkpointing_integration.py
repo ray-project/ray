@@ -8,10 +8,8 @@ import pytest
 import sys
 import time
 
-from functools import partial
 
 import ray
-from freezegun import freeze_time
 from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
@@ -276,7 +274,7 @@ def test_checkpoint_num_to_keep(
     assert len(cp_dirs) == 2, f"Checkpoint dirs: {cp_dirs}"
 
     # Re-instantiate trial runner and resume
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
@@ -429,9 +427,7 @@ def test_checkpoint_user_checkpoint(
         {"TUNE_RESULT_BUFFER_LENGTH": "1", "TUNE_MAX_PENDING_TRIALS_PG": "1"},
     ):
         runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
-            storage=STORAGE,
-            checkpoint_period=0,
+            resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
         )
         runner.add_trial(
             Trial("__fake", config={"user_checkpoint_freq": 2}, storage=STORAGE)
@@ -454,6 +450,7 @@ def test_checkpoint_user_checkpoint(
         runner.step()
 
         assert trials[0].has_checkpoint()
+        runner.checkpoint(force=True, wait=True)
 
         runner2 = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),
@@ -560,18 +557,9 @@ def test_checkpoint_auto_period(
         assert runner._checkpoint_manager._checkpoint_period > 38.0
 
 
-@pytest.mark.skip(
-    "TODO(justinvyu): We should remove forceful checkpointing based on num_to_keep."
-)
-@pytest.mark.parametrize(
-    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
-)
-def test_checkpoint_force_with_num_to_keep(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
-):
+def test_checkpoint_force_with_num_to_keep(ray_start_4_cpus_2_gpus_extra, tmp_path):
     """Test that cloud syncing is forced if one of the trials has made more
     than num_to_keep checkpoints since last sync.
-
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testCloudCheckpointForceWithNumToKeep
     """
@@ -579,16 +567,14 @@ def test_checkpoint_force_with_num_to_keep(
     # Needed to avoid infinite recursion error on CI runners
     storage.syncer.__getstate__ = lambda *a, **kw: {}
 
-    with mock.patch.dict(
-        os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
-    ), mock.patch.object(storage.syncer, "sync_up") as sync_up:
+    with mock.patch.object(storage.syncer, "sync_up") as sync_up:
         num_to_keep = 2
         checkpoint_config = CheckpointConfig(
             num_to_keep=num_to_keep, checkpoint_frequency=1
         )
 
         runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
+            resource_manager_factory=lambda: PlacementGroupResourceManager(),
             storage=storage,
             checkpoint_period=100,  # only rely on force syncing
             trial_checkpoint_config=checkpoint_config,
@@ -616,8 +602,11 @@ def test_checkpoint_force_with_num_to_keep(
         with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
             while not runner.is_finished():
                 runner.step()
-        assert any("syncing has been triggered multiple" in x for x in buffer)
 
+        assert any(
+            "Experiment state snapshotting has been triggered multiple times" in x
+            for x in buffer
+        )
         # We should sync 6 times:
         # The first checkpoint happens when the experiment starts,
         # since no checkpoints have happened yet
@@ -628,104 +617,74 @@ def test_checkpoint_force_with_num_to_keep(
         assert sync_up.call_count == 6
 
 
-@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
-@pytest.mark.parametrize(
-    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
-)
-def test_checkpoint_forced_cloud_sync_timeout(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+def test_checkpoint_sync_up_timeout(
+    ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch
 ):
-    """Test that trial runner experiment checkpointing with forced cloud syncing
-    times out correctly when the sync process hangs.
+    """Test that trial runner experiment checkpointing times out correctly.
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testForcedCloudCheckpointSyncTimeout
     """
-    storage = mock_storage_context()
+    storage = mock_storage_context(sync_config=ray.train.SyncConfig(sync_timeout=0.5))
+    monkeypatch.setenv("TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "0.25")
 
-    storage.syncer.sync_period = 60
-    storage.syncer.sync_timeout = 0.001
-
-    def _hanging_sync_up_command(*args, **kwargs):
+    def _hanging_upload_to_fs_path(*args, **kwargs):
         time.sleep(200)
 
-    def _sync_up_command(self, local_path: str, uri: str, exclude=None):
-        return _hanging_sync_up_command, {}
+    monkeypatch.setattr(
+        ray.train._internal.storage,
+        "_upload_to_fs_path",
+        _hanging_upload_to_fs_path,
+    )
 
-    with mock.patch.object(storage.syncer, "_sync_up_command") as sync_up_cmd:
-        sync_up_cmd.side_effect = partial(_sync_up_command, storage.syncer)
-        runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
-            storage=storage,
-        )
+    runner = TuneController(
+        resource_manager_factory=lambda: PlacementGroupResourceManager(),
+        storage=storage,
+    )
 
-        # Checkpoint for the first time starts the first sync in the background
+    # Start a hanging sync that should not block the controller
+    runner.checkpoint()
+
+    buffer = []
+    logger = logging.getLogger("ray.tune.execution.experiment_state")
+    with mock.patch.object(logger, "error", lambda x, **kwargs: buffer.append(x)):
+        with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
+            runner.checkpoint(force=True, wait=True)
+
+    # We should see a log about the timeout
+    assert any("Saving experiment state to storage" in x for x in buffer)
+    # We should also have a warning about the slow upload
+    assert any("may be a performance bottleneck" in x for x in buffer)
+
+
+def test_checkpoint_sync_up_error(ray_start_4_cpus_2_gpus_extra, tmp_path, monkeypatch):
+    """Test that trial runner experiment checkpointing handles errors correctly."""
+    storage = mock_storage_context()
+
+    def _failing_upload_to_fs_path(*args, **kwargs):
+        raise RuntimeError("Upload failing...")
+
+    monkeypatch.setattr(
+        ray.train._internal.storage,
+        "_upload_to_fs_path",
+        _failing_upload_to_fs_path,
+    )
+
+    runner = TuneController(
+        resource_manager_factory=lambda: PlacementGroupResourceManager(),
+        storage=storage,
+    )
+
+    # Launching a failing upload task should not crash the controller / main thread
+    runner.checkpoint()
+
+    buffer = []
+    logger = logging.getLogger("ray.tune.execution.experiment_state")
+    with mock.patch.object(logger, "error", lambda x, **kwargs: buffer.append(x)):
         runner.checkpoint(force=True)
-        assert sync_up_cmd.call_count == 1
 
-        buffer = []
-        logger = logging.getLogger("ray.tune.execution.experiment_state")
-        with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
-            # The second checkpoint will log a warning about the previous sync
-            # timing out. Then, it will launch a new sync process in the background.
-            runner.checkpoint(force=True)
-        assert any("timed out" in x for x in buffer)
-        assert sync_up_cmd.call_count == 2
-
-
-@pytest.mark.skip("TODO(justinvyu): Handle hanging/failing uploads.")
-@pytest.mark.parametrize(
-    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
-)
-def test_checkpoint_periodic_cloud_sync_timeout(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
-):
-    """Test that trial runner experiment checkpointing with the default periodic
-    cloud syncing times out and retries correctly when the sync process hangs.
-
-    Legacy test: test_trial_runner_3.py::TrialRunnerTest::
-        testPeriodicCloudCheckpointSyncTimeout
-    """
-    storage = mock_storage_context()
-
-    storage.syncer.sync_period = 60
-    storage.syncer.sync_timeout = 0.5
-
-    def _hanging_sync_up_command(*args, **kwargs):
-        time.sleep(200)
-
-    def _sync_up_command(self, local_path: str, uri: str, exclude=None):
-        return _hanging_sync_up_command, {}
-
-    with mock.patch.object(
-        storage.syncer, "_sync_up_command"
-    ) as sync_up_cmd, freeze_time() as frozen:
-        sync_up_cmd.side_effect = partial(_sync_up_command, storage.syncer)
-        runner = TuneController(
-            resource_manager_factory=lambda: resource_manager_cls(),
-            storage=storage,
-        )
-
-        runner.checkpoint()
-        assert sync_up_cmd.call_count == 1
-
-        frozen.tick(storage.syncer.sync_period / 2)
-        # Cloud sync has already timed out, but we shouldn't retry until
-        # the next sync_period
-        runner.checkpoint()
-        assert sync_up_cmd.call_count == 1
-
-        frozen.tick(storage.syncer.sync_period / 2)
-        # We've now reached the sync_period - a new sync process should be
-        # started, with the old one timing out
-        buffer = []
-        logger = logging.getLogger("ray.train._internal.syncer")
-        with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
-            runner.checkpoint()
-        assert any(
-            "did not finish running within the timeout" in x for x in buffer
-        ), buffer
-        assert sync_up_cmd.call_count == 2
+    # We should see a log about the failure
+    assert any("Saving experiment state to storage" in x for x in buffer)
 
 
 if __name__ == "__main__":

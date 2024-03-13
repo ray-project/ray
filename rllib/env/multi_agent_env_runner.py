@@ -8,13 +8,14 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import ModelWeights
+from ray.rllib.utils.typing import EpisodeID, ModelWeights
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
@@ -33,6 +34,15 @@ class MultiAgentEnvRunner(EnvRunner):
         """
         super().__init__(config=config)
 
+        # Raise an Error, if the provided config is not a multi-agent one.
+        if not self.config.is_multi_agent():
+            raise ValueError(
+                f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
+                "setup is not multi-agent! Try adding multi-agent information to your "
+                "AlgorithmConfig via calling the `config.multi_agent(policies=..., "
+                "policy_mapping_fn=...)`."
+            )
+
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
 
@@ -40,48 +50,13 @@ class MultiAgentEnvRunner(EnvRunner):
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
         # Create the vectorized gymnasium env.
-
-        # Register env for the local context.
-        # Note, `gym.register` has to be called on each worker.
-        if isinstance(self.config.env, str) and _global_registry.contains(
-            ENV_CREATOR, self.config.env
-        ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                self.config.env_config,
-            )
-
-        else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_context=self.config.env_config,
-                env_descriptor=self.config.env,
-            )
-        gym.register(
-            "rllib-multi-agent-env-runner-v0",
-            entry_point=entry_point,
-            disable_env_checker=True,
-        )
-
-        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
-        self.env = gym.make("rllib-multi-agent-env-runner-v0")
+        self.env: Optional[gym.Wrapper] = None
+        self.num_envs: int = 0
+        self._make_env()
 
         # Global counter for environment steps from all workers. This is
         # needed for schedulers used by `RLModule`s.
         self.global_num_env_steps_sampled = 0
-
-        # Create the vectorized gymnasium env.
-        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
-            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
-            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
-        )
-
-        # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            env=self.env,
-            env_config=self.config.env_config,
-        )
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
@@ -107,7 +82,7 @@ class MultiAgentEnvRunner(EnvRunner):
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
-            List[MultiAgentEpisode]
+            EpisodeID, List[MultiAgentEpisode]
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
@@ -119,6 +94,7 @@ class MultiAgentEnvRunner(EnvRunner):
         num_episodes: int = None,
         explore: bool = None,
         random_actions: bool = False,
+        force_reset: bool = False,
         with_render_data: bool = False,
     ) -> List[MultiAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
@@ -137,6 +113,10 @@ class MultiAgentEnvRunner(EnvRunner):
             random_actions: If True, actions will be sampled randomly (from the action
                 space of the environment). If False (default), actions or action
                 distribution parameters are computed by the RLModule.
+            force_reset: Whether to force-reset all (vector) environments before
+                sampling. Useful if you would like to collect a clean slate of new
+                episodes via this call. Note that when sampling n episodes
+                (`num_episodes != None`), this is fixed to True.
             with_render_data: If True, will call `render()` on the environment and
                 collect returned images.
 
@@ -145,10 +125,10 @@ class MultiAgentEnvRunner(EnvRunner):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # If no execution details are provided, use the config to try to infer the
+        # desired timesteps/episodes to sample and exploration behavior.
         if explore is None:
             explore = self.config.explore
-
-        # If no execution details are provided, use the config.
         if num_timesteps is None and num_episodes is None:
             if self.config.batch_mode == "truncate_episodes":
                 num_timesteps = self.config.get_rollout_fragment_length(
@@ -159,20 +139,25 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Sample n timesteps.
         if num_timesteps is not None:
-            return self._sample_timesteps(
+            samples = self._sample_timesteps(
                 num_timesteps=num_timesteps,
                 explore=explore,
                 random_actions=random_actions,
-                force_reset=False,
+                force_reset=force_reset,
             )
         # Sample m episodes.
         else:
-            return self._sample_episodes(
+            samples = self._sample_episodes(
                 num_episodes=num_episodes,
                 explore=explore,
                 random_actions=random_actions,
                 with_render_data=with_render_data,
             )
+
+        # Make the `on_sample_end` callback.
+        self._callbacks.on_sample_end(env_runner=self, samples=samples)
+
+        return samples
 
     def _sample_timesteps(
         self,
@@ -205,6 +190,11 @@ class MultiAgentEnvRunner(EnvRunner):
             # Create n new episodes and make the `on_episode_created` callbacks.
             self._episode = self._new_episode()
             self._make_on_episode_callback("on_episode_created")
+
+            # Erase all cached ongoing episodes (these will never be completed and
+            # would thus never be returned/cleaned by `get_metrics` and cause a memory
+            # leak).
+            self._ongoing_episodes_for_metrics.clear()
 
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
@@ -350,7 +340,7 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Create a new episode instance.
                 self._episode = self._new_episode()
-                self._make_on_episode_callback("on_episode_created", self._episode)
+                self._make_on_episode_callback("on_episode_created")
 
                 # Reset the environment.
                 obs, infos = self.env.reset()
@@ -676,6 +666,56 @@ class MultiAgentEnvRunner(EnvRunner):
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
+
+    def _make_env(self):
+        """Creates a MultiAgentEnv (is-a gymnasium env)."""
+        env_ctx = self.config.env_config
+        if not isinstance(env_ctx, EnvContext):
+            env_ctx = EnvContext(
+                env_ctx,
+                worker_index=self.worker_index,
+                num_workers=self.config.num_rollout_workers,
+                remote=self.config.remote_worker_envs,
+            )
+
+        # Register env for the local context.
+        # Note, `gym.register` has to be called on each worker.
+        if isinstance(self.config.env, str) and _global_registry.contains(
+            ENV_CREATOR, self.config.env
+        ):
+            entry_point = partial(
+                _global_registry.get(ENV_CREATOR, self.config.env),
+                env_ctx,
+            )
+
+        else:
+            entry_point = partial(
+                _gym_env_creator,
+                env_descriptor=self.config.env,
+                env_context=env_ctx,
+            )
+        gym.register(
+            "rllib-multi-agent-env-v0",
+            entry_point=entry_point,
+            disable_env_checker=True,
+        )
+
+        # Perform actual gym.make call.
+        self.env = gym.make("rllib-multi-agent-env-v0")
+        self.num_envs = 1
+
+        # Create the MultiAgentEnv (is-a gymnasium env).
+        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
+            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
+            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
+        )
+
+        # Call the `on_environment_created` callback.
+        self._callbacks.on_environment_created(
+            env_runner=self,
+            env=self.env,
+            env_context=env_ctx,
+        )
 
     def _make_module(self):
         # Create our own instance of the (single-agent) `RLModule` (which

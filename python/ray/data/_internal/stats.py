@@ -776,6 +776,11 @@ class DatasetStats:
         stats_summary_parents = []
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
+        streaming_exec_schedule_s = (
+            self.streaming_exec_schedule_s.get()
+            if self.streaming_exec_schedule_s
+            else 0
+        )
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -788,7 +793,16 @@ class DatasetStats:
             self.global_bytes_spilled,
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
+            streaming_exec_schedule_s,
         )
+
+    def runtime_metrics(self) -> str:
+        """Generate a string representing the runtime metrics of a Dataset. This is
+        a high level summary of the time spent in Ray Data code broken down by operator.
+        It also includes the time spent in the scheduler. Times are shown as the total
+        time for each operator and percentages of time are shown as a fraction of the
+        total time for the whole dataset."""
+        return self.to_summary().runtime_metrics()
 
 
 @DeveloperAPI
@@ -805,6 +819,7 @@ class DatasetStatsSummary:
     global_bytes_spilled: int
     global_bytes_restored: int
     dataset_bytes_spilled: int
+    streaming_exec_schedule_s: float
 
     def to_string(
         self,
@@ -862,7 +877,8 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(operator_uuid)
                     out += str(operators_stats_summary)
-        if DataContext.get_current().verbose_stats_logs and self.extra_metrics:
+        verbose_stats_logs = DataContext.get_current().verbose_stats_logs
+        if verbose_stats_logs and self.extra_metrics:
             indent = (
                 "\t"
                 if operators_stats_summary and operators_stats_summary.is_sub_operator
@@ -887,13 +903,7 @@ class DatasetStatsSummary:
 
             output_num_rows = self.operators_stats[-1].output_num_rows
             total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
-            total_wall_time = sum(
-                [
-                    op_stats.wall_time["sum"]
-                    for op_stats in self.operators_stats
-                    if op_stats.wall_time
-                ]
-            )
+            total_wall_time = self.get_total_wall_time()
             if total_num_out_rows and self.time_total_s and total_wall_time:
                 out += "\n"
                 out += "Dataset throughput:\n"
@@ -907,7 +917,35 @@ class DatasetStatsSummary:
                     f" {total_num_out_rows / total_wall_time} "
                     "rows/s\n"
                 )
+        if verbose_stats_logs and add_global_stats:
+            out += "\n" + self.runtime_metrics()
 
+        return out
+
+    @staticmethod
+    def _collect_parent_summaries(
+        curr: "DatasetStatsSummary",
+    ) -> List["DatasetStatsSummary"]:
+        summs = []
+        # TODO: Do operators ever have multiple parents? Do we need to deduplicate?
+        for p in curr.parents:
+            if p and p.parents:
+                summs.extend(DatasetStatsSummary._collect_parent_summaries(p))
+        return summs + [curr]
+
+    def runtime_metrics(self) -> str:
+        def fmt_line(name: str, time: float) -> str:
+            return f"* {name}: {fmt(time)} ({time / self.time_total_s * 100:.3f}%)\n"
+
+        summaries = DatasetStatsSummary._collect_parent_summaries(self)
+        out = "Runtime Metrics:\n"
+        for summ in summaries:
+            op_total_time = sum(
+                [op_stats.time_total_s for op_stats in summ.operators_stats]
+            )
+            out += fmt_line(summ.base_name, op_total_time)
+        out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
+        out += fmt_line("Total", self.time_total_s)
         return out
 
     def __repr__(self, level=0) -> str:
@@ -946,7 +984,8 @@ class DatasetStatsSummary:
         parent_wall_times = [p.get_total_wall_time() for p in self.parents]
         parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
         return parent_max_wall_time + sum(
-            ss.wall_time.get("max", 0) for ss in self.operators_stats
+            ss.wall_time.get("max", 0) if ss.wall_time else 0
+            for ss in self.operators_stats
         )
 
     def get_total_cpu_time(self) -> float:
@@ -1015,17 +1054,18 @@ class OperatorStatsSummary:
         rounded_total = 0
         time_total_s = 0
 
+        if exec_stats:
+            # Calculate the total execution time of operator as
+            # the difference between the latest end time and
+            # the earliest start time of all blocks in the operator.
+            earliest_start_time = min(s.start_time_s for s in exec_stats)
+            latest_end_time = max(s.end_time_s for s in exec_stats)
+            time_total_s = latest_end_time - earliest_start_time
+
         if is_sub_operator:
             exec_summary_str = "{} blocks produced\n".format(len(exec_stats))
         else:
             if exec_stats:
-                # Calculate the total execution time of operator as
-                # the difference between the latest end time and
-                # the earliest start time of all blocks in the operator.
-                earliest_start_time = min(s.start_time_s for s in exec_stats)
-                latest_end_time = max(s.end_time_s for s in exec_stats)
-                time_total_s = latest_end_time - earliest_start_time
-
                 rounded_total = round(time_total_s, 2)
                 if rounded_total <= 0:
                     # Handle -0.0 case.

@@ -236,29 +236,6 @@ if not MOCK:
     # __log_1_end__
 
 
-if not MOCK:
-    # __s3_start__
-    from ray import tune
-
-    tuner = tune.Tuner(
-        train_fn,
-        # ...,
-        run_config=train.RunConfig(storage_path="s3://your-s3-bucket/durable-trial/"),
-    )
-    tuner.fit()
-    # __s3_end__
-
-    # __sync_config_start__
-    from ray import train, tune
-
-    tuner = tune.Tuner(
-        train_fn,
-        run_config=train.RunConfig(storage_path="/path/to/shared/storage"),
-    )
-    tuner.fit()
-    # __sync_config_end__
-
-
 import ray
 
 ray.shutdown()

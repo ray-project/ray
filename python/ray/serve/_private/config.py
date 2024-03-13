@@ -420,14 +420,13 @@ class ReplicaConfig:
         # Configure ray_actor_options. These are the Ray options ultimately
         # passed into the replica's actor when it's created.
         self.ray_actor_options = ray_actor_options
-        self._validate_ray_actor_options()
 
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
-        self._validate_placement_group_options()
 
         self.max_replicas_per_node = max_replicas_per_node
-        self._validate_max_replicas_per_node()
+
+        self._validate()
 
         # Create resource_dict. This contains info about the replica's resource
         # needs. It does NOT set the replica's resource usage. That's done by
@@ -435,26 +434,37 @@ class ReplicaConfig:
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
 
-    def update_ray_actor_options(self, ray_actor_options):
-        self.ray_actor_options = ray_actor_options
+    def _validate(self):
         self._validate_ray_actor_options()
-        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
+        self._validate_placement_group_options()
+        self._validate_max_replicas_per_node()
 
-    def update_placement_group_options(
+        if (
+            self.max_replicas_per_node is not None
+            and self.placement_group_bundles is not None
+        ):
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            )
+
+    def update(
         self,
-        placement_group_bundles: Optional[List[Dict[str, float]]],
-        placement_group_strategy: Optional[str],
+        ray_actor_options: dict,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
     ):
+        self.ray_actor_options = ray_actor_options
+
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
-        self._validate_placement_group_options()
 
-    def update_max_replicas_per_node(
-        self,
-        max_replicas_per_node: Optional[int],
-    ):
         self.max_replicas_per_node = max_replicas_per_node
-        self._validate_max_replicas_per_node()
+
+        self._validate()
+
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
     @classmethod
     def create(

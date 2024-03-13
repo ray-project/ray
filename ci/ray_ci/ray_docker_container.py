@@ -60,7 +60,7 @@ class RayDockerContainer(DockerContainer):
             return False
         if os.environ.get("BUILDKITE_PIPELINE_ID") != POSTMERGE_PIPELINE:
             return False
-        if os.environ.get("BUILDKITE_BRANCH").startswith("releases/"):
+        if os.environ.get("BUILDKITE_BRANCH", "").startswith("releases/"):
             return True
         return (
             os.environ.get("BUILDKITE_BRANCH") == "master"
@@ -70,4 +70,4 @@ class RayDockerContainer(DockerContainer):
     def _get_image_names(self) -> List[str]:
         ray_repo = f"rayproject/{self.image_type}"
 
-        return [f"{ray_repo}:{tag}" for tag in self._get_image_tags()]
+        return [f"{ray_repo}:{tag}" for tag in self._get_image_tags(external=True)]
