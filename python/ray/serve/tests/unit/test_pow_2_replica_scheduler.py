@@ -1084,6 +1084,23 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r2
 
+    async def test_backoff_from_least_number_of_models_replicas(self, pow_2_scheduler):
+        """
+        If no replica has the model_id, choose the least number of models replicas.
+        If those replicas cannot be scheduled to, we should fall back to all replicas.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
+        r1.set_queue_len_response(0)
+        r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+        s.update_replicas([r1, r2])
+        for _ in range(10):
+            request = fake_pending_request(model_id="m3")
+            task = loop.create_task(s.choose_replica_for_request(request))
+            assert (await task) == r1
+
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
         """
         If no replica has the model_id, we should fall back to normal procedure.
