@@ -64,6 +64,15 @@ Text
 
    read_text
 
+Text
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_avro
+
 Images
 ------
 
