@@ -264,7 +264,7 @@ if __name__ == "__main__":
                 # If we have evaluation workers, use their rewards.
                 # This is useful for offline learning tests, where
                 # we evaluate against an actual environment.
-                check_eval = exp["config"].get("evaluation_interval", None) is not None
+                check_eval = bool(exp["config"].get("evaluation_interval"))
                 reward_mean = (
                     t.last_result["evaluation"]["sampler_results"][
                         "episode_reward_mean"

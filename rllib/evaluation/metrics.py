@@ -274,6 +274,7 @@ def summarize_episodes(
         episode_media=dict(episode_media),
         num_episodes_this_iter=len(new_episodes),
         episode_agent_steps_mean=episode_agent_steps_mean,
+        episodes_timesteps_total=sum(episode_lengths),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
         policy_reward_mean=policy_reward_mean,

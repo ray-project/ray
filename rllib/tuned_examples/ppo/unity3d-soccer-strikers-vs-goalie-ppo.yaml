@@ -41,5 +41,5 @@ unity3d-soccer-strikers-vs-goalie-ppo:
           fcnet_hiddens: [512, 512]
         # If no executable is provided (use Unity3D editor), do not evaluate,
         # b/c the editor only allows one connection at a time.
-        evaluation_interval: 0
+        evaluation_interval: null
         evaluation_duration: 1
