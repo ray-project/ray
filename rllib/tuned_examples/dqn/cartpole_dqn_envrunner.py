@@ -1,5 +1,7 @@
-import ray
+# import ray
+from itertools import product
 from ray import train, tune
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
@@ -37,9 +39,13 @@ config = (
             "beta": 0.4,
         },
         double_q=True,
-        num_atoms=1,
-        dueling=False,
-        noisy=False,
+        num_atoms=10,
+        noisy=True,
+        dueling=True,
+        # double_q=tune.grid_search([False, True]),
+        # num_atoms=tune.grid_search([1, 10]),
+        # dueling=tune.grid_search([False, True]),
+        # noisy=tune.grid_search([False, True]),
         sigma0=0.5,
         lr=0.0005,
     )
@@ -47,22 +53,38 @@ config = (
 
 stop = {
     "sampler_results/episode_reward_mean": 450.0,
-    "timesteps_total": 10000,
+    "timesteps_total": 50000,
 }
 
-ray.init(local_mode=True)
-tuner = tune.Tuner(
-    "DQN",
-    param_space=config,
-    run_config=train.RunConfig(
-        stop=stop,
-        name="test_rainbow",
-    ),
-    # tune_config=tune.TuneConfig(
-    #     num_samples=10,
-    # )
-)
-tuner.fit()
+# ray.init(local_mode=True)
+
+
+for double_q, num_atoms, dueling, noisy in product(
+    *[[False, True], [1, 10], [False, True], [False, True]]
+):
+    config = config.training(
+        double_q=double_q, num_atoms=num_atoms, dueling=dueling, noisy=noisy
+    )
+    tuner = tune.Tuner(
+        "DQN",
+        param_space=config,
+        run_config=train.RunConfig(
+            stop=stop,
+            name="dqn_new_stack",
+            callbacks=[
+                WandbLoggerCallback(
+                    api_key_file="data/wandb/wandb_api_key.txt",
+                    project="DQN",
+                    name="new_stack",
+                    log_config=True,
+                )
+            ],
+        ),
+        # tune_config=tune.TuneConfig(
+        #     num_samples=10,
+        # )
+    )
+    tuner.fit()
 
 # algo = config.build()
 # for _ in range(10000):

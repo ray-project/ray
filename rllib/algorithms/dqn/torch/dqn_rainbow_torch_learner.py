@@ -55,7 +55,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             torch.gather(
                 q_curr,
                 dim=1,
-                index=batch[Columns.ACTIONS].long(),
+                index=batch[Columns.ACTIONS].view(-1, 1).long(),
             ),
             neginf=0.0,
         )
@@ -166,23 +166,19 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # Compute the weighted loss (importance sampling weights).
             total_loss = torch.mean(batch["weights"] * td_error)
         else:
-            # Choose the requested loss function. Note, in case of the Huber loss
-            # we fall back to the default of `delta=1.0`
-            loss_fn = (
-                nn.HuberLoss if self.config.td_error_loss_fn == "huber" else nn.MSELoss
-            )
-
             # Masked all Q-values with terminated next states in the targets.
-            q_next_best_masked = (
-                1.0 - batch[Columns.TERMINATEDS].float()
+            q_next_best_masked = (1.0 - batch[Columns.TERMINATEDS].float()).unsqueeze(
+                dim=1
             ) * q_next_best
 
             # Compute the RHS of the Bellman equation.
             # Detach this node from the computation graph as we do not want to
             # backpropagate through the target network when optimizing the Q loss.
             q_selected_target = (
-                batch[Columns.REWARDS]
-                + self.config.gamma ** batch["n_steps"] * q_next_best_masked
+                (
+                    batch[Columns.REWARDS] + self.config.gamma ** batch["n_steps"]
+                ).unsqueeze(dim=1)
+                * q_next_best_masked
             ).detach()
 
             # Choose the requested loss function. Note, in case of the Huber loss
@@ -202,7 +198,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             module_id,
             {
                 QF_LOSS_KEY: total_loss,
-                TD_ERROR_KEY: td_error,
+                TD_ERROR_KEY: td_error.squeeze(),
                 TD_ERROR_MEAN_KEY: torch.mean(td_error),
                 QF_MEAN_KEY: torch.mean(q_selected),
                 QF_MAX_KEY: torch.max(q_selected),
