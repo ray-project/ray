@@ -4200,6 +4200,13 @@ void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest req
   }
 }
 
+void CoreWorker::HandleDestroyExternalStorage(rpc::DestroyExternalStorageRequest request,
+                                    rpc::DestroyExternalStorageReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  options_.destroy_external_storage();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {

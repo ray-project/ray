@@ -154,6 +154,12 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
+              HandleDestroyExternalStorage,
+              (rpc::DestroyExternalStorageRequest request,
+               rpc::DestroyExternalStorageReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
               HandleExit,
               (rpc::ExitRequest request,
                rpc::ExitReply *reply,

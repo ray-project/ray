@@ -360,6 +360,10 @@ message DeleteSpilledObjectsRequest {
 
 message DeleteSpilledObjectsReply {}
 
+message DestroyExternalStorageRequest {}
+
+message DestroyExternalStorageReply {}
+
 message ExitRequest {
   /// Whether to force exit the worker, regardless of whether the core worker
   /// owns object.
@@ -474,6 +478,8 @@ service CoreWorkerService {
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
       returns (DeleteSpilledObjectsReply);
+  rpc DestroyExternalStorage(DestroyExternalStorageRequest)
+      returns (DestroyExternalStorageReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Request for a worker to exit.

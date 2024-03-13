@@ -2647,6 +2647,7 @@ void NodeManager::Stop() {
   // This never fails.
   RAY_CHECK_OK(store_client_.Disconnect());
   object_manager_.Stop();
+  local_object_manager_.DestroyExternalStorage();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
 }

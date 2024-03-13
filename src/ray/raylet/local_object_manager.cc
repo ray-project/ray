@@ -586,11 +586,27 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_d
                       [this, urls_to_delete = std::move(urls_to_delete), num_retries]() {
                         DeleteSpilledObjects(urls_to_delete, num_retries - 1);
                       },
-                      "LocaObjectManager.RetryDeleteSpilledObjects");
+                      "LocalObjectManager.RetryDeleteSpilledObjects");
                 }
               }
             });
       });
+}
+
+void LocalObjectManager::DestroyExternalStorage() {
+  io_worker_pool_.PopDeleteWorker(
+    [this](std::shared_ptr<WorkerInterface> io_worker) {
+      rpc::DestroyExternalStorageRequest request;
+      io_worker->rpc_client()->DestroyExternalStorage(
+        request,
+        [this, io_worker](const ray::Status &status, const rpc::DestroyExternalStorageReply &reply) {
+          io_worker_pool_.PushDeleteWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send destroy external storage request: "
+                << status.ToString();
+          }
+      });
+    });
 }
 
 void LocalObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {

@@ -138,6 +138,9 @@ class LocalObjectManager {
   /// invocation.
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
 
+   /// Destroy external storage
+  void DestroyExternalStorage();
+
   /// Return True if spilling is in progress.
   /// This is a narrow interface that is accessed by plasma store.
   /// We are using the narrow interface here because plasma store is running in a

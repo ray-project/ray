@@ -86,6 +86,7 @@ struct CoreWorkerOptions {
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
         delete_spilled_objects(nullptr),
+        destroy_external_storage(nullptr),
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
@@ -159,6 +160,8 @@ struct CoreWorkerOptions {
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;
+  /// Function that destroys external storage
+  std::function<void()> destroy_external_storage;
   /// Function to call on error objects never retrieved.
   std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.

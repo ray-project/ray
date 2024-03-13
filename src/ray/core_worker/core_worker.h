@@ -1288,6 +1288,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   rpc::DeleteSpilledObjectsReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleDestroyExternalStorage(rpc::DestroyExternalStorageRequest request,
+                                    rpc::DestroyExternalStorageReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   // Make the this worker exit.
   // This request fails if the core worker owns any object.
   void HandleExit(rpc::ExitRequest request,
