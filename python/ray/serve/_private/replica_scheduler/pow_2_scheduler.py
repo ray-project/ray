@@ -679,7 +679,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
 
-                    backoff_index += 1
+                    backoff_index = min(
+                        backoff_index + 1, len(self.backoff_sequence_s) - 1
+                    )
 
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
