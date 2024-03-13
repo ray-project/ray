@@ -240,8 +240,6 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
     """
-    print("======================================")
-    cleanup_cluster(cluster_config)
 
     print("======================================")
     print("Starting new cluster...")
@@ -344,6 +342,7 @@ if __name__ == "__main__":
         override_docker_image(config_yaml, docker_override_image)
 
     provider_type = config_yaml.get("provider", {}).get("type")
+    config_yaml["provider"]["cache_stopped_nodes"] = False
     if provider_type == "aws":
         download_ssh_key_aws()
     elif provider_type == "gcp":

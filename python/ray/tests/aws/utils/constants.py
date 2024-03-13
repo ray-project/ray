@@ -115,7 +115,12 @@ DEFAULT_SG = {
             "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
         }
     ],
-    "Tags": [],
+    "Tags": [
+        {
+            "Key": ray.autoscaler._private.aws.config.RAY,
+            "Value": "true",
+        }
+    ],
 }
 
 # Secondary security group settings after creation

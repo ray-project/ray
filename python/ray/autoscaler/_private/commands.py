@@ -560,6 +560,8 @@ def teardown_cluster(
             cli_logger.print(
                 "{} nodes remaining after {} second(s).", cf.bold(len(A)), POLL_INTERVAL
             )
+
+        provider.cleanup(config)
         cli_logger.success("No nodes remaining.")
 
 

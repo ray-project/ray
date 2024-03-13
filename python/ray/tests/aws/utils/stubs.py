@@ -140,6 +140,12 @@ def create_sg_echo(ec2_client_stub, security_group):
             "Description": security_group["Description"],
             "GroupName": security_group["GroupName"],
             "VpcId": security_group["VpcId"],
+            "TagSpecifications": [
+                {
+                    "ResourceType": "security-group",
+                    "Tags": security_group["Tags"],
+                },
+            ],
         },
         service_response={"GroupId": security_group["GroupId"]},
     )

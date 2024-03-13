@@ -16,7 +16,7 @@ from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_TAG,
     CloudwatchHelper,
 )
-from ray.autoscaler._private.aws.config import bootstrap_aws
+from ray.autoscaler._private.aws.config import RAY, bootstrap_aws
 from ray.autoscaler._private.aws.utils import (
     boto_exception_handler,
     client_cache,
@@ -521,6 +521,49 @@ class AWSNodeProvider(NodeProvider):
             if CLOUDWATCH_AGENT_INSTALLED_AMI_TAG in image_name:
                 cwa_installed = True
         return cwa_installed
+
+    def delete_security_groups(self, id):
+        retry = 0
+        while retry < 10:
+            try:
+                response = self.ec2.meta.client.describe_security_groups(
+                    GroupIds=[id]
+                )
+                for security_group in response["SecurityGroups"]:
+                    for tags in security_group.get("Tags", []):
+                        if tags["Key"] == RAY:
+                            self.ec2.meta.client.delete_security_group(
+                                GroupId=security_group["GroupId"]
+                            )
+                            break
+                cli_logger.print("Deleted security group {}", id)
+                return
+            except botocore.exceptions.ClientError as e:
+                if e.response['Error']['Code'] == "DependencyViolation":
+                    sleep_time = 2**retry
+                    logger.info(f"Waiting {sleep_time}s for the instance to be terminated before deleting the security group {id}")
+                    time.sleep(sleep_time)
+                    retry += 1
+                else:
+                    logger.error(f"Error deleting security group: {e}")
+                    return
+
+    def cleanup_security_groups(self, config):
+        node_types = [
+            node_type_key
+            for node_type_key, node_type in config["available_node_types"].items()
+            if "SecurityGroupIds" in node_type["node_config"]
+        ]
+        for node_type_key in node_types:
+            security_group_ids = config["available_node_types"][node_type_key][
+                "node_config"
+            ]["SecurityGroupIds"]
+            for security_group_id in security_group_ids:
+                self.delete_security_groups(security_group_id)
+
+    def cleanup(self, config):
+        if not self.cache_stopped_nodes:
+            self.cleanup_security_groups(config)
 
     def terminate_nodes(self, node_ids):
         if not node_ids:
