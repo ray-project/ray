@@ -1442,7 +1442,7 @@ class MultiAgentEpisode:
             An integer counting the number of agent steps executed during the time this
             episode instance records.
         """
-        return sum(len(eps) for eps in self.agent_episodes)
+        return sum(len(eps) for eps in self.agent_episodes.values())
 
     # TODO (sven, simon): This function can only deal with data if it does not contain
     #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
