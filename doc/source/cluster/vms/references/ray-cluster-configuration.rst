@@ -1054,7 +1054,7 @@ The user that Ray will authenticate with when launching new nodes.
 .. _cluster-configuration-msi-name:
 
 ``provider.msi_name``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
@@ -1082,7 +1082,7 @@ The user that Ray will authenticate with when launching new nodes.
 .. _cluster-configuration-msi-resource-group:
 
 ``provider.msi_resource_group``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
