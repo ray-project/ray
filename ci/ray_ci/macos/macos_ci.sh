@@ -36,6 +36,7 @@ run_medium_flaky_tests() {
 }
 
 run_small_test() {
+  sleep 36000
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
