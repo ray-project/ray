@@ -41,7 +41,7 @@ from ray.rllib.utils.serialization import (
     serialize_type,
     deserialize_type,
 )
-from ray.rllib.utils.typing import DeviceType, SampleBatchType, ViewRequirementsDict
+from ray.rllib.utils.typing import SampleBatchType, ViewRequirementsDict
 
 
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
@@ -691,7 +691,6 @@ class RLModule(abc.ABC):
     def load_state(
         self,
         dir: Union[str, pathlib.Path],
-        map_location: Optional[Union[DeviceType, str]] = None,
     ) -> None:
         """Loads the weights of an RLModule from the directory dir.
 
@@ -813,7 +812,6 @@ class RLModule(abc.ABC):
     def from_checkpoint(
         cls,
         checkpoint_dir_path: Union[str, pathlib.Path],
-        map_location: Optional[Union[DeviceType, str]] = None,
     ) -> None:
         """Loads the module from a checkpoint directory.
 
@@ -835,7 +833,7 @@ class RLModule(abc.ABC):
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        module.load_state(module_state_dir, map_location=map_location)
+        module.load_state(module_state_dir)
         return module
 
     def as_multi_agent(self) -> "MultiAgentRLModule":

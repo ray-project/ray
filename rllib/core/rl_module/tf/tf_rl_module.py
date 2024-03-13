@@ -1,10 +1,9 @@
 import pathlib
-from typing import Any, Mapping, Optional, Union
+from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import DeviceType
 
 _, tf, _ = try_import_tf()
 
@@ -73,8 +72,6 @@ class TfRLModule(tf.keras.Model, RLModule):
     def load_state(
         self,
         dir: Union[str, pathlib.Path],
-        map_location: Optional[Union[DeviceType, str]] = None,
     ) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
-        with tf.device(map_location):
-            self.load_weights(path)
+        self.load_weights(path)

@@ -48,9 +48,6 @@ TensorStructType = Union[TensorType, dict, tuple]
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
 
-# A device in a framework.
-DeviceType = Union["tf.device", "torch.device"]
-
 # A neural network
 NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
 

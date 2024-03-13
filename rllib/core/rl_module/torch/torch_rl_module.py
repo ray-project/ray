@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, List, Mapping, Optional, Tuple, Union, Type
+from typing import Any, List, Mapping, Tuple, Union, Type
 
 from packaging import version
 
@@ -11,11 +11,12 @@ from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConf
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
-from ray.rllib.utils.typing import DeviceType, NetworkType
+from ray.rllib.utils.typing import NetworkType
 
 torch, nn = try_import_torch()
 
@@ -117,16 +118,15 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
-        torch.save(self.state_dict(), path)
+        torch.save(convert_to_numpy(self.state_dict()), path)
 
     @override(RLModule)
     def load_state(
         self,
         dir: Union[str, pathlib.Path],
-        map_location: Optional[Union[DeviceType, str]] = None,
     ) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
-        self.set_state(torch.load(path, map_location=map_location))
+        self.set_state(torch.load(path))
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
