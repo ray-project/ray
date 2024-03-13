@@ -91,7 +91,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # Extract the Q-logits evaluated at the selected actions.
             # (Note, `torch.gather` should be faster than multiplication
             # with a one-hot tensor.)
-            # (32, 19)
+            # (32, 2, 10) -> (32, 10)
             q_logits_selected = torch.gather(
                 fwd_out[QF_LOGITS],
                 dim=1,

@@ -162,11 +162,12 @@ class DQNRainbowCatalog(Catalog):
             `self._encoder_config` defined by the parent class.
         """
         # Check, if we use
+        use_noisy = model_config_dict["noisy"]
         use_lstm = model_config_dict["use_lstm"]
         use_attention = model_config_dict["use_attention"]
 
         # In cases of LSTM or Attention, fall back to the basic encoder.
-        if not use_lstm and not use_attention:
+        if use_noisy and not use_lstm and not use_attention:
             # Check, if the observation space is 1D Box. Only then we can use an MLP.
             if isinstance(observation_space, Box) and len(observation_space.shape) == 1:
                 # Define the encoder hiddens.
@@ -227,7 +228,7 @@ class DQNRainbowCatalog(Catalog):
                 )
         # Otherwise return the base encoder config chosen by the parent.
         # This will choose a CNN for 3D Box and LSTM for 'use_lstm=True'.<
-        return cls.encoder_config(
+        return super()._get_encoder_config(
             observation_space=observation_space,
             action_space=action_space,
             model_config_dict=model_config_dict,

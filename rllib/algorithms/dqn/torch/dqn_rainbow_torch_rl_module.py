@@ -149,10 +149,17 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             # Add distribution artefacts to the output.
             # Distribution support.
             output[ATOMS] = qf_target_next_outs[ATOMS]
-            # Original logits from the Q-head.
-            output[QF_LOGITS] = qf_outs[QF_LOGITS]
-            # Probabilities of the Q-value distribution of the current state.
-            output[QF_PROBS] = qf_outs[QF_PROBS]
+            # If we use double Q-learning we need to chunk the outputs first.
+            if self.uses_double_q:
+                # Original logits from the Q-head.
+                output[QF_LOGITS] = torch.chunk(qf_outs[QF_LOGITS], 2, dim=0)[0]
+                # Probabilities of the Q-value distribution of the current state.
+                output[QF_PROBS] = torch.chunk(qf_outs[QF_PROBS], 2, dim=0)[0]
+            else:
+                # Original logits from the Q-head.
+                output[QF_LOGITS] = qf_outs[QF_LOGITS]
+                # Probabilities of the Q-value distribution of the current state.
+                output[QF_PROBS] = qf_outs[QF_PROBS]
             # Probabilities of the target Q-value distribution of the next state.
             output[QF_TARGET_NEXT_PROBS] = qf_target_next_outs[QF_PROBS]
 

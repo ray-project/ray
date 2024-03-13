@@ -1,4 +1,4 @@
-# import ray
+import ray
 from itertools import product
 from ray import train, tune
 from ray.air.integrations.wandb import WandbLoggerCallback
@@ -38,9 +38,9 @@ config = (
             "alpha": 0.6,
             "beta": 0.4,
         },
-        double_q=True,
+        double_q=False,
         num_atoms=10,
-        noisy=True,
+        noisy=False,
         dueling=True,
         # double_q=tune.grid_search([False, True]),
         # num_atoms=tune.grid_search([1, 10]),
@@ -56,37 +56,59 @@ stop = {
     "timesteps_total": 50000,
 }
 
-# ray.init(local_mode=True)
+ray.init(local_mode=True)
+# tuner = tune.Tuner(
+#     "DQN",
+#     param_space=config,
+#     run_config=train.RunConfig(
+#         stop=stop,
+#         name="dqn_new_stack_fixed",
+#         #callbacks=[
+#             # WandbLoggerCallback(
+#             #     api_key_file="data/wandb/wandb_api_key.txt",
+#             #     project="DQN",
+#             #     name="new_stack_fixed",
+#             #     log_config=True,
+#             # )
+#         #],
+#     ),
+#     # tune_config=tune.TuneConfig(
+#     #     num_samples=10,
+#     # )
+# )
+# tuner.fit()
 
+# for double_q, num_atoms, dueling, noisy in product(
+#     *[[False, True], [1, 10], [False, True], [False, True]]
+# ):
+#     config = config.training(
+#         double_q=double_q, num_atoms=num_atoms, dueling=dueling, noisy=noisy
+#     )
+#     tuner = tune.Tuner(
+#         "DQN",
+#         param_space=config,
+#         run_config=train.RunConfig(
+#             stop=stop,
+#             name="dqn_new_stack",
+#             callbacks=[
+#                 WandbLoggerCallback(
+#                     api_key_file="data/wandb/wandb_api_key.txt",
+#                     project="DQN",
+#                     name="new_stack",
+#                     log_config=True,
+#                 )
+#             ],
+#         ),
+#         # tune_config=tune.TuneConfig(
+#         #     num_samples=10,
+#         # )
+#     )
+#     tuner.fit()
 
-for double_q, num_atoms, dueling, noisy in product(
-    *[[False, True], [1, 10], [False, True], [False, True]]
-):
-    config = config.training(
-        double_q=double_q, num_atoms=num_atoms, dueling=dueling, noisy=noisy
-    )
-    tuner = tune.Tuner(
-        "DQN",
-        param_space=config,
-        run_config=train.RunConfig(
-            stop=stop,
-            name="dqn_new_stack",
-            callbacks=[
-                WandbLoggerCallback(
-                    api_key_file="data/wandb/wandb_api_key.txt",
-                    project="DQN",
-                    name="new_stack",
-                    log_config=True,
-                )
-            ],
-        ),
-        # tune_config=tune.TuneConfig(
-        #     num_samples=10,
-        # )
-    )
-    tuner.fit()
-
-# algo = config.build()
-# for _ in range(10000):
-#     results = algo.train()
-#     print(f"R={results['sampler_results']['episode_reward_mean']}")
+algo = config.build()
+for _ in range(stop["timesteps_total"]):
+    results = algo.train()
+    R = results['sampler_results']['episode_reward_mean']
+    print(f"R={results['sampler_results']['episode_reward_mean']}")
+    if R >= stop["sampler_results/episode_reward_mean"]:
+        break
