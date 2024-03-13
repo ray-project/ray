@@ -1,11 +1,12 @@
-import os
-import socket
-from contextlib import closing
-import logging
-import queue
-import threading
-from typing import Optional
 import copy
+import logging
+import os
+import queue
+import socket
+import threading
+from contextlib import closing
+from typing import Optional
+
 import numpy as np
 
 from ray.air.constants import _ERROR_REPORT_TIMEOUT
