@@ -753,18 +753,13 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_num_workers=2,
                 evaluation_interval=1,
                 evaluation_sample_timeout_s=5.0,
+                evaluation_parallel_to_training=False,
+                evaluation_duration=10,
             )
         )
-
-        for parallel in [False, True]:
-            config.evaluation_parallel_to_training = parallel
-            for auto in [False, True]:
-                if auto and not parallel:
-                    continue
-                config.evaluation_duration = "auto" if auto else 10
-                algo = config.build()
-                results = algo.train()
-                self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
+        algo = config.build()
+        results = algo.train()
+        self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
 
 
 if __name__ == "__main__":

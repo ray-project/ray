@@ -938,17 +938,18 @@ class Algorithm(Trainable, AlgorithmBase):
         # We will use a user provided evaluation function.
         if self.config.custom_evaluation_function:
             eval_results = self._evaluate_with_custom_eval_function()
-        else:
-            # There is no eval WorkerSet -> Run on local EnvRunner.
-            if self.evaluation_workers is None:
+        # There is no eval WorkerSet -> Run on local EnvRunner.
+        elif self.evaluation_workers is None:
                 (
                     eval_results,
                     env_steps,
                     agent_steps,
                     batches,
                 ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
+        else:
+            self.evaluation_workers.probe_unhealthy_workers()
             # There is only a local eval EnvRunner -> Run on that.
-            elif self.evaluation_workers.num_healthy_remote_workers() == 0:
+            if self.evaluation_workers.num_healthy_remote_workers() == 0:
                 (
                     eval_results,
                     env_steps,
