@@ -947,7 +947,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 batches,
             ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
         else:
-            self.evaluation_workers.probe_unhealthy_workers()
+            #self.evaluation_workers.probe_unhealthy_workers()
             # There is only a local eval EnvRunner -> Run on that.
             if self.evaluation_workers.num_healthy_remote_workers() == 0:
                 (
@@ -3026,6 +3026,9 @@ class Algorithm(Trainable, AlgorithmBase):
             if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
                 tf1.enable_eager_execution()
 
+            # With training step done. Try to bring failed workers back.
+            self.restore_workers(self.workers)
+
             results = None
             # Create a step context ...
             with TrainIterCtx(algo=self) as train_iter_ctx:
@@ -3035,9 +3038,6 @@ class Algorithm(Trainable, AlgorithmBase):
                     # Try to train one step.
                     with self._timers[TRAINING_STEP_TIMER]:
                         results = self.training_step()
-
-            # With training step done. Try to bring failed workers back.
-            self.restore_workers(self.workers)
 
         return results, train_iter_ctx
 
@@ -3057,6 +3057,9 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the evaluation call.
         """
+        if self.evaluation_workers is not None:
+            self.restore_workers(self.evaluation_workers)
+
         # Run `self.evaluate()` only once per training iteration.
         with self._timers[EVALUATION_ITERATION_TIMER]:
             eval_results = self.evaluate(parallel_train_future=parallel_train_future)
@@ -3067,7 +3070,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # After evaluation, do a round of health check on remote eval workers to see if
         # any of the failed workers are back.
         if self.evaluation_workers is not None:
-            self.restore_workers(self.evaluation_workers)
+            #self.restore_workers(self.evaluation_workers)
 
             # Add number of healthy evaluation workers after this iteration.
             eval_results["evaluation"][

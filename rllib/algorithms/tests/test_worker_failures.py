@@ -15,6 +15,7 @@ from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObser
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.tune.registry import register_env
 
