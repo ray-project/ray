@@ -97,10 +97,11 @@ class Counter(metrics.Counter):
     .. note::
 
         Before Ray 2.10, this exports a Prometheus gauge metric instead of
-        a counter metric, which is wrong.
-        Since 2.10, this exports both counter (with a suffix "_total") and
-        gauge metrics (for bug compatibility).
-        Use `RAY_EXPORT_COUNTER_AS_GAUGE=0` to disable exporting the gauge metric.
+        a counter metric.
+        Starting in Ray 2.10, this exports both the proper counter (with a suffix "_total") and
+        gauge metric (for compatibility).
+        The gauge metric will be removed in a future Ray release and you can set
+        `RAY_EXPORT_COUNTER_AS_GAUGE=0` to disable exporting it in the meantime.
 
     Args:
         name: Name of the metric.
