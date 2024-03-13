@@ -151,6 +151,28 @@ def ray_start_stop():
     )
 
 
+@pytest.fixture(scope="function")
+def ray_start_stop_in_specific_directory(request):
+    # Change working directory so Ray will start in the correct directory.
+    working_dir = request.param
+    os.chdir(working_dir)
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    try:
+        yield
+    finally:
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(
+            check_ray_stop,
+            timeout=15,
+        )
+
+
 @pytest.fixture
 def ray_instance(request):
     """Starts and stops a Ray instance for this test.

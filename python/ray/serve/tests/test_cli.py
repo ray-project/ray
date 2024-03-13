@@ -701,22 +701,21 @@ def test_deploy_from_import_path(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_with_access_to_current_directory():
+@pytest.mark.parametrize(
+    "ray_start_stop_in_specific_directory",
+    [
+        os.path.join(os.path.dirname(__file__), "test_config_files"),
+    ],
+    indirect=True,
+)
+def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_directory):
     """Test serve deploy with using current directory is able to deploy the app.
 
     We had issue where dashboard client no longer has the current working added to
     the sys.path and unable to deploy Serve application in the current directory. This
     test will ensure the files in the current directory can be accessed and deployed.
     """
-    # Stop any existing ray session if any.
-    subprocess.check_output(["ray", "stop"])
-
-    # Change the current working directory to where the config files are located.
-    test_dir = os.path.dirname(__file__)
-    os.chdir(f"{test_dir}/test_config_files")
-
-    # Start a new ray session and deploy the application.
-    subprocess.check_output(["ray", "start", "--head"])
+    # Deploy Serve application with a config in the current directory.
     subprocess.check_output(["serve", "deploy", "use_current_working_directory.yaml"])
 
     # Ensure serve deploy eventually succeeds.
@@ -726,9 +725,6 @@ def test_deploy_with_access_to_current_directory():
         return True
 
     wait_for_condition(check_deploy_successfully, timeout=5)
-
-    # Clean up ray session.
-    subprocess.check_output(["ray", "stop"])
 
 
 if __name__ == "__main__":
