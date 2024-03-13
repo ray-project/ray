@@ -169,14 +169,15 @@ def ray_start_stop_in_specific_directory(request):
     try:
         yield
     finally:
+        # Change the directory back to the original one.
+        os.chdir(original_working_dir)
+        print(f"\nChanged working directory back to {original_working_dir}\n")
+
         subprocess.check_output(["ray", "stop", "--force"])
         wait_for_condition(
             check_ray_stop,
             timeout=15,
         )
-        # Change the directory back to the original one.
-        os.chdir(original_working_dir)
-        print(f"\nChanged working directory back to {original_working_dir}\n")
 
 
 @pytest.fixture
