@@ -959,13 +959,16 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
             # There are healthy remote evaluation workers -> Run on these.
             elif self.evaluation_workers.num_healthy_remote_workers() > 0:
+                # Running in automatic duration mode (parallel with training step).
                 if self.config.evaluation_duration == "auto":
+                    assert parallel_train_future is not None
                     (
                         eval_results,
                         env_steps,
                         agent_steps,
                         batches,
                     ) = self._evaluate_with_auto_duration(parallel_train_future)
+                # Running with a fixed amount of data to sample.
                 else:
                     (
                         eval_results,
@@ -1298,10 +1301,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
+                # Make sure we properly time out if we have not received any results
+                # for more than `time_out` seconds.
                 time_now = time.time()
                 if not results and time_now - t_last_result > time_out:
                     break
-                t_last_result = time_now
+                elif results:
+                    t_last_result = time_now
                 for wid, (env_s, ag_s, met, iter) in results:
                     if iter != self.iteration:
                         continue
@@ -1337,10 +1343,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 results = self.evaluation_workers.fetch_ready_async_reqs(
                     mark_healthy=True, return_obj_refs=False, timeout_seconds=0.01
                 )
+                # Make sure we properly time out if we have not received any results
+                # for more than `time_out` seconds.
                 time_now = time.time()
-                if not results and time.time() - t_last_result > time_out:
+                if not results and time_now - t_last_result > time_out:
                     break
-                t_last_result = time_now
+                elif results:
+                    t_last_result = time_now
                 for wid, (batch, metrics, iter) in results:
                     if iter != self.iteration:
                         continue

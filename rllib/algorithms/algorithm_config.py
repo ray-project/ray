@@ -443,7 +443,7 @@ class AlgorithmConfig(_Config):
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
-        self.evaluation_sample_timeout_s = 180.0
+        self.evaluation_sample_timeout_s = 120.0
         self.evaluation_parallel_to_training = False
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
@@ -2074,11 +2074,11 @@ class AlgorithmConfig(_Config):
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps". Note that this
                 setting is ignored if `evaluation_duration="auto"`.
-            evaluation_sample_timeout_s: The timeout (in seconds) for the ray.get call
-                to the remote evaluation worker(s) `sample()` method. After this time,
-                the user will receive a warning and instructions on how to fix the
-                issue. This could be either to make sure the episode ends, increasing
-                the timeout, or switching to `evaluation_duration_unit=timesteps`.
+            evaluation_sample_timeout_s: The timeout (in seconds) for evaluation workers
+                to sample a complete episode in the case your config settings are:
+                `evaluation_duration != auto` and `evaluation_duration_unit=episode`.
+                After this time, the user will receive a warning and instructions on how
+                to fix the issue.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
                 the `Algorithm.training_step()` call, using threading. Default=False.
                 E.g. for evaluation_interval=1 -> In every call to `Algorithm.train()`,
