@@ -801,8 +801,9 @@ async def test_batch_generator_setters():
             await coro.__anext__()
 
 
-def test_check_max_batch_size_bounded():
-    """Test check_max_batch_size_bounded logged the warning message correctly.
+def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
+    """Test warn_if_max_batch_size_exceeds_max_ongoing_requests() logged the warning
+     message correctly.
 
     When the queue starts with or updated `max_batch_size` to be larger than
     max_ongoing_requests, log the warning to suggest configuring `max_ongoing_requests`.
@@ -817,10 +818,10 @@ def test_check_max_batch_size_bounded():
     over_bound = bound + 1
     under_bound = bound - 1
     over_bound_warning_message = (
-        f"`max_batch_size` ({over_bound}) is larger than `max_ongoing_requests` "
-        f"({bound}). The maximum ongoing request will be bounded by {bound}. To "
-        f"allow batching to reach the `max_batch_size` limits, please configue "
-        f"`max_ongoing_requests` to be >= `max_batch_size`.\n"
+        f"`max_batch_size` ({over_bound}) is larger than "
+        f"`max_ongoing_requests` ({bound}). This means "
+        "the replica will never receive a full batch. Please update "
+        "`max_ongoing_requests` to be >= `max_batch_size`.\n"
     )
 
     # Start queue above the bound will log warning. Start at under or at the bound will

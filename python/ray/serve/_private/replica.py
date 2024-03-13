@@ -638,7 +638,7 @@ class ReplicaActor:
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config and servable_object.
+            # deployment_config.
             self._set_internal_replica_context(
                 servable_object=self._user_callable_wrapper.user_callable
             )

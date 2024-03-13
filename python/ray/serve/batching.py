@@ -112,9 +112,9 @@ class _BatchQueue:
             self._handle_batch_task = self._loop.create_task(
                 self._process_batches(handle_batch_func)
             )
-        self.check_max_batch_size_bounded()
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
-    def check_max_batch_size_bounded(self):
+    def _warn_if_max_batch_size_exceeds_max_ongoing_requests(self):
         """Helper to check whether the max_batch_size is bounded.
 
         Log a warning to configure `max_ongoing_requests` if it's bounded.
@@ -125,16 +125,15 @@ class _BatchQueue:
         if max_ongoing_requests < self.max_batch_size:
             logger.warning(
                 f"`max_batch_size` ({self.max_batch_size}) is larger than "
-                f"`max_ongoing_requests` ({max_ongoing_requests}). The maximum "
-                f"ongoing request will be bounded by {max_ongoing_requests}. "
-                "To allow batching to reach the `max_batch_size` limits, please "
-                "configue `max_ongoing_requests` to be >= `max_batch_size`."
+                f"`max_ongoing_requests` ({max_ongoing_requests}). This means "
+                "the replica will never receive a full batch. Please update "
+                "`max_ongoing_requests` to be >= `max_batch_size`."
             )
 
     def set_max_batch_size(self, new_max_batch_size: int) -> None:
         """Updates queue's max_batch_size."""
         self.max_batch_size = new_max_batch_size
-        self.check_max_batch_size_bounded()
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
