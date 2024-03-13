@@ -425,6 +425,9 @@ class PPO(Algorithm):
                     max_env_steps=self.config.total_train_batch_size,
                     uses_new_env_runners=self.config.uses_new_env_runners,
                 )
+            # Return early if all our workers failed.
+            if not episodes:
+                return {}
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
                 e.agent_steps() for e in episodes
             )

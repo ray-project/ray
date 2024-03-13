@@ -171,6 +171,19 @@ class ForwardHealthCheckToEnvWorker(SingleAgentEnvRunner):
         return super().ping()
 
 
+class ForwardHealthCheckToEnvWorkerMultiAgent(MultiAgentEnvRunner):
+    """Configure RolloutWorker to error in specific condition is hard.
+
+    So we take a short-cut, and simply forward ping() to env.sample().
+    """
+
+    def ping(self) -> str:
+        # See if Env wants to throw error.
+        _ = self.env.step(self.env.action_space_sample())
+        # If there is no error raised from sample(), we simply reply pong.
+        return super().ping()
+
+
 def wait_for_restore(num_restarting_allowed=0):
     """Wait for Ray actor fault tolerence to restore all failed workers.
 
@@ -400,7 +413,7 @@ class TestWorkerFailures(unittest.TestCase):
             SACConfig()
             .experimental(_enable_new_api_stack=True)
             .environment(
-                env_config={"action_space": gym.spaces.Box(0, 1, (1,), np.float32)}
+                env_config={"action_space": gym.spaces.Box(0, 1, (2,), np.float32)}
             )
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .reporting(min_sample_timesteps_per_iteration=1)
@@ -556,7 +569,7 @@ class TestWorkerFailures(unittest.TestCase):
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
+                env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent,
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
@@ -727,6 +740,7 @@ class TestWorkerFailures(unittest.TestCase):
             .environment(
                 env="fault_env",
                 env_config={
+                    "action_space": gym.spaces.Box(0, 1, (2,), np.float32),
                     "evaluation": True,
                     "p_terminated": 0.0,
                     "max_episode_len": 20,
