@@ -153,9 +153,12 @@ def ray_start_stop():
 
 @pytest.fixture(scope="function")
 def ray_start_stop_in_specific_directory(request):
-    # Change working directory so Ray will start in the correct directory.
-    working_dir = request.param
-    os.chdir(working_dir)
+    original_working_dir = os.getcwd()
+
+    # Change working directory so Ray will start in the requested directory.
+    new_working_dir = request.param
+    os.chdir(new_working_dir)
+    print(f"\nChanged working directory to {new_working_dir}\n")
 
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
@@ -171,6 +174,9 @@ def ray_start_stop_in_specific_directory(request):
             check_ray_stop,
             timeout=15,
         )
+        # Change the directory back to the original one.
+        os.chdir(original_working_dir)
+        print(f"\nChanged working directory back to {original_working_dir}\n")
 
 
 @pytest.fixture

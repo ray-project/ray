@@ -709,11 +709,13 @@ def test_deploy_from_import_path(ray_start_stop):
     indirect=True,
 )
 def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_directory):
-    """Test serve deploy with using current directory is able to deploy the app.
+    """Test serve deploy using modules in the current directory succeeds.
 
-    We had issue where dashboard client no longer has the current working added to
-    the sys.path and unable to deploy Serve application in the current directory. This
-    test will ensure the files in the current directory can be accessed and deployed.
+    There was an issue where dashboard client doesn't add the current directory to
+    the sys.path and failed to deploy a Serve app defined in the directory. This
+    test ensures that files in the current directory can be accessed and deployed.
+
+    See: https://github.com/ray-project/ray/issues/43889
     """
     # Deploy Serve application with a config in the current directory.
     subprocess.check_output(["serve", "deploy", "use_current_working_directory.yaml"])

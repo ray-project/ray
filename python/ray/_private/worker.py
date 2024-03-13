@@ -2369,10 +2369,7 @@ def connect(
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                if not (
-                    namespace
-                    and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
-                ):
+                if namespace != ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE:
                     code_paths.add(script_directory)
             current_directory = os.path.abspath(os.path.curdir)
             code_paths.add(current_directory)
