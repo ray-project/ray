@@ -86,10 +86,10 @@
 /doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune (docs)
-/doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @justinvyu @woshiyyya @ray-project/ray-docs
+/doc/source/tune/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
 
 # Train (docs)
-/doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @justinvyu @woshiyyya @ray-project/ray-docs
+/doc/source/train/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
 
 # Serve (docs)
 /doc/source/serve/ @edoakes @shrekris-anyscale @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
