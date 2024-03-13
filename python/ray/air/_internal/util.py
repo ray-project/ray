@@ -53,14 +53,14 @@ def skip_exceptions(exc: Optional[Exception]) -> Exception:
         return skip_exceptions(exc.__cause__)
 
     # Perform a shallow copy to prevent recursive __cause__/__context__.
-    exc = copy.copy(exc)
+    new_exc = copy.copy(exc).with_traceback(exc.__traceback__)
 
     # Make sure nested exceptions are properly skipped.
     cause = getattr(exc, "__cause__", None)
     if cause:
-        exc.__cause__ = skip_exceptions(cause)
+        new_exc.__cause__ = skip_exceptions(cause)
 
-    return exc
+    return new_exc
 
 
 def exception_cause(exc: Optional[Exception]) -> Optional[Exception]:
