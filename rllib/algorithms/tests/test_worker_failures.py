@@ -739,22 +739,17 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_eval_workers_on_infinite_episodes(self):
         """Tests whether eval workers warn appropriately after some episode timeout."""
-
-        return
-
         # Create infinitely running episodes, but with horizon setting (RLlib will
         # auto-terminate the episode). However, in the eval workers, don't set a
         # horizon -> Expect warning and no proper evaluation results.
         config = (
             PPOConfig()
             .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
-            .reporting(metrics_episode_collection_timeout_s=5.0)
+            .training(train_batch_size_per_learner=200)
             .evaluation(
-                evaluation_num_workers=2,
+                evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_sample_timeout_s=5.0,
-                evaluation_parallel_to_training=False,
-                evaluation_duration=10,
+                evaluation_sample_timeout_s=2.0,
             )
         )
         algo = config.build()
