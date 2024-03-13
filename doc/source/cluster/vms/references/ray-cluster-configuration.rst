@@ -129,6 +129,8 @@ Provider
             :ref:`location <cluster-configuration-location>`: str
             :ref:`resource_group <cluster-configuration-resource-group>`: str
             :ref:`subscription_id <cluster-configuration-subscription-id>`: str
+            :ref:`msi_name <cluster-configuration-msi-name>`: str
+            :ref:`msi_resource_group <cluster-configuration-msi-resource-group>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
 
