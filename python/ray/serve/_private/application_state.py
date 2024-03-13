@@ -1057,6 +1057,7 @@ def override_deployment_info(
             ):
                 options["max_ongoing_requests"] = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
+            new_config = AutoscalingConfig.default().dict()
             # If `autoscaling_config` is specified, its values override
             # the default `num_replicas="auto"` configuration
             autoscaling_config = (
@@ -1064,9 +1065,9 @@ def override_deployment_info(
                 or info.deployment_config.autoscaling_config
             )
             if autoscaling_config:
-                new_config = AutoscalingConfig.default().dict()
                 new_config.update(autoscaling_config)
-                options["autoscaling_config"] = AutoscalingConfig(**new_config)
+
+            options["autoscaling_config"] = AutoscalingConfig(**new_config)
 
         # What to pass to info.update
         override_options = dict()
@@ -1108,11 +1109,13 @@ def override_deployment_info(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
         override_actor_options.update({"runtime_env": merged_env})
-        replica_config.update_ray_actor_options(override_actor_options)
-        replica_config.update_placement_group_options(
-            override_placement_group_bundles, override_placement_group_strategy
+
+        replica_config.update(
+            ray_actor_options=override_actor_options,
+            placement_group_bundles=override_placement_group_bundles,
+            placement_group_strategy=override_placement_group_strategy,
+            max_replicas_per_node=override_max_replicas_per_node,
         )
-        replica_config.update_max_replicas_per_node(override_max_replicas_per_node)
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
