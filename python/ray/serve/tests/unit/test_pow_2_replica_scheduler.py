@@ -1606,7 +1606,6 @@ async def test_backoff_index_handling(pow_2_scheduler, backoff_index: int):
 
     s.update_replicas([r1, r2])
 
-    # backoff_index of 0 should be accepted without error.
     r = await s.select_from_candidate_replicas([r1, r2], backoff_index)
     assert r in [r1, r2]
 
