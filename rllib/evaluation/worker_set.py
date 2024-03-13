@@ -984,7 +984,8 @@ class WorkerSet:
             List of IDs of the workers that were restored.
         """
         return self.__worker_manager.probe_unhealthy_actors(
-            timeout_seconds=self._remote_config.worker_health_probe_timeout_s
+            timeout_seconds=self._remote_config.worker_health_probe_timeout_s,
+            mark_healthy=True,
         )
 
     # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.
