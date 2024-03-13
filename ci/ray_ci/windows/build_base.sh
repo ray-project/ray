@@ -4,7 +4,7 @@ set -ex
 
 conda init 
 # newer requests version is needed for python 3.9+
-conda install -q -y python="${PYTHON}" requests=2.31.0
+conda install -q -y conda=23.1.0 python="${PYTHON}" requests=2.31.0
 
 # Install torch first, as some dependencies (e.g. torch-spline-conv) need torch to be
 # installed for their own install.
