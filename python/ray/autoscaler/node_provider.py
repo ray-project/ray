@@ -174,6 +174,10 @@ class NodeProvider:
             self.terminate_node(node_id)
         return None
 
+    def cleanup(self, config: Dict[str, Any]) -> None:
+        """Cleanup the associated resources of the cluster."""
+        pass
+
     @property
     def max_terminate_nodes(self) -> Optional[int]:
         """The maximum number of nodes which can be terminated in one single

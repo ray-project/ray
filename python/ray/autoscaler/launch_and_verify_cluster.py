@@ -240,8 +240,6 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
     """
-    print("======================================")
-    cleanup_cluster(cluster_config)
 
     print("======================================")
     print("Starting new cluster...")
