@@ -510,8 +510,6 @@ class TestWorkerFailures(unittest.TestCase):
         # Both workers are restarted.
         self.assertEqual(algo.workers.num_remote_worker_restarts(), 2)
 
-        algo.stop()
-
     def test_policies_are_restored_on_recovered_worker(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_policies_are_restored_on_recovered_worker"
@@ -603,7 +601,6 @@ class TestWorkerFailures(unittest.TestCase):
                 algo.evaluation_workers.foreach_worker(has_test_policy, local_worker=False)
             )
         )
-        algo.stop()
 
     def test_eval_workers_fault_but_recover(self):
         # Counter that will survive restarts.
@@ -662,7 +659,6 @@ class TestWorkerFailures(unittest.TestCase):
         # Everything still healthy. And all workers are restarted.
         self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 2)
         self.assertEqual(algo.evaluation_workers.num_remote_worker_restarts(), 2)
-        algo.stop()
 
     def test_worker_recover_with_hanging_workers(self):
         # Counter that will survive restarts.
@@ -738,7 +734,6 @@ class TestWorkerFailures(unittest.TestCase):
         # Only 1 successful restore, since worker 2 is stuck in indefinite init
         # and can not be properly restored.
         self.assertEqual(algo.workers.num_remote_worker_restarts(), 1)
-        algo.stop()
 
     def test_eval_workers_on_infinite_episodes(self):
         """Tests whether eval workers warn appropriately after some episode timeout."""
@@ -766,7 +761,6 @@ class TestWorkerFailures(unittest.TestCase):
                 algo = config.build()
                 results = algo.train()
                 self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
-                algo.stop()
 
 
 if __name__ == "__main__":
