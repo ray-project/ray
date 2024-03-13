@@ -54,6 +54,7 @@ def build_champagne_image(
             [
                 "docker",
                 "build",
+                "--progress=plain",
                 "--build-arg",
                 f"BASE_IMAGE={ray_image}",
                 "-t",
@@ -84,6 +85,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         [
             "docker",
             "build",
+            "--progress=plain",
             "--build-arg",
             f"BASE_IMAGE={test.get_anyscale_base_byod_image()}",
             "--build-arg",
@@ -148,6 +150,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     [
                         "docker",
                         "build",
+                        "--progress=plain",
                         "--build-arg",
                         f"BASE_IMAGE={ray_image}",
                         "-t",
@@ -162,6 +165,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     [
                         "docker",
                         "build",
+                        "--progress=plain",
                         "--build-arg",
                         f"BASE_IMAGE={byod_image}",
                         "--build-arg",
