@@ -1,7 +1,5 @@
 :orphan:
 
-.. _deepspeed_example:
-
 Train with DeepSpeed ZeRO-3 and Ray Train
 =========================================
 
@@ -19,6 +17,6 @@ Code example
 See also
 --------
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases.
+* :doc:`Ray Train Examples <../../examples>` for more use cases.
 
-* :ref:`Get Started with DeepSpeed <train-deepspeed>` for a tutorial.    
+* :ref:`Get Started with DeepSpeed <train-deepspeed>` for a tutorial.

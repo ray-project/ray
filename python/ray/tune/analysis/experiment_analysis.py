@@ -102,7 +102,7 @@ class ExperimentAnalysis:
             if experiment_json_fs_path is None:
                 pattern = TuneController.CKPT_FILE_TMPL.format("*")
                 raise ValueError(
-                    f"No experiment checkpoint file of form '{pattern}' was found at: "
+                    f"No experiment snapshot file of form '{pattern}' was found at: "
                     f"({self._fs.type_name}, {self._experiment_fs_path})\n"
                     "Please check if you specified the correct experiment path, "
                     "which should be a combination of the `storage_path` and `name` "

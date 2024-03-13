@@ -41,10 +41,26 @@ KubeRay offers multiple options for operator installations, such as Helm, Kustom
 
 Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do so, we create a RayCluster Custom Resource (CR) in the `default` namespace.
 
-```sh
-# Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-helm install raycluster kuberay/ray-cluster --version 1.1.0-rc.0
+  ::::{tab-set}
 
+  :::{tab-item} ARM64 (Apple Silicon)
+  ```sh
+  # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
+  helm install raycluster kuberay/ray-cluster --version 1.1.0-rc.0 --set 'image.tag=2.9.0-aarch64'
+  ```
+  :::
+
+  :::{tab-item} x86-64 (Intel/Linux)
+  ```sh
+  # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
+  helm install raycluster kuberay/ray-cluster --version 1.1.0-rc.0
+  ```
+  :::
+
+  ::::
+
+
+```sh
 # Once the RayCluster CR has been created, you can view it by running:
 kubectl get rayclusters
 

@@ -29,7 +29,6 @@ steps:
       - export RAY_HASH="$RAY_HASH"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -44,7 +43,6 @@ steps:
       - export RAY_HASH="$RAY_HASH"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"

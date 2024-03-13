@@ -433,6 +433,22 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         return values
 
     @root_validator
+    def validate_max_replicas_per_node_and_placement_group_bundles(cls, values):
+        max_replicas_per_node = values.get("max_replicas_per_node", None)
+        placement_group_bundles = values.get("placement_group_bundles", None)
+
+        if max_replicas_per_node not in [
+            DEFAULT.VALUE,
+            None,
+        ] and placement_group_bundles not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            )
+
+        return values
+
+    @root_validator
     def validate_max_queued_requests(cls, values):
         max_queued_requests = values.get("max_queued_requests", None)
         if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:

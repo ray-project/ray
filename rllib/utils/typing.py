@@ -124,8 +124,8 @@ PolicyState = Dict[str, TensorStructType]
 # Any tf Policy type (static-graph or eager Policy).
 TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
 
-# Represents an episode id.
-EpisodeID = int
+# Represents an episode id (old and new API stack).
+EpisodeID = Union[int, str]
 
 # Represents an "unroll" (maybe across different sub-envs in a vector env).
 UnrollID = int
