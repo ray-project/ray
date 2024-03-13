@@ -309,6 +309,35 @@ class TestActiveCompaction:
             assert opp is None
             assert scheduler._compacting_node is None
 
+    def test_head_node_not_considered(self):
+        """The head node should not be considered as a compaction target."""
+
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("head-node-id", {"CPU": 1})
+        cluster_node_info_cache.add_node("worker-node-id", {"CPU": 3})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            rconfig(ray_actor_options={"num_cpus": 1}),
+        )
+
+        # It's possible for all replicas running on the head node to be
+        # moved to other nodes, but there's no point in doing that so
+        # we shouldn't take that compaction opportunity
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "head-node-id")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "worker-node-id")
+        opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert opp is None
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

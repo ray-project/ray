@@ -475,6 +475,9 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         # replicas off of that node - this essentially run best fit
         # binpacking algorithm
         for target_node_id in available_resources_per_node:
+            if target_node_id == self._head_node_id:
+                continue
+
             # Only consider resources on other non-idle nodes when running
             # the best fit binpacking algorithm
             available_resources = {
