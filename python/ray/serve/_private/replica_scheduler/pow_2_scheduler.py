@@ -275,33 +275,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
-    def _get_candidate_multiplexed_replica_ids(
-        self,
-        model_id: str,
-        get_from_all_replicas: bool = False,
-    ) -> Set[str]:
-        """Get multiplexed model candidates from the current replica.
-
-        By default, we will only choose from replicas that have the requested
-        multiplexed model id, if not matched, the function will return an empty set.
-
-        If get_from_all_replicas is True, we will choose from all replicas,
-        and we will choose all replicas with the least number of multiplexed model
-        ids.
-
-        """
-
+    def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
+        """Get the set of replicas that have the fewest multiplexed models loaded."""
         candidates = set()
-
-        if not get_from_all_replicas:
-            if model_id in self._multiplexed_model_id_to_replica_ids:
-                candidates = self._multiplexed_model_id_to_replica_ids[model_id]
-                if len(candidates) > 0:
-                    return candidates
-            return candidates
-
-        # Sort the replicas by the number of multiplexed model ids they have.
-        # Choose all replicas with the least number of multiplexed model ids.
         sorted_replicas = sorted(
             self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
         )
@@ -336,15 +312,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
 
         try:
-            entered_backoff = False
             backoff_index = 0
+            entered_backoff = False
+
+            tried_same_az = False
+            tried_same_node = False
+
             multiplexed_start_matching_time = None
             multiplexed_matching_timeout = random.uniform(
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
             )
-            tried_same_node = False
-            tried_same_az = False
+            tried_least_multiplexed_models = False
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
@@ -376,37 +355,40 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         < multiplexed_matching_timeout
                     ):
                         candidate_replica_ids = (
-                            self._get_candidate_multiplexed_replica_ids(
-                                request_metadata.multiplexed_model_id
+                            self._multiplexed_model_id_to_replica_ids.get(
+                                request_metadata.multiplexed_model_id, None
                             )
                         )
-                        # When there is no match for a multiplexed model id,
-                        # we will try to fallback to all replicas immediately.
                         if (
-                            len(candidate_replica_ids) == 0
+                            not candidate_replica_ids
                             and request_metadata.multiplexed_model_id
                             not in self._multiplexed_model_id_fallback_match
                         ):
+                            # When there is no match for a multiplexed model id,
+                            # first try to fall back to replicas with the fewest models.
                             candidate_replica_ids = (
-                                self._get_candidate_multiplexed_replica_ids(
-                                    request_metadata.multiplexed_model_id,
-                                    get_from_all_replicas=True,
-                                )
+                                self._get_replica_ids_with_fewest_multiplexed_models()
                             )
                             self._multiplexed_model_id_fallback_match.add(
                                 request_metadata.multiplexed_model_id
                             )
-                        elif len(candidate_replica_ids) > 0:
+                        elif candidate_replica_ids:
                             self._multiplexed_model_id_fallback_match.discard(
                                 request_metadata.multiplexed_model_id
                             )
-                    else:
+                    elif not tried_least_multiplexed_models:
+                        # After the `multiplexed_matching_timeout` is up, first try
+                        # routing to replicas that have the fewest models loaded.
+                        # We only try this once to avoid deterministically retrying on
+                        # the same models repeatedly.
                         candidate_replica_ids = (
-                            self._get_candidate_multiplexed_replica_ids(
-                                request_metadata.multiplexed_model_id,
-                                get_from_all_replicas=True,
-                            )
+                            self._get_replica_ids_with_fewest_multiplexed_models()
                         )
+                        tried_least_multiplexed_models = True
+                    else:
+                        # If the timeout is up and we've already tried the candidates
+                        # with the fewest models loaded, fall back to all replicas.
+                        candidate_replica_ids = self._replica_id_set
                 elif (
                     self._prefer_local_node_routing
                     and not tried_same_node
