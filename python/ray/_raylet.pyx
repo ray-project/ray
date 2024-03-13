@@ -2501,9 +2501,9 @@ cdef void delete_spilled_objects_handler(
                 traceback.format_exc() + exception_str,
                 job_id=None)
 
-cdef void destroy_external_storage():
-    # with gil?
-    external_storage.destroy_external_storage()
+cdef void destroy_external_storage() nogil:
+    with gil:
+        external_storage.destroy_external_storage()
 
 cdef void cancel_async_task(
         const CTaskID &c_task_id,

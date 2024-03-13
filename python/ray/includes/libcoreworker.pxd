@@ -385,7 +385,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(
             const c_vector[c_string]&,
             CWorkerType) nogil) delete_spilled_objects
-        (void()) destroy_external_storage
+        (void() nogil) destroy_external_storage
         (void(
             const c_string&,
             const c_vector[c_string]&) nogil) run_on_util_worker_handler

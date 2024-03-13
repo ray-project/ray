@@ -138,7 +138,7 @@ class LocalObjectManager {
   /// invocation.
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
 
-  /// Destroy external storage
+  /// Destroy external storage in a synchronous fashion.
   void DestroyExternalStorage();
 
   /// Return True if spilling is in progress.
