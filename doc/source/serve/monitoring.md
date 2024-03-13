@@ -557,7 +557,7 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * actor_id
      - The number of request scheduling tasks in the router that are undergoing backoff.
-   * - ``ray_serve_handle_request_counter`` [**]
+   * - ``ray_serve_handle_request_counter_total`` [**]
      - * handle
        * deployment
        * route
@@ -608,12 +608,12 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The number of models loaded on the current replica.
-   * - ``ray_serve_multiplexed_models_unload_counter``
+   * - ``ray_serve_multiplexed_models_unload_counter_total``
      - * deployment
        * replica
        * application
      - The number of times models unloaded on the current replica.
-   * - ``ray_serve_multiplexed_models_load_counter``
+   * - ``ray_serve_multiplexed_models_load_counter_total``
      - * deployment
        * replica
        * application
@@ -624,7 +624,7 @@ The following metrics are exposed by Ray Serve:
        * application
        * model_id
      - The mutliplexed model ID registered on the current replica.
-   * - ``ray_serve_multiplexed_get_model_requests_counter``
+   * - ``ray_serve_multiplexed_get_model_requests_counter_total``
      - * deployment
        * replica
        * application
@@ -675,9 +675,9 @@ Here's an example:
 The emitted logs include:
 
 ```
-# HELP ray_my_counter The number of odd-numbered requests to this deployment.
-# TYPE ray_my_counter gauge
-ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
+# HELP ray_my_counter_total The number of odd-numbered requests to this deployment.
+# TYPE ray_my_counter_total counter
+ray_my_counter_total{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
 ```
 
 See the [Ray Metrics documentation](collect-metrics) for more details, including instructions for scraping these metrics using Prometheus.
