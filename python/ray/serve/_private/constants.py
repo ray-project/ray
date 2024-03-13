@@ -293,7 +293,7 @@ DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_p
 # Feature flag to enable collecting all queued and ongoing request
 # metrics at handles instead of replicas. OFF by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
-    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1") == "1"
 )
 
 # Feature flag to always run a proxy on the head node even if it has no replicas.

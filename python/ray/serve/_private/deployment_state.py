@@ -192,7 +192,7 @@ _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 @dataclass
 class HandleRequestMetric:
     queued_requests: float
-    running_requests: Dict[str, float]
+    running_requests: Dict[ReplicaID, float]
     timestamp: float
 
 
@@ -2223,12 +2223,11 @@ class DeploymentState:
 
         # Stop replicas whose deadline is up
         for replica in replicas:
+            assert replica.actor_node_id in deadlines
+
             curr_timestamp_ms = time.time() * 1000
             timeout_ms = replica._actor.graceful_shutdown_timeout_s * 1000
-            if (
-                replica.actor_node_id in deadlines
-                and curr_timestamp_ms >= deadlines[replica.actor_node_id] - timeout_ms
-            ):
+            if curr_timestamp_ms >= deadlines[replica.actor_node_id] - timeout_ms:
                 to_stop.append(replica)
             else:
                 remaining.append(replica)
@@ -2236,13 +2235,6 @@ class DeploymentState:
         # Stop excess PENDING_MIGRATION replicas when new "replacement"
         # replicas have transitioned to RUNNING. The replicas with the
         # earliest deadlines should be chosen greedily.
-        def order(deadline: int):
-            if deadline:
-                return deadline
-            else:
-                return float("inf")
-
-        # remaining.sort(key=lambda r: order(deadlines[r.actor_node_id]))
         remaining.sort(key=lambda r: deadlines[r.actor_node_id])
         num_excess = min_replicas_to_stop - len(to_stop)
 
@@ -2253,6 +2245,17 @@ class DeploymentState:
         return to_stop, remaining
 
     def migrate_replicas_on_draining_nodes(self, draining_nodes: Dict[str, int]):
+        # Move replicas back to running if they are no longer on a draining node.
+        # If this causes the number of replicas to exceed the target state,
+        # they will be scaled down because `scale_deployment_replicas` is called on
+        # each deployment after this
+        for replica in self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]):
+            if replica.actor_node_id not in draining_nodes:
+                self._replicas.add(ReplicaState.RUNNING, replica)
+            else:
+                self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+
+        # Migrate replicas on draining nodes
         for replica in self._replicas.pop(
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING, ReplicaState.STARTING]
         ):
@@ -2260,6 +2263,11 @@ class DeploymentState:
                 # For RUNNING replicas, migrate them safely by starting
                 # a replacement replica first.
                 if replica.actor_details.state == ReplicaState.RUNNING:
+                    logger.info(
+                        f"Migrating {replica.replica_id} from draining node "
+                        f"'{replica.actor_node_id}'. A new replica will be created on "
+                        "another node."
+                    )
                     self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
                 # For replicas that are STARTING or UPDATING, might as
                 # well terminate them immediately to allow replacement
@@ -2312,7 +2320,7 @@ class DeploymentState:
         self,
         handle_id: str,
         queued_requests: float,
-        running_requests: Dict[str, float],
+        running_requests: Dict[ReplicaID, float],
         send_timestamp: float,
     ) -> None:
         """Update request metric for a specific handle."""
@@ -2410,7 +2418,7 @@ class DeploymentStateManager:
         deployment_id: str,
         handle_id: str,
         queued_requests: float,
-        running_requests: Dict[str, float],
+        running_requests: Dict[ReplicaID, float],
         send_timestamp: float,
     ):
         # NOTE(zcin): There can be handles to deleted deployments still
@@ -2706,7 +2714,8 @@ class DeploymentStateManager:
             deployment_state.check_curr_status()
 
         # STEP 3: Drain nodes
-        allow_active_compaction = all(
+        draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
+        allow_new_compaction = len(draining_nodes) == 0 and all(
             ds.curr_status_info.status == DeploymentStatus.HEALTHY
             # TODO(zcin): Make sure that status should never be healthy if
             # the number of running replicas at target version is not at
@@ -2717,16 +2726,16 @@ class DeploymentStateManager:
             and len(ds._replicas.get()) == ds.target_num_replicas
             for ds in self._deployment_states.values()
         )
-        draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
-        if (
-            not draining_nodes
-            and RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
-            and allow_active_compaction
-        ):
-            compact_opp = self._deployment_scheduler.detect_compact_opportunities()
-            if compact_opp:
-                node, deadline = compact_opp
-                draining_nodes = {node: deadline}
+        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
+            # Tuple of target node to compact, and its draining deadline
+            node_info: Optional[
+                Tuple[str, float]
+            ] = self._deployment_scheduler.get_node_to_compact(
+                allow_new_compaction=allow_new_compaction
+            )
+            if node_info:
+                target_node_id, deadline = node_info
+                draining_nodes = {target_node_id: deadline}
 
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
