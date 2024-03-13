@@ -469,10 +469,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self.queue_len_response_deadline_s,
             self.max_queue_len_response_deadline_s,
         )
-        queue_len_response_deadline_s = min(
-            self.queue_len_response_deadline_s * (2**backoff_index),
-            max_queue_len_response_deadline_s,
-        )
+
+        try:
+            queue_len_response_deadline_s = min(
+                self.queue_len_response_deadline_s * (2**backoff_index),
+                max_queue_len_response_deadline_s,
+            )
+        except OverflowError:
+            # self.queue_len_response_deadline_s * (2**backoff_index)
+            # can overflow if backoff_index gets sufficiently large (e.g.
+            # 1024 when queue_len_response_deadline_s is 0.1).
+            queue_len_response_deadline_s = max_queue_len_response_deadline_s
 
         get_queue_len_tasks = []
         for r in replicas:
@@ -649,6 +656,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+                start_time = time.time()
                 backoff_index = 0
                 request_metadata = self._get_next_pending_request_metadata_to_schedule()
                 async for candidates in self.choose_two_replicas_with_backoff(
@@ -662,6 +670,23 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         break
 
                     backoff_index += 1
+                    if backoff_index >= 50 and backoff_index % 50 == 0:
+                        scheduling_time_elapsed = time.time() - start_time
+                        warning_log = (
+                            "Failed to schedule request after "
+                            f"{backoff_index} attempts over "
+                            f"{scheduling_time_elapsed:.2f}s. Retrying."
+                        )
+                        if request_metadata is not None:
+                            warning_log += (
+                                f" Request ID: {request_metadata.request_id}."
+                            )
+                            if request_metadata.multiplexed_model_id:
+                                warning_log += (
+                                    " Multiplexed model ID: "
+                                    f"{request_metadata.multiplexed_model_id}."
+                                )
+                        logger.warning(warning_log)
 
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
