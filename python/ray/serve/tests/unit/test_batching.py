@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from typing import List
 
@@ -9,11 +10,9 @@ from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
-from ray.serve.exceptions import RayServeException
-import logging
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.batching import _BatchQueue
-
+from ray.serve.exceptions import RayServeException
 
 # Setup the global replica context for the test.
 default_deployment_config = DeploymentConfig()
