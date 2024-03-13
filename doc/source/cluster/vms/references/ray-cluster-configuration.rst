@@ -1067,7 +1067,7 @@ The user that Ray will authenticate with when launching new nodes.
         The name of the managed identity to use for deployment of the Ray cluster. If not specified, Ray will create a default user-assigned managed identity.
 
         * **Required:** No
-        * **Importance:** High
+        * **Importance:** Low
         * **Type:** String
         * **Default:** ray-default-msi
 
@@ -1095,7 +1095,7 @@ The user that Ray will authenticate with when launching new nodes.
         The name of the managed identity's resource group to use for deployment of the Ray cluster, used in conjunction with msi_name. If not specified, Ray will create a default user-assigned managed identity in resource group specified in the provider config.
 
         * **Required:** No
-        * **Importance:** High
+        * **Importance:** Low
         * **Type:** String
         * **Default:** ray-cluster
 
