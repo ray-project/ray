@@ -487,10 +487,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self.queue_len_response_deadline_s,
             self.max_queue_len_response_deadline_s,
         )
-        queue_len_response_deadline_s = min(
-            self.queue_len_response_deadline_s * (2**backoff_index),
-            max_queue_len_response_deadline_s,
-        )
+
+        try:
+            queue_len_response_deadline_s = min(
+                self.queue_len_response_deadline_s * (2**backoff_index),
+                max_queue_len_response_deadline_s,
+            )
+        except OverflowError:
+            # self.queue_len_response_deadline_s * (2**backoff_index)
+            # can overflow if backoff_index gets sufficiently large (e.g.
+            # 1024 when queue_len_response_deadline_s is 0.1).
+            queue_len_response_deadline_s = max_queue_len_response_deadline_s
 
         get_queue_len_tasks = []
         for r in replicas:
