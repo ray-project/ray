@@ -45,7 +45,7 @@ def check_http_response(expected_text: str, json: Optional[Dict] = None):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    # ray.init(address="auto", namespace=SERVE_NAMESPACE)
+    ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
     # Create absolute file names to YAML config files
     pizza_file_name = os.path.join(
