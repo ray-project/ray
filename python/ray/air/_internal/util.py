@@ -5,7 +5,7 @@ import logging
 import queue
 import threading
 from typing import Optional
-
+import copy
 import numpy as np
 
 from ray.air.constants import _ERROR_REPORT_TIMEOUT
@@ -35,7 +35,13 @@ class StartTraceback(Exception):
 
 
 def skip_exceptions(exc: Optional[Exception]) -> Exception:
-    """Skip all contained `StartTracebacks` to reduce traceback output"""
+    """Skip all contained `StartTracebacks` to reduce traceback output.
+
+    Returns a shallow copy of the exception with all `StartTracebacks` removed.
+
+    If the RAY_AIR_FULL_TRACEBACKS environment variable is set,
+    the original exception (not a copy) is returned.
+    """
     should_not_shorten = bool(int(os.environ.get("RAY_AIR_FULL_TRACEBACKS", "0")))
 
     if should_not_shorten:
@@ -45,7 +51,10 @@ def skip_exceptions(exc: Optional[Exception]) -> Exception:
         # If this is a StartTraceback, skip
         return skip_exceptions(exc.__cause__)
 
-    # Else, make sure nested exceptions are properly skipped
+    # Perform a shallow copy to prevent recursive __cause__/__context__.
+    exc = copy.copy(exc)
+
+    # Make sure nested exceptions are properly skipped.
     cause = getattr(exc, "__cause__", None)
     if cause:
         exc.__cause__ = skip_exceptions(cause)
