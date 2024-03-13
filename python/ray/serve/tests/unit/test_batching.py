@@ -4,9 +4,19 @@ from typing import List
 
 import pytest
 
+import ray
 from ray import serve
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve.exceptions import RayServeException
+
+# Setup the global replica context for the test.
+ray.serve.context._set_internal_replica_context(
+    replica_id=ReplicaID(unique_id="test", deployment_id=DeploymentID(name="test")),
+    servable_object=None,
+    _deployment_config=DeploymentConfig(),
+)
 
 
 # We use a single event loop for the entire test session. Without this
