@@ -45,7 +45,7 @@ def check_http_response(expected_text: str, json: Optional[Dict] = None):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    ray.init(address="auto", namespace=SERVE_NAMESPACE)
+    # ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
     # Create absolute file names to YAML config files
     pizza_file_name = os.path.join(
@@ -65,6 +65,9 @@ def test_deploy_basic(ray_start_stop):
         print("Deploying pizza config.")
         deploy_response = subprocess.check_output(["serve", "deploy", pizza_file_name])
         assert success_message_fragment in deploy_response
+        status_response = subprocess.check_output(["serve", "status"])
+        print("status_response!!!", status_response)
+
         print("Deploy request sent successfully.")
 
         wait_for_condition(
@@ -698,6 +701,37 @@ def test_deploy_from_import_path(ray_start_stop):
         expected_text="redeployed!",
         timeout=15,
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_with_access_to_current_directory():
+    """Test serve deploy with using current directory is able to deploy the app.
+
+    We had issue where dashboard client no longer has the current working added to
+    the sys.path and unable to deploy Serve application in the current directory. This
+    test will ensure the files in the current directory can be accessed and deployed.
+    """
+    # Stop any existing ray session if any.
+    subprocess.check_output(["ray", "stop"])
+
+    # Change the current working directory to where the config files are located.
+    test_dir = os.path.dirname(__file__)
+    os.chdir(f"{test_dir}/test_config_files")
+
+    # Start a new ray session and deploy the application.
+    subprocess.check_output(["ray", "start", "--head"])
+    subprocess.check_output(["serve", "deploy", "use_current_working_directory.yaml"])
+
+    # Ensure serve deploy eventually succeeds.
+    def check_deploy_successfully():
+        status_response = subprocess.check_output(["serve", "status"])
+        assert b"RUNNING" in status_response
+        return True
+
+    wait_for_condition(check_deploy_successfully, timeout=5)
+
+    # Clean up ray session.
+    subprocess.check_output(["ray", "stop"])
 
 
 if __name__ == "__main__":
