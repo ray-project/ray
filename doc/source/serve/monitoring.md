@@ -567,14 +567,14 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * route
      - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``ray_serve_num_deployment_http_error_requests`` [*]
+   * - ``ray_serve_num_deployment_http_error_requests_total`` [*]
      - * deployment
        * error_code
        * method
        * route
        * application
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``ray_serve_num_deployment_grpc_error_requests`` [*]
+   * - ``ray_serve_num_deployment_grpc_error_requests_total`` [*]
      - * deployment
        * error_code
        * method
