@@ -293,8 +293,8 @@ class ReplicaActor:
             self._event_loop,
             self._deployment_config.autoscaling_config,
         )
-
         tracing_exporter = cloudpickle.loads(serialized_exporter_def)
+
         if tracing_exporter:
             setup_tracing(tracing_exporter)
 
