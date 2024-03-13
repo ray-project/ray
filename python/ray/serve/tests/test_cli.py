@@ -65,8 +65,6 @@ def test_deploy_basic(ray_start_stop):
         print("Deploying pizza config.")
         deploy_response = subprocess.check_output(["serve", "deploy", pizza_file_name])
         assert success_message_fragment in deploy_response
-        status_response = subprocess.check_output(["serve", "status"])
-        print("status_response!!!", status_response)
 
         print("Deploy request sent successfully.")
 
