@@ -594,19 +594,19 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_d
 }
 
 void LocalObjectManager::DestroyExternalStorage() {
-  io_worker_pool_.PopDeleteWorker(
-    [this](std::shared_ptr<WorkerInterface> io_worker) {
-      rpc::DestroyExternalStorageRequest request;
-      io_worker->rpc_client()->DestroyExternalStorage(
+  io_worker_pool_.PopDeleteWorker([this](std::shared_ptr<WorkerInterface> io_worker) {
+    rpc::DestroyExternalStorageRequest request;
+    io_worker->rpc_client()->DestroyExternalStorage(
         request,
-        [this, io_worker](const ray::Status &status, const rpc::DestroyExternalStorageReply &reply) {
+        [this, io_worker](const ray::Status &status,
+                          const rpc::DestroyExternalStorageReply &reply) {
           io_worker_pool_.PushDeleteWorker(io_worker);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send destroy external storage request: "
-                << status.ToString();
+                           << status.ToString();
           }
-      });
-    });
+        });
+  });
 }
 
 void LocalObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
