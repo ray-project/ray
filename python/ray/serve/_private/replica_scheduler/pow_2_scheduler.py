@@ -380,7 +380,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         # After the `multiplexed_matching_timeout` is up, first try
                         # routing to replicas that have the fewest models loaded.
                         # We only try this once to avoid deterministically retrying on
-                        # the same models repeatedly.
+                        # the same replicas repeatedly.
                         candidate_replica_ids = (
                             self._get_replica_ids_with_fewest_multiplexed_models()
                         )
