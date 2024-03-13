@@ -20,6 +20,7 @@ from typing import (
     overload,
 )
 
+from ray import serve
 from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -112,6 +113,29 @@ class _BatchQueue:
             self._handle_batch_task = self._loop.create_task(
                 self._process_batches(handle_batch_func)
             )
+        self.check_max_batch_size_bounded()
+
+    def check_max_batch_size_bounded(self):
+        """Helper to check whether the max_batch_size is bounded.
+
+        Log a warning to configure `max_ongoing_requests` if it's bounded.
+        """
+        max_ongoing_requests = (
+            serve.get_replica_context()._deployment_config.max_ongoing_requests
+        )
+        if max_ongoing_requests < self.max_batch_size:
+            logger.warning(
+                f"`max_batch_size` ({self.max_batch_size}) is larger than "
+                f"`max_ongoing_requests` ({max_ongoing_requests}). The maximum "
+                f"ongoing request will be bounded by {max_ongoing_requests}. "
+                "To allow batching to reach the `max_batch_size` limits, please "
+                "configue `max_ongoing_requests` to be >= `max_batch_size`."
+            )
+
+    def set_max_batch_size(self, new_max_batch_size: int) -> None:
+        """Updates queue's max_batch_size."""
+        self.max_batch_size = new_max_batch_size
+        self.check_max_batch_size_bounded()
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
@@ -348,7 +372,7 @@ class _LazyBatchQueueWrapper:
         self.max_batch_size = new_max_batch_size
 
         if self._queue is not None:
-            self._queue.max_batch_size = new_max_batch_size
+            self._queue.set_max_batch_size(new_max_batch_size)
 
     def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
         self.batch_wait_timeout_s = new_batch_wait_timeout_s
@@ -564,14 +588,16 @@ def batch(
                     batch_queue_object, "_ray_serve_max_batch_size"
                 )
                 _validate_max_batch_size(new_max_batch_size)
-                batch_queue.max_batch_size = new_max_batch_size
+                lazy_batch_queue_wrapper.set_max_batch_size(new_max_batch_size)
 
             if hasattr(batch_queue_object, "_ray_serve_batch_wait_timeout_s"):
                 new_batch_wait_timeout_s = getattr(
                     batch_queue_object, "_ray_serve_batch_wait_timeout_s"
                 )
                 _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
-                batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+                lazy_batch_queue_wrapper.set_batch_wait_timeout_s(
+                    new_batch_wait_timeout_s
+                )
 
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))

@@ -1,6 +1,6 @@
 import pytest
 
-from ray import cloudpickle, serve
+from ray import cloudpickle
 from ray._private.pydantic_compat import ValidationError
 from ray._private.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
@@ -30,17 +30,6 @@ fake_policy_return_value = 123
 
 def fake_policy():
     return fake_policy_return_value
-
-
-class FakeLogger:
-    def __init__(self):
-        self.warning_message = ""
-
-    def warning(self, warning_message: str):
-        self.warning_message = warning_message
-
-    def reset_warning_message(self):
-        self.warning_message = ""
 
 
 def test_autoscaling_config_validation():
@@ -137,126 +126,6 @@ class TestDeploymentConfig:
 
         # Valid parameter with DEFAULT.VALUE passed in should be ignored
         DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
-
-    def test_check_max_batch_size_bounded(self):
-        """Test check_max_batch_size_bounded correctly checked the bounds and logged
-        warning message."""
-        deployment_config = DeploymentConfig()
-        fake_logger = FakeLogger()
-        bound = deployment_config.max_ongoing_requests
-        over_bound = deployment_config.max_ongoing_requests + 1
-        under_bound = deployment_config.max_ongoing_requests - 1
-        over_bound_warning_message = (
-            f"`max_batch_size` ({over_bound}) is larger than `max_ongoing_requests` "
-            f"({bound}). The maximum ongoing request will be bounded by {bound}. To "
-            f"allow batching reach the `max_batch_size` limits, please configue "
-            f"`max_ongoing_requests` to be >= `max_batch_size`."
-        )
-
-        @serve.deployment
-        class BoundedSingleMethodClass:
-            @serve.batch(
-                max_batch_size=over_bound,
-                batch_wait_timeout_s=5,
-            )
-            async def batch_predict(self, inputs: list[str]):
-                return [f"batch_predict({input})" for input in inputs]
-
-        assert (
-            deployment_config.check_max_batch_size_bounded(
-                BoundedSingleMethodClass.func_or_class,
-                _logger=fake_logger,
-            )
-            is True
-        )
-        assert fake_logger.warning_message == over_bound_warning_message
-        fake_logger.reset_warning_message()
-
-        @serve.deployment
-        class NotBoundedSingleMethodClass:
-            @serve.batch(max_batch_size=bound, batch_wait_timeout_s=5)
-            async def batch_predict(self, inputs: list[str]):
-                return [f"batch_predict({input})" for input in inputs]
-
-        assert (
-            deployment_config.check_max_batch_size_bounded(
-                NotBoundedSingleMethodClass.func_or_class,
-                _logger=fake_logger,
-            )
-            is False
-        )
-        assert fake_logger.warning_message == ""
-        fake_logger.reset_warning_message()
-
-        @serve.deployment
-        class BoundedMultiMethodClass:
-            @serve.batch(max_batch_size=over_bound, batch_wait_timeout_s=5)
-            async def batch_predict(self, inputs: list[str]):
-                return [f"batch_predict({input})" for input in inputs]
-
-            @serve.batch(max_batch_size=under_bound, batch_wait_timeout_s=5)
-            async def batch_predict2(self, inputs: list[str]):
-                return [f"batch_predict({input})" for input in inputs]
-
-        assert (
-            deployment_config.check_max_batch_size_bounded(
-                BoundedMultiMethodClass.func_or_class,
-                _logger=fake_logger,
-            )
-            is True
-        )
-        assert fake_logger.warning_message == over_bound_warning_message
-        fake_logger.reset_warning_message()
-
-        @serve.deployment
-        class NotBoundedMultiMethodClass:
-            @serve.batch(max_batch_size=under_bound, batch_wait_timeout_s=5)
-            async def batch_predict(self, inputs: list[str]):
-                return [f"batch_predict({input})" for input in inputs]
-
-            @serve.batch(max_batch_size=bound, batch_wait_timeout_s=5)
-            async def batch_predict2(self, inputs: list[str]):
-                return [f"batch_predict({input})" for input in inputs]
-
-        assert (
-            deployment_config.check_max_batch_size_bounded(
-                NotBoundedMultiMethodClass.func_or_class,
-                _logger=fake_logger,
-            )
-            is False
-        )
-        assert fake_logger.warning_message == ""
-        fake_logger.reset_warning_message()
-
-        @serve.deployment
-        @serve.batch(max_batch_size=over_bound, batch_wait_timeout_s=5)
-        def bounded_function(inputs: list[str]):
-            return [f"batch_predict({input})" for input in inputs]
-
-        assert (
-            deployment_config.check_max_batch_size_bounded(
-                bounded_function.func_or_class,
-                _logger=fake_logger,
-            )
-            is True
-        )
-        assert fake_logger.warning_message == over_bound_warning_message
-        fake_logger.reset_warning_message()
-
-        @serve.deployment
-        @serve.batch(max_batch_size=bound, batch_wait_timeout_s=5)
-        def not_bounded_function(inputs: list[str]):
-            return [f"batch_predict({input})" for input in inputs]
-
-        assert (
-            deployment_config.check_max_batch_size_bounded(
-                not_bounded_function.func_or_class,
-                _logger=fake_logger,
-            )
-            is False
-        )
-        assert fake_logger.warning_message == ""
-        fake_logger.reset_warning_message()
 
 
 class TestReplicaConfig:
