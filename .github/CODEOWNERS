@@ -85,10 +85,12 @@
 # Cluster (docs)
 /doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
-# Tune (docs)
+# Tune
+/python/ray/tune/ @matthewdeng @justinvyu @woshiyyya
 /doc/source/tune/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
 
-# Train (docs)
+# Train
+/python/ray/train/ @matthewdeng @justinvyu @woshiyyya
 /doc/source/train/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
 
 # Serve (docs)
