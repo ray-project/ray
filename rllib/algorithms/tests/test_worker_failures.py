@@ -9,7 +9,6 @@ from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac.sac import SACConfig
-from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
@@ -231,10 +230,11 @@ class TestWorkerFailures(unittest.TestCase):
 
         obs_space = gym.spaces.Box(0, 1, (2,), np.float32)
 
-        register_env(
-            "fault_env",
-            lambda c: FaultInjectEnv(dict(c, **{"observation_space": obs_space})),
-        )
+        def _sa(ctx):
+            ctx.update({"observation_space": obs_space})
+            return FaultInjectEnv(ctx)
+
+        register_env("fault_env", _sa)
 
         def _ma(ctx):
             ctx.update({"observation_space": obs_space})
@@ -410,6 +410,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_multi_gpu(self):
         self._do_test_fault_ignore(
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
             )
@@ -432,6 +433,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where one eval worker fails, but we chose to ignore.
         self._do_test_fault_ignore(
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
@@ -441,6 +443,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_workers=1,
@@ -460,6 +463,7 @@ class TestWorkerFailures(unittest.TestCase):
         # to recover.
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .multi_agent(
                 policies={"main", "p0", "p1"},
@@ -495,6 +499,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -549,6 +554,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -644,6 +650,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -702,19 +709,13 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            # Must use off-policy algorithm since we are gonna have hanging workers.
-            ImpalaConfig()
-            .resources(
-                num_gpus=0,
-            )
+            # Must use off-policy algorithm since we are going have hanging workers.
+            SACConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=3,
                 rollout_fragment_length=16,
-            )
-            .training(
-                train_batch_size=32,
-                model={"fcnet_hiddens": [4]},
             )
             .reporting(
                 # Make sure each iteration doesn't take too long.
