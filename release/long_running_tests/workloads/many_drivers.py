@@ -47,11 +47,6 @@ for _ in range(5):
             node, soft=False)).remote()
         assert ray.get(actor.method.remote()) == 1
 
-# Tests datasets doesn't leak workers.
-# This currently causes OOM
-# See https://github.com/ray-project/ray/issues/43924
-# ray.data.range(100).map(lambda x: x).take()
-
 print("success")
 """
 
