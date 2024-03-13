@@ -668,6 +668,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
                 backoff_index = 0
+                max_attempts = 30
                 request_metadata = self._get_next_pending_request_metadata_to_schedule()
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
@@ -679,9 +680,28 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
 
-                    backoff_index = min(
-                        backoff_index + 1, len(self.backoff_sequence_s) - 1
-                    )
+                    backoff_index += 1
+                    if backoff_index >= max_attempts:
+                        if (
+                            request_metadata is not None
+                            and request_metadata.multiplexed_model_id
+                        ):
+                            logger.warning(
+                                "Failed to schedule request with metadata "
+                                f"{request_metadata} after {max_attempts} "
+                                "attempts. Retrying without multiplexed model "
+                                "id. Attempting to schedule the request at "
+                                "any available replica."
+                            )
+                        else:
+                            logger.warning(
+                                "Failed to schedule request with metadata "
+                                f"{request_metadata} after {max_attempts} "
+                                "attempts. Resetting backoff and retrying."
+                            )
+                        # This break statement moves to the next iteration of
+                        # the while loop. The request_metadata object is reset.
+                        break
 
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
