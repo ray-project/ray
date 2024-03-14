@@ -2774,21 +2774,7 @@ class DeploymentStateManager:
         for deployment_id, replicas_to_stop in deployment_to_replicas_to_stop.items():
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
         for deployment_id, scheduling_requests in upscales.items():
-            failed_replicas: List[ReplicaID] = []
-            for scheduling_request in scheduling_requests:
-                if scheduling_request.scheduling_failed:
-                    failed_replicas.append(scheduling_request.replica_id)
-                    error_msg = "Replica scheduling failed."
-                    if scheduling_request.scheduling_failed_reason:
-                        error_msg += f" {scheduling_request.scheduling_failed_reason}"
-                    self._deployment_states[
-                        deployment_id
-                    ].record_replica_startup_failure(error_msg)
-            if failed_replicas:
-                self._deployment_states[deployment_id].stop_replicas(failed_replicas)
-                self._deployment_states[
-                    deployment_id
-                ].update_replica_startup_backoff_time()
+            self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
         # STEP 7: Broadcast long poll information
         for deployment_state in self._deployment_states.values():
@@ -2804,6 +2790,26 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return any_recovering
+
+    def _handle_scheduling_request_failures(
+        self,
+        deployment_id: DeploymentID,
+        scheduling_requests: List[ReplicaSchedulingRequest],
+    ):
+        """Updates internal datastructures when replicas fail to be scheduled."""
+        failed_replicas: List[ReplicaID] = []
+        for scheduling_request in scheduling_requests:
+            if scheduling_request.scheduling_failed:
+                failed_replicas.append(scheduling_request.replica_id)
+                error_msg = "Replica scheduling failed."
+                if scheduling_request.scheduling_failed_reason:
+                    error_msg += f" {scheduling_request.scheduling_failed_reason}"
+                self._deployment_states[deployment_id].record_replica_startup_failure(
+                    error_msg
+                )
+        if failed_replicas:
+            self._deployment_states[deployment_id].stop_replicas(failed_replicas)
+            self._deployment_states[deployment_id].update_replica_startup_backoff_time()
 
     def _record_deployment_usage(self):
         ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))
