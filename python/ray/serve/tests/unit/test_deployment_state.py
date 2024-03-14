@@ -56,6 +56,7 @@ from ray.serve._private.utils import (
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
+TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
 
 
 class FakeRemoteFunction:
@@ -111,6 +112,7 @@ class MockReplicaActorWrapper:
         self._actor_handle = MockActorHandle()
         self._node_id = None
         self._node_id_is_set = False
+        self._pg_bundles = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -217,8 +219,9 @@ class MockReplicaActorWrapper:
             replica_id=self._replica_id,
             actor_def=Mock(),
             actor_resources={},
-            actor_options={},
+            actor_options={"name":"placeholder"},
             actor_init_args=(),
+            placement_group_bundles=deployment_info.replica_config.placement_group_bundles,
             on_scheduled=_on_scheduled_stub,
         )
 
@@ -318,9 +321,13 @@ def mock_deployment_state_manager(
     method for creating a new mocked deployment state manager.
     """
 
+    # if request.param:
+    #     replica_actor_class = request.param.get("replica_actor_class", MockReplicaActorWrapper)
+
     timer = MockTimer()
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
+        # new=replica_actor_class,
         new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
         "ray.serve._private.long_poll.LongPollHost"
@@ -2818,6 +2825,78 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
+
+
+# class MockReplicaActorWrapperBadPG(MockReplicaActorWrapper):
+
+#     @property
+#     def placement_group_bundles(self) -> str:
+#         return "this is an invalid placement group"
+
+
+# @pytest.mark.parametrize(
+#     "mock_deployment_state_manager",
+#     [{"replica_actor_class": MockReplicaActorWrapperBadPG}],
+#     indirect=True,
+# )
+def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
+    """
+    Test deploy with a placement group failure.
+    """
+
+    create_dsm, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    def create_deployment_state(deployment_id: DeploymentID, pg_bundles=None) -> List[DeploymentState]:
+        b_info, _ = deployment_info(num_replicas=3)
+        b_info.replica_config.placement_group_bundles = pg_bundles
+        assert dsm.deploy(deployment_id, b_info)
+        ds = dsm._deployment_states[deployment_id]
+        assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
+        )
+        return ds
+
+    # Make all of ds1's replica's placement groups invalid.
+    invalid_bundle = [{"GPU": 0}]
+    ds1 = create_deployment_state(TEST_DEPLOYMENT_ID, pg_bundles=invalid_bundle)
+    ds2 = create_deployment_state(TEST_DEPLOYMENT_ID_2)
+
+    # Now ds1's replicas should all fail, while ds2's replicas should run.
+    dsm.update()
+
+    check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+    assert ds1._replica_constructor_retry_counter == 3
+    # An error message should show up on the next update iteration.
+    assert "" in ds1.curr_status_info.message
+
+    check_counts(ds2, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
+    assert ds2._replica_constructor_retry_counter == 0
+
+    
+    dsm.update()
+
+    def asd():
+        return {
+            state: ds1._replicas.count(states=[state])
+            for state in ALL_REPLICA_STATES
+        }
+
+    breakpoint()
+
+    assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
+    check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+    assert ds1._replica_constructor_retry_counter == 3
+    assert "asdfkafsdj;l" in ds1.curr_status_info.message
+
+    assert ds2.curr_status_info.status == DeploymentStatus.UPDATING
+    check_counts(ds2, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+    assert ds2._replica_constructor_retry_counter == 3
+
+    # After two more updates, ds1 should stop trying to start replicas.
+    ...
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):
