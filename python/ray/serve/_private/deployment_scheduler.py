@@ -123,6 +123,7 @@ class ReplicaSchedulingRequest:
     actor_init_args: Tuple
     on_scheduled: Callable
     scheduling_failed: bool = False
+    scheduling_failed_reason: Optional[str] = None
     # Placement group bundles and strategy *for this replica*.
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
@@ -542,6 +543,10 @@ class DeploymentScheduler(ABC):
                     f"Failed to create a placement group for {replica_id}."
                 )
                 scheduling_request.scheduling_failed = True
+                scheduling_request.scheduling_failed_reason = (
+                    "Failed to create a placement group for replica "
+                    f"{replica_id.unique_id}. See logs for more details."
+                )
                 return
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,

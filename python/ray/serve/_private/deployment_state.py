@@ -2778,9 +2778,12 @@ class DeploymentStateManager:
             for scheduling_request in scheduling_requests:
                 if scheduling_request.scheduling_failed:
                     failed_replicas.append(scheduling_request.replica_id)
+                    error_msg = "Replica scheduling failed."
+                    if scheduling_request.scheduling_failed_reason:
+                        error_msg += f" {scheduling_request.scheduling_failed_reason}"
                     self._deployment_states[
                         deployment_id
-                    ].record_replica_startup_failure("Replica scheduling failed.")
+                    ].record_replica_startup_failure(error_msg)
             if failed_replicas:
                 self._deployment_states[deployment_id].stop_replicas(failed_replicas)
                 self._deployment_states[

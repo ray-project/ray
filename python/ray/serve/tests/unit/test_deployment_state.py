@@ -46,6 +46,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.util.placement_group import validate_placement_group
 
 # Global variable that is fetched during controller recovery that
 # marks (simulates) which replicas have died since controller first
@@ -219,9 +220,11 @@ class MockReplicaActorWrapper:
             replica_id=self._replica_id,
             actor_def=Mock(),
             actor_resources={},
-            actor_options={"name":"placeholder"},
+            actor_options={"name": "placeholder"},
             actor_init_args=(),
-            placement_group_bundles=deployment_info.replica_config.placement_group_bundles,
+            placement_group_bundles=(
+                deployment_info.replica_config.placement_group_bundles
+            ),
             on_scheduled=_on_scheduled_stub,
         )
 
@@ -321,13 +324,9 @@ def mock_deployment_state_manager(
     method for creating a new mocked deployment state manager.
     """
 
-    # if request.param:
-    #     replica_actor_class = request.param.get("replica_actor_class", MockReplicaActorWrapper)
-
     timer = MockTimer()
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
-        # new=replica_actor_class,
         new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
         "ray.serve._private.long_poll.LongPollHost"
@@ -2827,18 +2826,6 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
     )
 
 
-# class MockReplicaActorWrapperBadPG(MockReplicaActorWrapper):
-
-#     @property
-#     def placement_group_bundles(self) -> str:
-#         return "this is an invalid placement group"
-
-
-# @pytest.mark.parametrize(
-#     "mock_deployment_state_manager",
-#     [{"replica_actor_class": MockReplicaActorWrapperBadPG}],
-#     indirect=True,
-# )
 def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     """
     Test deploy with a placement group failure.
@@ -2847,7 +2834,22 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     create_dsm, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
 
-    def create_deployment_state(deployment_id: DeploymentID, pg_bundles=None) -> List[DeploymentState]:
+    def fake_create_placement_group_fn(placement_group_bundles, *args, **kwargs):
+        """Fakes the placement_group_fn used by the scheduler.
+
+        Lets the test to run without starting Ray. Raises an exception if the
+        bundles are invalid.
+        """
+
+        validate_placement_group(bundles=placement_group_bundles)
+
+    dsm._deployment_scheduler._create_placement_group_fn = (
+        fake_create_placement_group_fn
+    )
+
+    def create_deployment_state(
+        deployment_id: DeploymentID, pg_bundles=None
+    ) -> List[DeploymentState]:
         b_info, _ = deployment_info(num_replicas=3)
         b_info.replica_config.placement_group_bundles = pg_bundles
         assert dsm.deploy(deployment_id, b_info)
@@ -2861,6 +2863,9 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     # Make all of ds1's replica's placement groups invalid.
     invalid_bundle = [{"GPU": 0}]
+    with pytest.raises(ValueError):
+        validate_placement_group(invalid_bundle)
+
     ds1 = create_deployment_state(TEST_DEPLOYMENT_ID, pg_bundles=invalid_bundle)
     ds2 = create_deployment_state(TEST_DEPLOYMENT_ID_2)
 
@@ -2869,34 +2874,59 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 3
-    # An error message should show up on the next update iteration.
+    # An error message should show up on after
+    # 3 * num_replicas startup failures.
     assert "" in ds1.curr_status_info.message
+
+    # Set all of ds1's replicas to stopped.
+    for replica in ds1._replicas.get():
+        replica._actor.set_done_stopping()
 
     check_counts(ds2, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
     assert ds2._replica_constructor_retry_counter == 0
 
-    
+    # Set all of ds2's replicas to ready.
+    for replica in ds2._replicas.get():
+        replica._actor.set_ready()
+
     dsm.update()
-
-    def asd():
-        return {
-            state: ds1._replicas.count(states=[state])
-            for state in ALL_REPLICA_STATES
-        }
-
-    breakpoint()
 
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
-    assert ds1._replica_constructor_retry_counter == 3
-    assert "asdfkafsdj;l" in ds1.curr_status_info.message
+    assert ds1._replica_constructor_retry_counter == 6
+    assert "" in ds1.curr_status_info.message
 
-    assert ds2.curr_status_info.status == DeploymentStatus.UPDATING
+    # Set all of ds1's replicas to stopped.
+    for replica in ds1._replicas.get():
+        replica._actor.set_done_stopping()
+
+    assert ds2.curr_status_info.status == DeploymentStatus.HEALTHY
     check_counts(ds2, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
-    assert ds2._replica_constructor_retry_counter == 3
+    assert ds2._replica_constructor_retry_counter == 0
 
-    # After two more updates, ds1 should stop trying to start replicas.
-    ...
+    dsm.update()
+
+    assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
+    check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
+    assert ds1._replica_constructor_retry_counter == 9
+    assert "" in ds1.curr_status_info.message
+
+    # Set all of ds1's replicas to stopped.
+    for replica in ds1._replicas.get():
+        replica._actor.set_done_stopping()
+
+    dsm.update()
+
+    # All replicas have failed to initialize 3 times. The deployment should
+    # stop trying to initialize replicas.
+    assert ds1.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    check_counts(
+        ds1,
+        total=0,
+        by_state=[(ReplicaState.STARTING, 0, None), (ReplicaState.STOPPING, 0, None)],
+    )
+    assert ds1._replica_constructor_retry_counter == 9
+    assert "Replica scheduling failed" in ds1.curr_status_info.message
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):
