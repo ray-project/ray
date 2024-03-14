@@ -2002,6 +2002,7 @@ class DeploymentState:
                 slow to reach running state.
         """
         slow_replicas = []
+        replicas_failed = False
         for replica in self._replicas.pop(states=[original_state]):
             start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
@@ -2018,7 +2019,13 @@ class DeploymentState:
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
-                self.handle_replica_startup_failure(replica, error_msg)
+                if self._replica_constructor_retry_counter >= 0:
+                    # Increase startup failure counter if we're tracking it
+                    self._replica_constructor_retry_counter += 1
+                    self._replica_constructor_error_msg = error_msg
+
+                replicas_failed = True
+                self._stop_replica(replica)
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
@@ -2034,27 +2041,22 @@ class DeploymentState:
                 else:
                     self._replicas.add(original_state, replica)
 
-        return slow_replicas
-
-    def handle_replica_startup_failure(self, replica: VersionedReplica, error_msg: str):
-        if self._replica_constructor_retry_counter >= 0:
-            # Increase startup failure counter, if it's being tracked.
-            self._replica_constructor_retry_counter += 1
-            self._replica_constructor_error_msg = error_msg
-
-        self._stop_replica(replica)
-
         # If replicas have failed enough times, execute exponential backoff
         # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
-        # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR).
+        # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
         failed_to_start_threshold = min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
             self._target_state.target_num_replicas * 3,
         )
-        if self._replica_constructor_retry_counter > failed_to_start_threshold:
+        if (
+            replicas_failed
+            and self._replica_constructor_retry_counter > failed_to_start_threshold
+        ):
             self._backoff_time_s = min(
                 EXPONENTIAL_BACKOFF_FACTOR * self._backoff_time_s, MAX_BACKOFF_TIME_S
             )
+
+        return slow_replicas
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
