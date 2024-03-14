@@ -1,4 +1,5 @@
 group: rllib contrib tests
+sort_key: "|rllib_contrib"
 depends_on:
   - oss-ci-base_build
 steps:
