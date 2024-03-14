@@ -404,6 +404,21 @@ class ExampleEnum(Enum):
         raise NotImplementedError
 
 
+class Contributor(ExampleEnum):
+    RAY_TEAM = "Maintained by the Ray Team"
+    COMMUNITY = "Contributed by the Ray Community"
+
+    @property
+    def tag(self):
+        if self == Contributor.RAY_TEAM:
+            return "ray-team"
+        return "community"
+
+    @classmethod
+    def formatted_name(cls):
+        return "All Examples"
+
+
 class UseCase(ExampleEnum):
     """Use case type for example metadata."""
 
@@ -504,6 +519,20 @@ class Example:
         self.use_cases = []
         for use_case in config.get("use_cases", []):
             self.use_cases.append(UseCase(use_case.strip()))
+
+        contributor = config.get("contributor", "").strip()
+        if contributor:
+            if contributor == "community":
+                self.contributor = Contributor.COMMUNITY
+            elif contributor == "ray team":
+                self.contributor = Contributor.RAY_TEAM
+            else:
+                raise ValueError(
+                    f"Invalid contributor type specified: {contributor}. Must be "
+                    " either 'ray team' or 'community'."
+                )
+        else:
+            self.contributor = Contributor.RAY_TEAM
 
         self.skill_level = SkillLevel(config.get("skill_level"))
         self.title = config.get("title")
@@ -852,7 +881,23 @@ def setup_context(app, pagename, templatename, context, doctree):
             other_keywords.append(
                 " ".join(use_case.value for use_case in example.use_cases)
             )
+            other_keywords.append(f" {example.contributor.tag}")
             example_text_area.append(other_keywords)
+
+            # Add the appropriate text if the example comes from the community
+            if example.contributor == Contributor.COMMUNITY:
+                community_text_area = soup.new_tag(
+                    "div", attrs={"class": "community-text-area"}
+                )
+                community_text = soup.new_tag("i", attrs={"class": "community-text"})
+                community_text.append("*Contributed by the Ray Community")
+                community_text_area.append(community_text)
+
+                # Add emojis separately; they're not italicized in the mockups
+                emojis = soup.new_tag("span", attrs={"class": "community-emojis"})
+                emojis.append("💪 ✨")
+                community_text_area.append(emojis)
+                example_text_area.append(community_text_area)
 
             example_link.append(example_text_area)
             example_div.append(example_link)
@@ -962,6 +1007,9 @@ def setup_context(app, pagename, templatename, context, doctree):
     def render_frameworks_dropdown() -> bs4.BeautifulSoup:
         return render_example_gallery_dropdown(Framework)
 
+    def render_contributor_dropdown() -> bs4.BeautifulSoup:
+        return render_example_gallery_dropdown(Contributor)
+
     context["cached_toctree"] = preload_sidebar_nav(
         context["toctree"],
         context["pathto"],
@@ -974,6 +1022,7 @@ def setup_context(app, pagename, templatename, context, doctree):
     context["render_use_cases_dropdown"] = render_use_cases_dropdown
     context["render_libraries_dropdown"] = render_libraries_dropdown
     context["render_frameworks_dropdown"] = render_frameworks_dropdown
+    context["render_contributor_dropdown"] = render_contributor_dropdown
 
     # Update the HTML page context with a few extra utilities.
     context["pygments_highlight_python"] = lambda code: highlight(
@@ -1055,14 +1104,15 @@ def render_example_gallery_dropdown(cls: type) -> bs4.BeautifulSoup:
     if cls.values():
         dropdown_options = soup.new_tag("div", attrs={"class": "dropdown-content"})
 
-        for value in cls.values():
+        for member in list(cls):
             label = soup.new_tag("label", attrs={"class": "checkbox-container"})
-            label.append(value)
+            label.append(member.value)
 
+            tag = getattr(member, "tag", member.value)
             checkbox = soup.new_tag(
                 "input",
                 attrs={
-                    "id": f"{value.lower()}-checkbox",
+                    "id": f"{tag}-checkbox",
                     "class": "filter-checkbox",
                     "type": "checkbox",
                 },
