@@ -191,40 +191,17 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
+
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    assert _max_cpu_fraction_per_node is not None
-
-    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
-        raise ValueError(
-            "Invalid argument `_max_cpu_fraction_per_node`: "
-            f"{_max_cpu_fraction_per_node}. "
-            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
-        )
-
-    if _soft_target_node_id and strategy != "STRICT_PACK":
-        raise ValueError(
-            "_soft_target_node_id currently only works "
-            f"with STRICT_PACK but got {strategy}"
-        )
-
-    if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
-        raise ValueError(
-            f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
-        )
-
-    validate_bundles(bundles)
-    validate_strategy(strategy)
-
-    if lifetime is None:
-        detached = False
-    elif lifetime == "detached":
-        detached = True
-    else:
-        raise ValueError(
-            "placement group `lifetime` argument must be either `None` or 'detached'"
-        )
+    detached = validate_placement_group(
+        bundles=bundles,
+        strategy=strategy,
+        lifetime=lifetime,
+        _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
+        _soft_target_node_id=_soft_target_node_id,
+    )
 
     placement_group_id = worker.core_worker.create_placement_group(
         name,
@@ -359,8 +336,41 @@ def check_placement_group_index(
         )
 
 
-def validate_strategy(strategy: str):
-    """Validates placement group strategy."""
+def validate_placement_group(
+    bundles: List[Dict[str, float]],
+    strategy: str = "PACK",
+    lifetime: Optional[str] = None,
+    _max_cpu_fraction_per_node: float = 1.0,
+    _soft_target_node_id: Optional[str] = None,
+) -> bool:
+    """Validates inputs for placement_group.
+    
+    Returns whether the placement group should be `detached`.
+
+    Raises ValueError if inputs are invalid.
+    """
+
+    assert _max_cpu_fraction_per_node is not None
+
+    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
+        raise ValueError(
+            "Invalid argument `_max_cpu_fraction_per_node`: "
+            f"{_max_cpu_fraction_per_node}. "
+            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
+        )
+
+    if _soft_target_node_id and strategy != "STRICT_PACK":
+        raise ValueError(
+            "_soft_target_node_id currently only works "
+            f"with STRICT_PACK but got {strategy}"
+        )
+
+    if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
+        raise ValueError(
+            f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
+        )
+
+    _validate_bundles(bundles)
 
     if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
@@ -368,8 +378,19 @@ def validate_strategy(strategy: str):
             f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
         )
 
+    if lifetime is None:
+        detached = False
+    elif lifetime == "detached":
+        detached = True
+    else:
+        raise ValueError(
+            "Placement group `lifetime` argument must be either `None` or "
+            f"'detached'. Got {lifetime}."
+        )
 
-def validate_bundles(bundles: List[Dict[str, float]]):
+    return detached
+
+def _validate_bundles(bundles: List[Dict[str, float]]):
     """Validates each bundle and raises a ValueError if any bundle is invalid."""
 
     if not isinstance(bundles, list):

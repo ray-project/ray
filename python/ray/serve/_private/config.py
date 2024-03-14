@@ -35,11 +35,7 @@ from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
 from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
-from ray.util.placement_group import (
-    VALID_PLACEMENT_GROUP_STRATEGIES,
-    validate_bundles,
-    validate_strategy,
-)
+from ray.util.placement_group import validate_placement_group
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
@@ -590,17 +586,7 @@ class ReplicaConfig:
             )
 
     def _validate_placement_group_options(self) -> None:
-        if (
-            self.placement_group_strategy is not None
-            and self.placement_group_strategy not in VALID_PLACEMENT_GROUP_STRATEGIES
-        ):
-            raise ValueError(
-                f"Invalid placement group strategy '{self.placement_group_strategy}'. "
-                f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
-            )
-
         if self.placement_group_strategy is not None:
-            validate_strategy(self.placement_group_strategy)
             if self.placement_group_bundles is None:
                 raise ValueError(
                     "If `placement_group_strategy` is provided, "
@@ -608,9 +594,11 @@ class ReplicaConfig:
                 )
 
         if self.placement_group_bundles is not None:
-            validate_bundles(self.placement_group_bundles)
-
-            first_bundle = self.placement_group_bundles[0]
+            validate_placement_group(
+                bundles=self.placement_group_bundles,
+                strategy=self.placement_group_strategy or "PACK",
+                lifetime="detached",
+            )
 
             resource_error_prefix = (
                 "When using `placement_group_bundles`, the replica actor "
@@ -618,6 +606,8 @@ class ReplicaConfig:
                 "requirements for the actor must be a subset of the first "
                 "bundle."
             )
+
+            first_bundle = self.placement_group_bundles[0]
 
             # Validate that the replica actor fits in the first bundle.
             bundle_cpu = first_bundle.get("CPU", 0)

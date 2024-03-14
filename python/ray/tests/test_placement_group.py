@@ -12,8 +12,8 @@ from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.placement_group import (
-    validate_strategy,
-    validate_bundles,
+    validate_placement_group,
+    _validate_bundles,
     VALID_PLACEMENT_GROUP_STRATEGIES,
 )
 
@@ -687,44 +687,44 @@ def test_omp_num_threads_in_pg(ray_start_cluster):
 
 class TestPlacementGroupValidation:
     def test_strategy_validation(self):
-        """Test validate_strategy()."""
+        """Test strategy validation when creating a placement group."""
 
         # Valid strategies should not raise an exception.
         for strategy in VALID_PLACEMENT_GROUP_STRATEGIES:
-            validate_strategy(strategy)
+            validate_placement_group(bundles=[{"CPU": 1}], strategy=strategy)
 
         # Any other strategy should raise a ValueError.
         with pytest.raises(ValueError, match="Invalid placement group strategy"):
-            validate_strategy("invalid strategy")
+            validate_placement_group(bundles=[{"CPU": 1}], strategy="invalid")
 
     def test_bundle_validation(self):
-        """Test validate_bundle()."""
+        """Test _validate_bundle()."""
 
         # Valid bundles should not raise an exception.
         valid_bundles = [{"CPU": 1, "custom-resource": 2.2}, {"GPU": 0.75}]
-        validate_bundles(valid_bundles)
+        _validate_bundles(valid_bundles)
 
         # Non-list bundles should raise an exception.
         with pytest.raises(ValueError, match="must be a list"):
-            validate_bundles("not a list")
+            _validate_bundles("not a list")
 
         # Empty list bundles should raise an exception.
         with pytest.raises(ValueError, match="must be a non-empty list"):
-            validate_bundles([])
+            _validate_bundles([])
 
         # List that doesn't contain dictionaries should raise an exception.
         with pytest.raises(ValueError, match="resource dictionaries"):
-            validate_bundles([{"CPU": 1}, "not a dict"])
+            _validate_bundles([{"CPU": 1}, "not a dict"])
 
         # List with invalid dictionary entries should raise an exception.
         with pytest.raises(ValueError, match="resource dictionaries"):
-            validate_bundles([{8: 7}, {5: 3.5}])
+            _validate_bundles([{8: 7}, {5: 3.5}])
         with pytest.raises(ValueError, match="resource dictionaries"):
-            validate_bundles([{"CPU": "6"}, {"GPU": "5"}])
+            _validate_bundles([{"CPU": "6"}, {"GPU": "5"}])
 
         # Bundles with resources that all have 0 values should raise an exception.
         with pytest.raises(ValueError, match="only 0 values"):
-            validate_bundles([{"CPU": 0, "GPU": 0}])
+            _validate_bundles([{"CPU": 0, "GPU": 0}])
 
 
 if __name__ == "__main__":

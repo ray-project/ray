@@ -231,6 +231,24 @@ class TestDeploymentOptions:
             def f():
                 pass
 
+    def test_placement_group_strategy_without_bundles(self):
+        """Check that specifying strategy requires also specifying bundles."""
+
+        with pytest.raises(ValueError):
+
+            # PG strategy without bundles is invalid.
+            @serve.deployment(placement_group_strategy="PACK")
+            def f():
+                pass
+
+        # PG strategy with bundles is valid.
+        @serve.deployment(
+            placement_group_strategy="PACK",
+            placement_group_bundles=[{"CPU": 10}],
+        )
+        def g():
+            pass
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
