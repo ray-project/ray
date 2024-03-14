@@ -324,6 +324,7 @@ class _VectorizedGymEnv(VectorEnv):
                     "Trying to close old and replaced sub-environment (at vector "
                     f"index={index}), but closing resulted in error:\n{e}"
                 )
+        del self.envs[index]
 
         # Re-create the sub-env at the new index.
         logger.warning(f"Trying to restart sub-environment at index {index}.")

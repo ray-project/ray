@@ -443,16 +443,15 @@ class AlgorithmConfig(_Config):
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
-        self.evaluation_sample_timeout_s = 180.0
+        self.evaluation_sample_timeout_s = 120.0
         self.evaluation_parallel_to_training = False
+        self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
         self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
-        self.custom_async_evaluation_function = None
-        self.always_attach_evaluation_results = False
-        self.enable_async_evaluation = False
+        self.always_attach_evaluation_results = True
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -532,6 +531,8 @@ class AlgorithmConfig(_Config):
         self.worker_cls = DEPRECATED_VALUE
         self.synchronize_filters = DEPRECATED_VALUE
         self.sample_async = DEPRECATED_VALUE
+        self.enable_async_evaluation = DEPRECATED_VALUE
+        self.custom_async_evaluation_function = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -2035,6 +2036,7 @@ class AlgorithmConfig(_Config):
         evaluation_duration_unit: Optional[str] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = NotProvided,
@@ -2042,43 +2044,60 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_workers: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
-        custom_async_evaluation_function: Optional[Callable] = NotProvided,
         always_attach_evaluation_results: Optional[bool] = NotProvided,
-        enable_async_evaluation: Optional[bool] = NotProvided,
         # Deprecated args.
         evaluation_num_episodes=DEPRECATED_VALUE,
+        enable_async_evaluation=DEPRECATED_VALUE,
+        custom_async_evaluation_function=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
         Args:
             evaluation_interval: Evaluate with every `evaluation_interval` training
                 iterations. The evaluation stats will be reported under the "evaluation"
-                metric key. Note that for Ape-X metrics are already only reported for
-                the lowest epsilon workers (least random workers).
-                Set to None (or 0) for no evaluation.
+                metric key. Set to None (or 0) for no evaluation.
             evaluation_duration: Duration for which to run evaluation each
                 `evaluation_interval`. The unit for the duration can be set via
                 `evaluation_duration_unit` to either "episodes" (default) or
-                "timesteps". If using multiple evaluation workers
-                (evaluation_num_workers > 1), the load to run will be split amongst
-                these.
-                If the value is "auto":
-                - For `evaluation_parallel_to_training=True`: Will run as many
-                episodes/timesteps that fit into the (parallel) training step.
-                - For `evaluation_parallel_to_training=False`: Error.
+                "timesteps". If using multiple evaluation workers (EnvRunners) in the
+                `evaluation_num_workers > 1` setting, the amount of episodes/timesteps
+                to run will be split amongst these.
+                A special value of "auto" can be used in case
+                `evaluation_parallel_to_training=True`. This is the recommended way when
+                trying to save as much time on evaluation as possible. The Algorithm
+                will then run as many timesteps via the evaluation workers as possible,
+                while not taking longer than the parallely running training step and
+                thus, never wasting any idle time on either training- or evaluation
+                workers. When using this setting (`evaluation_duration="auto"`), it is
+                strongly advised to set `evaluation_interval=1` and
+                `evaluation_force_reset_envs_before_iteration=True` at the same time.
             evaluation_duration_unit: The unit, with which to count the evaluation
-                duration. Either "episodes" (default) or "timesteps".
-            evaluation_sample_timeout_s: The timeout (in seconds) for the ray.get call
-                to the remote evaluation worker(s) `sample()` method. After this time,
-                the user will receive a warning and instructions on how to fix the
-                issue. This could be either to make sure the episode ends, increasing
-                the timeout, or switching to `evaluation_duration_unit=timesteps`.
+                duration. Either "episodes" (default) or "timesteps". Note that this
+                setting is ignored if `evaluation_duration="auto"`.
+            evaluation_sample_timeout_s: The timeout (in seconds) for evaluation workers
+                to sample a complete episode in the case your config settings are:
+                `evaluation_duration != auto` and `evaluation_duration_unit=episode`.
+                After this time, the user will receive a warning and instructions on how
+                to fix the issue.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
-                a Algorithm.train() call using threading. Default=False.
-                E.g. evaluation_interval=2 -> For every other training iteration,
-                the Algorithm.train() and Algorithm.evaluate() calls run in parallel.
-                Note: This is experimental. Possible pitfalls could be race conditions
-                for weight synching at the beginning of the evaluation loop.
+                the `Algorithm.training_step()` call, using threading. Default=False.
+                E.g. for evaluation_interval=1 -> In every call to `Algorithm.train()`,
+                the `Algorithm.training_step()` and `Algorithm.evaluate()` calls will
+                run in parallel. Note that this setting - albeit extremely efficient b/c
+                it wastes no extra time for evaluation - causes the evaluation results
+                to lag one iteration behind the rest of the training results. This is
+                important when picking a good checkpoint. For example, if iteration 42
+                reports a good evaluation `episode_reward_mean`, be aware that these
+                results were achieved on the weights trained in iteration 41, so you
+                should probably pick the iteration 41 checkpoint instead.
+            evaluation_force_reset_envs_before_iteration: Whether all environments
+                should be force-reset (even if they are not done yet) right before
+                the evaluation step of the iteration begins. Setting this to True
+                (default) will make sure that the evaluation results will not be
+                polluted with episode statistics that were actually (at least partially)
+                achieved with an earlier set of weights. Note that this setting is only
+                supported on the new API stack (`config._enable_new_api_stack=True`
+                and `config.env_runner_cls=[SingleAgentEnvRunner|MultiAgentEnvrunner]`).
             evaluation_config: Typical usage is to pass extra args to evaluation env
                 creator and to disable exploration by computing deterministic actions.
                 IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
@@ -2103,7 +2122,7 @@ class AlgorithmConfig(_Config):
                 since each record is one timestep already. The default is True.
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
-                be run in the algorithm process (only if evaluation_interval is not
+                be run in the algorithm process (only if evaluation_interval is not 0 or
                 None). If you increase this, it will increase the Ray resource usage of
                 the algorithm since evaluation workers are created separately from
                 rollout workers (used to sample data for training).
@@ -2112,27 +2131,10 @@ class AlgorithmConfig(_Config):
                 metrics: dict. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
-            custom_async_evaluation_function: In case the new `EnvRunner API` is used
-                and `enable_async_evaluation=True` customize the asynchronous evaluation
-                method. This must be a function of signature (algo: Algorithm,
-                eval_workers: WorkerSet, weights_ref: ObjectRef, weights_seq_no: int)
-                -> metrics: dict. See the `Algorithm._evaluate_async_with_env_runner()`
-                method to see the default implementation. The Algorithm guarantees all
-                eval workers have the latest module and connector states before this
-                function is called. Weights reference and weights sequence number are
-                passed over to avoid synching the weights too often. `weights_ref` is
-                a reference to the modules' weights in object store and `weigths_seq_no`
-                is the sequence number that identifies the last weights update, i.e.
-                if this number is identical to the one in stored by the workers, the
-                workers do not update weights again.
             always_attach_evaluation_results: Make sure the latest available evaluation
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
-            enable_async_evaluation: If True, use an AsyncRequestsManager for
-                the evaluation workers and use this manager to send `sample()` requests
-                to the evaluation workers. This way, the Algorithm becomes more robust
-                against long running episodes and/or failing (and restarting) workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2145,6 +2147,19 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             evaluation_duration = evaluation_num_episodes
+        elif enable_async_evaluation != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(enable_async_evaluation=...)",
+                new="AlgorithmConfig.evaluation(evaluation_parallel_to_training=...)",
+                error=True,
+            )
+        elif custom_async_evaluation_function != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.evaluation(custom_async_evaluation_function=...)",
+                new="AlgorithmConfig.evaluation(evaluation_parallel_to_training=True,"
+                " custom_evaluation_function=...)",
+                error=True,
+            )
 
         if evaluation_interval is not NotProvided:
             self.evaluation_interval = evaluation_interval
@@ -2156,6 +2171,10 @@ class AlgorithmConfig(_Config):
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_force_reset_envs_before_iteration is not NotProvided:
+            self.evaluation_force_reset_envs_before_iteration = (
+                evaluation_force_reset_envs_before_iteration
+            )
         if evaluation_config is not NotProvided:
             # If user really wants to set this to None, we should allow this here,
             # instead of creating an empty dict.
@@ -2179,12 +2198,8 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
-        if custom_async_evaluation_function is not NotProvided:
-            self.custom_async_evaluation_function = custom_async_evaluation_function
         if always_attach_evaluation_results is not NotProvided:
             self.always_attach_evaluation_results = always_attach_evaluation_results
-        if enable_async_evaluation is not NotProvided:
-            self.enable_async_evaluation = enable_async_evaluation
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
@@ -2929,7 +2944,10 @@ class AlgorithmConfig(_Config):
             # -> 2000 / 4 -> 500
             # 4 workers, 3 envs per worker, 2500 train batch size:
             # -> 2500 / 12 -> 208.333 -> diff=4 (208 * 12 = 2496)
-            # -> worker 1: 209, workers 2-4: 208
+            # -> worker 1, 2: 209, workers 3, 4: 208
+            # 2 workers, 20 envs per worker, 512 train batch size:
+            # -> 512 / 40 -> 12.8 -> diff=32 (12 * 40 = 480)
+            # -> worker 1: 13, workers 2: 12
             rollout_fragment_length = self.total_train_batch_size / (
                 self.num_envs_per_worker * (self.num_rollout_workers or 1)
             )
@@ -2937,7 +2955,9 @@ class AlgorithmConfig(_Config):
                 diff = self.total_train_batch_size - int(
                     rollout_fragment_length
                 ) * self.num_envs_per_worker * (self.num_rollout_workers or 1)
-                if (worker_index * self.num_envs_per_worker) <= diff:
+                if ((worker_index - 1) * self.num_envs_per_worker) >= diff:
+                    return int(rollout_fragment_length)
+                else:
                     return int(rollout_fragment_length) + 1
             return int(rollout_fragment_length)
         else:
@@ -2974,6 +2994,10 @@ class AlgorithmConfig(_Config):
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
 
+        # NOTE: The following if-block is only relevant for the old API stack.
+        # For the new API stack (EnvRunners), the evaluation methods of Algorithm
+        # explicitly tell each EnvRunner on each sample call, how many timesteps
+        # of episodes to collect.
         # Evaluation duration unit: episodes.
         # Switch on `complete_episode` rollouts. Also, make sure
         # rollout fragments are short so we never have more than one
@@ -2992,7 +3016,11 @@ class AlgorithmConfig(_Config):
         else:
             eval_config_obj.batch_mode = "truncate_episodes"
             eval_config_obj.rollout_fragment_length = (
-                10
+                # Set to a moderately small (but not too small) value in order
+                # to a) not overshoot too much the parallelly running `training_step`
+                # but also to b) avoid too many `sample()` remote calls.
+                # 100 seems like a good middle ground.
+                100
                 if self.evaluation_duration == "auto"
                 else int(
                     math.ceil(
@@ -3786,44 +3814,23 @@ class AlgorithmConfig(_Config):
 
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
-        if (
-            self.evaluation_interval
-            and self.uses_new_env_runners
-            and not self.enable_async_evaluation
-        ):
+
+        # Async evaluation has been deprecated. Use "simple" parallel mode instead
+        # (which is also async):
+        # `config.evaluation(evaluation_parallel_to_training=True)`.
+        if self.enable_async_evaluation is True:
             raise ValueError(
-                "When using an EnvRunner class that's not a subclass of `RolloutWorker`"
-                f"(yours is {self.env_runner_cls.__name__}), "
-                "`config.enable_async_evaluation` must be set to True! Call "
-                "`config.evaluation(enable_async_evaluation=True) on your config "
-                "object to fix this problem."
+                "`enable_async_evaluation` has been deprecated (you should set this to "
+                "False)! Use `config.evaluation(evaluation_parallel_to_training=True)` "
+                "instead."
             )
 
-        # If async evaluation is enabled, custom_eval_functions are not allowed iff
-        # the old `RolloutWorker`is used.
-        if self.custom_evaluation_function:
-            # Uses new `EnvRunner API`.
-            if self.uses_new_env_runners:
-                # If we can potentially use a custom asynchronous evaluation function,
-                # validate it.
-                self._validate_custom_async_evaluation_function(
-                    self.custom_evaluation_function
-                )
-            # Uses old `RolloutWorker`.
-            else:
-                if self.enable_async_evaluation:
-                    raise ValueError(
-                        "`config.custom_evaluation_function` not supported in "
-                        "combination with `enable_async_evaluation=True` config "
-                        "setting!"
-                    )
-
-        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is 0 or
         # None.
         if self.evaluation_num_workers > 0 and not self.evaluation_interval:
             logger.warning(
                 f"You have specified {self.evaluation_num_workers} "
-                "evaluation workers, but your `evaluation_interval` is None! "
+                "evaluation workers, but your `evaluation_interval` is 0 or None! "
                 "Therefore, evaluation will not occur automatically with each"
                 " call to `Algorithm.train()`. Instead, you will have to call "
                 "`Algorithm.evaluate()` manually in order to trigger an "
@@ -3833,7 +3840,7 @@ class AlgorithmConfig(_Config):
         # `evaluation_parallel_to_training=True`, warn that you need
         # at least one remote eval worker for parallel training and
         # evaluation, and set `evaluation_parallel_to_training` to False.
-        elif self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
+        if self.evaluation_num_workers == 0 and self.evaluation_parallel_to_training:
             raise ValueError(
                 "`evaluation_parallel_to_training` can only be done if "
                 "`evaluation_num_workers` > 0! Try setting "
@@ -3848,7 +3855,15 @@ class AlgorithmConfig(_Config):
                     "`evaluation_duration=auto` not supported for "
                     "`evaluation_parallel_to_training=False`!"
                 )
-        # Make sure, it's an int otherwise.
+            elif self.evaluation_duration_unit == "episodes":
+                logger.warning(
+                    "When using `config.evaluation_duration='auto'`, the sampling unit "
+                    "used is always 'timesteps'! You have set "
+                    "`config.evaluation_duration_unit='episodes'`, which will be "
+                    "ignored."
+                )
+
+        # Make sure, `evaluation_duration` is an int otherwise.
         elif (
             not isinstance(self.evaluation_duration, int)
             or self.evaluation_duration <= 0
@@ -4080,54 +4095,6 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
-
-    def _validate_custom_async_evaluation_function(self, func: Callable):
-        """Checks if the custom async evaluation function conforms to standards.
-
-        First, it is checked, if the passed in element is indeed a function.
-        Then it is checked, if the signature contains the required number of
-        arguments, i.e. `algorithm`, `eval_workers`, `weights_ref`, and
-        `weights_seq_no`.
-        Finally, the source code of the element is checked for the usage of
-        `foreach_worker_async`.
-
-        All of these checks are only intended to guide the user when passing
-        in a custom function to evaluate asynchronously.
-
-        Args:
-            func: A callable passed into the configuration argument
-                `custom_async_evaluation_function`.
-
-        Raises:
-            `ValueError` if the callable is not a function, does not contain
-                three arguments and does not make use of
-                `eval_workers.foreach_worker_async`.
-        """
-
-        # Import the inspect module.
-        from inspect import getsourcelines, isfunction, signature
-
-        # Check, if we have indeed a function.
-        if not isfunction(func):
-            raise ValueError("`custom_async_evaluation_function` must be a function.")
-        # Check, if the signature is correct, i.e. three arguments:
-        #   eval_workers, weights_ref, weights_seq_no
-        func_signature = signature(func)
-        if len(func_signature.parameters) != 4:
-            raise ValueError(
-                "`custom_async_eval_function` expects a callable with four "
-                "arguments, namely `algorithm`, `eval_workers`, `weights_ref`, "
-                f"and `weights_seq_no`, but received signature {func_signature}."
-            )
-        # Check, if `foreach_worker_async` is indeed used inside of the
-        # custom evaluation routine.
-        lines, _ = getsourcelines(func)
-        if not any(["foreach_worker_async" in line for line in lines[0]]):
-            raise ValueError(
-                "`custom_async_evaluation_func` expects a callable that "
-                "evaluates asynchronous, i.e. it uses "
-                "`eval_workers.foreach_worker_async()`"
-            )
 
     @staticmethod
     def _serialize_dict(config):

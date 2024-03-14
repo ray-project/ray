@@ -1,8 +1,12 @@
-# Counters for sampling and training steps (env- and agent steps).
+# Counters for sampling, sampling (on eval workers) and
+# training steps (env- and agent steps).
 NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
 NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
 NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"
+NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
+    "num_env_steps_sampled_for_evaluation_this_iter"
+)
 NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"
@@ -29,7 +33,15 @@ LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
 # Performance timers (keys for Algorithm._timers).
+# ------------------------------------------------
+# Duration of n `Algorithm.training_step()` calls making up one "iteration".
+# Note that n may be >1 if the user has set up a min time (sec) or timesteps per
+# iteration.
 TRAINING_ITERATION_TIMER = "training_iteration"
+# Duration of a `Algorithm.evaluate()` call.
+EVALUATION_ITERATION_TIMER = "evaluation_iteration"
+# Duration of a single `training_step()` call.
+TRAINING_STEP_TIMER = "training_step"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 GARBAGE_COLLECTION_TIMER = "garbage_collection"
