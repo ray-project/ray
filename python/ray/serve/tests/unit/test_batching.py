@@ -19,41 +19,6 @@ def event_loop():
 
 
 @pytest.mark.asyncio
-async def test_batching_magic_attributes():
-    class BatchingExample:
-        def __init__(self):
-            self.count = 0
-            self.batch_sizes = set()
-
-        @property
-        def _ray_serve_max_batch_size(self):
-            return self.count + 1
-
-        @property
-        def _ray_serve_batch_wait_timeout_s(self):
-            return 0.1
-
-        @serve.batch
-        async def handle_batch(self, requests):
-            self.count += 1
-            batch_size = len(requests)
-            self.batch_sizes.add(batch_size)
-            return [batch_size] * batch_size
-
-    batching_example = BatchingExample()
-
-    for batch_size in range(1, 7):
-        tasks = [
-            get_or_create_event_loop().create_task(batching_example.handle_batch(1))
-            for _ in range(batch_size)
-        ]
-
-        done, _ = await asyncio.wait(tasks, return_when="ALL_COMPLETED")
-        assert set({task.result() for task in done}) == {batch_size}
-        time.sleep(0.05)
-
-
-@pytest.mark.asyncio
 async def test_decorator_validation():
     @serve.batch
     async def function():

@@ -2239,7 +2239,7 @@
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
+  team: core
 
   cluster:
     byod: {}
@@ -2267,7 +2267,7 @@
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
+  team: core
 
   cluster:
     byod: {}
@@ -2297,7 +2297,7 @@
 #   working_dir: runtime_env_tests
 
 #   frequency: nightly
-#   team: serve
+#   team: core
 
 #   cluster:
 #     cluster_compute: rte_minimal.yaml
