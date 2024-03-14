@@ -166,6 +166,7 @@ class ForwardHealthCheckToEnvWorker(SingleAgentEnvRunner):
 
     def ping(self) -> str:
         # See if Env wants to throw error.
+        self.env.reset()
         actions = self.env.action_space.sample()
         _ = self.env.step(actions)
         # If there is no error raised from sample(), we simply reply pong.
@@ -180,6 +181,7 @@ class ForwardHealthCheckToEnvWorkerMultiAgent(MultiAgentEnvRunner):
 
     def ping(self) -> str:
         # See if Env wants to throw error.
+        self.env.reset()
         action_dict = self.env.action_space.sample()
         _ = self.env.step(action_dict)
         # If there is no error raised from sample(), we simply reply pong.
@@ -509,7 +511,7 @@ class TestWorkerFailures(unittest.TestCase):
             fail_eval=True,
         )
 
-    def test_workers_fatal_but_recover(self):
+    def test_workers_failing_recover(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_workers_fatal_but_recover"
         counter = Counter.options(name=COUNTER_NAME).remote()

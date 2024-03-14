@@ -3019,15 +3019,15 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the training iteration.
         """
+        # Before training step, try to bring failed workers back.
+        self.restore_workers(self.workers)
+
         with self._timers[TRAINING_ITERATION_TIMER]:
             # In case we are training (in a thread) parallel to evaluation,
             # we may have to re-enable eager mode here (gets disabled in the
             # thread).
             if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
                 tf1.enable_eager_execution()
-
-            # With training step done. Try to bring failed workers back.
-            self.restore_workers(self.workers)
 
             results = None
             # Create a step context ...
@@ -3057,6 +3057,7 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the evaluation call.
         """
+        
         if self.evaluation_workers is not None:
             self.restore_workers(self.evaluation_workers)
 
