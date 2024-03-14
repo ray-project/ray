@@ -543,9 +543,13 @@ class DeploymentResponse(_DeploymentResponseBase):
         result = ray.get(obj_ref)
         print("in _to_object_ref!!!, ref in memory? after get", obj_ref_hex in ray._private.internal_api.memory_summary())
         del obj_ref
-        print("in _to_object_ref!!!, ref in memory? after del", obj_ref_hex in ray._private.internal_api.memory_summary())
+        print("in _to_object_ref!!!, ref in memory? after del", obj_ref_hex in ray._private.internal_api.memory_summary(), result)
 
-        return ray.put(result)
+        @ray.remote
+        def get_result():
+            return result
+
+        return get_result.remote()
 
     @DeveloperAPI
     def _to_object_ref_sync(
