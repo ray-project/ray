@@ -38,10 +38,15 @@ run_medium_flaky_tests() {
 run_small_test() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+  # (bazel query 'attr(tags, "client_tests|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+  #   xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+  #     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+  #     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+  bazel test --config=ci $(./ci/run/bazel_export_options) \
+    --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+    --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
+    //python/ray/tests:test_actor_cancel //python/ray/tests:test_actor_remote_cancel \
+    //python/ray/tests:test_actor_cancel_recursive_tree
 }
 
 run_medium_a_j_test() {

@@ -40,6 +40,8 @@ py_test_module_list(
     "test_array.py",
     "test_autoscaling_policy.py",
     "test_actor_cancel.py",
+    "test_actor_remote_cancel.py",
+    "test_actor_cancel_recursive_tree.py",
     "test_dashboard_profiler.py",
     "test_gcs_utils.py",
     "test_metrics_agent.py",
