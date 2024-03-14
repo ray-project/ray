@@ -10,7 +10,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
@@ -225,19 +224,20 @@ def wait_for_restore(num_restarting_allowed=0):
         time.sleep(0.5)
 
 
-class AddPolicyCallback(DefaultCallbacks):
+class AddModuleCallback(DefaultCallbacks):
     def __init__(self):
         super().__init__()
 
     def on_algorithm_init(self, *, algorithm, **kwargs):
-        # Add a custom policy to algorithm.
-        algorithm.add_policy(
-            policy_id="test_policy",
-            policy_cls=PPOTorchPolicy,
-            observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
-            action_space=gym.spaces.Discrete(2),
-            config={},
-            policy_state=None,
+        # Add a custom module to algorithm.
+        spec = algorithm.config.get_default_rl_module_spec()
+        spec.observation_space = gym.spaces.Box(low=0, high=1, shape=(8,))
+        spec.action_space = gym.spaces.Discrete(2)
+        spec.model_config_dict = {}
+        algorithm.add_module(
+            module_id="test_module",
+            module_spec=spec,
+            module_state=None,
             evaluation_workers=True,
         )
 
@@ -566,9 +566,9 @@ class TestWorkerFailures(unittest.TestCase):
         # Both workers are restarted.
         self.assertEqual(algo.workers.num_remote_worker_restarts(), 2)
 
-    def test_policies_are_restored_on_recovered_worker(self):
+    def test_modules_are_restored_on_recovered_worker(self):
         # Counter that will survive restarts.
-        COUNTER_NAME = "test_policies_are_restored_on_recovered_worker"
+        COUNTER_NAME = "test_modules_are_restored_on_recovered_worker"
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
@@ -611,12 +611,16 @@ class TestWorkerFailures(unittest.TestCase):
                     },
                 ),
             )
-            .callbacks(AddPolicyCallback)
+            .callbacks(AddModuleCallback)
             .fault_tolerance(
                 recreate_failed_workers=True,  # But recover.
                 # Throwing error in constructor is a bad idea.
                 # 0 delay for testing purposes.
                 delay_between_worker_restarts_s=0,
+            )
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
             )
         )
 
@@ -625,8 +629,8 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo = config.build()
 
-        # Should have the custom policy.
-        self.assertIsNotNone(algo.get_policy("test_policy"))
+        # Should have the custom module.
+        self.assertIsNotNone(algo.get_module("test_module"))
 
         # Before train loop, workers are fresh and not recreated.
         self.assertEqual(algo.workers.num_healthy_remote_workers(), 2)
@@ -645,19 +649,19 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 1)
         self.assertEqual(algo.evaluation_workers.num_remote_worker_restarts(), 1)
 
-        # Let's verify that our custom policy exists on both recovered workers.
-        def has_test_policy(w):
-            return "test_policy" in w.policy_map
+        # Let's verify that our custom module exists on both recovered workers.
+        def has_test_module(w):
+            return "test_module" in w.module
 
-        # Rollout worker has test policy.
+        # Rollout worker has test module.
         self.assertTrue(
-            all(algo.workers.foreach_worker(has_test_policy, local_worker=False))
+            all(algo.workers.foreach_worker(has_test_module, local_worker=False))
         )
-        # Eval worker has test policy.
+        # Eval worker has test module.
         self.assertTrue(
             all(
                 algo.evaluation_workers.foreach_worker(
-                    has_test_policy, local_worker=False
+                    has_test_module, local_worker=False
                 )
             )
         )
@@ -731,6 +735,9 @@ class TestWorkerFailures(unittest.TestCase):
             # Must use off-policy algorithm since we are going have hanging workers.
             SACConfig()
             .experimental(_enable_new_api_stack=True)
+            .training(
+                replay_buffer_config={"type": "EpisodeReplayBuffer"},
+            )
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=3,
