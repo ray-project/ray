@@ -2697,8 +2697,8 @@ class DeploymentStateManager:
 
         deleted_ids = []
         any_recovering = False
-        upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
-        downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
+        upscales = {}
+        downscales = {}
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
@@ -2761,15 +2761,6 @@ class DeploymentStateManager:
         )
         for deployment_id, replicas_to_stop in deployment_to_replicas_to_stop.items():
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
-        for deployment_id, scheduling_requests in upscales.items():
-            failed_replicas: List[ReplicaID] = []
-            for scheduling_request in scheduling_requests:
-                if scheduling_request.scheduling_failed:
-                    failed_replicas.append(scheduling_request.replica_id)
-            self._deployment_states[deployment_id].stop_replicas(failed_replicas)
-            self._deployment_states[
-                deployment_id
-            ]._replica_constructor_retry_counter += len(failed_replicas)
 
         # STEP 7: Broadcast long poll information
         for deployment_state in self._deployment_states.values():
