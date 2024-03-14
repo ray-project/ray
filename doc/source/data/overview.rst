@@ -60,8 +60,8 @@ Offline batch inference is a process for generating model predictions on a fixed
  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit#slide=id.g230eb261ad2_0_0
 
 
-How does Ray Data compare to ... for offline inference?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How does Ray Data compare to other solutions for offline inference?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. dropdown:: Batch Services: AWS Batch, GCP Batch
 
@@ -117,8 +117,8 @@ on how to use Ray Data for preprocessing and ingest for ML training, see
   https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
 
 
-How does Ray Data compare to ... for ML training ingest?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How does Ray Data compare to other solutions for ML training ingest?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. dropdown:: PyTorch Dataset and DataLoader
 
@@ -149,7 +149,7 @@ How does Ray Data compare to ... for ML training ingest?
     * **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g. both CPU and GPU transformations), while Ray Data supports this.
 
 ML training ingest case studies
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 - `Pinterest uses Ray Data to do last mile data processing for model training <https://medium.com/pinterest-engineering/last-mile-data-processing-with-ray-629affbf34ff>`_
 - `DoorDash elevates model training with Ray Data <https://raysummit.anyscale.com/agenda/sessions/144>`_
 - `Instacart builds distributed machine learning model training on Ray Data <https://tech.instacart.com/distributed-machine-learning-at-instacart-4b11d7569423>`_
