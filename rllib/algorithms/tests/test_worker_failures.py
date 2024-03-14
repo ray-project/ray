@@ -179,10 +179,11 @@ class ForwardHealthCheckToEnvWorkerMultiAgent(MultiAgentEnvRunner):
     """
 
     def ping(self) -> str:
-        # See if Env wants to throw error.
-        self.env.reset()
-        action_dict = self.env.action_space.sample()
-        _ = self.env.step(action_dict)
+        self.sample(num_timesteps=1, random_actions=True)
+        ## See if Env wants to throw error.
+        #obs, infos = self.env.reset()
+        #action_dict = self.env.action_space.sample()
+        #_ = self.env.step({aid: a for aid, a in action_dict.items() if aid in obs})
         # If there is no error raised from sample(), we simply reply pong.
         return super().ping()
 
@@ -346,7 +347,7 @@ class TestWorkerFailures(unittest.TestCase):
             **(
                 dict(
                     policy_mapping_fn=(
-                        lambda aid, episode, worker, **kwargs: (
+                        lambda aid, episode, **kwargs: (
                             # Allows this test to query this
                             # different-from-training-workers policy mapping fn.
                             "This is the eval mapping fn"
@@ -371,7 +372,8 @@ class TestWorkerFailures(unittest.TestCase):
         for _ in range(2):
             algo.train()
             wait_for_restore()
-            algo.restore_workers()
+            algo.restore_workers(algo.workers)
+            algo.restore_workers(algo.evaluation_workers)
 
             self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
             self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 1)
@@ -380,7 +382,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # make sure the restored eval worker received the correct one from
                 # the eval config (not the main workers' one).
                 test = algo.evaluation_workers.foreach_worker(
-                    lambda w: w.policy_mapping_fn(0, None, None)
+                    lambda w: w.config.policy_mapping_fn(0, None)
                 )
                 self.assertEqual(test[0], "This is the eval mapping fn")
         algo.stop()
@@ -474,7 +476,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         self._do_test_fault_fatal_recreate(config)
 
-    def test_recreate_eval_workers_parallel_to_training_w_actor_manager_and_multi_agent(
+    def test_recreate_eval_workers_parallel_to_training_multi_agent(
         self,
     ):
         # Test the case where all eval workers fail on a multi-agent env with
@@ -483,13 +485,13 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent)
             .multi_agent(
                 policies={"main", "p0", "p1"},
                 policy_mapping_fn=(
-                    lambda aid, episode, worker, **kwargs: (
+                    lambda aid, episode, **kwargs: (
                         "main"
-                        if episode.episode_id % 2 == aid
+                        if hash(episode.id_) % 2 == aid
                         else "p{}".format(np.random.choice([0, 1]))
                     )
                 ),
@@ -719,7 +721,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.train()
         wait_for_restore()
-        algo.train()
+        algo.restore_workers(algo.evaluation_workers)
 
         # Everything still healthy. And all workers are restarted.
         self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 2)
