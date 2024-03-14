@@ -19,6 +19,7 @@ from typing import (
     overload,
 )
 
+from ray import serve
 from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -111,6 +112,28 @@ class _BatchQueue:
             self._handle_batch_task = self._loop.create_task(
                 self._process_batches(handle_batch_func)
             )
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
+
+    def _warn_if_max_batch_size_exceeds_max_ongoing_requests(self):
+        """Helper to check whether the max_batch_size is bounded.
+
+        Log a warning to configure `max_ongoing_requests` if it's bounded.
+        """
+        max_ongoing_requests = (
+            serve.get_replica_context()._deployment_config.max_ongoing_requests
+        )
+        if max_ongoing_requests < self.max_batch_size:
+            logger.warning(
+                f"`max_batch_size` ({self.max_batch_size}) is larger than "
+                f"`max_ongoing_requests` ({max_ongoing_requests}). This means "
+                "the replica will never receive a full batch. Please update "
+                "`max_ongoing_requests` to be >= `max_batch_size`."
+            )
+
+    def set_max_batch_size(self, new_max_batch_size: int) -> None:
+        """Updates queue's max_batch_size."""
+        self.max_batch_size = new_max_batch_size
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
@@ -345,7 +368,7 @@ class _LazyBatchQueueWrapper:
         self.max_batch_size = new_max_batch_size
 
         if self._queue is not None:
-            self._queue.max_batch_size = new_max_batch_size
+            self._queue.set_max_batch_size(new_max_batch_size)
 
     def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
         self.batch_wait_timeout_s = new_batch_wait_timeout_s

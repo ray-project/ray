@@ -25,6 +25,7 @@ steps:
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
         RAYCI_CONTINUOUS_BUILD: 1
+        RAYCI_SCHEDULE: "nightly"
   
   - label: "Trigger Release nightly test"
     key: trigger-release-nightly

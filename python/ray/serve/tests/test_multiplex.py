@@ -10,6 +10,7 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
@@ -25,6 +26,7 @@ def start_serve_with_context():
             deployment_id=DeploymentID(name="fake_deployment", app_name="fake_app"),
         ),
         servable_object=None,
+        _deployment_config=DeploymentConfig(),
     )
     try:
         yield

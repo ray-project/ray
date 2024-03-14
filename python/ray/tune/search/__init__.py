@@ -21,12 +21,6 @@ def _import_ax_search():
     return AxSearch
 
 
-def _import_skopt_search():
-    from ray.tune.search.skopt.skopt_search import SkOptSearch
-
-    return SkOptSearch
-
-
 def _import_hyperopt_search():
     from ray.tune.search.hyperopt.hyperopt_search import HyperOptSearch
 
@@ -73,7 +67,6 @@ SEARCH_ALG_IMPORT = {
     "variant_generator": _import_variant_generator,
     "random": _import_variant_generator,
     "ax": _import_ax_search,
-    "skopt": _import_skopt_search,
     "hyperopt": _import_hyperopt_search,
     "bayesopt": _import_bayesopt_search,
     "bohb": _import_bohb_search,
