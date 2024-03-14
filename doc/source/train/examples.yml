@@ -47,19 +47,21 @@ examples:
       - horovod
     skill_level: beginner
     link: examples/horovod/horovod_example
-  - title: "[Community Example] Train ResNet model with HPU"
+  - title: "Train ResNet model with HPU"
     frameworks:
       - pytorch
     skill_level: beginner
     use_cases:
       - computer vision
+    contributor: community
     link: examples/hpu/resnet
-  - title: "[Community Example] Train BERT model with HPU"
+  - title: "Train BERT model with HPU"
     frameworks:
       - transformers
     skill_level: beginner
     use_cases:
       - natural language processing
+    contributor: community
     link: examples/hpu/bert
 
   - title: Fine-tune of Stable Diffusion with DreamBooth and Ray Train
