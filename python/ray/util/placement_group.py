@@ -344,7 +344,7 @@ def validate_placement_group(
     _soft_target_node_id: Optional[str] = None,
 ) -> bool:
     """Validates inputs for placement_group.
-    
+
     Returns whether the placement group should be `detached`.
 
     Raises ValueError if inputs are invalid.
@@ -389,6 +389,7 @@ def validate_placement_group(
         )
 
     return detached
+
 
 def _validate_bundles(bundles: List[Dict[str, float]]):
     """Validates each bundle and raises a ValueError if any bundle is invalid."""

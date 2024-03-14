@@ -308,7 +308,7 @@ class TestReplicaConfig:
 
         # Invalid: unsupported placement_group_strategy.
         with pytest.raises(
-            ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
+            ValueError, match="Invalid placement group strategy FAKE_NEWS"
         ):
             ReplicaConfig.create(
                 Class,
