@@ -195,13 +195,18 @@ def placement_group(
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    detached = validate_placement_group(
+    validate_placement_group(
         bundles=bundles,
         strategy=strategy,
         lifetime=lifetime,
         _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
         _soft_target_node_id=_soft_target_node_id,
     )
+
+    if lifetime == "detached":
+        detached = True
+    else:
+        detached = False
 
     placement_group_id = worker.core_worker.create_placement_group(
         name,
@@ -345,8 +350,6 @@ def validate_placement_group(
 ) -> bool:
     """Validates inputs for placement_group.
 
-    Returns whether the placement group should be `detached`.
-
     Raises ValueError if inputs are invalid.
     """
 
@@ -378,17 +381,11 @@ def validate_placement_group(
             f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
         )
 
-    if lifetime is None:
-        detached = False
-    elif lifetime == "detached":
-        detached = True
-    else:
+    if lifetime not in [None, "detached"]:
         raise ValueError(
             "Placement group `lifetime` argument must be either `None` or "
             f"'detached'. Got {lifetime}."
         )
-
-    return detached
 
 
 def _validate_bundles(bundles: List[Dict[str, float]]):
