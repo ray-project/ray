@@ -410,9 +410,7 @@ class UseCase(ExampleEnum):
     LARGE_LANGUAGE_MODELS = "Large Language Models"
     GENERATIVE_AI = "Generative AI"
     COMPUTER_VISION = "Computer Vision"
-    TIME_SERIES = "Time Series"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
-    REINFORCEMENT_LEARNING = "Reinforcement Learning"
 
     @classmethod
     def formatted_name(cls):
