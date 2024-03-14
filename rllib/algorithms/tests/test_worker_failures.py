@@ -371,7 +371,7 @@ class TestWorkerFailures(unittest.TestCase):
         for _ in range(2):
             algo.train()
             wait_for_restore()
-            algo.train()
+            algo.restore_workers()
 
             self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
             self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 1)
@@ -558,8 +558,7 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.train()
         wait_for_restore()
-        # One more iteration. Workers will be recovered during this round.
-        algo.train()
+        algo.restore_workers(algo.workers)
 
         # After training, still 2 healthy workers.
         self.assertEqual(algo.workers.num_healthy_remote_workers(), 2)
@@ -640,8 +639,8 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.train()
         wait_for_restore()
-        # One more iteration. Workers will be recovered during this round.
-        algo.train()
+        algo.restore_workers(algo.workers)
+        algo.restore_workers(algo.evaluation_workers)
 
         # Everything healthy again. And all workers have been restarted.
         self.assertEqual(algo.workers.num_healthy_remote_workers(), 2)

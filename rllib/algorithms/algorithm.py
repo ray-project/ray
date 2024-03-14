@@ -3057,7 +3057,7 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the evaluation call.
         """
-        
+
         if self.evaluation_workers is not None:
             self.restore_workers(self.evaluation_workers)
 
@@ -3071,8 +3071,6 @@ class Algorithm(Trainable, AlgorithmBase):
         # After evaluation, do a round of health check on remote eval workers to see if
         # any of the failed workers are back.
         if self.evaluation_workers is not None:
-            # self.restore_workers(self.evaluation_workers)
-
             # Add number of healthy evaluation workers after this iteration.
             eval_results["evaluation"][
                 "num_healthy_workers"
