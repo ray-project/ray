@@ -554,7 +554,6 @@ class DeploymentScheduler(ABC):
                     f"Failed to create a placement group for {replica_id}."
                 )
                 scheduling_request.scheduling_failed = True
-                del self._pending_replicas[deployment_id][replica_id]
                 return
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
