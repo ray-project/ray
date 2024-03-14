@@ -91,12 +91,12 @@ def _load_deployment_def_from_import_path(import_path: str) -> Callable:
 def setup_tracing(tracing_exporter) -> None:
     # Sets the tracer_provider. This is only allowed once per execution
     # context and will log a warning if attempted multiple times.
-    tracing_exporters = tracing_exporter()
+    span_processors = tracing_exporter()
 
     trace.set_tracer_provider(TracerProvider())
 
-    for tracing_exporter in tracing_exporters:
-        trace.get_tracer_provider().add_span_processor(tracing_exporter)
+    for span_processor in span_processors:
+        trace.get_tracer_provider().add_span_processor(span_processor)
 
 
 class ReplicaMetricsManager:
