@@ -229,12 +229,7 @@ if setup_spec.type == SetupType.RAY:
     numpy_dep = "numpy >= 1.20"
     pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
-        "data": [
-            numpy_dep,
-            pandas_dep,
-            pyarrow_dep,
-            "fsspec",
-        ],
+        "data": [numpy_dep, pandas_dep, pyarrow_dep, "fsspec", "fastavro"],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to dashboard/optional_deps.py as well.
