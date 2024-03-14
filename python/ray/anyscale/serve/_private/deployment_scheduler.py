@@ -138,7 +138,7 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                 )
 
         else:
-            for pending_replicas in self._pending_replicas.values():
+            for deployment_id, pending_replicas in self._pending_replicas.items():
                 if not pending_replicas:
                     continue
 
