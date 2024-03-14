@@ -3,10 +3,6 @@
 End-to-end: Offline Batch Inference
 ===================================
 
-.. tip::
-
-    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference.
-
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
 For an overview on why you should use Ray Data for offline batch inference, and how it compares to alternatives, see the :ref:`Ray Data Overview <data_overview>`.
@@ -31,7 +27,7 @@ Using Ray Data for offline inference involves four basic steps:
 - **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming_data>`.
 - **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the :ref:`Iterating over data <iterating-over-data>` and :ref:`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see :ref:`the batch inference examples<batch_inference_examples>`.
+For more in-depth examples for your use case, see :ref:`the batch inference examples<data/examples>`.
 For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
 .. tab-set::
@@ -178,14 +174,6 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             {'output': array([0.625576], dtype=float32)}
 
-.. _batch_inference_examples:
-
-More examples
--------------
-- :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`
-- :doc:`Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50 </data/examples/batch_inference_object_detection>`
-- :doc:`Image Classification Batch Inference with Hugging Face Vision Transformer </data/examples/huggingface_vit_batch_prediction>`
-
 .. _batch_inference_configuration:
 
 Configuration and troubleshooting
@@ -330,7 +318,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
                 concurrency=2,
-                )
+            )
             predictions.show(limit=1)
 
         .. testoutput::
@@ -369,9 +357,10 @@ Increasing batch size results in faster execution because inference is a vectori
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <batch_inference_batch_size>`.
-
-If your batch size is already set to 1, then use either a smaller model or GPU devices with more memory.
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease 
+the batch size by following :ref:`these steps <batch_inference_batch_size>`. If your 
+batch size is already set to 1, then use either a smaller model or GPU devices with more 
+memory.
 
 For advanced users working with large models, you can use model parallelism to shard the model across multiple GPUs.
 
@@ -385,7 +374,7 @@ For an example where preprocessing is done in a separate `map` call, see :doc:`I
 Handling CPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run out of CPU RAM, you likely that you have too many model replicas that are running concurrently on the same node. For example, if a model
+If you run out of CPU RAM, you likely have too many model replicas that are running concurrently on the same node. For example, if a model
 uses 5 GB of RAM when created / run, and a machine has 16 GB of RAM total, then no more
 than three of these models can be run at the same time. The default resource assignments
 of one CPU per task/actor might lead to `OutOfMemoryError` from Ray in this situation.
