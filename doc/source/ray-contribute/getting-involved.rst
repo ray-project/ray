@@ -334,7 +334,23 @@ For callback APIs, consider adding a ``**kwargs`` placeholder as a "forward comp
     def tune_user_callback(model, score, **future_kwargs):
         pass
 
+Community Examples
+------------------
 
+We're always looking for new example contributions! When contributing an example for a Ray library,
+include a link to your example in the ``examples.yml`` file for that library:
+
+.. code-block:: yaml
+
+     - title: Serve a Java App
+       skill_level: advanced
+       link: tutorials/java
+       contributor: community
+
+Give your example a title, a skill level (``beginner``, ``intermediate``, or ``advanced``), and a
+link (relative links point to other documentation pages, but direct links starting with ``http://``
+also work). Include the ``contributor: community`` metadata to ensure that the example is correctly
+labeled as a community example in the example gallery.
 
 Becoming a Reviewer
 -------------------
