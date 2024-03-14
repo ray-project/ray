@@ -406,7 +406,7 @@ class ExampleEnum(Enum):
 
 class Contributor(ExampleEnum):
     RAY_TEAM = "Maintained by the Ray Team"
-    COMMUNITY = "Contributed by the Ray community"
+    COMMUNITY = "Contributed by the Ray Community"
 
     @property
     def tag(self):
