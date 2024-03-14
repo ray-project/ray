@@ -643,7 +643,7 @@ class TestWorkerFailures(unittest.TestCase):
         # One more iteration. Workers will be recovered during this round.
         algo.train()
 
-        # Everything still healthy. And all workers are restarted.
+        # Everything healthy again. And all workers have been restarted.
         self.assertEqual(algo.workers.num_healthy_remote_workers(), 2)
         self.assertEqual(algo.workers.num_remote_worker_restarts(), 2)
         self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 1)
