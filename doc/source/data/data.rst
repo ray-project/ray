@@ -57,19 +57,19 @@ Learn more
 
     .. grid-item-card::
 
-        **Key Concepts**
+        **Quickstart**
         ^^^
 
         Understand the key concepts behind Ray Data. Learn what
-        :ref:`Datasets <dataset_concept>` are and how they're used.
+        Datasets are and how they're used.
 
         +++
-        .. button-ref:: data_key_concepts
+        .. button-ref:: data_quickstart
             :color: primary
             :outline:
             :expand:
 
-            Learn Key Concepts
+            Quickstart
 
     .. grid-item-card::
 
@@ -118,7 +118,7 @@ Learn more
 
     .. grid-item-card::
 
-        **Ray blogs**
+        **Ray Blogs**
         ^^^
 
         Get the latest on engineering updates from the Ray team and how companies are using Ray Data.
