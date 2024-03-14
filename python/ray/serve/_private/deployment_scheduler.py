@@ -552,6 +552,7 @@ class DeploymentScheduler(ABC):
                 logger.exception(
                     f"Failed to create a placement group for {replica_id}."
                 )
+                return
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
                 placement_group_capture_child_tasks=True,
