@@ -600,7 +600,7 @@ void LocalObjectManager::DestroyExternalStorage() {
     io_worker->rpc_client()->DestroyExternalStorage(
         request,
         [this, io_worker, &promise](const ray::Status &status,
-                          const rpc::DestroyExternalStorageReply &reply) {
+                                    const rpc::DestroyExternalStorageReply &reply) {
           io_worker_pool_.PushDeleteWorker(io_worker);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send destroy external storage request: "
@@ -608,12 +608,12 @@ void LocalObjectManager::DestroyExternalStorage() {
           }
           promise.set_value(status);
         });
-      auto future = promise.get_future();
-      // TODO: make the timeout configurable
-      using namespace std::chrono_literals;
-      if (future.wait_for(10s) != std::future_status::ready) {
-        RAY_LOG(ERROR) << "Failed to destroy external storage within ";
-      }
+    auto future = promise.get_future();
+    // TODO: make the timeout configurable
+    using namespace std::chrono_literals;
+    if (future.wait_for(10s) != std::future_status::ready) {
+      RAY_LOG(ERROR) << "Failed to destroy external storage within ";
+    }
   });
 }
 
