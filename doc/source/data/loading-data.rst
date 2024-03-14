@@ -243,7 +243,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-    .. tab-item:: ABL
+    .. tab-item:: ABS
 
         To read files from Azure Blob Storage, install the
         `Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage <https://pypi.org/project/adlfs/>`_
@@ -454,6 +454,11 @@ Ray Data interoperates with distributed data processing frameworks like
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
+.. note::
+
+    These operations are community maintained and might not be actively maintained. If you run into issues,
+    please create a Github issue `here <https://github.com/ray-project/ray/issues>`__.
+
 .. tab-set::
 
     .. tab-item:: Dask
@@ -602,6 +607,31 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             :options: +MOCK
 
             [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
+
+    .. tab-item:: PyTorch Dataset
+
+        To convert a PyTorch dataset to a Ray Dataset, call ::func:`~ray.data.from_torch`.
+
+        .. testcode::
+
+            import ray
+            from torch.utils.data import Dataset
+            from torchvision import datasets
+            from torchvision.transforms import ToTensor
+
+            tds = datasets.CIFAR10(root="data", train=True, download=True, transform=ToTensor())
+            ds = ray.data.from_torch(tds)
+
+            print(ds)
+
+        .. testoutput::
+            :options: +MOCK
+
+            Downloading https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz to data/cifar-10-python.tar.gz
+            100%|███████████████████████| 170498071/170498071 [00:07<00:00, 23494838.54it/s]
+            Extracting data/cifar-10-python.tar.gz to data
+            Dataset(num_rows=50000, schema={item: object})
+
 
     .. tab-item:: TensorFlow
 
@@ -799,45 +829,41 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
                 query="SELECT title, score FROM movie WHERE year >= 1980",
             )
 
-.. _reading_bigquery:
+    .. tab-item:: BigQuery
 
-Reading BigQuery
-~~~~~~~~~~~~~~~~
+        To read from BigQuery, install the
+        `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
 
-To read from BigQuery, install the
-`Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
+        .. code-block:: console
 
-.. code-block:: console
+            pip install google-cloud-bigquery
+            pip install google-cloud-bigquery-storage
 
-    pip install google-cloud-bigquery
-    pip install google-cloud-bigquery-storage
+        To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
 
-To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
+        .. testcode::
+            :skipif: True
 
-.. testcode::
-    :skipif: True
+            import ray
 
-    import ray
+            # Read the entire dataset (do not specify query)
+            ds = ray.data.read_bigquery(
+                project_id="my_gcloud_project_id",
+                dataset="bigquery-public-data.ml_datasets.iris",
+            )
 
-    # Read the entire dataset (do not specify query)
-    ds = ray.data.read_bigquery(
-        project_id="my_gcloud_project_id",
-        dataset="bigquery-public-data.ml_datasets.iris",
-    )
+            # Read from a SQL query of the dataset (do not specify dataset)
+            ds = ray.data.read_bigquery(
+                project_id="my_gcloud_project_id",
+                query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
+            )
 
-    # Read from a SQL query of the dataset (do not specify dataset)
-    ds = ray.data.read_bigquery(
-        project_id="my_gcloud_project_id",
-        query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
-    )
-
-    # Write back to BigQuery
-    ds.write_bigquery(
-        project_id="my_gcloud_project_id",
-        dataset="destination_dataset.destination_table",
-        overwrite_table=True,
-    )
-
+            # Write back to BigQuery
+            ds.write_bigquery(
+                project_id="my_gcloud_project_id",
+                dataset="destination_dataset.destination_table",
+                overwrite_table=True,
+            )
 
 .. _reading_mongodb:
 
@@ -928,7 +954,10 @@ Loading other datasources
 
 If Ray Data can't load your data, subclass
 :class:`~ray.data.Datasource`. Then, construct an instance of your custom
-datasource and pass it to :func:`~ray.data.read_datasource`.
+datasource and pass it to :func:`~ray.data.read_datasource`. To write results, you might
+also need to subclass :class:`ray.data.Datasink`. Then, create an instance of your custom
+datasink and pass it to :func:`~ray.data.Dataset.write_datasink`. For more details see the guide
+:ref:`Advanced: Read and Write Custom File Types <custom_datasource>`.
 
 .. testcode::
     :skipif: True
@@ -936,8 +965,8 @@ datasource and pass it to :func:`~ray.data.read_datasource`.
     # Read from a custom datasource.
     ds = ray.data.read_datasource(YourCustomDatasource(), **read_args)
 
-    # Write to a custom datasource.
-    ds.write_datasource(YourCustomDatasource(), **write_args)
+    # Write to a custom datasink.
+    ds.write_datasink(YourCustomDatasink())
 
 Performance considerations
 ==========================

@@ -13,8 +13,8 @@ show you how achieve several tasks.
     :maxdepth: 2
 
     loading-data
-    transforming-data
     inspecting-data
+    transforming-data
     iterating-over-data
     saving-data
     working-with-images
