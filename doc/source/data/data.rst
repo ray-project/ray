@@ -8,7 +8,7 @@ Ray Data: Scalable Datasets for ML
     :hidden:
 
     Overview <overview>
-    key-concepts
+    quickstart
     user-guide
     examples
     api/api

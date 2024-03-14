@@ -36,13 +36,13 @@ Why choose Ray Data?
 
 .. dropdown:: Out of the box scaling on heterogeneous cluster
 
-    Ray Data is built on Ray, so it easily scales on heterogeneous cluster, which has different types of CPU and GPU machines. Code that works on one machine also runs on a large cluster without any changes.
+    Ray Data is built on Ray, so it easily scales on a heterogeneous cluster, which has different types of CPU and GPU machines. Code that works on one machine also runs on a large cluster without any changes.
 
-    Ray Data can easily scale to hundreds of nodes to process hundreds of TB data.
+    Ray Data can easily scale to hundreds of nodes to process hundreds of TB of data.
 
 .. dropdown:: Unified API and backend for batch inference and ML training
 
-    With Ray Data, you can express batch inference and ML training job directly under same Dataset API.
+    With Ray Data, you can express batch inference and ML training job directly under the same Ray Dataset API.
 
 
 .. _batch_inference_overview:
