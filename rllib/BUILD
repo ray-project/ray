@@ -2017,7 +2017,6 @@ py_test(
     args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
-
 # TODO (Kourosh): tf2 ~5x slower compared to torch on the new stack
 py_test(
     name = "examples/cartpole_lstm_ppo_tf2",
@@ -2054,7 +2053,6 @@ py_test(
     srcs = ["examples/catalog/custom_action_distribution.py"],
 )
 
-
 py_test(
     name = "examples/catalog/mobilenet_v2_encoder",
     main = "examples/catalog/mobilenet_v2_encoder.py",
@@ -2062,7 +2060,6 @@ py_test(
     size = "small",
     srcs = ["examples/catalog/mobilenet_v2_encoder.py"],
 )
-
 
 py_test(
     name = "examples/rl_module/mobilenet_rlm",
@@ -2339,6 +2336,108 @@ py_test(
     args = ["--stop-iters=1 --as-test --framework torch"]
 )
 
+# New API Stack
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=auto"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_duration_auto_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=auto", "--evaluation-duration-unit=episodes"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_511_ts_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=511", "--evaluation-duration-unit=timesteps"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_1001_ts_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=1001", "--evaluation-duration-unit=timesteps"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=13", "--evaluation-duration-unit=episodes"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_10_episodes_torch_envrunner",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=10", "--evaluation-duration-unit=episodes"]
+)
+# END: New API Stack
+
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_tf",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--framework=tf", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--stop-reward=50.0", "--framework=tf", "--num-cpus=6", "--evaluation-duration=auto"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf2",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto"]
+)
+
+py_test(
+    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_tf2",
+    main = "examples/evaluation/evaluation_parallel_to_training.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
+)
+
 py_test(
     name = "examples/export/cartpole_dqn_export",
     main = "examples/export/cartpole_dqn_export.py",
@@ -2569,42 +2668,6 @@ py_test(
     size = "large",
     srcs = ["examples/nested_action_spaces.py"],
     args = ["--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO", "--enable-new-api-stack"]
-)
-
-py_test(
-    name = "examples/parallel_evaluation_and_training_13_episodes_tf",
-    main = "examples/parallel_evaluation_and_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
-)
-
-py_test(
-    name = "examples/parallel_evaluation_and_training_auto_episodes_tf",
-    main = "examples/parallel_evaluation_and_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
-)
-
-py_test(
-    name = "examples/parallel_evaluation_and_training_211_ts_tf2",
-    main = "examples/parallel_evaluation_and_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
-)
-
-py_test(
-    name = "examples/parallel_evaluation_and_training_auto_ts_torch",
-    main = "examples/parallel_evaluation_and_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(

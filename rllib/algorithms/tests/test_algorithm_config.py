@@ -103,12 +103,12 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
             .training(train_batch_size=2456)
         )
-        # 2456 / 3 * 4 -> 204.666 -> 204 or 205 (depending on worker index).
-        # Actual train batch size: 2454 (off by only 2)
+        # 2456 / (3 * 4) -> 204.666 -> 204 or 205 (depending on worker index).
+        # Actual train batch size: 2457 (off by only 1).
         self.assertTrue(config.get_rollout_fragment_length(worker_index=0) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=1) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=2) == 205)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 204)
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=4) == 204)
 
         config = (

@@ -1,3 +1,4 @@
+import conda
 import pytest
 import time
 import sys
@@ -44,7 +45,12 @@ def test_invalid_conda_env(
             pass
 
     # TODO(somebody): track cache hit/miss statistics.
-    error_message = "PackagesNotFoundError"
+    conda_major_version = int(conda.__version__.split(".")[0])
+    error_message = (
+        "PackagesNotFoundError"
+        if conda_major_version >= 24
+        else "ResolvePackageNotFound"
+    )
 
     bad_env = runtime_env_class(conda={"dependencies": ["this_doesnt_exist"]})
     with pytest.raises(
