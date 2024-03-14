@@ -417,13 +417,13 @@ class PPO(Algorithm):
                 episodes = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.total_train_batch_size,
-                    uses_new_env_runners=self.config.uses_new_env_runners,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
                 )
             else:
                 episodes = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_env_steps=self.config.total_train_batch_size,
-                    uses_new_env_runners=self.config.uses_new_env_runners,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
                 )
             # Return early if all our workers failed.
             if not episodes:

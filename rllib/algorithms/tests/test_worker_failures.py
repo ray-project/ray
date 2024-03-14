@@ -179,11 +179,8 @@ class ForwardHealthCheckToEnvWorkerMultiAgent(MultiAgentEnvRunner):
     """
 
     def ping(self) -> str:
+        # See if Env wants to throw error.
         self.sample(num_timesteps=1, random_actions=True)
-        ## See if Env wants to throw error.
-        #obs, infos = self.env.reset()
-        #action_dict = self.env.action_space.sample()
-        #_ = self.env.step({aid: a for aid, a in action_dict.items() if aid in obs})
         # If there is no error raised from sample(), we simply reply pong.
         return super().ping()
 
@@ -353,7 +350,7 @@ class TestWorkerFailures(unittest.TestCase):
                             "This is the eval mapping fn"
                             if episode is None
                             else "main"
-                            if episode.episode_id % 2 == aid
+                            if hash(episode.id_) % 2 == aid
                             else "p{}".format(np.random.choice([0, 1]))
                         )
                     )
@@ -733,7 +730,12 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            # Must use off-policy algorithm since we are going have hanging workers.
+            # First thought: We are using a off-policy algorithm here, b/c we have
+            # hanging workers (samples may be delayed, thus off-policy?).
+            # However, this actually does NOT matter. All synchronously sampling algos
+            # (whether off- or on-policy) now have a sampling timeout to NOT block
+            # the execution of the algorithm b/c of a single heavily stalling worker.
+            # Timeout data (batches or episodes) are discarded.
             SACConfig()
             .experimental(_enable_new_api_stack=True)
             .training(
@@ -791,7 +793,8 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.train()
         wait_for_restore(num_restarting_allowed=1)
-        # Most importantly, training progressed fine.
+        # Most importantly, training progresses fine b/c the stalling worker is
+        # ignored via a timeout.
         algo.train()
 
         # 2 healthy remote workers left, although worker 3 is stuck in rollout.

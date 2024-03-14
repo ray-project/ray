@@ -99,6 +99,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    RESTORE_WORKERS_TIMER,
+    RESTORE_EVAL_WORKERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
@@ -3019,9 +3021,6 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the training iteration.
         """
-        # Before training step, try to bring failed workers back.
-        self.restore_workers(self.workers)
-
         with self._timers[TRAINING_ITERATION_TIMER]:
             # In case we are training (in a thread) parallel to evaluation,
             # we may have to re-enable eager mode here (gets disabled in the
@@ -3035,6 +3034,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 # .. so we can query it whether we should stop the iteration loop (e.g.
                 # when we have reached `min_time_s_per_iteration`).
                 while not train_iter_ctx.should_stop(results):
+                    # Before training step, try to bring failed workers back.
+                    with self._timers[RESTORE_WORKERS_TIMER]:
+                        self.restore_workers(self.workers)
+
                     # Try to train one step.
                     with self._timers[TRAINING_STEP_TIMER]:
                         results = self.training_step()
@@ -3059,7 +3062,8 @@ class Algorithm(Trainable, AlgorithmBase):
         """
 
         if self.evaluation_workers is not None:
-            self.restore_workers(self.evaluation_workers)
+            with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
+                self.restore_workers(self.evaluation_workers)
 
         # Run `self.evaluate()` only once per training iteration.
         with self._timers[EVALUATION_ITERATION_TIMER]:
