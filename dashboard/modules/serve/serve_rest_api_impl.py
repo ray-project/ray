@@ -215,41 +215,6 @@ def create_serve_rest_api(
                     f"updated: {divergent_http_options}."
                 )
 
-        def log_config_change_default_warning(self, config):
-            from ray.serve.config import AutoscalingConfig
-
-            for deployment in [
-                d for app in config.applications for d in app.deployments
-            ]:
-                if "max_ongoing_requests" not in deployment.dict(exclude_unset=True):
-                    logger.warning(
-                        "The default value for `max_ongoing_requests` will "
-                        "change from 100 to 5 in an upcoming release."
-                    )
-                    break
-
-            for deployment in [
-                d for app in config.applications for d in app.deployments
-            ]:
-                if isinstance(deployment.autoscaling_config, dict):
-                    autoscaling_config = deployment.autoscaling_config
-                elif isinstance(deployment.autoscaling_config, AutoscalingConfig):
-                    autoscaling_config = deployment.autoscaling_config.dict(
-                        exclude_unset=True
-                    )
-                else:
-                    continue
-
-                if (
-                    "target_num_ongoing_requests_per_replica" not in autoscaling_config
-                    and "target_ongoing_requests" not in autoscaling_config
-                ):
-                    logger.warning(
-                        "The default value for `target_ongoing_requests` will "
-                        "change from 1.0 to 2.0 in an upcoming release."
-                    )
-                    break
-
         async def get_serve_controller(self):
             """Gets the ServeController to the this cluster's Serve app.
 
