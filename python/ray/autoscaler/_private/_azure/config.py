@@ -97,6 +97,17 @@ def _configure_resource_group(config):
         subnet_mask = "10.{}.0.0/16".format(random.randint(1, 254))
     logger.info("Using subnet mask: %s", subnet_mask)
 
+    # Get or create an MSI name and resource group.
+    # Defaults to current resource group if not provided.
+    use_existing_msi = (
+        "msi_name" in config["provider"] and "msi_resource_group" in config["provider"]
+    )
+    msi_resource_group = config["provider"].get("msi_resource_group", resource_group)
+    msi_name = config["provider"].get("msi_name", f"ray-{cluster_id}-msi")
+    logger.info(
+        "Using msi_name: %s from msi_resource_group: %s", msi_name, msi_resource_group
+    )
+
     parameters = {
         "properties": {
             "mode": DeploymentMode.incremental,
@@ -104,6 +115,9 @@ def _configure_resource_group(config):
             "parameters": {
                 "subnet": {"value": subnet_mask},
                 "clusterId": {"value": cluster_id},
+                "msiName": {"value": msi_name},
+                "msiResourceGroup": {"value": msi_resource_group},
+                "createMsi": {"value": not use_existing_msi},
             },
         }
     }

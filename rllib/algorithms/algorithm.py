@@ -876,7 +876,7 @@ class Algorithm(Trainable, AlgorithmBase):
         results = self._compile_iteration_results(
             episodes_this_iter=episodes_this_iter,
             step_ctx=train_iter_ctx,
-            iteration_results=train_results | eval_results,
+            iteration_results={**train_results, **eval_results},
         )
 
         # TODO (sven): Deprecate this API, this should be done via a custom Callback.
