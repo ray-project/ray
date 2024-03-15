@@ -161,7 +161,7 @@ class TestAutoscalingMetrics:
 
         @serve.deployment(
             autoscaling_config=autoscaling_config,
-            # We will send over a lot of queries. This will make sure replicas are
+            # We will send many requests. This will make sure replicas are
             # killed quickly during cleanup.
             graceful_shutdown_timeout_s=1,
             max_ongoing_requests=25,
@@ -313,7 +313,6 @@ class TestAutoscalingMetrics:
         ][0]["name"]
         router = ray.get_actor(router_name, namespace=SERVE_NAMESPACE)
 
-        # import pdb; pdb.set_trace()
         print("Releasing signal at", time.time())
         signal.send.remote()
         print("Request results:", [ref.result() for ref in refs])
