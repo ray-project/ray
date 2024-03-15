@@ -730,7 +730,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            # First thought: We are using a off-policy algorithm here, b/c we have
+            # First thought: We are using an off-policy algorithm here, b/c we have
             # hanging workers (samples may be delayed, thus off-policy?).
             # However, this actually does NOT matter. All synchronously sampling algos
             # (whether off- or on-policy) now have a sampling timeout to NOT block
@@ -745,6 +745,7 @@ class TestWorkerFailures(unittest.TestCase):
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=3,
                 rollout_fragment_length=16,
+                sample_timeout_s=5.0,
             )
             .reporting(
                 # Make sure each iteration doesn't take too long.

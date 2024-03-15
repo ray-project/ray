@@ -465,6 +465,7 @@ class SAC(DQN):
                 # Sample in parallel from workers.
                 episodes = synchronous_parallel_sample(
                     worker_set=self.workers,
+                    sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=self.config.uses_new_env_runners,
                 )
             # TODO (sven): single- vs multi-agent.

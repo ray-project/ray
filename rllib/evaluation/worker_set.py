@@ -367,6 +367,7 @@ class WorkerSet:
         self,
         from_worker: Optional[EnvRunner] = None,
         env_steps_sampled: Optional[int] = None,
+        timeout_s: Optional[float] = None,
     ) -> None:
         """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
@@ -393,6 +394,7 @@ class WorkerSet:
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
             healthy_only=True,
             local_worker=False,
+            timeout_seconds=timeout_s,
         )
         env_to_module_states = [s[0] for s in connector_states]
         module_to_env_states = [s[1] for s in connector_states]
@@ -425,7 +427,12 @@ class WorkerSet:
                 w.global_num_env_steps_sampled = env_runner_states["env_steps_sampled"]
 
         # Broadcast updated states back to all workers (including the local one).
-        self.foreach_worker(_update, local_worker=True, healthy_only=True)
+        self.foreach_worker(
+            _update,
+            local_worker=True,
+            healthy_only=True,
+            timeout_seconds=timeout_s,
+        )
 
     @DeveloperAPI
     def sync_weights(

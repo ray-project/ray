@@ -849,6 +849,12 @@ class Algorithm(Trainable, AlgorithmBase):
             eval_results = self.evaluation_metrics
 
         # Sync filters on workers.
+        # TODO (sven): For the new API stack, the common execution pattern for any algo
+        #  should be: [sample + get_metrics + get_state] -> send all these in one remote
+        #  call down to `training_step` (where episodes are sent as ray object
+        #  references). Then distribute the episode refs to the learners, store metrics
+        #  in special key in result dict and perform the connector merge/broadcast
+        #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
             # states back to all workers.
@@ -856,7 +862,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Merge connector states from all EnvRunners and broadcast updated
                 # states back to all EnvRunners.
                 self.workers.sync_env_runner_states(
-                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
+                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+                    timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
                 )
         else:
             self._sync_filters_if_needed(
