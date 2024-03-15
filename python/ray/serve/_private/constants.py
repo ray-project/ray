@@ -296,6 +296,10 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
     os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1") == "1"
 )
 
+RAY_SERVE_HANDLE_METRICS_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_HANDLE_METRICS_TIMEOUT_S", 10.0)
+)
+
 # Feature flag to always run a proxy on the head node even if it has no replicas.
 RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = (
     os.environ.get("RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1") == "1"

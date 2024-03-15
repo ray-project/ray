@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import logging
 import threading
 import time
 import warnings
@@ -10,6 +11,7 @@ import ray
 from ray import serve
 from ray._raylet import GcsClient, ObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
@@ -27,6 +29,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 _global_async_loop_creation_lock = threading.Lock()
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _create_or_get_global_asyncio_event_loop_in_thread():
@@ -111,6 +114,7 @@ class _DeploymentHandleBase:
         )
 
         self._router: Optional[Router] = _router
+        logger.info(f"New handle created with handle ID {self.handle_id}.")
 
     def _record_telemetry_if_needed(self):
         # Record telemetry once per handle and not when used from the proxy
