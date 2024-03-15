@@ -19,7 +19,10 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_LAUNCH_BATCH,
 )
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
-from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
+from ray.autoscaler._private.kuberay.node_provider import (
+    KUBERAY_TYPE_HEAD,
+    IKubernetesHttpApiClient,
+)
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
     KubeRayProvider,
 )
@@ -367,7 +370,10 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         )
         self.provider = KubeRayProvider(
             cluster_name="test",
-            namespace="test-namespace",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": KUBERAY_TYPE_HEAD,
+            },
             k8s_api_client=self.mock_client,
         )
 

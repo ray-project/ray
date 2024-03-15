@@ -11,7 +11,6 @@ steps:
     label: "wanda: corebuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
     matrix:
-      - "3.8"
       - "3.10"
     env:
       PYTHON: "{{matrix}}"
@@ -21,7 +20,6 @@ steps:
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
@@ -44,23 +42,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
-
-  - label: ":ray: core: python {{matrix.python}} tests ({{matrix.worker_id}})"
-    if: build.env("RAYCI_CONTINUOUS_BUILD") == "1" || build.pull_request.labels includes "continuous-build"
-    tags: 
-      - python
-      - dashboard
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
-        --workers 4 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual
-        --python-version {{matrix.python}}
-    depends_on: corebuild-multipy
-    matrix:
-      setup:
-        python: ["3.8"]
-        worker_id: ["0", "1", "2", "3"]
 
   - label: ":ray: core: redis tests"
     tags: python
@@ -256,7 +237,6 @@ steps:
     depends_on:
       - minbuild-core
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"

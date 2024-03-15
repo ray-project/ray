@@ -195,13 +195,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
         """Adds random failure injection to the TrialExecutor."""
 
-        def __init__(self, num_trials=20):
+        def __init__(self, num_trials=20, delay_s=0.3):
             self.num_trials = num_trials
+            self.delay_s = delay_s
+            self.fail_at = None
 
         def on_step_end(self, trials, **kwargs):
+            if self.fail_at:
+                if time.monotonic() >= self.fail_at:
+                    raise RuntimeError(f"Failing after {self.delay_s}")
+                return
+
             if len(trials) >= self.num_trials:
-                print(f"Failing after {self.num_trials} trials.")
-                raise RuntimeError
+                print(
+                    f"Reached {self.num_trials} trials. "
+                    f"Scheduling failure in {self.delay_s} seconds."
+                )
+                self.fail_at = time.monotonic() + self.delay_s
 
     class CheckStateCallback(Callback):
         """Checks state for the experiment initialization."""
@@ -245,14 +255,11 @@ class TuneFailResumeGridTest(unittest.TestCase):
 
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
-        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
-        # TODO(justinvyu): Some tests don't work with storage_path=self.logdir
-        # because the failure injector callback on the driver will fail the
-        # run before the experiment state file is synced to storage path.
-        # Previously, resume=True avoided the issue by restoring from the
-        # "local" staging copy of the file, which is more up to date.
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = self.logdir
+        # These tests need driver syncing to happen before the crash happens
+        # so that they can pick up from the *exact* state it left off at.
+        # We do this by failing after a delay of 0.3s > TUNE_GLOBAL_CHECKPOINT_S
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0.1"
 
         # Change back to local_mode=True after this is resolved:
         # https://github.com/ray-project/ray/issues/13932
