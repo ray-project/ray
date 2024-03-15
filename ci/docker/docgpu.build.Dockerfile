@@ -21,8 +21,4 @@ set -euo pipefail
 DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ci/env/install-dependencies.sh
 pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
 
-# TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011 
-# is resolved.
-pip install -U transformers==4.34.1
-
 EOF

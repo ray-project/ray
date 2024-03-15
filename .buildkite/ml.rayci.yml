@@ -27,6 +27,10 @@ steps:
     matrix:
       - "3.10"
 
+  - name: mllightning2gpubuild
+    wanda: ci/docker/mllightning2gpu.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+
   - name: mlgpubuild
     wanda: ci/docker/ml.build.wanda.yaml
     depends_on: oss-ci-base_gpu
@@ -216,6 +220,17 @@ steps:
         --parallelism-per-worker 3
         --skip-ray-installation
     depends_on: [ "mlbuild", "forge" ]
+
+  - label: ":train: ml: train gpu lightning 2.0 tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+        --build-name mllightning2gpubuild
+        --only-tags ptl_v2
+    depends_on: [ "mllightning2gpubuild", "forge" ]
 
   - label: ":train: ml: flaky tests"
     tags: 

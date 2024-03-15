@@ -17,10 +17,10 @@ steps:
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     soft_fail: true
-    job_env: oss-ci-base_build
+    job_env: oss-ci-base_build-py3.11
     depends_on:
       - forge
-      - oss-ci-base_build
+      - oss-ci-base_build-multipy
 
   # test
   - label: doc tests
