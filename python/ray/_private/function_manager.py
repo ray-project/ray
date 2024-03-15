@@ -475,9 +475,6 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
-            # Try importing in case the worker did not get notified, or the
-            # importer thread did not run.
-            self._worker.import_thread._do_importing()
             time.sleep(0.001)
 
     def export_actor_class(
