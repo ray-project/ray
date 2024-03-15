@@ -1626,8 +1626,7 @@ class DeploymentState:
                         logger.info(
                             f"Dropping stale metrics for handle '{handle_id}' "
                             f"because no update was received for {timeout_s:.1f}s. "
-                            f"Ongoing requests was: "
-                            "{total_ongoing_requests}."
+                            f"Ongoing requests was: {total_ongoing_requests}."
                         )
 
             for handle_metric in self.handle_requests.values():
