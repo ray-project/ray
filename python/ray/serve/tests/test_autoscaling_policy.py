@@ -161,7 +161,7 @@ class TestAutoscalingMetrics:
 
         @serve.deployment(
             autoscaling_config=autoscaling_config,
-            # We will send over a lot of queries. This will make sure replicas are
+            # We will send many requests. This will make sure replicas are
             # killed quickly during cleanup.
             graceful_shutdown_timeout_s=1,
             max_ongoing_requests=25,
