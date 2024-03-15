@@ -10,10 +10,13 @@ from ray import serve
 from ray._private.test_utils import SignalActor, kill_raylet, wait_for_condition
 from ray._raylet import GcsClient
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
-from ray.cluster_utils import AutoscalingCluster
+from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
-from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
+from ray.serve._private.constants import (
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     ReplicaSchedulingRequest,
@@ -24,6 +27,7 @@ from ray.serve._private.test_utils import (
     check_deployment_status,
     check_num_alive_nodes,
     check_replica_counts,
+    get_node_id,
 )
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
@@ -653,7 +657,6 @@ def setup_compact_scheduling(request):
 
     # Application A: 1-cpu replicas
     # Application B: 2-cpu replicas
-    # config = self.get_serve_config()
     import_path = "ray.anyscale.serve.tests.test_deployment_scheduler.app_B"
     config = {
         "applications": [
@@ -917,6 +920,122 @@ class TestCompactScheduling:
             timeout=20,
         )
         wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker node
+
+    @pytest.mark.parametrize("use_pg", [True, False])
+    def test_custom_resources(self, ray_cluster: Cluster, use_pg: bool):
+        """Test that custom resources are taken into consideration when identifying
+        node compaction opportunities."""
+
+        depA_id = DeploymentID(name="BlockInit", app_name="A")
+        depB_id = DeploymentID(name="BlockInit", app_name="B")
+
+        # Setup cluster and start serve
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=0)  # Head node
+        cluster.add_node(num_cpus=2, resources={"worker1": 1})
+        cluster.add_node(num_cpus=2, resources={"worker2": 1})
+        cluster.wait_for_nodes()
+        node1 = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+        node2 = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
+        cluster.connect(namespace=SERVE_NAMESPACE)
+        serve.start()
+        client = _get_global_client()
+
+        # Start with replica initializations unblocked
+        signal = SignalActor.options(name="signal123").remote()
+        signal.send.remote()
+
+        # Deploy normal application A with 3 replicas
+        import_path = "ray.anyscale.serve.tests.test_deployment_scheduler.app_B"
+        config = {
+            "applications": [
+                {
+                    "name": "A",
+                    "import_path": import_path,
+                    "route_prefix": "/a",
+                    "deployments": [
+                        {
+                            "name": "BlockInit",
+                            "num_replicas": 3,
+                            "ray_actor_options": {"num_cpus": 0 if use_pg else 1},
+                        }
+                    ],
+                },
+            ]
+        }
+        if use_pg:
+            config["applications"][0]["deployments"][0]["placement_group_bundles"] = [
+                {"CPU": 0.5},
+                {"CPU": 0.5},
+            ]
+            config["applications"][0]["deployments"][0][
+                "placement_group_strategy"
+            ] = "STRICT_PACK"
+
+        client.deploy_apps(ServeDeploySchema(**config))
+        client._wait_for_application_running("A")
+        hA = serve.get_app_handle("A")
+        # node1: 2 replicas, node2: 1 replica (or vice versa)
+        assert {hA.remote().result() for _ in range(30)} == {node1, node2}
+
+        # Add a new `node3` with custom resource `customz`
+        cluster.add_node(num_cpus=1, resources={"worker3": 1, "customz": 1})
+        cluster.wait_for_nodes()
+        node3 = ray.get(get_node_id.options(resources={"worker3": 1}).remote())
+
+        # Deploy application B with 1 replica that requires custom resource `customz`
+        config["applications"].append(
+            {
+                "name": "B",
+                "import_path": import_path,
+                "route_prefix": "/b",
+                "deployments": [
+                    {
+                        "name": "BlockInit",
+                        "ray_actor_options": {
+                            "num_cpus": 0 if use_pg else 1,
+                            "resources": {} if use_pg else {"customz": 0.1},
+                        },
+                    }
+                ],
+            }
+        )
+        if use_pg:
+            config["applications"][1]["deployments"][0]["placement_group_bundles"] = [
+                {"CPU": 0.5},
+                {"CPU": 0.5},
+                {"customz": 0.1},
+            ]
+            config["applications"][1]["deployments"][0][
+                "placement_group_strategy"
+            ] = "STRICT_PACK"
+
+        client.deploy_apps(ServeDeploySchema(**config))
+        client._wait_for_application_running("B")
+        hB = serve.get_app_handle("B")
+        # B's 1 replica should be scheduled on `node3`
+        assert {hB.remote().result() for _ in range(10)} == {node3}
+
+        # Block new replicas
+        signal.send.remote(clear=True)
+
+        # Deployment scheduler should not identify any compaction opportunities
+        def any_starting_or_pending_migration_replicas():
+            replicas_A = ray.get(
+                client._controller._dump_replica_states_for_testing.remote(depA_id)
+            )
+            replicas_B = ray.get(
+                client._controller._dump_replica_states_for_testing.remote(depB_id)
+            )
+            rA = replicas_A.get([ReplicaState.STARTING, ReplicaState.PENDING_MIGRATION])
+            rB = replicas_B.get([ReplicaState.STARTING, ReplicaState.PENDING_MIGRATION])
+            assert len(rA) > 0 or len(rB) > 0
+            print("A replicas:", replicas_A._replicas)
+            print("B replicas:", replicas_B._replicas)
+            return True
+
+        with pytest.raises(RuntimeError):
+            wait_for_condition(any_starting_or_pending_migration_replicas)
 
 
 if __name__ == "__main__":

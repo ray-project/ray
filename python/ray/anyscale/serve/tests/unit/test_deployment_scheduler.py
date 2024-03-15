@@ -297,10 +297,12 @@ class TestActiveCompaction:
 
             # Should print first warning
             timer.advance(100)
-            opp = scheduler.get_node_to_compact(allow_new_compaction=False)
+            for _ in range(10):
+                opp = scheduler.get_node_to_compact(allow_new_compaction=False)
             # Should print second warning
             timer.advance(1000)
-            opp = scheduler.get_node_to_compact(allow_new_compaction=False)
+            for _ in range(10):
+                opp = scheduler.get_node_to_compact(allow_new_compaction=False)
 
             # Advance a LOT of time. We should give up on the compaction
             # because of timeout.
@@ -337,6 +339,52 @@ class TestActiveCompaction:
         scheduler.on_replica_running(ReplicaID("replica1", d_id), "worker-node-id")
         opp = scheduler.get_node_to_compact(allow_new_compaction=True)
         assert opp is None
+
+    def test_custom_resources(self):
+        """Test active compaction with custom resources."""
+
+        d1_id = DeploymentID(name="deployment1")
+        d2_id = DeploymentID(name="deployment2")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 1, "customx": 1})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d1_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d2_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d1_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+        scheduler.on_deployment_deployed(
+            d2_id,
+            rconfig(ray_actor_options={"num_cpus": 1, "resources": {"customx": 0.1}}),
+        )
+
+        # node1: 1CPU available
+        # node2: one 1CPU-replica running
+        scheduler.on_replica_running(ReplicaID("r1", d1_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r2", d1_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r3", d2_id), "node2")
+        # However we shouldn't be able to compact node2 because the
+        # replica on node2 requires resource `customx`
+        opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert opp is None
+
+        # Add new node3 (identical to node1, except it does have
+        # `customx` resource).
+        cluster_node_info_cache.add_node("node3", {"CPU": 3, "customx": 1})
+        scheduler.on_replica_running(ReplicaID("r4", d1_id), "node3")
+        scheduler.on_replica_running(ReplicaID("r5", d1_id), "node3")
+        # We should be able to compact node2 because the replica on
+        # node2 can be scheduled on node3
+        opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert opp[0] == "node2"
 
 
 if __name__ == "__main__":

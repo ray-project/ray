@@ -46,6 +46,7 @@ class CompactingNodeInfo:
     target_node_id: str
     start_timestamp_s: float
     cached_running_replicas_on_target_node: Set[ReplicaID]
+    last_logged_timeout_warning: Optional[float] = None
 
 
 class AnyscaleDeploymentScheduler(DeploymentScheduler):
@@ -404,16 +405,26 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         else:
             # Print warnings at 1min, 10min
             message = (
-                "The controller has been trying to compact "
-                f"{target_node} for more than "
-                "{amount}. Resources may be "
-                "unexpectedly constrained, or migration is slow because new replicas "
-                "are taking a long time to initialize."
+                f"The controller has been trying to compact {target_node} for more "
+                "than {amount}. Resources may be unexpectedly constrained, or "
+                "migration is slow because new replicas are taking a long time to "
+                "initialize. Compaction will time out and be cancelled if it takes "
+                f"more than {ANYSCALE_RAY_SERVE_COMPACTION_TIMEOUT_S / 60} minutes."
             )
-            if time.time() > self._compacting_node.start_timestamp_s + 600:
+            timestamp_10min = self._compacting_node.start_timestamp_s + 600
+            timestamp_1min = self._compacting_node.start_timestamp_s + 60
+            if time.time() > timestamp_10min and not (
+                self._compacting_node.last_logged_timeout_warning
+                and self._compacting_node.last_logged_timeout_warning >= timestamp_10min
+            ):
                 logger.warning(message.format(amount="10 minutes"))
-            elif time.time() > self._compacting_node.start_timestamp_s + 60:
+                self._compacting_node.last_logged_timeout_warning = time.time()
+            elif time.time() > timestamp_1min and not (
+                self._compacting_node.last_logged_timeout_warning
+                and self._compacting_node.last_logged_timeout_warning >= timestamp_1min
+            ):
                 logger.warning(message.format(amount="1 minute"))
+                self._compacting_node.last_logged_timeout_warning = time.time()
 
     def get_node_to_compact(
         self, allow_new_compaction: bool
