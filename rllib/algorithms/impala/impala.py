@@ -777,7 +777,7 @@ class Impala(Algorithm):
         env_runner_states = []
         env_runner_metrics = []
 
-        def _remote_sample_and_get_state(worker):
+        def _remote_sample_get_state_and_metrics(worker):
             episodes = worker.sample()
             # Get the EnvRunner's connector states.
             connector_states = worker.get_state(
@@ -795,7 +795,7 @@ class Impala(Algorithm):
             if num_healthy_remote_workers > 0:
                 #num_requests_made =
                 self.workers.foreach_worker_async(
-                    _remote_sample_and_get_state, healthy_only=True
+                    _remote_sample_get_state_and_metrics, healthy_only=True
                 )
                 #self._counters["_remote_env_runner_calls_dropped"] += (
                 #    num_healthy_remote_workers - num_requests_made
