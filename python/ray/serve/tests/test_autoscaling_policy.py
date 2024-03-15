@@ -278,7 +278,7 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 30,
+                "look_back_period_s": 10,
             },
             graceful_shutdown_timeout_s=0.1,
             max_ongoing_requests=10,
