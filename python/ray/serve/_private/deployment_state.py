@@ -38,7 +38,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
-    RAY_SERVE_HANDLE_METRICS_TIMEOUT_S,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -1609,25 +1609,26 @@ class DeploymentState:
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             or len(running_replicas) == 0
         ):
-            # Remove metrics for handles that haven't sent updates in a while
+            # Remove metrics for handles that haven't sent updates in a while.
+            # Clear metrics for handles that haven't sent an update in awhile.
+            # This is expected behavior for handles that were on replicas or
+            # proxies that have been shut down.
             timeout_s = max(
                 2 * self.autoscaling_policy_manager.get_metrics_interval_s(),
-                RAY_SERVE_HANDLE_METRICS_TIMEOUT_S,
+                RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
             )
             for handle_id, handle_metric in list(self.handle_requests.items()):
                 if time.time() - handle_metric.timestamp >= timeout_s:
-                    logger.warning(
-                        f"No metrics have been received from handle '{handle_id}' for "
-                        f"{timeout_s} seconds; marking last received data as stale: "
-                        f"{handle_metric.queued_requests} queued requests and running "
-                        f"requests: {handle_metric.running_requests}. If you see "
-                        "over-aggressive downscaling because of this, try either "
-                        "increasing the timeout by setting the environment variable "
-                        "RAY_SERVE_HANDLE_METRICS_TIMEOUT_S (default 10) to a larger "
-                        "value, or turn off handle-collected autoscaling metrics by "
-                        "setting RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE=0."
-                    )
                     del self.handle_requests[handle_id]
+                    if (
+                        handle_metric.queued_requests
+                        + sum(handle_metric.running_requests.values())
+                        > 0
+                    ):
+                        logger.info(
+                            f"Dropping stale handle metrics for handle '{handle_id}' "
+                            f"(no updates received for {timeout_s:.1f}s)."
+                        )
 
             for handle_metric in self.handle_requests.values():
                 total_requests += handle_metric.queued_requests
@@ -1666,12 +1667,6 @@ class DeploymentState:
         ):
             return
 
-        logger.info(
-            f"Autoscaling {self._id} to {decision_num_replicas} replicas. "
-            f"Current num requests: {total_num_requests}, "
-            f"current num running replicas: {num_running_replicas}."
-        )
-
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
@@ -1683,13 +1678,25 @@ class DeploymentState:
         if not self._is_within_autoscaling_bounds():
             return
 
+        curr_stats_str = (
+            f"Current ongoing requests: {total_num_requests:.2f}, "
+            f"current running replicas: {num_running_replicas}."
+        )
         new_num = self._target_state.target_num_replicas
         if new_num > old_num:
+            logger.info(
+                f"Upscaling {self._id} from {old_num} to {new_num} replicas. "
+                f"{curr_stats_str}"
+            )
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
                 message=f"Upscaling from {old_num} to {new_num} replicas.",
             )
         elif new_num < old_num:
+            logger.info(
+                f"Downscaling {self._id} from {old_num} to {new_num} replicas. "
+                f"{curr_stats_str}"
+            )
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
