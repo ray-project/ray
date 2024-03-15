@@ -2151,8 +2151,6 @@ class DeploymentState:
             ReplicaState.RECOVERING, stop_on_slow=True
         )
 
-        all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
-
         slow_start_replicas = slow_start + slow_update + slow_recover
 
         if (
@@ -2178,7 +2176,6 @@ class DeploymentState:
                     "runtime environment to be installed. Resources required for each "
                     f"replica: {required}, total resources available: {available}. Use "
                     "`ray status` for more details."
-                    f"[bytedance] available replica number: {all_running_replica_cnt} [bytedance]"
                 )
                 logger.warning(message)
                 if _SCALING_LOG_ENABLED:
@@ -2198,7 +2195,6 @@ class DeploymentState:
                     f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
                     "initialize. This may be caused by a slow __init__ or reconfigure "
                     "method."
-                    f"[bytedance] available replica number: {all_running_replica_cnt} [bytedance]"
                 )
                 logger.warning(message)
                 # If status is UNHEALTHY, leave the status and message as is.
@@ -2746,10 +2742,10 @@ class DeploymentStateManager:
         )
         if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
             # Tuple of target node to compact, and its draining deadline
-            node_info: Optional[
-                Tuple[str, float]
-            ] = self._deployment_scheduler.get_node_to_compact(
-                allow_new_compaction=allow_new_compaction
+            node_info: Optional[Tuple[str, float]] = (
+                self._deployment_scheduler.get_node_to_compact(
+                    allow_new_compaction=allow_new_compaction
+                )
             )
             if node_info:
                 target_node_id, deadline = node_info
