@@ -215,7 +215,6 @@ class TestAutoscalingMetrics:
                 "look_back_period_s": 1,
             },
             "graceful_shutdown_timeout_s": 0.1,
-            "graceful_shutdown_wait_loop_s": 0.1,
             "max_ongoing_requests": 25,
         }
 
