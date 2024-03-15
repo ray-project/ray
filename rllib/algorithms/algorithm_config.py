@@ -3,7 +3,6 @@ from enum import Enum
 import inspect
 import logging
 import math
-import os
 import sys
 from typing import (
     Any,
@@ -340,11 +339,11 @@ class AlgorithmConfig(_Config):
         # TODO (sven): Rename into `num_env_runner_workers`.
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
+        self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
-        self.enable_connectors = True
         self._env_to_module_connector = None
-        self._module_to_env_connector = None
         self.add_default_connectors_to_env_to_module_pipeline = True
+        self._module_to_env_connector = None
         self.add_default_connectors_to_module_to_env_pipeline = True
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
@@ -358,9 +357,11 @@ class AlgorithmConfig(_Config):
         self.compress_observations = False
         # TODO (sven): Rename into `env_runner_perf_stats_ema_coef`.
         self.sampler_perf_stats_ema_coef = None
+        # TODO (sven): Deprecate this setting. Connectors should always be enabled
+        #  on new stack.
+        self.enable_connectors = True
 
         # TODO (sven): Deprecate together with old API stack.
-        self.sample_async = False
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
         self.enable_tf1_exec_eagerly = False
@@ -455,7 +456,10 @@ class AlgorithmConfig(_Config):
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
-        self.sync_filters_on_rollout_workers_timeout_s = 60.0
+        # TODO (sven): Deprecate this setting (it's not user-accessible right now any
+        #  way). Replace by logic within `training_step` to merge and broadcast the
+        #  EnvRunner (connector) states.
+        self.sync_filters_on_rollout_workers_timeout_s = 10.0
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -530,7 +534,6 @@ class AlgorithmConfig(_Config):
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
         self.synchronize_filters = DEPRECATED_VALUE
-        self.sample_async = DEPRECATED_VALUE
         self.enable_async_evaluation = DEPRECATED_VALUE
         self.custom_async_evaluation_function = DEPRECATED_VALUE
 
@@ -787,14 +790,6 @@ class AlgorithmConfig(_Config):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
         """Validates all values in this config."""
-
-        # TODO (sven): Remove this hack. We should not have env-var dependent logic
-        #  this deep in the codebase (should only be used in example/testing scripts).
-        #  We should also never set attributes automatically for the user ->
-        #  AlgorithmConfig should always be read-only.
-        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            self.experimental(_enable_new_api_stack=True)
-            self.enable_connectors = True
 
         # Check framework specific settings.
         self._validate_framework_settings()
@@ -1501,6 +1496,7 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_rollout_workers: Optional[int] = NotProvided,
         num_envs_per_worker: Optional[int] = NotProvided,
+        sample_timeout_s: Optional[float] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
@@ -1532,7 +1528,6 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
-        sample_async=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1546,9 +1541,15 @@ class AlgorithmConfig(_Config):
             num_envs_per_worker: Number of environments to evaluate vector-wise per
                 worker. This enables model inference batching, which can improve
                 performance for inference bottlenecked workloads.
-            sample_collector: The SampleCollector class to be used to collect and
-                retrieve environment-, model-, and sampler data. Override the
-                SampleCollector base class to implement your own
+            sample_timeout_s: The timeout in seconds for calling `sample()` on remote
+                EnvRunner workers. Results (episode list) from workers that take longer
+                than this time are discarded. Only used by algorithms that sample
+                synchronously in turn with their update step (e.g. PPO or DQN). Not
+                relevant for any algos that sample asynchronously, such as APPO or
+                IMPALA.
+            sample_collector: For the old API stack only. The SampleCollector class to
+                be used to collect and retrieve environment-, model-, and sampler data.
+                Override the SampleCollector base class to implement your own
                 collection/buffering/retrieval logic.
             create_env_on_local_worker: When `num_rollout_workers` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
@@ -1672,6 +1673,8 @@ class AlgorithmConfig(_Config):
                     f"`num_envs_per_worker` ({num_envs_per_worker}) must be larger 0!"
                 )
             self.num_envs_per_worker = num_envs_per_worker
+        if sample_timeout_s is not NotProvided:
+            self.sample_timeout_s = sample_timeout_s
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
@@ -1735,12 +1738,6 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
-        if sample_async is True:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(sample_async=True)",
-                help="AsyncSampler is not supported anymore.",
-                error=True,
-            )
         if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(synchronize_filter=..)",
