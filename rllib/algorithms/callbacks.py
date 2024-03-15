@@ -945,13 +945,13 @@ def make_multi_callbacks(
 
         @override(DefaultCallbacks)
         def on_sample_end(
-                self,
-                *,
-                env_runner: Optional["EnvRunner"] = None,
-                samples: Union[SampleBatch, List[EpisodeType]],
-                # TODO (sven): Replace with `env_runner` arg.
-                worker: Optional["EnvRunner"] = None,
-                **kwargs,
+            self,
+            *,
+            env_runner: Optional["EnvRunner"] = None,
+            samples: Union[SampleBatch, List[EpisodeType]],
+            # TODO (sven): Replace with `env_runner` arg.
+            worker: Optional["EnvRunner"] = None,
+            **kwargs,
         ) -> None:
             for callback in self._callback_list:
                 callback.on_sample_end(
