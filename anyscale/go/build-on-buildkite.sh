@@ -11,7 +11,7 @@ source anyscale/ci/setup-env.sh
 
 echo "--- setup go compiler"
 mkdir ~/goroot
-curl -sfL https://go.dev/dl/go1.21.3.linux-amd64.tar.gz | tar -C ~/goroot -xzf -
+curl -sfL https://go.dev/dl/go1.22.1.linux-amd64.tar.gz | tar -C ~/goroot -xzf -
 
 export GOROOT="${HOME}/goroot/go"
 export GOPATH="${HOME}/go"

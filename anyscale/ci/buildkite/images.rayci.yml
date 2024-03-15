@@ -8,7 +8,6 @@ steps:
     depends_on:
       - forge
     job_env: forge
-    tags: docker
 
   - label: ":tapioca: runtime py{{matrix}} wheel"
     key: runtime-wheels
