@@ -353,12 +353,10 @@ def run(
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
 
         # Resumes training if a previous machine crashed
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume=True)
-
-        # Rerun ONLY failed trials after an experiment is finished.
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume="ERRORED_ONLY")
+        tune.run(
+            my_trainable, config=space,
+            storage_path=<path/to/dir>, name=<exp_name>, resume=True
+        )
 
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
@@ -490,6 +488,7 @@ def run(
         _remote: Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
+        local_dir: Deprecated. Use `storage_path` instead.
         keep_checkpoints_num: Deprecated. use checkpoint_config instead.
         checkpoint_score_attr: Deprecated. use checkpoint_config instead.
         checkpoint_freq: Deprecated. use checkpoint_config instead.
