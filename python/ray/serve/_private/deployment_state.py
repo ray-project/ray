@@ -1619,14 +1619,15 @@ class DeploymentState:
             for handle_id, handle_metric in list(self.handle_requests.items()):
                 if time.time() - handle_metric.timestamp >= timeout_s:
                     del self.handle_requests[handle_id]
-                    if (
-                        handle_metric.queued_requests
-                        + sum(handle_metric.running_requests.values())
-                        > 0
-                    ):
+                    total_ongoing_requests = handle_metric.queued_requests + sum(
+                        handle_metric.running_requests.values()
+                    )
+                    if total_ongoing_requests > 0:
                         logger.info(
                             f"Dropping stale metrics for handle '{handle_id}' "
-                            f"(no updates received for {timeout_s:.1f}s)."
+                            f"because no update was received for {timeout_s:.1f}s. "
+                            f"Ongoing requests was: "
+                            "{total_ongoing_requests}."
                         )
 
             for handle_metric in self.handle_requests.values():
