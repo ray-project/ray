@@ -167,8 +167,6 @@ def create_serve_rest_api(
                     text=repr(e),
                 )
 
-            self.log_config_change_default_warning(config)
-
             config_http_options = config.http_options.dict()
             location = ProxyLocation._to_deployment_mode(config.proxy_location)
             full_http_options = dict({"location": location}, **config_http_options)
