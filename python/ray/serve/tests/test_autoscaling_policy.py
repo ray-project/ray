@@ -313,7 +313,6 @@ class TestAutoscalingMetrics:
         ][0]["name"]
         router = ray.get_actor(router_name, namespace=SERVE_NAMESPACE)
 
-        # import pdb; pdb.set_trace()
         print("Releasing signal at", time.time())
         signal.send.remote()
         print("Request results:", [ref.result() for ref in refs])
