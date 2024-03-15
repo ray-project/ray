@@ -1,3 +1,4 @@
+import threading
 from typing import Dict
 from unittest.mock import MagicMock, patch
 
@@ -158,9 +159,10 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
 
     # Test that we don't automatically set device if collate_fn is specified.
     with patch(
-        "ray.air._internal.torch_utils.get_device", lambda: torch.device("cuda")
+        "ray.air._internal.torch_utils.get_devices", lambda: [torch.device("cuda")]
     ):
-        assert ray.air._internal.torch_utils.get_device().type == "cuda"
+        devices = ray.air._internal.torch_utils.get_devices()
+        assert devices[0].type == "cuda"
 
         it.iter_batches = MagicMock()
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
@@ -174,6 +176,45 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         assert all(
             kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
         ), iter_batches_calls_kwargs
+
+
+def test_iterator_to_materialized_dataset(ray_start_regular_shared):
+    """Tests that `DataIterator.materialize` fully consumes the
+    iterator and returns a `MaterializedDataset` view of the data
+    that can be used to interact with the full dataset
+    (e.g. load it all into memory)."""
+    ds = ray.data.range(10)
+    num_splits = 2
+    iters = ds.streaming_split(num_splits, equal=True)
+
+    def consume_in_parallel(fn):
+        runners = [
+            threading.Thread(target=fn, args=(it, i)) for i, it in enumerate(iters)
+        ]
+        [r.start() for r in runners]
+        [r.join() for r in runners]
+
+    materialized_ds = {}
+    shard_data = {}
+
+    def materialize(it, i):
+        materialized_ds[i] = it.materialize()
+
+    def iter_batches(it, i):
+        data = []
+        for batch in it.iter_batches():
+            data.extend(batch["id"].tolist())
+        shard_data[i] = data
+
+    consume_in_parallel(materialize)
+    consume_in_parallel(iter_batches)
+
+    # Check that the materialized datasets contain the same data as the
+    # original iterators.
+    for i in range(num_splits):
+        assert sorted(materialized_ds[i].to_pandas()["id"].tolist()) == sorted(
+            shard_data[i]
+        )
 
 
 if __name__ == "__main__":

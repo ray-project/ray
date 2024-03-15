@@ -2,42 +2,35 @@ import logging
 import random
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
     StatusOverview,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
-    BYTED_RAY_SERVE_TIMEOUT,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
-    RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import (
-    DeploymentArgs,
-    DeploymentRoute,
-    DeploymentRouteList,
-)
+from ray.serve.generated.serve_pb2 import DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.serve.handle import DeploymentHandle, RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
@@ -57,10 +50,8 @@ class ServeControllerClient:
     def __init__(
         self,
         controller: ActorHandle,
-        controller_name: str,
     ):
         self._controller: ServeController = controller
-        self._controller_name = controller_name
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -279,52 +270,6 @@ class ServeControllerClient:
             )
 
     @_ensure_connected
-    def deploy(
-        self,
-        name: str,
-        replica_config: ReplicaConfig,
-        deployment_config: Union[None, DeploymentConfig, Dict[str, Any]] = None,
-        version: Optional[str] = None,
-        route_prefix: Optional[str] = None,
-        url: Optional[str] = None,
-        _blocking: Optional[bool] = True,
-    ):
-        controller_deploy_args = get_deploy_args(
-            name=name,
-            replica_config=replica_config,
-            deployment_config=deployment_config,
-            version=version,
-            route_prefix=route_prefix,
-        )
-        controller_deploy_args.pop("ingress")
-        controller_deploy_args["name"] = controller_deploy_args.pop("deployment_name")
-
-        updating = ray.get(
-            self._controller.deploy.remote(
-                # TODO(edoakes): this is a hack because the deployment_language
-                # doesn't seem to get set properly from Java.
-                is_deployed_from_python=True,
-                **controller_deploy_args,
-            )
-        )
-
-        tag = self.log_deployment_update_status(name, version, updating)
-
-        if _blocking:
-            default_min_replicas = 1
-            import os
-
-            if os.environ.get("BYTED_RAY_SERVE_MIN_REPLICA") is not None:
-                default_min_replicas = int(
-                    os.environ.get("BYTED_RAY_SERVE_MIN_REPLICA")
-                )
-            self._wait_for_deployment_healthy(
-                name, BYTED_RAY_SERVE_TIMEOUT, default_min_replicas
-            )
-            self.log_deployment_ready(name, version, url, tag)
-            os.environ.pop("BYTED_RAY_SERVE_MIN_REPLICA", None)
-
-    @_ensure_connected
     def deploy_application(
         self,
         name,
@@ -465,27 +410,6 @@ class ServeControllerClient:
         )
 
     @_ensure_connected
-    def list_deployments_v1(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        """Gets the current information about all 1.x deployments."""
-
-        deployment_route_list = DeploymentRouteList.FromString(
-            ray.get(self._controller.list_deployments_v1.remote())
-        )
-        return {
-            deployment_route.deployment_info.name: (
-                DeploymentInfo.from_proto(deployment_route.deployment_info),
-                deployment_route.route if deployment_route.route != "" else None,
-            )
-            for deployment_route in deployment_route_list.deployment_routes
-        }
-
-    @_ensure_connected
-    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
-        """Gets the current information about all deployments (1.x and 2.x)."""
-
-        return ray.get(self._controller.list_deployments.remote())
-
-    @_ensure_connected
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
         """Returns the most recently requested Serve config."""
         return ray.get(self._controller.get_app_config.remote(name))
@@ -517,9 +441,7 @@ class ServeControllerClient:
         deployment_name: str,
         app_name: Optional[str] = "default",
         missing_ok: Optional[bool] = False,
-        sync: bool = True,
-        use_new_handle_api: bool = RAY_SERVE_ENABLE_NEW_HANDLE_API,
-    ) -> Union[DeploymentHandle, RayServeHandle, RayServeSyncHandle]:
+    ) -> DeploymentHandle:
         """Construct a handle for the specified deployment.
 
         Args:
@@ -527,48 +449,29 @@ class ServeControllerClient:
             app_name: Application name.
             missing_ok: If true, then Serve won't check the deployment
                 is registered. False by default.
-            sync: If true, then Serve will return a ServeHandle that
-                works everywhere. Otherwise, Serve will return a ServeHandle
-                that's only usable in asyncio loop.
 
         Returns:
-            RayServeHandle
+            DeploymentHandle
         """
-        cache_key = (deployment_name, app_name, missing_ok, sync)
+        cache_key = (deployment_name, app_name, missing_ok)
         if cache_key in self.handle_cache:
             return self.handle_cache[cache_key]
 
         all_deployments = ray.get(self._controller.list_deployment_ids.remote())
         if (
             not missing_ok
-            and DeploymentID(deployment_name, app_name) not in all_deployments
+            and DeploymentID(name=deployment_name, app_name=app_name)
+            not in all_deployments
         ):
             raise KeyError(
                 f"Deployment '{deployment_name}' in application '{app_name}' does not "
                 "exist."
             )
 
-        if use_new_handle_api:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-                # Only used when users convert this back to deprecated handle types.
-                sync=sync,
-            )
-        elif sync:
-            handle = RayServeSyncHandle(
-                deployment_name,
-                app_name,
-                # Only used when users convert this back to deprecated handle types.
-                sync=sync,
-            )
-        else:
-            handle = RayServeHandle(
-                deployment_name,
-                app_name,
-                # Only used when users convert this back to deprecated handle types.
-                sync=sync,
-            )
+        handle = DeploymentHandle(
+            deployment_name,
+            app_name,
+        )
 
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:
@@ -632,6 +535,6 @@ class ServeControllerClient:
         self._controller.record_multiplexed_replica_info.remote(info)
 
     @_ensure_connected
-    def update_system_logging_config(self, logging_config: LoggingConfig):
+    def update_global_logging_config(self, logging_config: LoggingConfig):
         """Reconfigure the logging config for the controller & proxies."""
-        self._controller.reconfigure_system_logging_config.remote(logging_config)
+        self._controller.reconfigure_global_logging_config.remote(logging_config)

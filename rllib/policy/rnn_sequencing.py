@@ -18,7 +18,7 @@ from typing import List, Optional
 import functools
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
@@ -31,7 +31,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 def pad_batch_to_sequences_of_same_size(
     batch: SampleBatch,
     max_seq_len: int,
@@ -123,7 +123,7 @@ def pad_batch_to_sequences_of_same_size(
             states_already_reduced_to_init = True
 
         # RNN (or single timestep state-in): Set the max dynamically.
-        if view_requirements["state_in_0"].shift_from is None:
+        if view_requirements and view_requirements["state_in_0"].shift_from is None:
             dynamic_max = True
         # Attention Nets (state inputs are over some range): No dynamic maxing
         # possible.
@@ -165,6 +165,7 @@ def pad_batch_to_sequences_of_same_size(
         shuffle=shuffle,
         handle_nested_data=True,
         padding=padding,
+        pad_infos_with_empty_dicts=_enable_new_api_stack,
     )
     for i, k in enumerate(feature_keys_):
         batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
@@ -189,7 +190,7 @@ def pad_batch_to_sequences_of_same_size(
         )
 
 
-@DeveloperAPI
+@OldAPIStack
 def add_time_dimension(
     padded_inputs: TensorType,
     *,
@@ -263,7 +264,7 @@ def add_time_dimension(
         return padded_outputs
 
 
-@DeveloperAPI
+@OldAPIStack
 def chop_into_sequences(
     *,
     feature_columns,
@@ -279,6 +280,7 @@ def chop_into_sequences(
     handle_nested_data=False,
     _extra_padding=0,
     padding: str = "zero",
+    pad_infos_with_empty_dicts: bool = False,
 ):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -304,6 +306,11 @@ def chop_into_sequences(
         _extra_padding: Add extra padding to the end of sequences.
         padding: Padding type to use. Either "zero" or "last". Zero padding
             will pad with zeros, last padding will pad with the last value.
+        pad_infos_with_empty_dicts: If True, will zero-pad INFOs with empty
+            dicts (instead of None). Used by the new API stack in the meantime,
+            however, as soon as the new ConnectorV2 API will be activated (as
+            part of the new API stack), we will no longer use this utility function
+            anyway.
 
     Returns:
         f_pad: Padded feature columns. These will be of shape
@@ -359,6 +366,8 @@ def chop_into_sequences(
     if dynamic_max:
         max_seq_len = max(seq_lens) + _extra_padding
 
+    length = len(seq_lens) * max_seq_len
+
     feature_sequences = []
     for col in feature_columns:
         if isinstance(col, list):
@@ -370,10 +379,18 @@ def chop_into_sequences(
             if not isinstance(f, np.ndarray):
                 f = np.array(f)
 
-            length = len(seq_lens) * max_seq_len
-            if f.dtype == object or f.dtype.type is np.str_:
-                # This is the usual case for INFOS
+            # New stack behavior (temporarily until we move to ConnectorV2 API, where
+            # this (admitedly convoluted) function will no longer be used at all).
+            if (
+                f.dtype == object
+                and pad_infos_with_empty_dicts
+                and isinstance(f[0], dict)
+            ):
+                f_pad = [{} for _ in range(length)]
+            # Old stack behavior: Pad INFOs with None.
+            elif f.dtype == object or f.dtype.type is np.str_:
                 f_pad = [None] * length
+            # Pad everything else with zeros.
             else:
                 # Make sure type doesn't change.
                 f_pad = np.zeros((length,) + np.shape(f)[1:], dtype=f.dtype)
@@ -435,7 +452,7 @@ def chop_into_sequences(
     return feature_sequences, initial_states, seq_lens
 
 
-@DeveloperAPI
+@OldAPIStack
 def timeslice_along_seq_lens_with_overlap(
     sample_batch: SampleBatchType,
     seq_lens: Optional[List[int]] = None,
@@ -584,7 +601,7 @@ def timeslice_along_seq_lens_with_overlap(
     return timeslices
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_fold_unfold_fns(b_dim: int, t_dim: int, framework: str):
     """Produces two functions to fold/unfold any Tensors in a struct.
 

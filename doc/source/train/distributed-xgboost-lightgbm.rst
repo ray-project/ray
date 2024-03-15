@@ -1,7 +1,7 @@
 .. _train-gbdt-guide:
 
-Get Started with XGBoost and LightGBM
-=====================================
+Get Started with Distributed Training using XGBoost and LightGBM
+================================================================
 
 Ray Train has built-in support for XGBoost and LightGBM.
 
@@ -36,16 +36,12 @@ training parameters are passed as the ``params`` dictionary.
 
     .. tab-item:: XGBoost
 
-        Run ``pip install -U xgboost_ray``.
-
         .. literalinclude:: doc_code/gbdt_user_guide.py
             :language: python
             :start-after: __xgboost_start__
             :end-before: __xgboost_end__
 
     .. tab-item:: LightGBM
-
-        Run ``pip install -U lightgbm_ray``.
 
         .. literalinclude:: doc_code/gbdt_user_guide.py
             :language: python
@@ -140,6 +136,21 @@ Following are some examples of common use-cases:
 
         Note that you just have to adjust the number of workers. Ray handles everything else
         automatically.
+
+
+.. warning::
+
+    Specifying a *shared storage location* (such as cloud storage or NFS) is
+    *optional* for single-node clusters, but it is **required for multi-node clusters.**
+    Using a local path will :ref:`raise an error <multinode-local-storage-warning>`
+    during checkpointing for multi-node clusters.
+
+    .. testcode:: python
+        :skipif: True
+
+        trainer = XGBoostTrainer(
+            ..., run_config=ray.train.RunConfig(storage_path="s3://...")
+        )
 
 
 How many remote actors should you use?

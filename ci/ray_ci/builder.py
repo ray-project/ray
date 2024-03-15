@@ -3,13 +3,13 @@ from typing import List
 import click
 
 from ci.ray_ci.builder_container import (
+    DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
     BUILD_TYPES,
     ARCHITECTURE,
     BuilderContainer,
 )
-from ci.ray_ci.doc_builder_container import DocBuilderContainer
-from ci.ray_ci.forge_container import ForgeContainer
+from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 from ci.ray_ci.docker_container import PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
@@ -21,7 +21,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.argument(
     "artifact_type",
     required=True,
-    type=click.Choice(["wheel", "doc", "docker", "anyscale"]),
+    type=click.Choice(["wheel", "docker", "anyscale"]),
 )
 @click.option(
     "--image-type",
@@ -35,7 +35,7 @@ from ci.ray_ci.utils import logger, docker_login
 )
 @click.option(
     "--python-version",
-    default="3.8",
+    default=DEFAULT_PYTHON_VERSION,
     type=click.Choice(list(PYTHON_VERSIONS.keys())),
     help=("Python version to build the wheel with"),
 )
@@ -50,6 +50,12 @@ from ci.ray_ci.utils import logger, docker_login
     default="x86_64",
     type=click.Choice(list(ARCHITECTURE)),
     help=("Platform to build the docker with"),
+)
+@click.option(
+    "--operating-system",
+    default="linux",
+    type=click.Choice(["linux", "windows"]),
+    help=("Operating system to run tests on"),
 )
 @click.option(
     "--canonical-tag",
@@ -71,6 +77,7 @@ def main(
     python_version: str,
     platform: List[str],
     architecture: str,
+    operating_system: str,
     canonical_tag: str,
     upload: bool,
 ) -> None:
@@ -80,7 +87,7 @@ def main(
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
-        build_wheel(python_version, build_type, architecture)
+        build_wheel(python_version, build_type, architecture, operating_system, upload)
         return
 
     if artifact_type == "docker":
@@ -111,20 +118,22 @@ def main(
         )
         return
 
-    if artifact_type == "doc":
-        logger.info("Building ray docs")
-        build_doc()
-        return
-
     raise ValueError(f"Invalid artifact type {artifact_type}")
 
 
-def build_wheel(python_version: str, build_type: str, architecture: str) -> None:
+def build_wheel(
+    python_version: str,
+    build_type: str,
+    architecture: str,
+    operating_system: str,
+    upload: bool,
+) -> None:
     """
     Build a wheel artifact.
     """
-    BuilderContainer(python_version, build_type, architecture).run()
-    ForgeContainer(architecture).upload_wheel()
+    if operating_system == "windows":
+        return WindowsBuilderContainer(python_version, upload).run()
+    return BuilderContainer(python_version, build_type, architecture, upload).run()
 
 
 def build_docker(
@@ -139,7 +148,7 @@ def build_docker(
     """
     Build a container artifact.
     """
-    BuilderContainer(python_version, build_type, architecture).run()
+    BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
@@ -158,7 +167,7 @@ def build_anyscale(
     """
     Build an anyscale container artifact.
     """
-    BuilderContainer(python_version, build_type, architecture).run()
+    BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload=False
@@ -166,10 +175,3 @@ def build_anyscale(
         AnyscaleDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
         ).run()
-
-
-def build_doc() -> None:
-    """
-    Build a doc artifact.
-    """
-    DocBuilderContainer().run()

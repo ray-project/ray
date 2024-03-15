@@ -3,7 +3,7 @@ import json
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
-from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.logger import logger
 
 
@@ -37,7 +37,7 @@ class RayTestDBReporter(Reporter):
         )
 
         # Compute and update the next test state
-        TestStateMachine(test).move()
+        ReleaseTestStateMachine(test).move()
 
         # Persist the updated test object to S3
         test.persist_to_s3()

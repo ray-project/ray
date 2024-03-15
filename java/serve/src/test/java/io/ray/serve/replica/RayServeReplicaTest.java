@@ -54,12 +54,7 @@ public class RayServeReplicaTest {
               .setAppName("app_test");
 
       ActorHandle<RayServeWrappedReplica> replicHandle =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  deploymentWrapper,
-                  replicaTag,
-                  Constants.SERVE_CONTROLLER_NAME)
-              .remote();
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag).remote();
 
       // ready
       Assert.assertTrue(replicHandle.task(RayServeWrappedReplica::checkHealth).remote().get());

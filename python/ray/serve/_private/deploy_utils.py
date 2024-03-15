@@ -6,9 +6,10 @@ from typing import Any, Dict, Optional, Union
 
 import ray
 import ray.util.serialization_addons
-from ray.serve._private.common import DeploymentID, DeploymentInfo
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -90,7 +91,7 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         actor_name=DeploymentID(
-            deployment_name, app_name
+            name=deployment_name, app_name=app_name
         ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,
@@ -120,4 +121,4 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         },
         sort_keys=True,
     ).encode("utf-8")
-    return hashlib.md5(encoded).hexdigest()
+    return hashlib.sha1(encoded).hexdigest()

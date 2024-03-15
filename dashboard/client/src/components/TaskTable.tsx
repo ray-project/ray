@@ -22,6 +22,7 @@ import { ActorLink, NodeLink } from "../common/links";
 import {
   TaskCpuProfilingLink,
   TaskCpuStackTraceLink,
+  TaskMemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
@@ -354,6 +355,12 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
           />
           <br />
           <TaskCpuStackTraceLink
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+          <br />
+          <TaskMemoryProfilingButton
             taskId={task.task_id}
             attemptNumber={task.attempt_number}
             nodeId={task.node_id}

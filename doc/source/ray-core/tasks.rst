@@ -14,7 +14,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
             :start-after: __tasks_start__
             :end-before: __tasks_end__
 
-        See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
+        See the :func:`ray.remote<ray.remote>` API for more details.
 
     .. tab-item:: Java
 
@@ -286,6 +286,18 @@ You can change this behavior by setting
 ``max_retries`` and ``retry_exceptions`` options
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
+
+Task Events
+-----------
+
+
+By default, Ray traces the execution of tasks, reporting task status events and profiling events
+that the Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
+
+You can change this behavior by setting ``enable_task_events`` options in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`
+to disable task events, which reduces the overhead of task execution, and the amount of data the task sends to the Ray Dashboard.
+Nested tasks don't inherit the task events settings from the parent task. You need to set the task events settings for each task separately.
+
 
 
 More about Ray Tasks

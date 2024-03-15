@@ -15,7 +15,6 @@ import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ApplicationStatus;
 import io.ray.serve.generated.DeploymentArgs;
-import io.ray.serve.generated.DeploymentRouteList;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.StatusOverview;
 import io.ray.serve.handle.DeploymentHandle;
@@ -23,8 +22,6 @@ import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +37,6 @@ public class ServeControllerClient {
 
   private BaseActorHandle controller; // TODO change to PyActorHandle
 
-  @SuppressWarnings("unused")
-  private String controllerName;
-
   private boolean shutdown;
 
   private Map<String, DeploymentHandle> handleCache = new ConcurrentHashMap<>();
@@ -50,9 +44,8 @@ public class ServeControllerClient {
   private String rootUrl;
 
   @SuppressWarnings("unchecked")
-  public ServeControllerClient(BaseActorHandle controller, String controllerName) {
+  public ServeControllerClient(BaseActorHandle controller) {
     this.controller = controller;
-    this.controllerName = controllerName;
     this.rootUrl =
         controller instanceof PyActorHandle
             ? (String)
@@ -158,36 +151,6 @@ public class ServeControllerClient {
                 .task(PyActorMethod.of("get_deployment_info"), name)
                 .remote()
                 .get());
-  }
-
-  /**
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   * @return
-   */
-  @Deprecated
-  public Map<String, DeploymentRoute> listDeployments() {
-    DeploymentRouteList deploymentRouteList =
-        ServeProtoUtil.bytesToProto(
-            (byte[])
-                ((PyActorHandle) controller)
-                    .task(PyActorMethod.of("list_deployments_v1"))
-                    .remote()
-                    .get(),
-            DeploymentRouteList::parseFrom);
-
-    if (deploymentRouteList == null || deploymentRouteList.getDeploymentRoutesList() == null) {
-      return Collections.emptyMap();
-    }
-
-    Map<String, DeploymentRoute> deploymentRoutes =
-        new HashMap<>(deploymentRouteList.getDeploymentRoutesList().size());
-    for (io.ray.serve.generated.DeploymentRoute deploymentRoute :
-        deploymentRouteList.getDeploymentRoutesList()) {
-      deploymentRoutes.put(
-          deploymentRoute.getDeploymentInfo().getName(),
-          DeploymentRoute.fromProto(deploymentRoute));
-    }
-    return deploymentRoutes;
   }
 
   public BaseActorHandle getController() {

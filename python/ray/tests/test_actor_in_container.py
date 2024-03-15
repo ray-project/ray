@@ -1,9 +1,5 @@
 import pytest
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 import sys
 
 import ray

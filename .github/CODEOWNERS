@@ -11,7 +11,6 @@
 # NOTE: Add @ray-project/ray-docs to all following docs subdirs.
 /doc/ @ray-project/ray-docs
 /doc/source/use-cases.rst @ericl @pcmoritz
-/doc/source/templates @justinvyu @matthewdeng @sofianhnaide
 
 # ==== Ray core ====
 
@@ -72,16 +71,16 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @Zandew
-/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @Zandew
+/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @omatthew98
+/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @omatthew98
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha
-/doc/source/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @ray-project/ray-docs
+/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980
+/doc/source/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980 @ray-project/ray-docs
 
 # Cluster (docs)
 /doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
@@ -93,7 +92,7 @@
 /doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @justinvyu @woshiyyya @ray-project/ray-docs
 
 # Serve (docs)
-/doc/source/serve/ @edoakes @shrekris-anyscale @sihanwang41 @zcin @architkulkarni @ray-project/ray-docs
+/doc/source/serve/ @edoakes @shrekris-anyscale @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @amogkam @richardliaw @matthewdeng
@@ -111,17 +110,16 @@
 # ==== Build and CI ====
 
 # Bazel.
-#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
-#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
-#/bazel/ @ray-project/ray-core @ray-project/ray-ci
+#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/bazel/ @ray-project/ray-core @ray-project/ray-ci-reviewers
 
 # CI scripts.
-#/.travis.yml @ray-project/ray-core @ray-project/ray-ci
-#/ci/ @ray-project/ray-core @ray-project/ray-ci
+#/ci/ @ray-project/ray-core @ray-project/ray-ci-reviewers
 
 # Buildkite pipeline management
-.buildkite/hooks @ray-project/ray-ci
+.buildkite/hooks @ray-project/ray-ci-reviewers
 
-/release/ray_release @ray-project/ray-ci
+/release/ray_release @ray-project/ray-ci-reviewers
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz

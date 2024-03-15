@@ -39,7 +39,7 @@ class TestReadImages:
         )
         ds = ray.data.read_images(
             "example://image-datasets/simple",
-            parallelism=1,
+            override_num_blocks=1,
             include_paths=True,
         )
         paths = [item["path"][-len("image1.jpg") :] for item in ds.take_all()]
@@ -228,7 +228,7 @@ class TestReadImages:
     ):
         root = "example://image-datasets/different-sizes"
         ds = ray.data.read_images(
-            root, size=(image_size, image_size), mode=image_mode, parallelism=1
+            root, size=(image_size, image_size), mode=image_mode, override_num_blocks=1
         )
 
         data_size = ds.size_bytes()
@@ -259,15 +259,15 @@ class TestReadImages:
         ctx.target_max_block_size = 1
         try:
             root = "example://image-datasets/simple"
-            ds = ray.data.read_images(root, parallelism=1)
-            assert ds.num_blocks() == 1
+            ds = ray.data.read_images(root, override_num_blocks=1)
+            assert ds._plan.initial_num_blocks() == 1
             ds = ds.materialize()
             # Verify dynamic block splitting taking effect to generate more blocks.
-            assert ds.num_blocks() == 3
+            assert ds._plan.initial_num_blocks() == 3
 
             # Test union of same datasets
             union_ds = ds.union(ds, ds, ds).materialize()
-            assert union_ds.num_blocks() == 12
+            assert union_ds._plan.initial_num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
 

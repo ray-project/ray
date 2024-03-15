@@ -61,15 +61,15 @@ We may not know the size of the argument until we execute the task, so we don't 
 
 In these cases, we can use a remote generator function that returns a *dynamic* number of values.
 To use this feature, set ``num_returns="dynamic"`` in the ``@ray.remote`` decorator or the remote function's ``.options()``.
-Then, when invoking the remote function, Ray will return a *single* ``ObjectRef`` that will get populated with an ``ObjectRefGenerator`` when the task completes.
-The ``ObjectRefGenerator`` can be used to iterate over a list of ``ObjectRefs`` containing the actual values returned by the task.
+Then, when invoking the remote function, Ray will return a *single* ``ObjectRef`` that will get populated with an ``DynamicObjectRefGenerator`` when the task completes.
+The ``DynamicObjectRefGenerator`` can be used to iterate over a list of ``ObjectRefs`` containing the actual values returned by the task.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python
     :start-after: __dynamic_generator_start__
     :end-before: __dynamic_generator_end__
 
-We can also pass the ``ObjectRef`` returned by a task with ``num_returns="dynamic"`` to another task. The task will receive the ``ObjectRefGenerator``, which it can use to iterate over the task's return values. Similarly, you can also pass an ``ObjectRefGenerator`` as a task argument.
+We can also pass the ``ObjectRef`` returned by a task with ``num_returns="dynamic"`` to another task. The task will receive the ``DynamicObjectRefGenerator``, which it can use to iterate over the task's return values. Similarly, you can also pass an ``ObjectRefGenerator`` as a task argument.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python
@@ -82,7 +82,7 @@ Exception handling
 If a generator function raises an exception before yielding all its values, the values that it already stored will still be accessible through their ``ObjectRefs``.
 The remaining ``ObjectRefs`` will contain the raised exception.
 This is true for both static and dynamic ``num_returns``.
-If the task was called with ``num_returns="dynamic"``, the exception will be stored as an additional final ``ObjectRef`` in the ``ObjectRefGenerator``.
+If the task was called with ``num_returns="dynamic"``, the exception will be stored as an additional final ``ObjectRef`` in the ``DynamicObjectRefGenerator``.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python

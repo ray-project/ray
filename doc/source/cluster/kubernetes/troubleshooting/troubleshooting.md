@@ -11,7 +11,8 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [Worker init container](#worker-init-container)
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
-- [Other questions](#questions)
+- [Autoscaler](#autoscaler)
+- [Other questions](#other-questions)
 
 ## Upgrade KubeRay
 
@@ -66,8 +67,17 @@ RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In Kube
 create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
 or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. See [rayservice-troubleshooting](kuberay-raysvc-troubleshoot) for more details.
 
-(questions)=
-## Questions
+(autoscaler)=
+## Ray Autoscaler
+
+### Ray Autoscaler doesn't scale up, causing new Ray tasks or actors to remain pending
+
+One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide.
+Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
+Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
+
+(other-questions)=
+## Other questions
 
 ### Why are changes to the RayCluster or RayJob CR not taking effect?
 

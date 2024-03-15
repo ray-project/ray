@@ -49,7 +49,7 @@ CLEANABLE_SUBDIRS = [
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set e.g. in our conda
+# replaced with junctions in Windows. This variable is set e.g. in our conda-forge
 # feedstock.
 is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
@@ -227,13 +227,9 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3, < 3.0"
-    numpy_dep = "numpy >= 1.20, < 2.0"
-    if sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1, < 20.0"
-    else:
-        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
-        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
+    pandas_dep = "pandas >= 1.3"
+    numpy_dep = "numpy >= 1.20"
+    pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
         "data": [
             numpy_dep,
@@ -244,35 +240,27 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7, < 5.0",
-            "aiohttp_cors >= 0.5.0, < 1.0.0",
-            "colorful >= 0.5.0, < 0.7.0",
-            "py-spy >= 0.2.0, < 0.5.0",
-            "requests >= 2.25.0, < 3.0.0",
-            # "gpustat >= 1.0.0",  # move to bytedance
-            "grpcio >= 1.32.0, < 1.60.0, != 1.56.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0, < 1.60.0, != 1.56.0; python_version >= '3.10'",  # noqa:E501
-            "opencensus >= 0.8.0, < 1.0.0",
-            "pydantic>= 1.7.0,!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
-            "prometheus_client >= 0.7.1, < 0.14.0",
-            "smart_open >= 4.0.0, < 7.0.0",
-            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
+            "aiohttp >= 3.7",
+            "aiohttp_cors",
+            "colorful",
+            "py-spy >= 0.2.0",
+            "requests",
+            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "opencensus",
+            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+            "prometheus_client >= 0.7.1",
+            "smart_open",
+            "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "serve": [
-            "uvicorn[standard] >= 0.16.0, < 0.22.0",
-            "requests >= 2.25.0, < 3.0.0",
-            "starlette >= 0.14.0, < 1.0.0",
-            "fastapi >= 0.40, < 0.99",
-            "aiorwlock >= 1.0.0, < 2.0.0",
-            "watchfiles >= 0.12, < 0.30",
+            "uvicorn[standard]",
+            "requests",
+            "starlette",
+            "fastapi",
+            "watchfiles",
         ],
-        "tune": [
-            pandas_dep,
-            pyarrow_dep,
-            "fsspec >= 2021.0, < 2025.0",
-            "tensorboardX >= 1.9, < 3.0",
-            "requests >= 2.25.0, < 3.0.0",
-        ],
+        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [
             "opentelemetry-api >= 1.1.0, < 1.2.0",
             "opentelemetry-sdk >= 1.1.0, < 1.2.0",
@@ -570,13 +558,17 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if not is_automated_build:
-        bazel_precmd_flags = []
     if is_automated_build:
-        root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
-        )
-        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+        src_dir = os.environ.get("SRC_DIR", False) or os.getcwd()
+        src_dir = os.path.abspath(src_dir)
+        if is_native_windows_or_msys():
+            drive = os.path.splitdrive(src_dir)[0] + "\\"
+            root_dir = os.path.join(drive, "bazel-root")
+            out_dir = os.path.join(drive, "b-o")
+            bazel_flags.append("--enable_runfiles=false")
+        else:
+            root_dir = os.path.join(src_dir, "..", "bazel-root")
+            out_dir = os.path.join(src_dir, "..", "b-o")
 
         for d in (root_dir, out_dir):
             if not os.path.exists(d):
@@ -586,9 +578,8 @@ def build(build_python, build_java, build_cpp):
             "--output_user_root=" + root_dir,
             "--output_base=" + out_dir,
         ]
-
-        if is_native_windows_or_msys():
-            bazel_flags.append("--enable_runfiles=false")
+    else:
+        bazel_precmd_flags = []
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
@@ -762,51 +753,55 @@ build_dir = os.path.join(ROOT_DIR, "build")
 if os.path.isdir(build_dir):
     shutil.rmtree(build_dir)
 
-setuptools.setup(
-    name=setup_spec.name,
-    version=setup_spec.version,
-    author="Ray Team",
-    author_email="ray-dev@googlegroups.com",
-    description=(setup_spec.description),
-    long_description=io.open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-    ).read(),
-    url="https://github.com/ray-project/ray",
-    keywords=(
-        "ray distributed parallel machine-learning hyperparameter-tuning"
-        "reinforcement-learning deep-learning serving python"
-    ),
-    python_requires=">=3.8",
-    classifiers=[
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-    ],
-    packages=setup_spec.get_packages(),
-    cmdclass={"build_ext": build_ext},
-    # The BinaryDistribution argument triggers build_ext.
-    distclass=BinaryDistribution,
-    install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.32", "wheel"],
-    extras_require=setup_spec.extras,
-    entry_points={
-        "console_scripts": [
-            "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.cli.scripts:cli",
-            "serve=ray.serve.scripts:cli",
-        ]
-    },
-    package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
-    },
-    include_package_data=True,
-    exclude_package_data={
-        # Empty string means "any package".
-        # Therefore, exclude BUILD from every package:
-        "": ["BUILD"],
-    },
-    zip_safe=False,
-    license="Apache 2.0",
-) if __name__ == "__main__" else None
+(
+    setuptools.setup(
+        name=setup_spec.name,
+        version=setup_spec.version,
+        author="Ray Team",
+        author_email="ray-dev@googlegroups.com",
+        description=(setup_spec.description),
+        long_description=io.open(
+            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+        ).read(),
+        url="https://github.com/ray-project/ray",
+        keywords=(
+            "ray distributed parallel machine-learning hyperparameter-tuning"
+            "reinforcement-learning deep-learning serving python"
+        ),
+        python_requires=">=3.8",
+        classifiers=[
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
+        ],
+        packages=setup_spec.get_packages(),
+        cmdclass={"build_ext": build_ext},
+        # The BinaryDistribution argument triggers build_ext.
+        distclass=BinaryDistribution,
+        install_requires=setup_spec.install_requires,
+        setup_requires=["cython >= 0.29.32", "wheel"],
+        extras_require=setup_spec.extras,
+        entry_points={
+            "console_scripts": [
+                "ray=ray.scripts.scripts:main",
+                "rllib=ray.rllib.scripts:cli [rllib]",
+                "tune=ray.tune.cli.scripts:cli",
+                "serve=ray.serve.scripts:cli",
+            ]
+        },
+        package_data={
+            "ray": ["includes/*.pxd", "*.pxd"],
+        },
+        include_package_data=True,
+        exclude_package_data={
+            # Empty string means "any package".
+            # Therefore, exclude BUILD from every package:
+            "": ["BUILD"],
+        },
+        zip_safe=False,
+        license="Apache 2.0",
+    )
+    if __name__ == "__main__"
+    else None
+)

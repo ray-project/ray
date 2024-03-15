@@ -19,6 +19,7 @@ from custom_directives import (  # noqa
     LinkcheckSummarizer,
     parse_navbar_config,
     setup_context,
+    pregenerate_example_rsts,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -59,36 +60,24 @@ extensions = [
     "sphinx.ext.intersphinx",
 ]
 
-# Prune deep toc-trees on demand for smaller html and faster builds.
-# This only effects the navigation bar, not the content.
-if os.getenv("FAST", False):
-    remove_from_toctrees = [
-        "data/api/doc/*",
-        "ray-air/api/doc/*",
-        "ray-core/api/doc/*",
-        "ray-observability/api/state/doc/*",
-        "serve/api/doc/*",
-        "train/api/doc/*",
-        "tune/api/doc/*",
-        "workflows/api/doc/*",
-        "cluster/running-applications/job-submission/doc/*",
-        "serve/production-guide/*",
-        "serve/tutorials/deployment-graph-patterns/*",
-        "rllib/package_ref/env/*",
-        "rllib/package_ref/policy/*",
-        "rllib/package_ref/evaluation/*",
-        "rllib/package_ref/utils/*",
-        "workflows/api/*",
-        "cluster/kubernetes/user-guides/*",
-        "cluster/kubernetes/examples/*",
-        "cluster/vms/user-guides/*",
-        "cluster/running-applications/job-submission/*",
-        "ray-core/actors/*",
-        "ray-core/objects/*",
-        "ray-core/scheduling/*",
-        "ray-core/tasks/*",
-        "ray-core/patterns/*",
-    ]
+remove_from_toctrees = [
+    "cluster/running-applications/job-submission/doc/*",
+    "ray-observability/reference/doc/*",
+    "ray-core/api/doc/*",
+    "data/api/doc/*",
+    "train/api/doc/*",
+    "tune/api/doc/*",
+    "serve/api/doc/*",
+    "rllib/package_ref/algorithm/*",
+    "rllib/package_ref/policy/*",
+    "rllib/package_ref/models/*",
+    "rllib/package_ref/catalogs/*",
+    "rllib/package_ref/rl_modules/*",
+    "rllib/package_ref/learner/*",
+    "rllib/package_ref/evaluation/*",
+    "rllib/package_ref/replay-buffers/*",
+    "rllib/package_ref/utils/*",
+]
 
 myst_enable_extensions = [
     "dollarmath",
@@ -205,9 +194,6 @@ if build_one_lib and build_one_lib in all_toc_libs:
     exclude_patterns += all_toc_libs
 
 
-# The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "lovelace"
-
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
@@ -215,37 +201,49 @@ todo_include_todos = False
 # and is slow (it needs to download the linked website).
 linkcheck_anchors = False
 
-# Only check external links, i.e. the ones starting with http:// or https://.
-linkcheck_ignore = [
-    r"^((?!http).)*$",  # exclude links not starting with http
-    "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
-    "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
-    # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
-    "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
-    # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
-    "https://scikit-optimize.github.io/stable/modules/",
-    "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
-    "https://speakerdeck.com/*",  # forbidden for bots
-    r"https://huggingface.co/*",  # seems to be flaky
-    r"https://www.meetup.com/*",  # seems to be flaky
-    r"https://www.pettingzoo.ml/*",  # seems to be flaky
-    r"http://localhost[:/].*",  # Ignore localhost links
-    r"^http:/$",  # Ignore incomplete links
-    # 403 Client Error: Forbidden for url.
-    # They ratelimit bots.
-    "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
-    # 403 Client Error: Forbidden for url.
-    # They ratelimit bots.
-    "https://www.researchgate.net/publication/222573328_Stochastic_Gradient_Boosting",
-    "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
-    "https://dev.mysql.com/doc/connector-python/en/",
-    # Returning 522s intermittently.
-    "https://lczero.org/",
-    # Returns 429 errors in Linkcheck due to too many requests
-    "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
-    # Returns 406 but remains accessible
-    "https://www.uber.com/blog/elastic-xgboost-ray/",
-]
+if os.environ.get("LINKCHECK_ALL"):
+    # Only check external links, i.e. the ones starting with http:// or https://.
+    linkcheck_ignore = [
+        r"^((?!http).)*$",  # exclude links not starting with http
+        "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
+        "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
+        # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
+        "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
+        # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
+        "https://scikit-optimize.github.io/stable/modules/",
+        "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+        "https://speakerdeck.com/*",  # forbidden for bots
+        r"https://huggingface.co/*",  # seems to be flaky
+        r"https://www.meetup.com/*",  # seems to be flaky
+        r"https://www.pettingzoo.ml/*",  # seems to be flaky
+        r"http://localhost[:/].*",  # Ignore localhost links
+        r"^http:/$",  # Ignore incomplete links
+        # 403 Client Error: Forbidden for url.
+        # They ratelimit bots.
+        "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
+        # 403 Client Error: Forbidden for url.
+        # They ratelimit bots.
+        "https://www.researchgate.net/publication/222573328_Stochastic_Gradient_Boosting",
+        "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+        "https://dev.mysql.com/doc/connector-python/en/",
+        # Returning 522s intermittently.
+        "https://lczero.org/",
+        # Returns 406 but remains accessible
+        "https://www.uber.com/blog/elastic-xgboost-ray/",
+        # Aggressive anti-bot checks
+        "https://archive.vn/*",
+        "https://archive.is/*",
+        # 429: Rate limited
+        "https://medium.com/*",
+        "https://towardsdatascience.com/*",
+    ]
+else:
+    # Only check links that point to the ray-project org on github, since those
+    # links are under our control and therefore much more likely to be real
+    # issues that we need to fix if they are broken.
+    linkcheck_ignore = [
+        r"^(?!https://(raw\.githubusercontent|github)\.com/ray-project/).*$"
+    ]
 
 # -- Options for HTML output ----------------------------------------------
 def render_svg_logo(path):
@@ -276,6 +274,7 @@ html_theme_options = {
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
     "navbar_persistent": [
+        "search-button-field",
         "theme-switcher",
     ],
     "secondary_sidebar_items": [
@@ -287,6 +286,8 @@ html_theme_options = {
     ],
     "navigation_depth": 4,
     "analytics": {"google_analytics_id": "UA-110413294-1"},
+    "pygment_light_style": "stata-dark",
+    "pygment_dark_style": "stata-dark",
 }
 
 html_context = {
@@ -297,12 +298,8 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": [
-        "release-header",
-        "search-button-field",
-        "main-sidebar",
-    ],
-    "ray-overview/examples": ["examples-sidebar"],
+    "**": ["main-sidebar"],
+    "ray-overview/examples": [],
 }
 
 # The name for this set of Sphinx documents.  If None, it defaults to
@@ -390,21 +387,34 @@ def add_custom_assets(
     See documentation on Sphinx Core Events for more information:
     https://www.sphinx-doc.org/en/master/extdev/appapi.html#sphinx-core-events
     """
-    if pagename == "train/train":
-        app.add_css_file("css/ray-train.css")
-    elif pagename == "index":
-        # CSS for HTML part of index.html
-        app.add_css_file("css/splash.css")
-        app.add_js_file("js/splash.js")
-    elif pagename == "ray-overview/examples":
-        # Example gallery
+    if pagename == "index":
+        app.add_css_file("css/index.css")
+        app.add_js_file("js/index.js")
+        return "index.html"  # Use the special index.html template for this page
+
+    if pagename == "ray-overview/examples":
         app.add_css_file("css/examples.css")
         app.add_js_file("js/examples.js")
+        return "ray-overview/examples.html"
+
+    if pagename in [
+        "data/examples",
+        "train/examples",
+        "serve/examples",
+    ]:
+        return "examples.html"
+
+    if pagename == "train/train":
+        app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
+    elif pagename == "ray-overview/use-cases":
+        app.add_css_file("css/use_cases.css")
 
 
 def setup(app):
+    pregenerate_example_rsts(app)
+
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
     # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
     # warnings when we build the documentation.
@@ -479,6 +489,7 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
+    "nevergrad",
     "numpy",
     "pandas",
     "pyarrow",
@@ -494,6 +505,7 @@ autodoc_mock_imports = [
     "torchvision",
     "transformers",
     "tree",
+    "typer",
     "uvicorn",
     "wandb",
     "watchfiles",
@@ -543,6 +555,7 @@ intersphinx_mapping = {
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
+    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
     "pyarrow": ("https://arrow.apache.org/docs", None),

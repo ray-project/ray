@@ -14,9 +14,9 @@ from ray import serve
 
 @serve.deployment(
     ray_actor_options={"num_cpus": 1},
-    max_concurrent_queries=5,
+    max_ongoing_requests=5,
     autoscaling_config={
-        "target_num_ongoing_requests_per_replica": 1,
+        "target_ongoing_requests": 1,
         "min_replicas": 0,
         "initial_replicas": 0,
         "max_replicas": 200,
@@ -59,13 +59,14 @@ class Model:
 app = Model.bind()
 # __serve_example_end__
 
-import requests  # noqa
+if __name__ == "__main__":
+    import requests  # noqa
 
-serve.run(app)
-resp = requests.post(
-    "http://localhost:8000/",
-    json={
-        "uri": "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"  # noqa
-    },
-)  # noqa
-assert resp.text == "ox"
+    serve.run(app)
+    resp = requests.post(
+        "http://localhost:8000/",
+        json={
+            "uri": "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"  # noqa
+        },
+    )  # noqa
+    assert resp.text == "ox"

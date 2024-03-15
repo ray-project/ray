@@ -111,7 +111,7 @@ Keeping the memory usage of long running workers stable can be challenging. The 
 
 .. autoclass:: ray.rllib.algorithms.callbacks.MemoryTrackingCallbacks
 
-The objects with the top 20 memory usage in the workers will be added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights and Biases: 
+The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights & Biases:
 
 .. image:: images/MemoryTrackingCallbacks.png
 
@@ -150,5 +150,3 @@ It returns three values:
 *  ``tf1``: The ``tf.compat.v1`` module or the installed tf1.x package (if the version is < 2.0).
 *  ``tf``: The installed tensorflow module as-is.
 *  ``tfv``: A version integer, whose value is either 1 or 2.
-
-`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.

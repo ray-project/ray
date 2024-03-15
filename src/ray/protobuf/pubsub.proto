@@ -26,6 +26,7 @@ import "src/ray/protobuf/logging.proto";
 /// For example, for pubsub channels that are used by core workers,
 /// they have the prefix WORKER_.
 enum ChannelType {
+  reserved 9;
   /// A channel for object eviction.
   WORKER_OBJECT_EVICTION = 0;
   /// A channel for ref removed.
@@ -44,8 +45,6 @@ enum ChannelType {
   RAY_ERROR_INFO_CHANNEL = 7;
   /// A channel for logs from various Ray components.
   RAY_LOG_CHANNEL = 8;
-  /// A channel for keys to pickled python functions and actor classes.
-  RAY_PYTHON_FUNCTION_CHANNEL = 9;
   /// A channel for reporting node resource usage stats.
   RAY_NODE_RESOURCE_USAGE_CHANNEL = 10;
 }
@@ -55,6 +54,7 @@ enum ChannelType {
 ///
 
 message PubMessage {
+  reserved 10, 14;
   /// Channel type for this publish message.
   ChannelType channel_type = 1;
   /// The key id (e.g., object id) in bytes.
@@ -67,11 +67,9 @@ message PubMessage {
     ActorTableData actor_message = 7;
     JobTableData job_message = 8;
     GcsNodeInfo node_info_message = 9;
-    NodeResourceChange node_resource_message = 10;
     WorkerDeltaData worker_delta_message = 11;
     ErrorTableData error_info_message = 12;
     LogBatch log_batch_message = 13;
-    PythonFunction python_function_message = 14;
     NodeResourceUsage node_resource_usage_message = 15;
 
     // The message that indicates the given key id is not available anymore.

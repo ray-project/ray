@@ -1,0 +1,145 @@
+exclude: |
+  (?x)^(
+    python/ray/core/generated/|
+    python/ray/serve/generated/|
+    python/ray/cloudpickle/|
+    python/ray/_private/runtime_env/_clonevirtualenv.py|
+    doc/external/
+  )
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+      - id: check-ast
+        exclude: |
+          (?x)(
+            python/ray/serve/tests/test_config_files/syntax_error\.py
+          )$
+      - id: check-json
+        exclude: |
+          (?x)^(
+            # Intentionally bad json schema
+            python/ray/tests/test_runtime_env_validation_bad_2_schema.json|
+            # json5 comments prevent parsing
+            python/asv.conf.json|
+            rllib/asv.conf.json
+          )
+      - id: check-toml
+
+  - repo: https://github.com/psf/black
+    rev: 22.10.0
+    hooks:
+      - id: black
+        exclude: |
+          (?x)^(
+            python/ray/cloudpickle/|
+            python/build/|
+            python/ray/core/src/ray/gcs/|
+            python/ray/thirdparty_files/|
+            python/ray/_private/thirdparty/|
+            python/ray/serve/tests/test_config_files/syntax_error\.py|
+            python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
+            doc/external/
+          )
+        types_or: [python]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 3.9.1
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          [
+            flake8-comprehensions==3.10.1,
+            flake8-quotes==2.0.0,
+            flake8-bugbear==21.9.2,
+          ]
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.3
+    hooks:
+      - id: prettier
+        files: 'doc/'
+        types_or: [javascript, ts, tsx, html, css]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.0
+    hooks:
+      - id: mypy
+        args: ['--follow-imports=skip', '--ignore-missing-imports']
+        files: |
+          (?x)^(
+            python/ray/autoscaler/node_provider.py|
+            python/ray/autoscaler/sdk/__init__.py|
+            python/ray/autoscaler/sdk/sdk.py|
+            python/ray/autoscaler/_private/commands.py|
+            python/ray/autoscaler/_private/autoscaler.py|
+            python/ray/_private/gcs_utils.py
+          )
+        additional_dependencies:
+          [
+            types-PyYAML
+          ]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        name: isort (python)
+        types_or: [python]
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: rst-directive-colons
+      - id: rst-inline-touching-normal
+      - id: python-no-log-warn
+      - id: python-check-mock-methods
+
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.9.0
+    hooks:
+      - id: shellcheck
+        args: ['--exclude=1090,1091,2207']
+          # 1090: Can't follow non-constant source. Use a directive to specify location.
+          # 1091: Not following {file} due to some error
+          # 2207: Prefer mapfile or read -a to split command output (or quote to avoid splitting). -- these aren't compatible with macOS's old Bash
+
+  - repo: https://github.com/pocc/pre-commit-hooks
+    rev: v1.3.5
+    hooks:
+      - id: clang-format
+        args: [--version=12.0.1]
+
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.11.0
+    hooks:
+      - id: pretty-format-java
+        args: [--autofix, --google-java-formatter-version=1.7]
+        exclude: |
+          (?x)^(
+            java/api/src/main/java/io/ray/api/ActorCall.java|
+            java/api/src/main/java/io/ray/api/CppActorCall.java|
+            java/api/src/main/java/io/ray/api/PyActorCall.java|
+            java/api/src/main/java/io/ray/api/RayCall.java
+          )
+
+  - repo: local
+    hooks:
+      - id: docstyle
+        name: Check for Ray docstyle violations
+        entry: ci/lint/check-docstyle.sh
+        language: system
+        types: [python]
+
+  - repo: local
+    hooks:
+      - id: check-import-order
+        name: Check for Ray import order violations
+        entry: python ci/lint/check_import_order.py
+        language: python
+        types: [python]
+        pass_filenames: false
+        args: [".", "-s", "ci", "-s", "python/ray/thirdparty_files", "-s", "python/build", "-s", "lib"]

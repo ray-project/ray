@@ -119,8 +119,7 @@ def get_or_create_autoscaling_requester_actor():
     # point to the head node.
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
-        soft=True,
-        _spill_on_unavailable=True,
+        soft=False,
     )
     with _autoscaling_requester_lock:
         return AutoscalingRequester.options(

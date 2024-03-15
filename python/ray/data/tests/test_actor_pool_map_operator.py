@@ -633,6 +633,11 @@ class TestAutoscalingPolicy:
     def test_start_actor_timeout(ray_start_regular_shared):
         """Tests that ActorPoolMapOperator raises an exception on
         timeout while waiting for actors."""
+
+        class UDFClass:
+            def __call__(self, x):
+                return x
+
         from ray.data._internal.execution.operators import actor_pool_map_operator
         from ray.exceptions import GetTimeoutError
 
@@ -649,7 +654,7 @@ class TestAutoscalingPolicy:
             # Specify an unachievable resource requirement to ensure
             # we timeout while waiting for actors.
             ray.data.range(10).map_batches(
-                lambda x: x,
+                UDFClass,
                 batch_size=1,
                 compute=ray.data.ActorPoolStrategy(size=5),
                 num_gpus=100,

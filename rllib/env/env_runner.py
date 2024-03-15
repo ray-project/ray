@@ -2,7 +2,7 @@ import abc
 from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 
 if TYPE_CHECKING:
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 tf1, _, _ = try_import_tf()
 
 
-@ExperimentalAPI
+@OldAPIStack
 class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     """Base class for distributed RL-style data collection from an environment.
 
@@ -36,7 +36,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
-        self.config = config
+        self.config = config.copy(copy_frozen=False)
         super().__init__(**kwargs)
 
         # This eager check is necessary for certain all-framework tests
@@ -79,6 +79,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         Returns:
             The current state of this EnvRunner.
         """
+        # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
+        # this an empty worker state and in `Algorithm.from_checkpoint()`
+        # the empty state (not `None`) must be ensured separately. Shall we
+        # return here as a default `None`?
         return {}
 
     def set_state(self, state: Dict[str, Any]) -> None:
@@ -99,7 +103,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         pass
 
     def stop(self) -> None:
-        """Releases all resources used by this EnvRunner."""
+        """Releases all resources used by this EnvRunner.
+
+        For example, when using a gym.Env in this EnvRunner, you should make sure
+        that its `close()` method is called.
+        """
         pass
 
     def __del__(self) -> None:
