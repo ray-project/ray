@@ -662,7 +662,8 @@ class RunConfig:
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if self.storage_path is None:
-            self.storage_path = DEFAULT_STORAGE_PATH
+            # TODO(justinvyu): [Deprecated] Remove fallback to local dir.
+            self.storage_path = self.local_dir or DEFAULT_STORAGE_PATH
 
             # If no remote path is set, try to get Ray Storage URI
             ray_storage_uri: Optional[str] = _get_storage_uri()
