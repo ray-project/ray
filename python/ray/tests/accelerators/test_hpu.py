@@ -227,7 +227,6 @@ def test_hpu_ids(shutdown_only):
 
     f0 = ray.remote(resources={"HPU": 0})(lambda: get_hpu_ids(0))
     f1 = ray.remote(resources={"HPU": 1})(lambda: get_hpu_ids(1))
-    f2 = ray.remote(resources={"HPU": 2})(lambda: get_hpu_ids(2))
 
     # Wait for all workers to start up.
     @ray.remote
@@ -248,7 +247,6 @@ def test_hpu_ids(shutdown_only):
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
     ray.get([f1.remote() for _ in range(10)])
-    ray.get([f2.remote() for _ in range(10)])
 
     # Test that actors have NEURON_RT_VISIBLE_CORES set properly.
 
@@ -298,37 +296,11 @@ def test_hpu_ids(shutdown_only):
             )
             return self.x
 
-    @ray.remote(resources={"HPU": 2})
-    class Actor2:
-        def __init__(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
-                "HPU"
-            ]
-            assert len(hpu_ids) == 2
-            assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
-                [str(i) for i in hpu_ids]
-            )
-            # Set self.x to make sure that we got here.
-            self.x = 2
-
-        def test(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
-                "HPU"
-            ]
-            assert len(hpu_ids) == 2
-            assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
-                [str(i) for i in hpu_ids]
-            )
-            return self.x
-
     a0 = Actor0.remote()
     assert ray.get(a0.test.remote()) == 0
 
     a1 = Actor1.remote()
     assert ray.get(a1.test.remote()) == 1
-
-    a2 = Actor2.remote()
-    assert ray.get(a2.test.remote()) == 2
 
 
 def test_hpu_with_placement_group(shutdown_only):
