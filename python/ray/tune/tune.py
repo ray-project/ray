@@ -577,16 +577,25 @@ def run(
 
     del remote_run_kwargs
 
-    if os.environ.get("TUNE_RESULT_DIR"):
-        # Deprecate: Raise in 2.6, remove in 2.7
+    # TODO(justinvyu): [Deprecated] Raise in 2.11.
+    if os.environ.get("TUNE_RESULT_DIR") or os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
         warnings.warn(
-            "The TUNE_RESULT_DIR environment variable is deprecated and will be "
-            "removed in the future. If you want to set persistent storage to "
-            "a local directory, pass `storage_path` instead. If you are using "
-            "remote storage and want to control the local cache directory, "
-            "set the RAY_AIR_LOCAL_CACHE_DIR environment variable instead.",
-            DeprecationWarning,
+            "The environment variables "
+            "`RAY_AIR_LOCAL_CACHE_DIR` and `TUNE_RESULT_DIR` "
+            "are deprecated and will be removed in the future. "
+            "They are no longer used and will not have any effect. "
+            "You should set the `storage_path` instead. "
         )
+
+    if local_dir is not None:
+        warnings.warn(
+            "The `local_dir` argument is deprecated and will be removed. "
+            "This will pass-through to set the `storage_path` for now "
+            "but will raise an error in the future. "
+            "You should only set the `storage_path` from now on."
+        )
+        # Have `storage_path` fall back to `local_dir` if only `local_dir` is set.
+        storage_path = storage_path or local_dir
 
     ray._private.usage.usage_lib.record_library_usage("tune")
 
@@ -643,12 +652,6 @@ def run(
         )
 
     sync_config = sync_config or SyncConfig()
-
-    # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-    # For now, keep accepting both options.
-    if local_dir is not None:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
-
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
     # For backward compatibility
