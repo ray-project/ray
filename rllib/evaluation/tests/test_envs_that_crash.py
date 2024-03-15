@@ -1,7 +1,6 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.tests.test_worker_failures import (
     ForwardHealthCheckToEnvWorker,
@@ -100,7 +99,7 @@ class TestEnvsThatCrash(unittest.TestCase):
     def test_crash_only_one_worker_during_sampling_but_recreate(self):
         """Expect some sub-envs to fail (and not recover), but re-create worker."""
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -109,7 +108,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 # Re-create failed workers (then continue).
                 recreate_failed_workers=True,
             )
-            .training(train_batch_size=60)
+            .training(train_batch_size=60, sgd_minibatch_size=60)
             .environment(
                 env=CartPoleCrashing,
                 env_config={
