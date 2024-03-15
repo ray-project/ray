@@ -193,7 +193,7 @@ def wait_for_restore(num_restarting_allowed=0):
             in "RESTARTING" state. This is because some actors may
             hang in __init__().
     """
-    time.sleep(20.0)
+    time.sleep(15.0)
     return
     while True:
         states = [
@@ -263,7 +263,7 @@ class TestWorkerFailures(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def _do_test_fault_fatal(self, config, fail_eval=False):
+    def _do_test_failing_fatal(self, config, fail_eval=False):
         """Test raises real error when out of workers."""
         config.num_rollout_workers = 2
         config.env = "multi_agent_fault_env" if config.is_multi_agent() else "fault_env"
@@ -284,16 +284,16 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertRaises(Exception, lambda: algo.train())
         algo.stop()
 
-    def _do_test_fault_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
+    def _do_test_failing_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
         config.num_rollout_workers = 2
         config.ignore_worker_failures = True
         config.recreate_failed_workers = False
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
-        config.env_config = {
+        config.environment(env_config={
             "bad_indices": [1],
-        }
+        })
         if fail_eval:
             config.evaluation_num_workers = 2
             config.evaluation_interval = 1
@@ -320,9 +320,9 @@ class TestWorkerFailures(unittest.TestCase):
 
         algo.stop()
 
-    def _do_test_fault_fatal_recreate(self, config, multi_agent=False):
+    def _do_test_failing_recover(self, config, multi_agent=False):
         # Counter that will survive restarts.
-        COUNTER_NAME = f"_do_test_fault_fatal_recreate{'_ma' if multi_agent else ''}"
+        COUNTER_NAME = f"_do_test_failing_recover{'_ma' if multi_agent else ''}"
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         # Test raises real error when out of workers.
@@ -386,7 +386,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_fatal_single_agent(self):
         # Test the case where all workers fail (w/o recovery).
-        self._do_test_fault_fatal(
+        self._do_test_failing_fatal(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .rollouts(
@@ -397,7 +397,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_fatal_multi_agent(self):
         # Test the case where all workers fail (w/o recovery).
-        self._do_test_fault_fatal(
+        self._do_test_failing_fatal(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .rollouts(env_runner_cls=MultiAgentEnvRunner)
@@ -414,7 +414,7 @@ class TestWorkerFailures(unittest.TestCase):
     #    )
 
     def test_sync_replay(self):
-        self._do_test_fault_ignore(
+        self._do_test_failing_ignore(
             SACConfig()
             .experimental(_enable_new_api_stack=True)
             .environment(
@@ -426,7 +426,7 @@ class TestWorkerFailures(unittest.TestCase):
         )
 
     def test_multi_gpu(self):
-        self._do_test_fault_ignore(
+        self._do_test_failing_ignore(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .rollouts(
@@ -440,7 +440,7 @@ class TestWorkerFailures(unittest.TestCase):
         )
 
     def test_sync_samples(self):
-        self._do_test_fault_ignore(
+        self._do_test_failing_ignore(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
@@ -449,7 +449,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_eval_workers_failing_ignore(self):
         # Test the case where one eval worker fails, but we chose to ignore.
-        self._do_test_fault_ignore(
+        self._do_test_failing_ignore(
             PPOConfig()
             .experimental(_enable_new_api_stack=True)
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
@@ -457,7 +457,7 @@ class TestWorkerFailures(unittest.TestCase):
             fail_eval=True,
         )
 
-    def test_recreate_eval_workers_parallel_to_training_w_actor_manager(self):
+    def test_eval_workers_parallel_to_training_failing_recover(self):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
             PPOConfig()
@@ -471,9 +471,9 @@ class TestWorkerFailures(unittest.TestCase):
             .training(model={"fcnet_hiddens": [4]})
         )
 
-        self._do_test_fault_fatal_recreate(config)
+        self._do_test_failing_recover(config)
 
-    def test_recreate_eval_workers_parallel_to_training_multi_agent(
+    def test_eval_workers_parallel_to_training_multi_agent_failing_recover(
         self,
     ):
         # Test the case where all eval workers fail on a multi-agent env with
@@ -501,11 +501,11 @@ class TestWorkerFailures(unittest.TestCase):
             .training(model={"fcnet_hiddens": [4]})
         )
 
-        self._do_test_fault_fatal_recreate(config, multi_agent=True)
+        self._do_test_failing_recover(config, multi_agent=True)
 
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
-        self._do_test_fault_fatal(
+        self._do_test_failing_fatal(
             PPOConfig().training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
         )
@@ -724,7 +724,7 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.evaluation_workers.num_healthy_remote_workers(), 2)
         self.assertEqual(algo.evaluation_workers.num_remote_worker_restarts(), 2)
 
-    def test_worker_recover_with_hanging_workers(self):
+    def test_worker_failing_recover_with_hanging_workers(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_eval_workers_fault_but_recover"
         counter = Counter.options(name=COUNTER_NAME).remote()

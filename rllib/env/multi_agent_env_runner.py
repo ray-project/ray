@@ -230,11 +230,11 @@ class MultiAgentEnvRunner(EnvRunner):
                     actions = self.env.action_space_sample()
                 # Remove all actions for agents that had no observation.
                 to_env = {
-                    Columns.ACTIONS: {
+                    Columns.ACTIONS: [{
                         agent_id: agent_action
                         for agent_id, agent_action in actions.items()
                         if agent_id in self._episode.get_agents_to_act()
-                    }
+                    }]
                 }
             # Compute an action using the RLModule.
             else:
