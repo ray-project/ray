@@ -2,6 +2,7 @@ import {
   Alert,
   AlertProps,
   Button,
+  InputAdornment,
   Link,
   Menu,
   MenuItem,
@@ -12,6 +13,7 @@ import {
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
+import { BiRefresh, BiTime } from "react-icons/bi";
 import { RiExternalLinkLine } from "react-icons/ri";
 
 import { GlobalContext } from "../../App";
@@ -45,6 +47,21 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
+export enum RefreshOptions {
+  OFF = "off",
+  ONE_SECOND = "1s",
+  FIVE_SECONDS = "5s",
+  TEN_SECONDS = "10s",
+  THIRTY_SECONDS = "30s",
+  ONE_MIN = "1m",
+  FIVE_MINS = "5m",
+  FIFTEEN_MINS = "15m",
+  THIRTY_MINS = "30m",
+  ONE_HOUR = "1h",
+  TWO_HOURS = "2h",
+  ONE_DAY = "1d",
+}
+
 export enum TimeRangeOptions {
   FIVE_MINS = "Last 5 minutes",
   THIRTY_MINS = "Last 30 minutes",
@@ -56,6 +73,21 @@ export enum TimeRangeOptions {
   TWO_DAYS = "Last 2 days",
   SEVEN_DAYS = "Last 7 days",
 }
+
+export const REFRESH_VALUE: Record<RefreshOptions, string> = {
+  [RefreshOptions.OFF]: "",
+  [RefreshOptions.ONE_SECOND]: "1s",
+  [RefreshOptions.FIVE_SECONDS]: "5s",
+  [RefreshOptions.TEN_SECONDS]: "10s",
+  [RefreshOptions.THIRTY_SECONDS]: "30s",
+  [RefreshOptions.ONE_MIN]: "1m",
+  [RefreshOptions.FIVE_MINS]: "5m",
+  [RefreshOptions.FIFTEEN_MINS]: "15m",
+  [RefreshOptions.THIRTY_MINS]: "30m",
+  [RefreshOptions.ONE_HOUR]: "1h",
+  [RefreshOptions.TWO_HOURS]: "2h",
+  [RefreshOptions.ONE_DAY]: "1d",
+};
 
 export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.FIVE_MINS]: "now-5m",
@@ -358,13 +390,25 @@ export const Metrics = () => {
 
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
+  const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
+    RefreshOptions.ONE_SECOND,
+  );
+
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
   );
+
+  const [refresh, setRefresh] = useState<string | null>(null);
+
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,
     null,
   ]);
+
+  useEffect(() => {
+    setRefresh(REFRESH_VALUE[refreshOption]);
+  }, [refreshOption]);
+
   useEffect(() => {
     const from = TIME_RANGE_TO_FROM_VALUE[timeRangeOption];
     setTimeRange([from, "now"]);
@@ -376,6 +420,8 @@ export const Metrics = () => {
   const fromParam = from !== null ? `&from=${from}` : "";
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
+
+  const refreshParams = refresh !== "" ? `&refresh=${refresh}` : "";
 
   return (
     <div>
@@ -435,12 +481,42 @@ export const Metrics = () => {
               className={classes.timeRangeButton}
               select
               size="small"
-              style={{ width: 120 }}
+              style={{ width: 80 }}
+              value={refreshOption}
+              onChange={({ target: { value } }) => {
+                setRefreshOption(value as RefreshOptions);
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <BiRefresh style={{ fontSize: 22 }} />
+                  </InputAdornment>
+                ),
+              }}
+            >
+              {Object.entries(RefreshOptions).map(([key, value]) => (
+                <MenuItem key={key} value={value}>
+                  {value}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              className={classes.timeRangeButton}
+              select
+              size="small"
+              sx={{ width: 100 }}
               value={timeRangeOption}
               onChange={({ target: { value } }) => {
                 setTimeRangeOption(value as TimeRangeOptions);
               }}
               variant="standard"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <BiTime style={{ fontSize: 22 }} />
+                  </InputAdornment>
+                ),
+              }}
             >
               {Object.entries(TimeRangeOptions).map(([key, value]) => (
                 <MenuItem key={key} value={value}>
@@ -459,6 +535,7 @@ export const Metrics = () => {
               <MetricsSection
                 key={config.title}
                 metricConfig={config}
+                refreshParams={refreshParams}
                 timeRangeParams={timeRangeParams}
                 dashboardUid={grafanaDefaultDashboardUid}
                 dashboardDatasource={grafanaDefaultDatasource}
@@ -469,6 +546,7 @@ export const Metrics = () => {
                 <MetricsSection
                   key={config.title}
                   metricConfig={config}
+                  refreshParams={refreshParams}
                   timeRangeParams={timeRangeParams}
                   dashboardUid={dashboardUids["data"]}
                   dashboardDatasource={grafanaDefaultDatasource}
@@ -511,6 +589,7 @@ const useMetricsSectionStyles = makeStyles((theme) =>
 
 type MetricsSectionProps = {
   metricConfig: MetricsSectionConfig;
+  refreshParams: string;
   timeRangeParams: string;
   dashboardUid: string;
   dashboardDatasource: string;
@@ -518,6 +597,7 @@ type MetricsSectionProps = {
 
 const MetricsSection = ({
   metricConfig: { title, contents },
+  refreshParams,
   timeRangeParams,
   dashboardUid,
   dashboardDatasource,
@@ -538,7 +618,7 @@ const MetricsSection = ({
         {contents.map(({ title, pathParams }) => {
           const path =
             `/d-solo/${dashboardUid}?${pathParams}` +
-            `&refresh${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
+            `&${refreshParams}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
           return (
             <Paper
               key={pathParams}
