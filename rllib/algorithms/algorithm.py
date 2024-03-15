@@ -1459,6 +1459,11 @@ class Algorithm(Trainable, AlgorithmBase):
             from_worker = workers.local_worker() or self.workers.local_worker()
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the main WorkerSet.
+            # TODO (sven): EnvRunners currently return an empty dict from `get_state()`.
+            #  Once this API has been implemented properly (and replaced the
+            #  `get/set_weights()` APIs), re-visit the test cases that check, whether
+            #  all single-agent RLModules added on-the-fly are properly restored as
+            #  well.
             state_ref = ray.put(from_worker.get_state())
 
             # By default, entire local worker state is synced after restoration
