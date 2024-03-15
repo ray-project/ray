@@ -47,6 +47,27 @@ def test_short_traceback(levels):
     assert i == levels - start_traceback + 1
 
 
+def test_recursion():
+    """Test that the skipped exception does not point to the original exception."""
+    root_exception = None
+
+    with pytest.raises(StartTraceback) as exc_info:
+        try:
+            raise Exception("Root Exception")
+        except Exception as e:
+            root_exception = e
+            raise StartTraceback from root_exception
+
+    assert root_exception, "Root exception was not captured."
+
+    start_traceback = exc_info.value
+    skipped_exception = skip_exceptions(start_traceback)
+
+    assert (
+        root_exception != skipped_exception
+    ), "Skipped exception points to the original exception."
+
+
 def test_traceback_tuner(ray_start_2_cpus):
     """Ensure that the Tuner's stack trace is not too long."""
 
