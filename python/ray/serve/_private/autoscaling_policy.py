@@ -110,3 +110,7 @@ class AutoscalingPolicyManager:
             target_capacity_direction,
         )
         return max(lower_bound, min(upper_bound, curr_target_num_replicas))
+
+    def get_metrics_interval_s(self) -> Optional[float]:
+        if self.config:
+            return self.config.metrics_interval_s
