@@ -21,9 +21,9 @@ from ray.air.constants import (
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.train import Checkpoint
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.result import (
     DEBUG_METRICS,
-    DEFAULT_RESULTS_DIR,
     DONE,
     EPISODES_THIS_ITER,
     EPISODES_TOTAL,
@@ -678,9 +678,9 @@ class Trainable:
             from ray.tune.logger import UnifiedLogger
 
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray._private.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
+            ray._private.utils.try_to_create_directory(DEFAULT_STORAGE_PATH)
             self._logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR
+                prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH
             )
             self._result_logger = UnifiedLogger(config, self._logdir, loggers=None)
 

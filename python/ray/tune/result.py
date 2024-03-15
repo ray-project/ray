@@ -11,8 +11,6 @@ from ray.air.constants import (  # noqa: F401
     EXPR_ERROR_FILE,
 )
 
-from ray.train.constants import _get_defaults_results_dir
-
 # fmt: off
 # __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
@@ -120,9 +118,6 @@ TRIAL_INFO = "__trial_info__"
 # to pass log file locations to the Trainable via the constructor.
 STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
-
-# Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = _get_defaults_results_dir()
 
 DEFAULT_EXPERIMENT_NAME = "default"
 

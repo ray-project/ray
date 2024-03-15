@@ -130,12 +130,12 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
-from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
@@ -464,11 +464,11 @@ class Algorithm(Trainable, AlgorithmBase):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
             logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
-            if not os.path.exists(DEFAULT_RESULTS_DIR):
+            if not os.path.exists(DEFAULT_STORAGE_PATH):
                 # Possible race condition if dir is created several times on
                 # rollout workers
-                os.makedirs(DEFAULT_RESULTS_DIR, exist_ok=True)
-            logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+                os.makedirs(DEFAULT_STORAGE_PATH, exist_ok=True)
+            logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH)
 
             # Allow users to more precisely configure the created logger
             # via "logger_config.type".
