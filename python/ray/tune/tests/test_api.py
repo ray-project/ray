@@ -881,7 +881,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testAllValuesReceived(self):
         results1 = [
-            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4) for i in range(5)
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
+            for i in range(5)
         ]
 
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
