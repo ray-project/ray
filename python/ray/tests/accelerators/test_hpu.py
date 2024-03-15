@@ -114,7 +114,7 @@ def test_check_accelerator_info():
     assert HPUAcceleratorManager.get_resource_name() == "HPU"
 
 
-def test_decorator_args(ray_start_regular):
+def test_decorator_args():
     
     # This is a valid way of using the decorator.
     @ray.remote(resources={'HPU': 1})  # noqa: F811
