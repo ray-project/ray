@@ -699,11 +699,6 @@ class MultiAgentEnvWrapper(BaseEnv):
 
             if isinstance(obs, Exception):
                 if self.restart_failed_sub_environments:
-                    env_state_to_del = self.env_states[idx]
-                    env_to_del = self.envs[idx]
-                    self.env_states[idx] = self.envs[idx] = None
-                    del env_state_to_del
-                    del env_to_del
                     # Re-init env_state.
                     self._init_env_state(idx=idx)
                     # Try recreating the sub-env.
@@ -741,11 +736,6 @@ class MultiAgentEnvWrapper(BaseEnv):
                         "Trying to close old and replaced sub-environment (at vector "
                         f"index={idx}), but closing resulted in error:\n{e}"
                     )
-            env_state_to_del = self.env_states[idx]
-            env_to_del = self.envs[idx]
-            self.env_states[idx] = self.envs[idx] = None
-            del env_state_to_del
-            del env_to_del
             # Re-init env_state.
             self._init_env_state(idx=idx)
             # Try recreating the sub-env.
