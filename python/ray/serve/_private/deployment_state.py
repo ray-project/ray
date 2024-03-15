@@ -1626,7 +1626,7 @@ class DeploymentState:
                         > 0
                     ):
                         logger.info(
-                            f"Dropping stale handle metrics for handle '{handle_id}' "
+                            f"Dropping stale metrics for handle '{handle_id}' "
                             f"(no updates received for {timeout_s:.1f}s)."
                         )
 
