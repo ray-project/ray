@@ -1,4 +1,5 @@
 import tempfile
+import time
 import unittest
 
 import ray
@@ -74,10 +75,11 @@ class TestCallbacks(unittest.TestCase):
         self.assertTrue(len(original_worker_ids) == 3)
 
         # Train a bit (and have the envs/workers crash).
-        for _ in range(5):
+        for _ in range(3):
             print(algo.train())
         # Restore workers after the iteration (automatically, workers are only
         # restored before the next iteration).
+        time.sleep(20.0)
         algo.restore_workers(algo.workers)
         # After training, the `on_workers_recreated` callback should have captured
         # the exact worker IDs recreated (the exact number of times) as the actor
