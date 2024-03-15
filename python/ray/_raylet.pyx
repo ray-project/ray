@@ -402,7 +402,7 @@ class ObjectRefGenerator:
                 # this means the last ref is not taken yet.
                 try:
                     ray.get(self._generator_ref)
-                except Exception:
+                except:
                     # The exception from _generator_ref
                     # hasn't been taken yet.
                     return False
@@ -475,7 +475,7 @@ class ObjectRefGenerator:
                 # if there's any failure. It contains nothing otherwise.
                 # In that case, it should raise StopIteration.
                 ray.get(self._generator_ref)
-            except Exception as e:
+            except BaseException as e:
                 self._generator_task_exception = e
                 return self._generator_ref
             else:
@@ -490,7 +490,7 @@ class ObjectRefGenerator:
         # actually await the ref.
         try:
             await ref
-        except Exception:
+        except:
             pass
 
     async def _next_async(
@@ -525,7 +525,7 @@ class ObjectRefGenerator:
                 # if there's any failure. It contains nothing otherwise.
                 # In that case, it should raise StopIteration.
                 await self._generator_ref
-            except Exception as e:
+            except BaseException as e:
                 self._generator_task_exception = e
                 return self._generator_ref
             else:
@@ -854,7 +854,7 @@ cdef prepare_args_and_increment_put_refs(
     try:
         prepare_args_internal(core_worker, language, args, args_vector,
                               function_descriptor, incremented_put_arg_ids)
-    except Exception as e:
+    except BaseException as e:
         # An error occurred during arg serialization. We must remove the
         # initial local ref for all args that were successfully put into the
         # local plasma store. These objects will then get released.
@@ -983,7 +983,7 @@ def serialize_retry_exception_allowlist(retry_exception_allowlist, function_desc
 
 cdef c_bool determine_if_retryable(
     c_bool should_retry_exceptions,
-    Exception e,
+    e: BaseException,
     const c_string serialized_retry_exception_allowlist,
     FunctionDescriptor function_descriptor,
 ):
@@ -1383,7 +1383,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         for output in gen:
             report_streaming_generator_output(context, output, gen_index, None)
             gen_index += 1
-    except Exception as e:
+    except BaseException as e:
         report_streaming_generator_exception(context, e, gen_index, None)
 
 
@@ -1445,7 +1445,7 @@ async def execute_streaming_generator_async(
                     )
                 )
                 cur_generator_index += 1
-        except Exception as e:
+        except BaseException as e:
             # Report the exception to the owner of the task.
             futures.append(
                 loop.run_in_executor(
@@ -1532,7 +1532,7 @@ cdef create_generator_return_obj(
 
 
 cdef create_generator_error_object(
-        e: Exception,
+        e: BaseException,
         worker: "Worker",
         CTaskType task_type,
         const CAddress &caller_address,
@@ -1655,7 +1655,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             caller_address,
             dynamic_returns,
             generator_id)
-    except Exception as error:
+    except BaseException as error:
         is_retryable_error[0] = determine_if_retryable(
             should_retry_exceptions,
             error,
@@ -1956,7 +1956,7 @@ cdef void execute_task(
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
-                except Exception as e:
+                except BaseException as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
                                     e,
@@ -2059,7 +2059,7 @@ cdef void execute_task(
                     caller_address,
                     returns)
 
-        except Exception as e:
+        except BaseException as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, caller_address, returns, application_error)
@@ -2288,7 +2288,7 @@ cdef CRayStatus task_execution_handler(
                         is_streaming_generator,
                         should_retry_exceptions,
                         generator_backpressure_num_objects)
-            except Exception as e:
+            except BaseException as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
                    e.actor_init_failed:
@@ -2416,7 +2416,7 @@ cdef c_vector[c_string] spill_objects_handler(
                     object_refs, owner_addresses)
             for url in urls:
                 return_urls.push_back(url)
-        except Exception as err:
+        except BaseException as err:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
                 "was spilling objects: {}".format(err))
@@ -2448,7 +2448,7 @@ cdef int64_t restore_spilled_objects_handler(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
                 bytes_restored = external_storage.restore_spilled_objects(
                     object_refs, urls)
-        except Exception:
+        except:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
@@ -2490,7 +2490,7 @@ cdef void delete_spilled_objects_handler(
                     proctitle,
                     original_proctitle):
                 external_storage.delete_spilled_objects(urls)
-        except Exception:
+        except:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
                 "was deleting spilled objects.")
@@ -2674,7 +2674,7 @@ def _auto_reconnect(f):
                     )
                     try:
                         self._connect()
-                    except Exception:
+                    except:
                         logger.error(f"Connecting to gcs failed. Error {e}")
                     time.sleep(1)
                     remaining_retry -= 1
