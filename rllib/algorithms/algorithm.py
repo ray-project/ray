@@ -3228,7 +3228,9 @@ class Algorithm(Trainable, AlgorithmBase):
         results.update(results["sampler_results"])
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
-        results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
+        results["num_in_flight_async_sample_reqs"] = (
+            self.workers.num_in_flight_async_reqs()
+        )
         results[
             "num_remote_worker_restarts"
         ] = self.workers.num_remote_worker_restarts()
