@@ -246,6 +246,10 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
         print("Confirmed deployment scaled to 5 replicas.")
 
+        # Wait for all requests to be scheduled to replicas so they'll be failed
+        # when the replicas are removed.
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 50)
+
         # Remove all replicas before they can finish the requests.
         serve.delete("app1")
 
