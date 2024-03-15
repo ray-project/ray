@@ -1609,7 +1609,7 @@ class DeploymentState:
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             or len(running_replicas) == 0
         ):
-            # Drop metrics for handles that haven't sent an update in awhile.
+            # Drop metrics for handles that haven't sent an update in a while.
             # This is expected behavior for handles that were on replicas or
             # proxies that have been shut down.
             timeout_s = max(
