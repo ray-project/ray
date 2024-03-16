@@ -635,7 +635,7 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        # Old and hybrid API stacks.
+        # Old- and hybrid API stacks.
         if not self.config.uses_new_env_runners:
             return self._training_step_old_and_hybrid_api_stacks()
 
@@ -644,21 +644,20 @@ class Impala(Algorithm):
 
         # Asynchronously request all EnvRunners to sample and return their current
         # (e.g. ConnectorV2) states and sampling metrics/stats.
-        # Note that each returned item in `episode_refs` is itself a reference to a
-        # list of Episodes.
+        # Note that each item in `episode_refs` is a reference to a list of Episodes.
         (
             episode_refs,
             env_runner_states,
             env_runner_metrics,
         ) = self._training_step_sample_and_get_states()
-        # Increase sampling counters.
+        # Increase our sampling counters.
         for rollout_metric in env_runner_metrics:
             self._counters[NUM_ENV_STEPS_SAMPLED] += rollout_metric.episode_length
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
                 s for s in rollout_metric.agent_steps.values()
             )
 
-        # "Batch" episode refs to groups (such that batching would result in
+        # "Batch" episode refs into groups (such that batching would result in
         # `train_batch_size`) to be sent to LearnerGroup.
         episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
             episode_refs
@@ -762,11 +761,13 @@ class Impala(Algorithm):
             # EnvRunner workers.
             self.workers.foreach_worker(
                 func=lambda worker: worker.set_state(new_state),
-                timeout_seconds=0.0,
+                timeout_seconds=0.0,  # fire-and-forget
                 local_worker=True,
             )
 
         # Add already collected metrics to results for later processing.
+        # TODO (sven): All algos should behave this way in their `training_step` methods
+        #  in the future. Makes things more transparent and explicit for the user.
         if env_runner_metrics:
             update_results.update({"_episodes_this_training_step": env_runner_metrics})
 
