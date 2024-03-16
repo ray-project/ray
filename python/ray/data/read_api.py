@@ -1550,8 +1550,7 @@ def read_avro(
             value in most cases.
 
     Returns:
-        :class:`~ray.data.Dataset` producing lines of text read from the specified
-        paths.
+        :class:`~ray.data.Dataset` holding records from the avro files.
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(AvroDatasource._FILE_EXTENSIONS)
