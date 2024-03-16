@@ -547,3 +547,32 @@ def get_capacity_adjusted_num_replicas(
 
 def generate_request_id() -> str:
     return str(uuid.uuid4())
+
+
+def inside_ray_client_context() -> bool:
+    return ray.util.client.ray.is_connected()
+
+
+class FakeObjectRefOrGen:
+    def __init__(self, replica_id):
+        self._replica_id = replica_id
+
+    @property
+    def replica_id(self):
+        return self._replica_id
+
+
+class FakeObjectRef(FakeObjectRefOrGen):
+    def __await__(self):
+        raise NotImplementedError
+
+    def _on_completed(self, callback: Callable):
+        pass
+
+
+class FakeObjectRefGen(FakeObjectRefOrGen):
+    def __anext__(self):
+        raise NotImplementedError
+
+    def completed(self):
+        return FakeObjectRef(self._replica_id)

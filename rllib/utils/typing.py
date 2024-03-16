@@ -6,6 +6,7 @@ from typing import (
     Hashable,
     List,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
@@ -104,9 +105,17 @@ ModuleID = str
 # Type of the config.policies dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 
+# A new stack Episode type: Either single-agent or multi-agent.
+EpisodeType = Union["SingleAgentEpisode", "MultiAgentEpisode"]
+
 # Is Policy to train callable.
 IsPolicyToTrain = Callable[[PolicyID, Optional["MultiAgentBatch"]], bool]
-ShouldModuleBeUpdatedFn = Callable[[ModuleID, Optional["MultiAgentBatch"]], bool]
+# Agent to module mapping and should-module-be-updated.
+AgentToModuleMappingFn = Callable[[AgentID, EpisodeType], ModuleID]
+ShouldModuleBeUpdatedFn = Union[
+    Sequence[ModuleID],
+    Callable[[ModuleID, Optional["MultiAgentBatch"]], bool],
+]
 
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
 # data (TensorStructType).
@@ -115,11 +124,8 @@ PolicyState = Dict[str, TensorStructType]
 # Any tf Policy type (static-graph or eager Policy).
 TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
 
-# Represents an episode id.
-EpisodeID = int
-
-# A new stack Episode type: Either single-agent or multi-agent.
-EpisodeType = Union["SingleAgentEpisode", "MultiAgentEpisode"]
+# Represents an episode id (old and new API stack).
+EpisodeID = Union[int, str]
 
 # Represents an "unroll" (maybe across different sub-envs in a vector env).
 UnrollID = int

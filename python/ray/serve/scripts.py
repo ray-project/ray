@@ -26,15 +26,11 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.deploy_provider import (
-    DEPLOY_PROVIDER_ENV_VAR,
-    DeployOptions,
-    get_deploy_provider,
-)
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
+from ray.serve._private.utils import DEFAULT
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -42,7 +38,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
-    _skip_validating_runtime_env_uris,
 )
 
 APP_DIR_HELP_STR = (
@@ -319,28 +314,7 @@ def _generate_config_from_file_or_import_path(
     required=False,
     default=None,
     type=str,
-    help="Custom name for the application(s).",
-)
-@click.option(
-    "--base-image",
-    required=False,
-    default=None,
-    type=str,
-    help=(
-        "Container image to use for the application(s). Not supported for the "
-        "default 'local' provider because it deploys to an existing cluster."
-    ),
-)
-@click.option(
-    "--provider",
-    required=False,
-    default=None,
-    type=str,
-    help=(
-        "Deploy provider to use. By default, this uses a 'local' provider that makes "
-        "a REST API request to the provided address. Can also be set with the "
-        f"{DEPLOY_PROVIDER_ENV_VAR} environment variable."
-    ),
+    help="Custom name for the application. Ignored when deploying from a config file.",
 )
 @click.option(
     "--address",
@@ -350,15 +324,6 @@ def _generate_config_from_file_or_import_path(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR + " Only used by the 'local' provider.",
 )
-@click.option(
-    "--in-place",
-    "-i",
-    is_flag=True,
-    help=(
-        "Update the application(s) in-place in the same cluster rather than starting "
-        "a new cluster. The 'local' provider always performs in-place updates."
-    ),
-)
 def deploy(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -366,10 +331,7 @@ def deploy(
     runtime_env_json: str,
     working_dir: str,
     name: Optional[str],
-    base_image: Optional[str],
-    provider: Optional[str],
     address: str,
-    in_place: bool,
 ):
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -378,32 +340,20 @@ def deploy(
         working_dir=working_dir,
     )
 
-    deploy_provider = get_deploy_provider(provider)
-    if deploy_provider.supports_local_uris():
-        # Some deploy providers support local paths as URIs (e.g., for working_dir).
-        with _skip_validating_runtime_env_uris():
-            config = _generate_config_from_file_or_import_path(
-                config_or_import_path,
-                name=name,
-                arguments=args_dict,
-                runtime_env=final_runtime_env,
-            )
-    else:
-        config = _generate_config_from_file_or_import_path(
-            config_or_import_path,
-            name=name,
-            arguments=args_dict,
-            runtime_env=final_runtime_env,
-        )
+    config = _generate_config_from_file_or_import_path(
+        config_or_import_path,
+        name=name,
+        arguments=args_dict,
+        runtime_env=final_runtime_env,
+    )
 
-    deploy_provider.deploy(
-        config,
-        options=DeployOptions(
-            address=address,
-            name=name,
-            base_image=base_image,
-            in_place=in_place,
-        ),
+    ServeSubmissionClient(address).deploy_applications(
+        config.dict(exclude_unset=True),
+    )
+    cli_logger.success(
+        "\nSent deploy request successfully.\n "
+        "* Use `serve status` to check applications' statuses.\n "
+        "* Use `serve config` to see the current application config(s).\n"
     )
 
 
@@ -490,7 +440,6 @@ def deploy(
 @click.option(
     "--route-prefix",
     required=False,
-    default="/",
     type=str,
     help=(
         "Route prefix for the application. This should only be used "
@@ -519,9 +468,11 @@ def run(
     address: str,
     blocking: bool,
     reload: bool,
-    route_prefix: str,
+    route_prefix: Optional[str],
     name: str,
 ):
+    if route_prefix is None:
+        route_prefix = DEFAULT.VALUE
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -590,9 +541,14 @@ def run(
         if is_config:
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
         else:
-            serve.run(app, name=name, route_prefix=route_prefix)
-            cli_logger.success("Deployed app successfully.")
+            # This should not block if reload is true so the watchfiles can be triggered
+            should_block = blocking and not reload
+            serve.run(app, blocking=should_block, name=name, route_prefix=route_prefix)
 
         if reload:
             if not blocking:
@@ -618,13 +574,9 @@ def run(
                     app = _private_api.call_app_builder_with_args_if_necessary(
                         import_attr(import_path, reload_module=True), args_dict
                     )
-                    serve.run(app, name=name, route_prefix=route_prefix)
-                    cli_logger.success("Redeployed app successfully.")
-
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+                    serve.run(
+                        target=app, blocking=True, name=name, route_prefix=route_prefix
+                    )
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

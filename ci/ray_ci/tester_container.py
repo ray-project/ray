@@ -15,6 +15,7 @@ from ray_release.test import TestResult, Test
 
 
 PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
+PIPELINE_MACOS_POSTMERGE = "018e0f94-ccb6-45c2-b072-1e624fe9a404"
 
 
 class TesterContainer(Container):
@@ -109,6 +110,7 @@ class TesterContainer(Container):
     def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
         if os.environ.get("BUILDKITE_BRANCH") != "master":
             logger.info("Skip upload test results. We only upload on master branch.")
+            return
         if os.environ.get("BUILDKITE_PIPELINE_ID") != PIPELINE_POSTMERGE:
             logger.info(
                 "Skip upload test results. We only upload on postmerge pipeline."

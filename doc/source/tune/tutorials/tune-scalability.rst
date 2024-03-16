@@ -63,13 +63,6 @@ description.
      - 16
      - 86,400
      - 88687.41
-   * - `XGBoost parameter sweep <https://github.com/ray-project/ray/blob/master/release/tune_tests/scalability_tests/workloads/test_xgboost_sweep.py>`_
-     - 16
-     - ?
-     - 16
-     - 64
-     - ?
-     - 3903
    * - `Durable trainable <https://github.com/ray-project/ray/blob/master/release/tune_tests/scalability_tests/workloads/test_durable_trainable.py>`_
      - 16
      - | 10/60
