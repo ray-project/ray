@@ -600,11 +600,13 @@ class FaultTolerantActorManager:
                 func, remote_actor_ids
             )
 
+        # Send out remote requests.
         remote_calls = self._call_actors(
             func=func,
             remote_actor_ids=remote_actor_ids,
         )
 
+        # Collect remote request results (if available given timeout and/or errors).
         _, remote_results = self._fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,
