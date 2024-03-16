@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -1608,6 +1609,26 @@ class DeploymentState:
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             or len(running_replicas) == 0
         ):
+            # Drop metrics for handles that haven't sent an update in a while.
+            # This is expected behavior for handles that were on replicas or
+            # proxies that have been shut down.
+            timeout_s = max(
+                2 * self.autoscaling_policy_manager.get_metrics_interval_s(),
+                RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+            )
+            for handle_id, handle_metric in list(self.handle_requests.items()):
+                if time.time() - handle_metric.timestamp >= timeout_s:
+                    del self.handle_requests[handle_id]
+                    total_ongoing_requests = handle_metric.queued_requests + sum(
+                        handle_metric.running_requests.values()
+                    )
+                    if total_ongoing_requests > 0:
+                        logger.info(
+                            f"Dropping stale metrics for handle '{handle_id}' "
+                            f"because no update was received for {timeout_s:.1f}s. "
+                            f"Ongoing requests was: {total_ongoing_requests}."
+                        )
+
             for handle_metric in self.handle_requests.values():
                 total_requests += handle_metric.queued_requests
                 for replica in running_replicas:
@@ -1645,12 +1666,6 @@ class DeploymentState:
         ):
             return
 
-        logger.info(
-            f"Autoscaling {self._id} to {decision_num_replicas} replicas. "
-            f"Current num requests: {total_num_requests}, "
-            f"current num running replicas: {num_running_replicas}."
-        )
-
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
 
@@ -1662,13 +1677,25 @@ class DeploymentState:
         if not self._is_within_autoscaling_bounds():
             return
 
+        curr_stats_str = (
+            f"Current ongoing requests: {total_num_requests:.2f}, "
+            f"current running replicas: {num_running_replicas}."
+        )
         new_num = self._target_state.target_num_replicas
         if new_num > old_num:
+            logger.info(
+                f"Upscaling {self._id} from {old_num} to {new_num} replicas. "
+                f"{curr_stats_str}"
+            )
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
                 message=f"Upscaling from {old_num} to {new_num} replicas.",
             )
         elif new_num < old_num:
+            logger.info(
+                f"Downscaling {self._id} from {old_num} to {new_num} replicas. "
+                f"{curr_stats_str}"
+            )
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
@@ -2433,6 +2460,8 @@ class DeploymentStateManager:
 
         return {
             deployment: deployment_state.get_total_num_requests()
+            if deployment_state.should_autoscale()
+            else None
             for deployment, deployment_state in self._deployment_states.items()
         }
 
