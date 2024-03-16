@@ -4,7 +4,13 @@ Data Loading and Preprocessing
 ==============================
 
 Ray Train integrates with :ref:`Ray Data <data>` to offer an efficient, streaming solution for loading and preprocessing large datasets.
-We recommend using Ray Data for its ability to performantly support large-scale distributed training workloads - for advantages and comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
+Use Ray Data to performantly run large-scale distributed training workloads. Key advantages include:
+
+- Fast out-of-memory recovery
+- Support for heterogeneous clusters
+- No dropped rows during distributed dataset iteration
+
+For more details about Ray Data, including comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
 
 In this guide, we will cover how to incorporate Ray Data into your Ray Train script, and different ways to customize your data ingestion pipeline.
 
@@ -59,7 +65,7 @@ Data ingestion can be set up with four basic steps:
             train_dataset = train_dataset.map_batches(increment)
 
 
-            def train_func(config):
+            def train_func():
                 batch_size = 16
 
                 # Step 4: Access the dataset shard for the training worker via
@@ -141,7 +147,7 @@ Data ingestion can be set up with four basic steps:
             train_data = ray.data.from_huggingface(hf_train_ds)
             eval_data = ray.data.from_huggingface(hf_eval_ds)
 
-            def train_func(config):
+            def train_func():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.
                 # The "train" dataset gets sharded across workers by default
                 train_ds = ray.train.get_dataset_shard("train")
@@ -210,7 +216,7 @@ All datasets are split (i.e. sharded) across the training workers by default. :m
 .. note::
 
     Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers.
-    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:ref:`example <deepspeed_example>`) or
+    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:doc:`example <../examples/deepspeed/deepspeed_example>`) or
     utilities available in other frameworks that you can explore.
 
 This behavior can be overwritten by passing in the ``dataset_config`` argument. For more information on configuring splitting logic, see :ref:`Splitting datasets <train-datasets-split>`.
@@ -504,7 +510,7 @@ Preprocessing structured data
     This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
     Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
 
-For tabular data, we recommend using Ray Data :ref:`preprocessors <data-preprocessors>`, which implement common data preprocessing operations.
+For tabular data, we recommend using Ray Data :ref:`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 .. testcode::

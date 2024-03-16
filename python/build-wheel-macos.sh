@@ -10,7 +10,7 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-PY_MMS=("3.8" "3.9" "3.10" "3.11")
+PY_MMS=("3.9" "3.10" "3.11")
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh

@@ -350,6 +350,30 @@ class TestDeploymentSchema:
         with pytest.raises(ValueError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
+        # max_replicas_per_node and placement_group_bundles
+        # cannot be set at the same time
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["max_replicas_per_node"] = 5
+        deployment_schema.pop("placement_group_bundles", None)
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema.pop("max_replicas_per_node", None)
+        deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_replicas_per_node"] = 5
+        deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
     def test_num_replicas_auto(self):
         deployment_schema = self.get_minimal_deployment_schema()
 

@@ -4568,7 +4568,6 @@ class Dataset:
         output._set_uuid(copy._get_uuid())
         return output
 
-    @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
         """Returns a string containing execution timing information.
 
@@ -4599,7 +4598,9 @@ class Dataset:
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
-        if self._write_ds is not None and self._write_ds._plan.has_computed_output():
+        if self._current_executor:
+            return self._current_executor.get_stats().to_summary().to_string()
+        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
@@ -4629,6 +4630,7 @@ class Dataset:
         self._synchronize_progress_bar()
         return blocks
 
+    @DeveloperAPI
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
         later deserialized, possibly on a different cluster.

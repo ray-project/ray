@@ -19,6 +19,7 @@ from custom_directives import (  # noqa
     LinkcheckSummarizer,
     parse_navbar_config,
     setup_context,
+    pregenerate_example_rsts,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -209,7 +210,6 @@ if os.environ.get("LINKCHECK_ALL"):
         # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
         "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
         # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
-        "https://scikit-optimize.github.io/stable/modules/",
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
@@ -243,6 +243,7 @@ else:
     linkcheck_ignore = [
         r"^(?!https://(raw\.githubusercontent|github)\.com/ray-project/).*$"
     ]
+
 
 # -- Options for HTML output ----------------------------------------------
 def render_svg_logo(path):
@@ -298,7 +299,7 @@ html_context = {
 
 html_sidebars = {
     "**": ["main-sidebar"],
-    "ray-overview/examples": ["examples-sidebar"],
+    "ray-overview/examples": [],
 }
 
 # The name for this set of Sphinx documents.  If None, it defaults to
@@ -391,12 +392,20 @@ def add_custom_assets(
         app.add_js_file("js/index.js")
         return "index.html"  # Use the special index.html template for this page
 
-    if pagename == "train/train":
-        app.add_css_file("css/ray-train.css")
-    elif pagename == "ray-overview/examples":
-        # Example gallery
+    if pagename == "ray-overview/examples":
         app.add_css_file("css/examples.css")
         app.add_js_file("js/examples.js")
+        return "ray-overview/examples.html"
+
+    if pagename in [
+        "data/examples",
+        "train/examples",
+        "serve/examples",
+    ]:
+        return "examples.html"
+
+    if pagename == "train/train":
+        app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
     elif pagename == "ray-overview/use-cases":
@@ -404,6 +413,8 @@ def add_custom_assets(
 
 
 def setup(app):
+    pregenerate_example_rsts(app)
+
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
     # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
     # warnings when we build the documentation.
@@ -487,7 +498,6 @@ autodoc_mock_imports = [
     "setproctitle",
     "skimage",
     "sklearn",
-    "skopt",
     "starlette",
     "tensorflow",
     "torch",
@@ -555,7 +565,6 @@ intersphinx_mapping = {
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "sklearn": ("https://scikit-learn.org/stable/", None),
-    "skopt": ("https://scikit-optimize.github.io/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",

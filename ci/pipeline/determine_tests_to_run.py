@@ -207,7 +207,11 @@ if __name__ == "__main__":
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif re.match("rllib_contrib/", changed_file):
+            elif (
+                re.match("rllib_contrib/", changed_file)
+                or changed_file == ".buildkite/rllib_contrib.rayci.yml"
+                or changed_file == ".buildkite/pipeline.ml.yml"
+            ):
                 if not changed_file.endswith(".md"):
                     RAY_CI_RLLIB_CONTRIB_AFFECTED = 1
             elif (
@@ -261,7 +265,6 @@ if __name__ == "__main__":
                 changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
                 or changed_file == ".buildkite/serverless.rayci.yml"
-                or changed_file == ".buildkite/pipeline.ml.yml"
             ):
                 RAY_CI_PYTHON_AFFECTED = 1
             elif (
@@ -330,7 +333,6 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/forge.wanda.yaml"
                 or changed_file == "ci/docker/forge.aarch64.wanda.yaml"
                 or changed_file == ".buildkite/pipeline.build.yml"
-                or changed_file == ".buildkite/pipeline.ml.yml"
                 or changed_file == ".buildkite/hooks/post-command"
             ):
                 # These scripts are always run as part of the build process

@@ -466,19 +466,6 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     assert "100 tasks executed" in stats, stats
 
 
-def test_e2e_liveness_with_output_backpressure_edge_case(
-    ray_start_10_cpus_shared, restore_data_context
-):
-    # At least one operator is ensured to be running, if the output becomes idle.
-    ctx = DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-    ctx.execution_options.resource_limits.object_store_memory = 1
-    ds = ray.data.range(10000, override_num_blocks=100).map(lambda x: x, num_cpus=2)
-    # This will hang forever if the liveness logic is wrong, since the output
-    # backpressure will prevent any operators from running at all.
-    assert extract_values("id", ds.take_all()) == list(range(10000))
-
-
 def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.resource_limits.object_store_memory = 100 * 1024**2
@@ -604,6 +591,19 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     )
     with pytest.raises(ray.exceptions.RayActorError):
         ds2.take_all()
+
+
+def test_e2e_liveness_with_output_backpressure_edge_case(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    # At least one operator is ensured to be running, if the output becomes idle.
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    ctx.execution_options.resource_limits.object_store_memory = 1
+    ds = ray.data.range(10000, override_num_blocks=100).map(lambda x: x, num_cpus=2)
+    # This will hang forever if the liveness logic is wrong, since the output
+    # backpressure will prevent any operators from running at all.
+    assert extract_values("id", ds.take_all()) == list(range(10000))
 
 
 if __name__ == "__main__":

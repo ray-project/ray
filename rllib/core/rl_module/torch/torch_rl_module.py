@@ -183,6 +183,13 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def _module_metadata(self, *args, **kwargs):
         return self.unwrapped()._module_metadata(*args, **kwargs)
 
+    # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
+    #  class, whenever we add a new API to any wrapped RLModule here. We could try
+    #  auto generating the wrapper methods, but this will bring its own challenge
+    #  (e.g. recursive calls due to __getattr__ checks, etc..).
+    def _compute_values(self, *args, **kwargs):
+        return self.unwrapped()._compute_values(*args, **kwargs)
+
     @override(RLModule)
     def unwrapped(self) -> "RLModule":
         return self.module

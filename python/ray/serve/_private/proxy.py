@@ -1434,6 +1434,9 @@ class ProxyActor:
 
         After the proxy has stopped receiving messages for this `request_id`,
         this will always return immediately.
+
+        Raises `KeyError` if this request ID is not found. This will happen when the
+        request is no longer being handled (e.g., the user disconnects).
         """
         return pickle.dumps(await self.http_proxy.receive_asgi_messages(request_id))
 

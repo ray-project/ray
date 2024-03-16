@@ -1,5 +1,6 @@
 import os
 from typing import List
+from datetime import datetime
 
 from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
@@ -47,12 +48,23 @@ class DockerContainer(LinuxContainer):
             ],
         )
 
-    def _get_image_version_tags(self) -> List[str]:
+    def _get_image_version_tags(self, external: bool) -> List[str]:
+        """
+        Get version tags.
+
+        Args:
+            external: If True, return the external image tags. If False, return the
+                internal image tags.
+        """
         branch = os.environ.get("BUILDKITE_BRANCH")
         sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
+        formatted_date = datetime.now().strftime("%y%m%d")
+
         if branch == "master":
-            return [sha_tag, "nightly"]
+            if external and os.environ.get("RAYCI_SCHEDULE") == "nightly":
+                return [f"nightly.{formatted_date}.{sha_tag}", "nightly"]
+            return [sha_tag]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
@@ -80,11 +92,20 @@ class DockerContainer(LinuxContainer):
         versions = self.platform.split(".")
         return f"-{versions[0]}{versions[1]}"  # cu11.8.0 -> cu118
 
-    def _get_image_tags(self) -> List[str]:
-        # An image tag is composed by ray version tag, python version and platform.
-        # See https://docs.ray.io/en/latest/ray-overview/installation.html for
-        # more information on the image tags.
-        versions = self._get_image_version_tags()
+    def _get_image_tags(self, external: bool = False) -> List[str]:
+        """
+        Get image tags & alias for the container image.
+
+        An image tag is composed by ray version tag, python version and platform.
+        See https://docs.ray.io/en/latest/ray-overview/installation.html for
+        more information on the image tags.
+
+        Args:
+            external: If True, return the external image tags. If False, return the
+                internal image tags.
+        """
+
+        versions = self._get_image_version_tags(external)
 
         platforms = [self.get_platform_tag()]
         if self.platform == "cpu" and self.image_type == "ray":

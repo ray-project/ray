@@ -97,6 +97,8 @@ enum NodeStatus {
   DRAINING = 4;
 }
 
+// TODO:
+// 1. We should add head node info here -> it's available from GcsNodeInfo
 message NodeState {
   // The node id internal to Ray in binary format.
   bytes node_id = 1;

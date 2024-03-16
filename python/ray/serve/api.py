@@ -16,7 +16,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -55,7 +55,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -153,9 +153,6 @@ def get_replica_context() -> ReplicaContext:
                     # Prints "MyDeployment"
                     print(serve.get_replica_context().deployment)
 
-                    # Prints "MyDeployment#<replica_tag>"
-                    print(serve.get_replica_context().replica_tag)
-
     """
     internal_replica_context = _get_internal_replica_context()
     if internal_replica_context is None:
@@ -251,8 +248,8 @@ def deployment(
     num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
-    placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Default[str] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
@@ -299,6 +296,7 @@ def deployment(
             actors and tasks created by the replica actor will be scheduled in the
             placement group by default (`placement_group_capture_child_tasks` is set
             to True).
+            This cannot be set together with max_replicas_per_node.
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
         user_config: Config to pass to the reconfigure method of the deployment. This
@@ -326,6 +324,7 @@ def deployment(
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
+            This cannot be set together with placement_group_bundles.
 
     Returns:
         `Deployment`
@@ -343,7 +342,7 @@ def deployment(
             logger.warning(
                 "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
                 "`autoscaling_config` has been deprecated and replaced by "
-                "`target_ongoing_requests`. Note that "
+                "`target_ongoing_requests`. "
                 "`target_num_ongoing_requests_per_replica` will be removed in a future "
                 "version."
             )
@@ -573,6 +572,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
     )
+    logger.info(f"Deployed app '{name}' successfully.")
 
     if blocking:
         try:
@@ -580,7 +580,7 @@ def run(
                 # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
         except KeyboardInterrupt:
-            logger.info("Got KeyboardInterrupt, release blocking...")
+            logger.warning("Got KeyboardInterrupt, exiting...")
     return handle
 
 
