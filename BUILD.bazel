@@ -772,6 +772,28 @@ ray_cc_library(
     ],
 )
 
+# This header is used to wrap some internal codes so we can reduce suspicious
+# symbols export.
+ray_cc_library(
+    name = "exported_internal",
+    srcs = glob(
+        [
+            "src/ray/internal/internal.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/internal/internal.h",
+        ],
+    ),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":core_worker_lib",
+    ],
+    alwayslink = 1,
+)
+
 ray_cc_test(
     name = "core_worker_resubmit_queue_test",
     size = "small",
