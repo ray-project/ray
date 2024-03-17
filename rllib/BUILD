@@ -2248,21 +2248,21 @@ py_test(
 # subdirectory: multi_agent_and_self_play/
 # ....................................
 py_test(
-    name = "examples/multi_agent_and_self_play/custom_heuristic_rl_module",
-    main = "examples/multi_agent_and_self_play/custom_heuristic_rl_module.py",
+    name = "examples/multi_agent_and_self_play/custom_heuristic_policy",
+    main = "examples/multi_agent_and_self_play/custom_heuristic_policy.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/custom_heuristic_rl_module.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=80"]
+    srcs = ["examples/multi_agent_and_self_play/custom_heuristic_policy.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=450.0"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/different_spaces_for_agents",
+    name = "examples/multi_agent_and_self_play/different_spaces_for_agents_ppo",
     main = "examples/multi_agent_and_self_play/different_spaces_for_agents.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/multi_agent_and_self_play/different_spaces_for_agents.py"],
-    args = ["--stop-iters=4", "--framework=torch"]
+    args = ["--enable-new-api-stack", "--algo=PPO", "--stop-iters=4", "--framework=torch"]
 )
 
 py_test(
@@ -2271,7 +2271,7 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/independent_learning.py"],
-    args = ["--num-gpus=0", "--as-test"]
+    args = ["--enable-new-api-stack", "--num-gpus=0", "--as-test"]
 )
 
 py_test(
@@ -2280,7 +2280,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4"]
 )
 
 py_test(
@@ -2289,7 +2289,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/parameter_sharing.py"],
-    args = ["--as-test", "--framework=torch"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch"],
 )
 
 py_test(
@@ -2298,7 +2298,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py"],
-    args = ["--as-test", "--framework=torch"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=6.0"],
+)
+
+py_test(
+    name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt_w_lstm",
+    main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=8.0", "--use-lstm", "--num-env-runners=4", "--num-cpus=6"],
 )
 
 py_test(
@@ -2307,7 +2316,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_learnt_vs_learnt.py"],
-    args = ["--as-test", "--framework=torch"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch"],
 )
 
 py_test(
@@ -2316,7 +2325,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/two_step_game.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=7.0"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=7.0"]
 )
 
 

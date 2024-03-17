@@ -185,7 +185,7 @@ if __name__ == "__main__":
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
-        results = run_rllib_example_script_experiment(config, args, stop)
+        results = run_rllib_example_script_experiment(config, args, stop=stop)
 
     # Restore trained Algorithm (set to non-explore behavior) and play against
     # human on command line.

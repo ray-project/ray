@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
     # Tests https://github.com/ray-project/ray/issues/7293
     class MyCallbacks(DefaultCallbacks):
-        def on_train_result(self, algorithm, result, **kwargs):
+        def on_train_result(self, *, algorithm, result, **kwargs):
             r = result["result"]["info"][LEARNER_INFO]
             if DEFAULT_POLICY_ID in r:
                 r = r[DEFAULT_POLICY_ID].get(LEARNER_STATS_KEY, r[DEFAULT_POLICY_ID])

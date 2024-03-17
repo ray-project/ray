@@ -224,7 +224,7 @@ if __name__ == "__main__":
             "training_iteration": args.stop_iters,
             "league_size": args.min_league_size,
         }
-        results = run_rllib_example_script_experiment(config, args, stop)
+        results = run_rllib_example_script_experiment(config, args, stop=stop)
 
     # Restore trained Algorithm (set to non-explore behavior) and play against
     # human on command line.

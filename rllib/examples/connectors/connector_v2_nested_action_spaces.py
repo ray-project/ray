@@ -1,5 +1,4 @@
 from gymnasium.spaces import Dict, Tuple, Box, Discrete, MultiDiscrete
-import os
 
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import (
@@ -7,8 +6,6 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.multi_agent import MultiAgentNestedSpaceRepeatAfterMeEnv
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
@@ -47,11 +44,9 @@ if __name__ == "__main__":
         register_env("env", lambda c: NestedSpaceRepeatAfterMeEnv(c))
 
     # Define the AlgorithmConfig used.
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        # Use new API stack for PPO only.
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .environment(
             "env",
             env_config={
@@ -68,20 +63,7 @@ if __name__ == "__main__":
                 "episode_len": 100,
             },
         )
-        .framework(args.framework)
-        .rollouts(
-            env_to_module_connector=_env_to_module_pipeline,
-            num_rollout_workers=args.num_env_runners,
-            # Setup the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
-            ),
-        )
+        .rollouts(env_to_module_connector=_env_to_module_pipeline)
         # No history in Env (bandit problem).
         .training(
             gamma=0.0,
@@ -90,20 +72,18 @@ if __name__ == "__main__":
                 {} if not args.enable_new_api_stack else {"uses_new_env_runners": True}
             ),
         )
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
     # Fix some PPO-specific settings.
     if args.algo == "PPO":
-        config.training(
+        base_config.training(
             # We don't want high entropy in this Env.
             entropy_coeff=0.00005,
             num_sgd_iter=4,
@@ -111,4 +91,4 @@ if __name__ == "__main__":
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)
