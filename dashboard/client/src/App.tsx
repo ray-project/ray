@@ -1,5 +1,16 @@
 import { CssBaseline } from "@material-ui/core";
 import { ThemeProvider } from "@material-ui/core/styles";
+import {
+  Chart,
+  Filler,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  TimeScale,
+  TimeSeriesScale,
+  Tooltip,
+} from "chart.js";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
@@ -23,6 +34,7 @@ import {
   StateApiLogViewerPage,
 } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
+import { ReChartsMetrics } from "./pages/metrics/ReChartsMetrics";
 import { DashboardUids, getMetricsInfo } from "./pages/metrics/utils";
 import Nodes, { ClusterMainPageLayout } from "./pages/node";
 import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
@@ -52,6 +64,18 @@ import {
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
+import "chartjs-adapter-date-fns";
+
+Chart.register(
+  LinearScale,
+  Filler,
+  PointElement,
+  Tooltip,
+  Legend,
+  TimeScale,
+  TimeSeriesScale,
+  LineElement,
+);
 
 dayjs.extend(duration);
 
@@ -242,6 +266,7 @@ const App = () => {
                   </Route>
                 </Route>
                 <Route element={<Metrics />} path="metrics" />
+                <Route element={<ReChartsMetrics />} path="remetrics" />
                 <Route element={<ServeLayout />} path="serve">
                   <Route element={<ServeSideTabLayout />} path="">
                     <Route
