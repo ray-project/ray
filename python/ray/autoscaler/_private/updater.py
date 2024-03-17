@@ -7,6 +7,7 @@ from threading import Thread
 
 import click
 
+import ray._private.ray_constants as ray_constants
 from ray._private.usage import usage_constants, usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -509,6 +510,11 @@ class NodeUpdater:
                         else:
                             # Disable usage stats collection in the cluster.
                             env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 0
+
+                        # Disable the usual printing of suggested commands to run after
+                        # `ray start`, otherwise the user may try to run them from their
+                        # local machine (the one running `ray up`) and they'll fail.
+                        env_vars[ray_constants.RAY_START_SKIP_NEXT_STEPS_MESSAGE] = 1
 
                     # Add a resource override env variable if needed.
                     # Local NodeProvider doesn't need resource and label override.
