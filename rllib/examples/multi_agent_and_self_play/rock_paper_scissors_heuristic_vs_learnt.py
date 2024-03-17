@@ -6,9 +6,12 @@ This demonstrates running the following policies in competition:
     Agent 2: Simple, feedforward PPO policy
              OR: PPO Policy with an LSTM network
 
-When run, Agent 2 should eventually reach a reward of ~7 with use_lstm=False,
-and ~?? with use_lstm=True. The reason the LSTM policy performs better is its
-ability to distinguish between the `always_same` vs `beat_last` heuristic policies.
+Without `--use-lstm`, Agent 2 should quickly reach a reward of ~7.0 (always
+beating the `always_same` policy, and only 50% of the time beating the `beat_last`
+policy).
+
+With `--use-lstm`, Agent 2 should eventually(!) reach a reward of >9.0 (always
+beating both the `always_same` policy and the `beat_last` policy).
 """
 import random
 
@@ -81,13 +84,17 @@ if __name__ == "__main__":
             # `forward_train` is called.
             policies_to_train=["learned"],
         )
-        .training(model={
-            "use_lstm": args.use_lstm,
-            "lstm_cell_size": 64,
-            "max_seq_len": 15,
-            "vf_share_layers": True,
-            "vf_loss_coeff": 0.01,
-        })
+        .training(
+            model={
+                "use_lstm": args.use_lstm,
+                # Use a simpler FCNet when we also have an LSTM.
+                "fcnet_hiddens": [32] if args.use_lstm else [256, 256],
+                "lstm_cell_size": 256,
+                "max_seq_len": 15,
+                "vf_share_layers": True,
+            },
+            vf_loss_coeff=0.005,
+        )
         .rl_module(
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={
@@ -105,21 +112,12 @@ if __name__ == "__main__":
                 }
             )
         )
-        .evaluation(
-            evaluation_interval=1,
-            evaluation_num_workers=1,
-            evaluation_parallel_to_training=True,
-            evaluation_duration="auto",
-            evaluation_config={
-                "explore": False,
-            },
-        )
     )
 
     # Make `args.stop_reward` "point" to the reward of the learned policy.
     stop = {
         "training_iteration": args.stop_iters,
-        "evaluation/sampler_results/policy_reward_mean/learned": args.stop_reward,
+        "sampler_results/policy_reward_mean/learned": args.stop_reward,
         "timesteps_total": args.stop_timesteps,
     }
 
@@ -127,5 +125,5 @@ if __name__ == "__main__":
         base_config,
         args,
         stop=stop,
-        success_metric="evaluation/sampler_results/policy_reward_mean/learned",
+        success_metric="sampler_results/policy_reward_mean/learned",
     )

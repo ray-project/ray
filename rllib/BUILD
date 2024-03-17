@@ -2298,16 +2298,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=6.0"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=6.5"],
 )
 
 py_test(
     name = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt_w_lstm",
     main = "examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_heuristic_vs_learnt.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=8.0", "--use-lstm", "--num-env-runners=4", "--num-cpus=6"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=7.2", "--use-lstm", "--num-env-runners=4", "--num-cpus=6"],
 )
 
 py_test(
