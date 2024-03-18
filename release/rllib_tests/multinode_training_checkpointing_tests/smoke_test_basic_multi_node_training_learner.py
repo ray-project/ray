@@ -82,7 +82,6 @@ def test_multi_node_training_smoke():
     config = (
         PPOConfig()
         .training(
-            _enable_learner_api=True,
             model={
                 "fcnet_hiddens": [256, 256, 256],
                 "fcnet_activation": "relu",
@@ -90,7 +89,7 @@ def test_multi_node_training_smoke():
             },
             train_batch_size=128,
         )
-        .rl_module(_enable_rl_module_api=True)
+        .experimental(_enable_new_api_stack=True)
         .environment("CartPole-v1")
         .resources(
             num_gpus_per_learner_worker=1,
