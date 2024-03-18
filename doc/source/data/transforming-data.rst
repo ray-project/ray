@@ -133,6 +133,7 @@ batches is more performant than transforming rows.
     )
 
 .. _configure_batch_format:
+
 Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
