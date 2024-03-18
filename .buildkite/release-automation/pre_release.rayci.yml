@@ -9,7 +9,7 @@ steps:
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - label: "Check commit hash"
-    depends_on: forge
+    depends_on: check-release-blockers
     key: check-commit-hash
     job_env: forge
     allow_dependency_failure: true
