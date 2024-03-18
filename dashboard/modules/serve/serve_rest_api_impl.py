@@ -167,6 +167,8 @@ def create_serve_rest_api(
                     text=repr(e),
                 )
 
+            self.log_config_change_default_warning(config)
+
             config_http_options = config.http_options.dict()
             location = ProxyLocation._to_deployment_mode(config.proxy_location)
             full_http_options = dict({"location": location}, **config_http_options)
@@ -176,7 +178,7 @@ def create_serve_rest_api(
                 client = await serve_start_async(
                     http_options=full_http_options,
                     grpc_options=grpc_options,
-                    system_logging_config=config.logging_config,
+                    global_logging_config=config.logging_config,
                 )
 
             # Serve ignores HTTP options if it was already running when
@@ -186,7 +188,7 @@ def create_serve_rest_api(
 
             try:
                 if config.logging_config:
-                    client.update_system_logging_config(config.logging_config)
+                    client.update_global_logging_config(config.logging_config)
                 client.deploy_apps(config)
                 record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v2")
             except RayTaskError as e:
@@ -212,6 +214,41 @@ def create_serve_rest_api(
                     "restarting it. Following options are attempted to be "
                     f"updated: {divergent_http_options}."
                 )
+
+        def log_config_change_default_warning(self, config):
+            from ray.serve.config import AutoscalingConfig
+
+            for deployment in [
+                d for app in config.applications for d in app.deployments
+            ]:
+                if "max_ongoing_requests" not in deployment.dict(exclude_unset=True):
+                    logger.warning(
+                        "The default value for `max_ongoing_requests` will "
+                        "change from 100 to 5 in an upcoming release."
+                    )
+                    break
+
+            for deployment in [
+                d for app in config.applications for d in app.deployments
+            ]:
+                if isinstance(deployment.autoscaling_config, dict):
+                    autoscaling_config = deployment.autoscaling_config
+                elif isinstance(deployment.autoscaling_config, AutoscalingConfig):
+                    autoscaling_config = deployment.autoscaling_config.dict(
+                        exclude_unset=True
+                    )
+                else:
+                    continue
+
+                if (
+                    "target_num_ongoing_requests_per_replica" not in autoscaling_config
+                    and "target_ongoing_requests" not in autoscaling_config
+                ):
+                    logger.warning(
+                        "The default value for `target_ongoing_requests` will "
+                        "change from 1.0 to 2.0 in an upcoming release."
+                    )
+                    break
 
         async def get_serve_controller(self):
             """Gets the ServeController to the this cluster's Serve app.

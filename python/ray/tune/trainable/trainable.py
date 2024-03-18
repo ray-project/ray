@@ -170,14 +170,6 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-        # TODO(justinvyu): These env vars aren't used at the moment.
-        # Consider having these be settings in SyncConfig if we want to
-        # keep this feature.
-        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
-        self.sync_sleep_time = float(
-            os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
-        )
-
     @classmethod
     def default_resource_request(
         cls, config: Dict[str, Any]
@@ -455,9 +447,7 @@ class Trainable:
             # Need to handle checkpoint_dict_or_path == path, dict, or None
             # Also need to upload to cloud, since `train.report` never gets called.
             if isinstance(checkpoint_dict_or_path, dict):
-                with open(
-                    os.path.join(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME), "wb"
-                ) as f:
+                with Path(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME).open("wb") as f:
                     ray_pickle.dump(checkpoint_dict_or_path, f)
             elif isinstance(checkpoint_dict_or_path, str):
                 if checkpoint_dict_or_path != checkpoint_dir:
@@ -755,13 +745,9 @@ class Trainable:
     def logdir(self):
         """Directory of the results and checkpoints for this Trainable.
 
-        Tune will automatically sync this folder with the driver if execution
-        is distributed.
-
         Note that the current working directory will also be changed to this.
-
         """
-        return os.path.join(self._logdir, "")
+        return self._logdir
 
     @property
     def trial_name(self):

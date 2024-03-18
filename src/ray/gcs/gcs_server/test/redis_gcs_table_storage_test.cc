@@ -27,12 +27,9 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
   static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() override {
-    gcs::RedisClientOptions options("127.0.0.1",
-                                    TEST_REDIS_SERVER_PORTS.front(),
-                                    "",
-                                    /*enable_sharding_conn=*/false);
+    gcs::RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "");
     redis_client_ = std::make_shared<gcs::RedisClient>(options);
-    RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
+    RAY_CHECK_OK(redis_client_->Connect(*io_service_pool_->Get()));
 
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
   }

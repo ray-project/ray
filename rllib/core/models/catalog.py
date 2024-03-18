@@ -55,7 +55,6 @@ class Catalog:
         from ray.rllib.core.models.configs import MLPHeadConfig
         from ray.rllib.core.models.catalog import Catalog
 
-
         class MyCatalog(Catalog):
             def __init__(
                 self,
@@ -64,17 +63,19 @@ class Catalog:
                 model_config_dict: dict,
             ):
                 super().__init__(observation_space, action_space, model_config_dict)
-                self.my_model_config_dict = MLPHeadConfig(
+                self.my_model_config = MLPHeadConfig(
                     hidden_layer_dims=[64, 32],
                     input_dims=[self.observation_space.shape[0]],
                 )
 
             def build_my_head(self, framework: str):
-                return self.my_model_config_dict.build(framework=framework)
+                return self.my_model_config.build(framework=framework)
 
         # With that, RLlib can build and use models from this catalog like this:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        my_head = catalog.build_my_head("torch")
+        my_head = catalog.build_my_head(framework="torch")
+
+        # Make a call to the built model.
         out = my_head(torch.Tensor([[1]]))
     """
 
@@ -271,6 +272,16 @@ class Catalog:
                 input_dims=observation_space.shape,
                 recurrent_layer_type="lstm",
                 hidden_dim=model_config_dict["lstm_cell_size"],
+                hidden_weights_initializer=model_config_dict[
+                    "lstm_weights_initializer"
+                ],
+                hidden_weights_initializer_config=model_config_dict[
+                    "lstm_weights_initializer_config"
+                ],
+                hidden_bias_initializer=model_config_dict["lstm_bias_initializer"],
+                hidden_bias_initializer_config=model_config_dict[
+                    "lstm_bias_initializer_config"
+                ],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
                 tokenizer_config=cls.get_tokenizer_config(
@@ -296,8 +307,32 @@ class Catalog:
                     input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
+                    hidden_layer_weights_initializer=model_config_dict[
+                        "fcnet_weights_initializer"
+                    ],
+                    hidden_layer_weights_initializer_config=model_config_dict[
+                        "fcnet_weights_initializer_config"
+                    ],
+                    hidden_layer_bias_initializer=model_config_dict[
+                        "fcnet_bias_initializer"
+                    ],
+                    hidden_layer_bias_initializer_config=model_config_dict[
+                        "fcnet_bias_initializer_config"
+                    ],
                     output_layer_dim=encoder_latent_dim,
                     output_layer_activation=output_activation,
+                    output_layer_weights_initializer=model_config_dict[
+                        "post_fcnet_weights_initializer"
+                    ],
+                    output_layer_weights_initializer_config=model_config_dict[
+                        "post_fcnet_weights_initializer_config"
+                    ],
+                    output_layer_bias_initializer=model_config_dict[
+                        "post_fcnet_bias_initializer"
+                    ],
+                    output_layer_bias_initializer_config=model_config_dict[
+                        "post_fcnet_bias_initializer_config"
+                    ],
                 )
 
             # input_space is a 3D Box
@@ -316,6 +351,14 @@ class Catalog:
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
+                    cnn_kernel_initializer=model_config_dict["conv_kernel_initializer"],
+                    cnn_kernel_initializer_config=model_config_dict[
+                        "conv_kernel_initializer_config"
+                    ],
+                    cnn_bias_initializer=model_config_dict["conv_bias_initializer"],
+                    cnn_bias_initializer_config=model_config_dict[
+                        "conv_bias_initializer_config"
+                    ],
                 )
             # input_space is a 2D Box
             elif (
@@ -348,7 +391,7 @@ class Catalog:
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
-        This is useful for recurrent / tranformer models that need to tokenize their
+        This is useful for recurrent / transformer models that need to tokenize their
         inputs. By default, RLlib uses the models supported by Catalog out of the box to
         tokenize.
 

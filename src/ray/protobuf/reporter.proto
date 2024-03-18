@@ -62,12 +62,27 @@ message CpuProfilingReply {
   string output = 2;
 }
 
-message ReportMetricsRequest {
-  repeated MetricPoint metrics_points = 1;
+// Memory profiler request config
+message MemoryProfilingRequest {
+  // process pid
+  uint32 pid = 1;
+  optional string format = 2;
+  optional uint32 duration = 3;
+  // If using native flag for memray
+  optional bool native = 4;
+  // If show memory leaks
+  optional bool leaks = 5;
+  // If trace python memory allocator
+  optional bool trace_python_allocators = 6;
 }
 
-message ReportMetricsReply {
-  bool metrcs_description_required = 1;
+// Memory profiler result
+message MemoryProfilingReply {
+  bool success = 1;
+  // profiling result or error message
+  string output = 2;
+  // profiling result warning
+  optional string warning = 3;
 }
 
 message ReportOCMetricsRequest {
@@ -91,13 +106,12 @@ message RegisterActorToMetircAgentReply {
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
-  // Report metrics to the local metrics agents.
-  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
   rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);
   rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
   rpc RegisterActor(RegisterActorToMetircAgentRequest) returns (RegisterActorToMetircAgentReply);
+  rpc MemoryProfiling(MemoryProfilingRequest) returns (MemoryProfilingReply);
 }
 
 message StreamLogRequest {

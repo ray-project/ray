@@ -613,11 +613,13 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
     print("GCS is killed")
     ray.worker._global_node.kill_gcs_server()
 
+    # detached actor should keep working
+    assert ray.get(c.r.remote(10)) == 10
+
     print("Start to create a new actor")
     with pytest.raises(ray.exceptions.GetTimeoutError):
         cc = Counter.options(name="cc", lifetime="detached").remote()
 
-    assert ray.get(c.r.remote(10)) == 10
     ray.worker._global_node.start_gcs_server()
     cc = Counter.options(name="cc", lifetime="detached").remote()
     assert ray.get(cc.r.remote(10)) == 10

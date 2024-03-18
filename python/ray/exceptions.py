@@ -275,6 +275,8 @@ class RayActorError(RayError):
         self._actor_init_failed = False
         # -- The base actor error message. --
         self.base_error_msg = "The actor died unexpectedly before finishing this task."
+        # Whether the node was preempted
+        self._preempted = False
 
         if not cause:
             self.error_msg = self.base_error_msg
@@ -306,6 +308,11 @@ class RayActorError(RayError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
+            if cause.preempted:
+                self._preempted = True
+                error_msg_lines.append(
+                    "\tThe actor's node was killed by a spot preemption."
+                )
             self.error_msg = "\n".join(error_msg_lines)
             self.actor_id = ActorID(cause.actor_id).hex()
 
@@ -315,6 +322,10 @@ class RayActorError(RayError):
 
     def __str__(self) -> str:
         return self.error_msg
+
+    @property
+    def preempted(self) -> bool:
+        return self._preempted
 
     @staticmethod
     def from_task_error(task_error: RayTaskError):
@@ -337,6 +348,16 @@ class RaySystemError(RayError):
         if self.traceback_str:
             error_msg += f"\ntraceback: {self.traceback_str}"
         return error_msg
+
+
+@DeveloperAPI
+class UserCodeException(RayError):
+    """Indicates that an exception occurred while executing user code.
+    For example, this exception can be used to wrap user code exceptions
+    from a remote task or actor. The `retry_exceptions` parameter will
+    still respect the underlying cause of this exception."""
+
+    pass
 
 
 @PublicAPI

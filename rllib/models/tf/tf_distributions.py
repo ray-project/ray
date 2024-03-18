@@ -286,15 +286,15 @@ class TfDeterministic(Distribution):
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
+        return tf.zeros_like(self.loc)
 
     @override(Distribution)
     def entropy(self, **kwargs) -> TensorType:
-        raise tf.zeros_like(self.loc)
+        raise RuntimeError(f"`entropy()` not supported for {self.__class__.__name__}.")
 
     @override(Distribution)
     def kl(self, other: "Distribution", **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return kl for {self.__class__.__name__}.")
+        raise RuntimeError(f"`kl()` not supported for {self.__class__.__name__}.")
 
     @staticmethod
     @override(Distribution)

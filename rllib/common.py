@@ -8,10 +8,12 @@ from typing import Optional
 import requests
 
 
+from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.experiment.config_parser import _make_parser
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="beta")
 class FrameworkEnum(str, Enum):
     """Supported frameworks for RLlib, used for CLI argument validation."""
 
@@ -20,6 +22,7 @@ class FrameworkEnum(str, Enum):
     torch = "torch"
 
 
+@PublicAPI(stability="beta")
 class SupportedFileType(str, Enum):
     """Supported file types for RLlib, used for CLI argument validation."""
 
@@ -27,7 +30,7 @@ class SupportedFileType(str, Enum):
     python = "python"
 
 
-def get_file_type(config_file: str) -> SupportedFileType:
+def _get_file_type(config_file: str) -> SupportedFileType:
     if config_file.endswith(".py"):
         file_type = SupportedFileType.python
     elif config_file.endswith(".yaml") or config_file.endswith(".yml"):
@@ -53,7 +56,7 @@ def _create_tune_parser_help():
 PARSER_HELP = _create_tune_parser_help()
 
 
-def download_example_file(
+def _download_example_file(
     example_file: str,
     base_url: Optional[str] = "https://raw.githubusercontent.com/"
     + "ray-project/ray/master/rllib/",
@@ -73,11 +76,10 @@ def download_example_file(
     """
     temp_file = None
     if not os.path.exists(example_file):
-
         example_url = base_url + example_file if base_url else example_file
         print(f">>> Attempting to download example file {example_url}...")
 
-        file_type = get_file_type(example_url)
+        file_type = _get_file_type(example_url)
         if file_type == SupportedFileType.yaml:
             temp_file = tempfile.NamedTemporaryFile(suffix=".yaml")
         else:
@@ -100,7 +102,7 @@ def download_example_file(
     return example_file, temp_file
 
 
-def get_help(key: str) -> str:
+def _get_help(key: str) -> str:
     """Get the help string from a parser for a given key.
     If e.g. 'resource_group' is provided, we return
     the entry for '--resource-group'."""
@@ -133,8 +135,12 @@ train_help = dict(
     v="Whether to use INFO level logging.",
     vv="Whether to use DEBUG level logging.",
     resume="Whether to attempt to resume from previous experiments.",
-    local_dir=f"Local dir to save training results to. "
-    f"Defaults to '{DEFAULT_RESULTS_DIR}'.",
+    storage_path=(
+        "Directory to save training results and checkpoints to. "
+        "Can be either a local directory or a cloud storage path "
+        "(e.g. '/tmp/ray_results', 's3://bucket-name'). Defaults to '~/ray_results'."
+    ),
+    local_dir="Deprecated. Use `storage_path` instead.",
     local_mode="Run Ray in local mode for easier debugging.",
     ray_address="Connect to an existing Ray cluster at this address instead "
     "of starting a new one.",
@@ -143,7 +149,7 @@ train_help = dict(
     ray_num_gpus="The '--num-gpus' argument to use if starting a new cluster.",
     ray_num_nodes="Emulate multiple cluster nodes for debugging.",
     ray_object_store_memory="--object-store-memory to use if starting a new cluster.",
-    upload_dir="Optional URI to sync training results to (e.g. s3://bucket).",
+    upload_dir="Deprecated. Use `storage_path` instead.",
     trace="Whether to attempt to enable eager-tracing for framework=tf2.",
     torch="Whether to use PyTorch (instead of tf) as the DL framework. "
     "This argument is deprecated, please use --framework to select 'torch'"
@@ -189,6 +195,7 @@ eval_help = dict(
 )
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class CLIArguments:
     """Dataclass for CLI arguments and options. We use this class to keep track
@@ -196,14 +203,14 @@ class CLIArguments:
 
     # Common arguments
     # __cli_common_start__
-    Algo = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run"))
+    Algo = typer.Option(None, "--algo", "--run", "-a", "-r", help=_get_help("run"))
     AlgoRequired = typer.Option(
-        ..., "--algo", "--run", "-a", "-r", help=get_help("run")
+        ..., "--algo", "--run", "-a", "-r", help=_get_help("run")
     )
     Env = typer.Option(None, "--env", "-e", help=train_help.get("env"))
     EnvRequired = typer.Option(..., "--env", "-e", help=train_help.get("env"))
-    Config = typer.Option("{}", "--config", "-c", help=get_help("config"))
-    ConfigRequired = typer.Option(..., "--config", "-c", help=get_help("config"))
+    Config = typer.Option("{}", "--config", "-c", help=_get_help("config"))
+    ConfigRequired = typer.Option(..., "--config", "-c", help=_get_help("config"))
     # __cli_common_end__
 
     # Train file arguments
@@ -218,29 +225,30 @@ class CLIArguments:
 
     # Train arguments
     # __cli_train_start__
-    Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
+    Stop = typer.Option("{}", "--stop", "-s", help=_get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
     )
     V = typer.Option(False, "--log-info", "-v", help=train_help.get("v"))
     VV = typer.Option(False, "--log-debug", "-vv", help=train_help.get("vv"))
     Resume = typer.Option(False, help=train_help.get("resume"))
-    NumSamples = typer.Option(1, help=get_help("num_samples"))
-    CheckpointFreq = typer.Option(0, help=get_help("checkpoint_freq"))
-    CheckpointAtEnd = typer.Option(True, help=get_help("checkpoint_at_end"))
-    LocalDir = typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir"))
-    Restore = typer.Option(None, help=get_help("restore"))
+    NumSamples = typer.Option(1, help=_get_help("num_samples"))
+    CheckpointFreq = typer.Option(0, help=_get_help("checkpoint_freq"))
+    CheckpointAtEnd = typer.Option(True, help=_get_help("checkpoint_at_end"))
+    StoragePath = typer.Option(None, help=train_help.get("storage_path"))
+    LocalDir = typer.Option(_DEPRECATED_VALUE, help=train_help.get("local_dir"))
+    Restore = typer.Option(None, help=_get_help("restore"))
     Framework = typer.Option(None, help=train_help.get("framework"))
-    ResourcesPerTrial = typer.Option(None, help=get_help("resources_per_trial"))
-    KeepCheckpointsNum = typer.Option(None, help=get_help("keep_checkpoints_num"))
+    ResourcesPerTrial = typer.Option(None, help=_get_help("resources_per_trial"))
+    KeepCheckpointsNum = typer.Option(None, help=_get_help("keep_checkpoints_num"))
     CheckpointScoreAttr = typer.Option(
-        "training_iteration", help=get_help("sync_on_checkpoint")
+        "training_iteration", help=_get_help("checkpoint_score_attr")
     )
-    UploadDir = typer.Option("", help=train_help.get("upload_dir"))
+    UploadDir = typer.Option(_DEPRECATED_VALUE, help=train_help.get("upload_dir"))
     Trace = typer.Option(False, help=train_help.get("trace"))
     LocalMode = typer.Option(False, help=train_help.get("local_mode"))
-    Scheduler = typer.Option("FIFO", help=get_help("scheduler"))
-    SchedulerConfig = typer.Option("{}", help=get_help("scheduler_config"))
+    Scheduler = typer.Option("FIFO", help=_get_help("scheduler"))
+    SchedulerConfig = typer.Option("{}", help=_get_help("scheduler_config"))
     RayAddress = typer.Option(None, help=train_help.get("ray_address"))
     RayUi = typer.Option(False, help=train_help.get("ray_ui"))
     RayNumCpus = typer.Option(None, help=train_help.get("ray_num_cpus"))

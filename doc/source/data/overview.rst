@@ -107,11 +107,17 @@ Preprocessing and ingest for ML training
 ----------------------------------------
 
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
+Key supported features for distributed training include:
+
+- Fast out-of-memory recovery
+- Support for heterogeneous clusters
+- No dropped rows during distributed dataset iteration
+
 Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
 applications and libraries in Ray. Don't use it as a replacement for more general data
 processing systems. For more details on how to use Ray Data for preprocessing and ingest for ML training, see :ref:`Data loading for ML training <data-ingest-torch>`.
 
-.. image:: images/dataset-loading-1.png
+.. image:: images/dataset-loading-1.svg
    :width: 650px
    :align: center
 
@@ -147,7 +153,7 @@ How does Ray Data compare to X for ML training ingest?
 .. dropdown:: NVTabular
 
     * **Supported data types:** `NVTabular <https://github.com/NVIDIA-Merlin/NVTabular>`__ only supports tabular (Parquet, CSV, Avro) data, while Ray Data supports many other file formats.
-    * **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between processes, in contrast to the multi-processing-based pipelines used by Petastorm.
+    * **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between processes, in contrast to the multi-processing-based pipelines used by NVTabular.
     * **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g. both CPU and GPU transformations), while Ray Data supports this.
 
 ML ingest case studies

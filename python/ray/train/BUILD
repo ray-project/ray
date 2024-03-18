@@ -382,14 +382,6 @@ py_test(
 )
 
 py_test(
-    name = "test_mosaic_trainer",
-    size = "medium",
-    srcs = ["tests/test_mosaic_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "torch_1_11"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
@@ -507,14 +499,6 @@ py_test(
     srcs = ["tests/test_storage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_sklearn_trainer",
-    size = "medium",
-    srcs = ["tests/test_sklearn_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
 )
 
 py_test(
@@ -664,6 +648,15 @@ py_test(
         "new_storage",
     ],
     deps = [":train_lib", ":conftest"],
+)
+
+### E2E Data + Train 
+py_test(
+    name = "test_datasets_train",
+    size = "medium",
+    srcs = ["tests/test_datasets_train.py"],
+    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
 # This is a dummy test dependency that causes the above tests to be

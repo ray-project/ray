@@ -213,8 +213,16 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc.wait(15)
 
 
-def test_agent_report_unexpected_raylet_death(shutdown_only):
+@pytest.mark.parametrize("parent_health_check_by_pipe", [True, False])
+def test_agent_report_unexpected_raylet_death(
+    monkeypatch, shutdown_only, parent_health_check_by_pipe
+):
     """Test agent reports Raylet death if it is not SIGTERM."""
+
+    monkeypatch.setenv(
+        "RAY_enable_pipe_based_agent_to_parent_health_check",
+        parent_health_check_by_pipe,
+    )
 
     ray.init()
     p = init_error_pubsub()
@@ -247,8 +255,16 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     )
 
 
-def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
+@pytest.mark.parametrize("parent_health_check_by_pipe", [True, False])
+def test_agent_report_unexpected_raylet_death_large_file(
+    monkeypatch, shutdown_only, parent_health_check_by_pipe
+):
     """Test agent reports Raylet death if it is not SIGTERM."""
+
+    monkeypatch.setenv(
+        "RAY_enable_pipe_based_agent_to_parent_health_check",
+        parent_health_check_by_pipe,
+    )
 
     ray.init()
     p = init_error_pubsub()

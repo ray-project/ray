@@ -42,7 +42,6 @@ class SAGE(torch.nn.Module):
         for i in range(self.num_layers):
             xs = []
             for batch_size, n_id, adj in subgraph_loader:
-
                 edge_index, _, size = adj
                 x = x_all[n_id.to(x_all.device)].to(train.torch.get_device())
                 x_target = x[: size[1]]
@@ -167,7 +166,6 @@ def gen_reddit_dataset():
 def train_gnn(
     num_workers=2, use_gpu=False, epochs=3, global_batch_size=32, dataset="reddit"
 ):
-
     per_worker_batch_size = global_batch_size // num_workers
 
     trainer = TorchTrainer(

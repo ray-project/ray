@@ -46,6 +46,14 @@ py_test(
 )
 
 py_test(
+    name = "test_output_node",
+    size = "small",
+    srcs = dag_tests_srcs,
+    tags = ["exclusive", "team:core", "ray_dag_tests"],
+    deps = [":dag_lib"],
+)
+
+py_test(
     name = "test_plot",
     size = "small",
     srcs = dag_tests_srcs,
@@ -56,6 +64,14 @@ py_test(
 py_test(
     name = "test_py_obj_scanner",
     size = "small",
+    srcs = dag_tests_srcs,
+    tags = ["exclusive", "team:core", "ray_dag_tests"],
+    deps = [":dag_lib"],
+)
+
+py_test(
+    name = "test_accelerated_dag",
+    size = "medium",
     srcs = dag_tests_srcs,
     tags = ["exclusive", "team:core", "ray_dag_tests"],
     deps = [":dag_lib"],

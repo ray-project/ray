@@ -5,10 +5,9 @@ from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
+    OldAPIStack,
     override,
     PublicAPI,
-    DeveloperAPI,
 )
 from ray.rllib.utils.typing import (
     AgentID,
@@ -41,6 +40,9 @@ class MultiAgentEnv(gym.Env):
     """
 
     def __init__(self):
+        # TODO (sven): super init call seems to have been missing. Since forever.
+        # super().__init__()
+
         if not hasattr(self, "observation_space"):
             self.observation_space = None
         if not hasattr(self, "action_space"):
@@ -55,7 +57,6 @@ class MultiAgentEnv(gym.Env):
         if not hasattr(self, "_obs_space_in_preferred_format"):
             self._obs_space_in_preferred_format = None
 
-    @PublicAPI
     def reset(
         self,
         *,
@@ -91,7 +92,6 @@ class MultiAgentEnv(gym.Env):
         # Call super's `reset()` method to (maybe) set the given `seed`.
         super().reset(seed=seed, options=options)
 
-    @PublicAPI
     def step(
         self, action_dict: MultiAgentDict
     ) -> Tuple[
@@ -144,7 +144,6 @@ class MultiAgentEnv(gym.Env):
         """
         raise NotImplementedError
 
-    @ExperimentalAPI
     def observation_space_contains(self, x: MultiAgentDict) -> bool:
         """Checks if the observation space contains the given key.
 
@@ -187,7 +186,6 @@ class MultiAgentEnv(gym.Env):
         )
         return True
 
-    @ExperimentalAPI
     def action_space_contains(self, x: MultiAgentDict) -> bool:
         """Checks if the action space contains the given action.
 
@@ -217,7 +215,6 @@ class MultiAgentEnv(gym.Env):
             )
         return True
 
-    @ExperimentalAPI
     def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
         """Returns a random action for each environment, and potentially each
             agent in that environment.
@@ -254,7 +251,6 @@ class MultiAgentEnv(gym.Env):
         )
         return {}
 
-    @ExperimentalAPI
     def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
         """Returns a random observation from the observation space for each
         agent if agent_ids is None, otherwise returns a random observation for
@@ -292,7 +288,6 @@ class MultiAgentEnv(gym.Env):
             )
         return {}
 
-    @PublicAPI
     def get_agent_ids(self) -> Set[AgentID]:
         """Returns a set of agent ids in the environment.
 
@@ -303,7 +298,6 @@ class MultiAgentEnv(gym.Env):
             self._agent_ids = set(self._agent_ids)
         return self._agent_ids
 
-    @PublicAPI
     def render(self) -> None:
         """Tries to render the environment."""
 
@@ -365,7 +359,7 @@ class MultiAgentEnv(gym.Env):
     # __grouping_doc_end__
     # fmt: on
 
-    @PublicAPI
+    @OldAPIStack
     def to_base_env(
         self,
         make_env: Optional[Callable[[int], EnvType]] = None,
@@ -424,7 +418,6 @@ class MultiAgentEnv(gym.Env):
 
         return env
 
-    @DeveloperAPI
     def _check_if_obs_space_maps_agent_id_to_sub_space(self) -> bool:
         """Checks if obs space maps from agent ids to spaces of individual agents."""
         return (
@@ -433,7 +426,6 @@ class MultiAgentEnv(gym.Env):
             and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
         )
 
-    @DeveloperAPI
     def _check_if_action_space_maps_agent_id_to_sub_space(self) -> bool:
         """Checks if action space maps from agent ids to spaces of individual agents."""
         return (
@@ -512,37 +504,15 @@ def make_multi_agent(
                 self.envs = [env_name_or_creator(config) for _ in range(num)]
             self.terminateds = set()
             self.truncateds = set()
-            self.observation_space = self.envs[0].observation_space
-            self.action_space = self.envs[0].action_space
+            self.observation_space = gym.spaces.Dict(
+                {i: self.envs[i].observation_space for i in range(num)}
+            )
+            self._obs_space_in_preferred_format = True
+            self.action_space = gym.spaces.Dict(
+                {i: self.envs[i].action_space for i in range(num)}
+            )
+            self._action_space_in_preferred_format = True
             self._agent_ids = set(range(num))
-
-        @override(MultiAgentEnv)
-        def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-            if agent_ids is None:
-                agent_ids = list(range(len(self.envs)))
-            obs = {agent_id: self.observation_space.sample() for agent_id in agent_ids}
-
-            return obs
-
-        @override(MultiAgentEnv)
-        def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-            if agent_ids is None:
-                agent_ids = list(range(len(self.envs)))
-            actions = {agent_id: self.action_space.sample() for agent_id in agent_ids}
-
-            return actions
-
-        @override(MultiAgentEnv)
-        def action_space_contains(self, x: MultiAgentDict) -> bool:
-            if not isinstance(x, dict):
-                return False
-            return all(self.action_space.contains(val) for val in x.values())
-
-        @override(MultiAgentEnv)
-        def observation_space_contains(self, x: MultiAgentDict) -> bool:
-            if not isinstance(x, dict):
-                return False
-            return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
         def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -551,6 +521,7 @@ def make_multi_agent(
             obs, infos = {}, {}
             for i, env in enumerate(self.envs):
                 obs[i], infos[i] = env.reset(seed=seed, options=options)
+
             return obs, infos
 
         @override(MultiAgentEnv)
@@ -588,7 +559,7 @@ def make_multi_agent(
     return MultiEnv
 
 
-@PublicAPI
+@OldAPIStack
 class MultiAgentEnvWrapper(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
@@ -749,7 +720,17 @@ class MultiAgentEnvWrapper(BaseEnv):
         if env_id is None:
             env_id = list(range(len(self.envs)))
         for idx in env_id:
-            # Recreate the sub-env.
+            # Try closing down the old (possibly faulty) sub-env, but ignore errors.
+            try:
+                self.envs[idx].close()
+            except Exception as e:
+                if log_once("close_sub_env"):
+                    logger.warning(
+                        "Trying to close old and replaced sub-environment (at vector "
+                        f"index={idx}), but closing resulted in error:\n{e}"
+                    )
+
+            # Try recreating the sub-env.
             logger.warning(f"Trying to restart sub-environment at index {idx}.")
             self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
             logger.warning(f"Sub-environment at index {idx} restarted successfully.")
@@ -771,13 +752,11 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @property
     @override(BaseEnv)
-    @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
         return self.envs[0].observation_space
 
     @property
     @override(BaseEnv)
-    @PublicAPI
     def action_space(self) -> gym.Space:
         return self.envs[0].action_space
 
@@ -821,6 +800,7 @@ class MultiAgentEnvWrapper(BaseEnv):
             )
 
 
+@OldAPIStack
 class _MultiAgentEnvState:
     def __init__(self, env: MultiAgentEnv, return_error_as_obs: bool = False):
         assert isinstance(env, MultiAgentEnv)

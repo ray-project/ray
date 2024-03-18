@@ -95,19 +95,6 @@ class MockWorker : public WorkerInterface {
   }
   void SetAssignedPort(int port) override { RAY_CHECK(false) << "Method unused"; }
   const TaskID &GetAssignedTaskId() const override { return task_id_; }
-  bool AddBlockedTaskId(const TaskID &task_id) override {
-    RAY_CHECK(false) << "Method unused";
-    return false;
-  }
-  bool RemoveBlockedTaskId(const TaskID &task_id) override {
-    RAY_CHECK(false) << "Method unused";
-    return false;
-  }
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const override {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new std::unordered_set<TaskID>();
-    return *t;
-  }
   const JobID &GetAssignedJobId() const override { return job_id_; }
   int GetRuntimeEnvHash() const override { return runtime_env_hash_; }
   void AssignActorId(const ActorID &actor_id) override {

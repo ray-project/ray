@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Optional
 
 import ray
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
@@ -37,6 +38,8 @@ class DatasetLogger:
         self.log_name = log_name
         # Lazily initialized in self._initialize_logger()
         self._logger = None
+        # Lazily initialized in self._initialize_logger()
+        self._datasets_log_path = None
 
     def _initialize_logger(self) -> logging.Logger:
         """Internal method to initialize the logger and the extra file handler
@@ -79,6 +82,7 @@ class DatasetLogger:
             file_log_handler.setLevel(LOGGER_LEVEL.upper())
             file_log_handler.setFormatter(file_log_formatter)
             logger.addHandler(file_log_handler)
+            self._datasets_log_path = datasets_log_path
         return logger
 
     def get_logger(self, log_to_stdout: bool = True) -> logging.Logger:
@@ -99,3 +103,9 @@ class DatasetLogger:
             self._logger = self._initialize_logger()
         self._logger.propagate = log_to_stdout
         return self._logger
+
+    def get_datasets_log_path(self) -> Optional[str]:
+        """
+        Returns the Datasets log file path if it exists.
+        """
+        return self._datasets_log_path

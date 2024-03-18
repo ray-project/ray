@@ -132,6 +132,7 @@ if __name__ == "__main__":
             metric="mean_accuracy",
             mode="max",
             num_samples=4,
+            reuse_actors=True,
         ),
         param_space={
             "lr": tune.uniform(0.001, 1),

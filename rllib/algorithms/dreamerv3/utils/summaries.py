@@ -13,7 +13,7 @@ from ray.rllib.algorithms.dreamerv3.utils.debugging import (
     create_cartpole_dream_image,
     create_frozenlake_dream_image,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.tf_utils import inverse_symlog
 
 
@@ -133,7 +133,8 @@ def report_predicted_vs_sampled_obs(
     Continues: Compute MSE (sampled vs predicted).
 
     Args:
-        results: The results dict that was returned by `LearnerGroup.update()`.
+        results: The results dict that was returned by
+            `LearnerGroup.update_from_batch()`.
         sample: The sampled data (dict) from the replay buffer. Already tf-tensor
             converted.
         batch_size_B: The batch size (B). This is the number of trajectories sampled
@@ -148,9 +149,9 @@ def report_predicted_vs_sampled_obs(
         results=results,
         computed_float_obs_B_T_dims=np.reshape(
             predicted_observation_means_BxT,
-            (batch_size_B, batch_length_T) + sample[SampleBatch.OBS].shape[2:],
+            (batch_size_B, batch_length_T) + sample[Columns.OBS].shape[2:],
         ),
-        sampled_obs_B_T_dims=sample[SampleBatch.OBS],
+        sampled_obs_B_T_dims=sample[Columns.OBS],
         descr_prefix="WORLD_MODEL",
         descr_obs=f"predicted_posterior_T{batch_length_T}",
         symlog_obs=symlog_obs,
@@ -172,7 +173,7 @@ def report_dreamed_eval_trajectory_vs_samples(
         h_t0_to_H=dream_data["h_states_t0_to_H_BxT"],
         z_t0_to_H=dream_data["z_states_prior_t0_to_H_BxT"],
         dreamer_model=dreamer_model,
-        obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
+        obs_dims_shape=sample[Columns.OBS].shape[2:],
     )
     t0 = burn_in_T - 1
     tH = t0 + dreamed_T
@@ -184,7 +185,7 @@ def report_dreamed_eval_trajectory_vs_samples(
             dreamed_obs_T_B,
             axes=[1, 0] + list(range(2, len(dreamed_obs_T_B.shape))),
         ),
-        sampled_obs_B_T_dims=sample[SampleBatch.OBS][:, t0 : tH + 1],
+        sampled_obs_B_T_dims=sample[Columns.OBS][:, t0 : tH + 1],
         descr_prefix="EVALUATION",
         descr_obs=f"dreamed_prior_H{dreamed_T}",
         symlog_obs=symlog_obs,
@@ -194,7 +195,7 @@ def report_dreamed_eval_trajectory_vs_samples(
     _report_rewards(
         results=results,
         computed_rewards=dream_data["rewards_dreamed_t0_to_H_BxT"],
-        sampled_rewards=sample[SampleBatch.REWARDS][:, t0 : tH + 1],
+        sampled_rewards=sample[Columns.REWARDS][:, t0 : tH + 1],
         descr_prefix="EVALUATION",
         descr_reward=f"dreamed_prior_H{dreamed_T}",
     )

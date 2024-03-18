@@ -215,11 +215,8 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
             # the other is taken by the other sample) so device index should be 0.
             # For the multiple GPU case, each worker has 2 visible devices so device
             # index should be either 0 or 1. It doesn't matter which.
-            devices = train.torch.get_device()
-            if isinstance(devices, list):
-                assert sorted([device.index for device in devices]) == [0, 1]
-            else:
-                assert train.torch.get_device().index == 0
+            device_ids = sorted([device.index for device in train.torch.get_devices()])
+            assert device_ids in [[0], [0, 1]]
 
         @ray.remote(num_cpus=0)
         class TrialActor:
