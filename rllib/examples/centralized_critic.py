@@ -1,3 +1,8 @@
+# ***********************************************************************************
+# IMPORTANT NOTE: This script is using the old API stack and should be replaced by
+# `ray.rllib.examples.multi_agent_and_self_play.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
 """An example of customizing PPO to leverage a centralized critic.
 
 Here the model and policy are hard-coded to implement a centralized critic

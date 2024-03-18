@@ -2269,7 +2269,7 @@ py_test(
     name = "examples/multi_agent_and_self_play/pettingzoo_independent_learning",
     main = "examples/multi_agent_and_self_play/pettingzoo_independent_learning.py",
     tags = ["team:rllib", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/multi_agent_and_self_play/pettingzoo_independent_learning.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-200.0", "--num-cpus=4"]
 )
@@ -2287,9 +2287,18 @@ py_test(
     name = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing",
     main = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-210.0", "--num-cpus=4"],
+)
+
+py_test(
+    name = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function",
+    main = "examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/multi_agent_and_self_play/pettingzoo_shared_value_function.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
 )
 
 py_test(
