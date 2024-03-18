@@ -578,7 +578,7 @@ Ray Data interoperates with distributed data processing frameworks like
 Loading data from ML libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with HuggingFace and TensorFlow datasets.
+Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
 
 .. tab-set::
 
@@ -592,9 +592,10 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             :class:`~ray.data.from_huggingface` only supports parallel reads in certain
             instances, namely for untransformed public 🤗 Datasets. For those datasets,
             `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
-            will be used to perform a distributed read, otherwise a single node read will be used.
+            will be used to perform a distributed read; otherwise, a single node read will be used.
             This shouldn't be an issue with in-memory 🤗 Datasets, but may fail with
-            large memory-mapped 🤗 Datasets. Additionally, 🤗 ``DatasetDict`` or ``IteraableDatasetDict``
+            large memory-mapped 🤗 Datasets. Additionally, 🤗 `DatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.DatasetDict>`_ and 
+            `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
             objects aren't supported.
 
         .. testcode::
@@ -611,9 +612,9 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 
             [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
-    .. tab-item:: PyTorch Dataset
+    .. tab-item:: PyTorch
 
-        To convert a PyTorch dataset to a Ray Dataset, call ::func:`~ray.data.from_torch`.
+        To convert a PyTorch dataset to a Ray Dataset, call :func:`~ray.data.from_torch`.
 
         .. testcode::
 
@@ -959,7 +960,7 @@ If Ray Data can't load your data, subclass
 :class:`~ray.data.Datasource`. Then, construct an instance of your custom
 datasource and pass it to :func:`~ray.data.read_datasource`. To write results, you might
 also need to subclass :class:`ray.data.Datasink`. Then, create an instance of your custom
-datasink and pass it to :func:`~ray.data.Dataset.write_datasink`. For more details see the guide
+datasink and pass it to :func:`~ray.data.Dataset.write_datasink`. For more details, see the guide
 :ref:`Advanced: Read and Write Custom File Types <custom_datasource>`.
 
 .. testcode::

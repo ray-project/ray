@@ -26,7 +26,7 @@ Transforming rows
 .. tip::
 
     If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
-    better performance. To learn more, see `Transforming batches <#transforming-batches>`_.
+    better performance. To learn more, see :ref:`Transforming batches <transforming_batches>`.
 
 Transforming rows with map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -50,8 +50,8 @@ If your transformation returns exactly one row for each input row, call
     )
 
 The user defined function passed to :meth:`~ray.data.Dataset.map` should be of type
-`Callable[[Dict[str, Any]], Dict[str, Any]]`. In other words your function should
-input and output a dictionary with keys of strings and values of any type, for example:
+`Callable[[Dict[str, Any]], Dict[str, Any]]`. In other words, your function should
+input and output a dictionary with keys of strings and values of any type. For example:
 
 .. testcode::
 
@@ -176,13 +176,13 @@ format from your function, but ``batch_format`` should match the input of your f
                 .map_batches(drop_nas, batch_format="pandas")
             )
 
-The user defined function passed to :meth:`~ray.data.Dataset.map_batches` is more flexible. As atches
+The user defined function passed to :meth:`~ray.data.Dataset.map_batches` is more flexible. As batches
 can be represented in multiple ways (more on this in :ref:`Configuring batch format <configure_batch_format>`), so the function should be of type
-``Callable[DataBatch, DataBatch]`` where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
-other words your function should input and output a batch of data which can be represented as a
-pandas dataframe or a dictionary with string keys and NumPy ndarrays values. Your function does not need
-to return a batch in the same format as it is input, so you could input a pandas dataframe and output a
-dictionary of NumPy ndarrays. For example your function might look like:
+``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
+other words, your function should take as input and output a batch of data which can be represented as a
+pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. Your function does not need
+to return a batch in the same format as its input, so you could input a pandas DataFrame and output a
+dictionary of NumPy ndarrays. For example, your function might look like:
 
 .. testcode::
 
@@ -193,9 +193,9 @@ dictionary of NumPy ndarrays. For example your function might look like:
         # return batch
         return output
 
-The user defined function can also return an iterator that yields batches, so the function can also
-be of type ``Callable[DataBatch, Iterator[[DataBatch]]`` where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
-In this case your function would look like:
+The user defined function can also be a Python generator that yields batches, so the function can also
+be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
+In this case, your function would look like:
 
 .. testcode::
 

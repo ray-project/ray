@@ -154,6 +154,7 @@ To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Datas
 For more on how to read this output, see :ref:`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
 
 .. testcode::
+
     import ray
     import datasets
 
