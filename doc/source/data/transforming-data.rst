@@ -162,7 +162,7 @@ program might run out of memory. If you encounter an out-of-memory error, decrea
 .. _stateful_transforms:
 
 Stateful Transforms
-==============================
+===================
 
 If your transform requires expensive setup such as downloading
 model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class
@@ -304,92 +304,6 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
                 .groupby("target")
                 .map_groups(normalize_features)
             )
-
-.. _shuffling_data:
-
-Shuffling data
-==============
-
-.. _shuffling_file_order:
-
-Shuffle the ordering of files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To randomly shuffle the ordering of input files before reading, call a function like
-:func:`~ray.data.read_images` and specify ``shuffle="files"``. This randomly assigns
-input files to workers for reading.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.read_images(
-        "s3://anonymous@ray-example-data/image-datasets/simple",
-        shuffle="files",
-    )
-
-.. tip::
-
-    This is the fastest option for shuffle, and is a purely metadata operation. This
-    option doesn't shuffle the actual rows inside files, so the randomness might be
-    poor if each file has many rows.
-
-.. _local_shuffle_buffer:
-
-Local shuffle when iterating over batches
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To locally shuffle a subset of rows, call a function like :meth:`~ray.data.Dataset.iter_batches`
-and specify `local_shuffle_buffer_size`. This shuffles the rows up to a provided buffer
-size during iteration. See more details in
-:ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-
-    for batch in ds.iter_batches(
-        batch_size=2,
-        batch_format="numpy",
-        local_shuffle_buffer_size=250,
-    ):
-        print(batch)
-
-.. tip::
-
-    This is slower than shuffling ordering of files, and shuffles rows locally without
-    network transfer. This local shuffle buffer can be used together with shuffling
-    ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order>`.
-
-    If you observe reduced throughput when using ``local_shuffle_buffer_size``;
-    one way to diagnose this is to check the total time spent in batch creation by
-    examining the ``ds.stats()`` output (``In batch formatting``, under
-    ``Batch iteration time breakdown``).
-    
-    If this time is significantly larger than the
-    time spent in other steps, one way to improve performance is to decrease
-    ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
-
-Shuffle all rows
-~~~~~~~~~~~~~~~~
-
-To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
-
-.. testcode::
-
-    import ray
-
-    ds = (
-        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-        .random_shuffle()
-    )
-
-.. tip::
-
-    This is the slowest option for shuffle, and requires transferring data across
-    network between workers. This option achieves the best randomness among all options.
 
 .. _repartitioning_data:
 
