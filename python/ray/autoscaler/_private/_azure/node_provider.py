@@ -19,6 +19,7 @@ from ray.autoscaler._private._azure.config import (
 )
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
     TAG_RAY_CLUSTER_NAME,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
@@ -133,7 +134,10 @@ class AzureNodeProvider(NodeProvider):
         )
         ip_config = nic.ip_configurations[0]
 
-        if not self.provider_config.get("use_internal_ips", False):
+        if (
+            not self.provider_config.get("use_internal_ips", False)
+            or (self.provider.config.get("use_external_head_ip", False) and metadata["tags"][TAG_RAY_NODE_KIND] == NODE_KIND_HEAD)
+        ):
             public_ip_id = ip_config.public_ip_address.id
             metadata["public_ip_name"] = public_ip_id.split("/")[-1]
             public_ip = self.network_client.public_ip_addresses.get(
@@ -253,11 +257,12 @@ class AzureNodeProvider(NodeProvider):
             unique_id=self.provider_config["unique_id"],
             vm_id=uuid4().hex[:UNIQUE_ID_LEN],
         )[:VM_NAME_MAX_LEN]
-        use_internal_ips = self.provider_config.get("use_internal_ips", False)
 
         template_params = node_config["azure_arm_parameters"].copy()
         template_params["vmName"] = vm_name
-        template_params["provisionPublicIp"] = not use_internal_ips
+        template_params["provisionPublicIp"] = (
+            not self.provider_config.get("use_internal_ips", False) or (self.provider.config.get("use_external_head_ip", False) and config_tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD) 
+        )
         template_params["vmTags"] = config_tags
         template_params["vmCount"] = count
         template_params["msi"] = self.provider_config["msi"]

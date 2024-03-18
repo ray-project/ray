@@ -605,7 +605,7 @@ def kill_node(
 
     time.sleep(POLL_INTERVAL)
 
-    if config.get("provider", {}).get("use_internal_ips", False) is True:
+    if config.get("provider", {}).get("use_internal_ips", False):
         node_ip = provider.internal_ip(node)
     else:
         node_ip = provider.external_ip(node)
@@ -1378,7 +1378,7 @@ def get_worker_node_ips(
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
-    if config.get("provider", {}).get("use_internal_ips", False) is True:
+    if config.get("provider", {}).get("use_internal_ips", False):
         return [provider.internal_ip(node) for node in nodes]
     else:
         return [provider.external_ip(node) for node in nodes]
