@@ -10,6 +10,7 @@ from ray._private.test_utils import RayTestTimeoutException
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+
 def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
     # Test more hpus are configured than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
@@ -116,27 +117,27 @@ def test_check_accelerator_info():
 
 
 def test_decorator_args():
-    
+
     # This is a valid way of using the decorator.
-    @ray.remote(resources={'HPU': 1})  # noqa: F811
+    @ray.remote(resources={"HPU": 1})  # noqa: F811
     class Actor:  # noqa: F811
         def __init__(self):
             pass
-    
+
     # This is a valid way of using the decorator.
-    @ray.remote(num_cpus=1, resources={'HPU': 1})  # noqa: F811
+    @ray.remote(num_cpus=1, resources={"HPU": 1})  # noqa: F811
     class Actor:  # noqa: F811
         def __init__(self):
             pass
 
 
 def test_actor_deletion_with_hpus(shutdown_only):
-    ray.init(num_cpus=1, resources={'HPU': 1})
+    ray.init(num_cpus=1, resources={"HPU": 1})
 
     # When an actor that uses an HPU exits, make sure that the HPU resources
     # are released.
 
-    @ray.remote(resources={'HPU': 1})
+    @ray.remote(resources={"HPU": 1})
     class Actor:
         def getpid(self):
             return os.getpid()
@@ -154,16 +155,14 @@ def test_actor_hpus(ray_start_cluster):
     num_nodes = 2
     num_hpus_per_raylet = 2
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=10 * 2, resources={"HPU": num_hpus_per_raylet}
-        )
+        cluster.add_node(num_cpus=10 * 2, resources={"HPU": num_hpus_per_raylet})
     ray.init(address=cluster.address)
 
-    @ray.remote(resources={'HPU': 1})
+    @ray.remote(resources={"HPU": 1})
     class Actor1:
         def __init__(self):
             resource_ids = ray.get_runtime_context().get_accelerator_ids()
-            self.hpu_ids = resource_ids.get('HPU')
+            self.hpu_ids = resource_ids.get("HPU")
 
         def get_location_and_ids(self):
             return (
@@ -182,7 +181,7 @@ def test_actor_hpus(ray_start_cluster):
     location_actor_combinations = []
     for node_name in node_names:
         for hpu_id in range(num_hpus_per_raylet):
-            location_actor_combinations.append((node_name, (f'{hpu_id}',)))
+            location_actor_combinations.append((node_name, (f"{hpu_id}",)))
 
     assert set(locations_and_ids) == set(location_actor_combinations)
 
@@ -196,9 +195,9 @@ def test_actor_hpus(ray_start_cluster):
 def test_actor_habana_visible_devices(shutdown_only):
     """Test user can overwrite HABANA_VISIBLE_MODULES
     after the actor is created."""
-    ray.init(resources={'HPU': 1})
+    ray.init(resources={"HPU": 1})
 
-    @ray.remote(resources={'HPU': 1})
+    @ray.remote(resources={"HPU": 1})
     class Actor:
         def set_habana_visible_devices(self, habana_visible_devices):
             os.environ["HABANA_VISIBLE_MODULES"] = habana_visible_devices
@@ -254,9 +253,7 @@ def test_hpu_ids(shutdown_only):
     @ray.remote
     class Actor0:
         def __init__(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
-                "HPU"
-            ]
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
             assert len(hpu_ids) == 0
             assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
                 [str(i) for i in hpu_ids]  # noqa
@@ -265,9 +262,7 @@ def test_hpu_ids(shutdown_only):
             self.x = 0
 
         def test(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
-                "HPU"
-            ]
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
             assert len(hpu_ids) == 0
             assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
                 [str(i) for i in hpu_ids]  # noqa
@@ -277,9 +272,7 @@ def test_hpu_ids(shutdown_only):
     @ray.remote(resources={"HPU": 1})
     class Actor1:
         def __init__(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
-                "HPU"
-            ]
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
             assert len(hpu_ids) == 1
             assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
                 [str(i) for i in hpu_ids]  # noqa
@@ -288,9 +281,7 @@ def test_hpu_ids(shutdown_only):
             self.x = 1
 
         def test(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
-                "HPU"
-            ]
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
             assert len(hpu_ids) == 1
             assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
                 [str(i) for i in hpu_ids]
@@ -314,9 +305,7 @@ def test_hpu_with_placement_group(shutdown_only):
             pass
 
         def ready(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()[
-                "HPU"
-            ]
+            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
             assert len(hpu_ids) == num_hpus
             assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
                 [str(i) for i in hpu_ids]  # noqa
