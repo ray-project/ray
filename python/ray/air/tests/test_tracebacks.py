@@ -1,8 +1,10 @@
 import pytest
 
 import ray
+from ray import cloudpickle
+from tblib import pickling_support
 from ray.train import ScalingConfig
-from ray.air._internal.util import StartTraceback, skip_exceptions
+from ray.air._internal.util import StartTraceback, skip_exceptions, exception_cause
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 from ray.tune import Tuner
@@ -66,6 +68,24 @@ def test_recursion():
     assert (
         root_exception != skipped_exception
     ), "Skipped exception points to the original exception."
+
+
+def test_tblib():
+    """Test that tblib does not cause a maximum recursion error."""
+
+    with pytest.raises(Exception) as exc_info:
+        try:
+            try:
+                raise Exception("Root Exception")
+            except Exception as root_exception:
+                raise StartTraceback from root_exception
+        except Exception as start_traceback:
+            raise skip_exceptions(start_traceback) from exception_cause(start_traceback)
+
+    pickling_support.install()
+    reraised_exception = exc_info.value
+    # This should not raise a RecursionError/PicklingError.
+    cloudpickle.dumps(reraised_exception)
 
 
 def test_traceback_tuner(ray_start_2_cpus):
