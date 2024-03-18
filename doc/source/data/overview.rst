@@ -24,7 +24,7 @@ Why choose Ray Data?
 
 .. dropdown:: Faster and cheaper for modern deep learning applications
 
-    Ray Data is designed for deep learning applications that involve both CPU preprocessing and GPU inference. Through its powerful streaming execution, Ray Data streams working data from CPU preprocessing tasks to GPU inferencing or training tasks, allowing you to utilize both sets of resources concurrently.
+    Ray Data is designed for deep learning applications that involve both CPU preprocessing and GPU inference. Ray Data streams working data from CPU preprocessing tasks to GPU inferencing or training tasks, allowing you to utilize both sets of resources concurrently.
 
     By using Ray Data, your GPUs are no longer idle during CPU computation, reducing overall cost of the batch inference job.
 
@@ -34,7 +34,7 @@ Why choose Ray Data?
 
     You can start a Ray cluster on AWS, GCP, or Azure clouds. You can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including Parquet, images, JSON, text, CSV, etc.
 
-.. dropdown:: Out of the box scaling on heterogeneous cluster
+.. dropdown:: Out-of-the-box scaling on heterogeneous clusters
 
     Ray Data is built on Ray, so it easily scales on a heterogeneous cluster, which has different types of CPU and GPU machines. Code that works on one machine also runs on a large cluster without any changes.
 
