@@ -7,10 +7,12 @@
 RLlib's New API Stack
 =====================
 
+Overview
+--------
+
 Since early 2022, RLlib has been undergoing a fundamental overhaul from the ground up with respect to its architecture,
 design principles, code base, and user facing APIs. With Ray 2.10, we finally announce having reached alpha stability
-for those new APIs and this "new API stack" is now available for the following algorithms and setups.
-
+on this "new API stack" and it is now available for the following select algorithms and setups.
 
 .. list-table::
    :header-rows: 1
@@ -38,33 +40,38 @@ for those new APIs and this "new API stack" is now available for the following a
      - No
      - Yes
 
+Over the next couple of months, we will continue to test, benchmark, bug-fix, and
+further polish these new APIs as well as rollout more and more algorithms that can be run in
+either stack.
+The goal is to reach a state where the new stack can completely replace the old one.
 
-Keep in mind that we continue to test, benchmark, bug-fix, and further polish these new APIs
-and that when using the new API stack, you might run into issues and encounter instabilities.
+Keep in mind that due to its alpha nature, when using the new stack, you might run into issues and encounter instabilities.
+Also, rest assured that you will be able to continue using your custom classes and setups
+on the old API stack for the foreseeable future (beyond Ray 3.0).
 
 
 What is the New API Stack?
 --------------------------
 
-In a nutshell, the new API stack is the result of reducing RLlib's APIs from more than
-a dozen critical classes to only a handful. When designing the new interfaces, we strictly
+In a nutshell, the new API stack is the result of re-writing from scratch
+RLlib's core APIs and reducing its user-facing classes from more than a dozen critical one
+to only a handful. When designing these new interfaces from the ground up, we strictly
 applied the following design principles:
 
-* Suppose a simpler mental-model underlying an API
-* Usability of classes outside of RLlib
-* Separation of concerns (better answering: "What should be done when and by whom?")
-* Offer better modularity, interoperability, and pluggability of classes
+* Always suppose a simple mental-model underlying a new API
+* Classes must be usable outside of RLlib
+* Always separate concerns as much as possible (in other word, always try to clearly answer: "WHAT should be done WHEN and by WHOM?")
+* Offer more finegrained modularity, better interoperability, and friction-less pluggability of classes
 
-Applying these principles above, we were able to reduce the important classes an average
-user of RLlib should be familiar with from 7 (old stack) to only 4 (new stack):
+Applying these principles above, we were able to reduce the important "must-know" classes
+for the average RLlib user from 7 (old stack) to only 4 (new stack):
 
-TODO: add class ref links
 * RLModule (replaces ModelV2 and PolicyMap APIs)
 * Learner (replaces Policy and some of RolloutWorker)
-* SingleAgent- and MultiAgentEpisode (replaces TrajectoryViews, SampleCollector, Episode, and EpisodeV2)
-* ConnectorV2 (replaces Connector and some of RolloutWorker & Policy)
+* SingleAgentEpisode and MultiAgentEpisode (replaces TrajectoryViews, SampleCollector, Episode, and EpisodeV2)
+* ConnectorV2 (replaces Connector and some of RolloutWorker and Policy)
 
-The `AlgorithmConfig` API remains as-is (already an established API in the old stack).
+The `AlgorithmConfig` and `Algorithm` APIs remain as-is (these are already established APIs on the old stack).
 
 
 Comparison to the Old API Stack
@@ -108,5 +115,5 @@ Here is a quick comparison table listing features and design choices from the ne
 How to Use the New API Stack?
 -----------------------------
 
-TODO: Simple HOWTO with links to example scripts.
+In order
 
