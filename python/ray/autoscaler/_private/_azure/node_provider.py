@@ -119,7 +119,10 @@ class AzureNodeProvider(NodeProvider):
             return metadata
 
         for status in instance["statuses"]:
-            code, state = status["code"].split("/")
+            # If ProvisioningState is "failed" (e.g.,
+            # ProvisioningState/failed/RetryableError), we can get a third
+            # string here, so we need to limit to the first two outputs.
+            code, state = status["code"].split("/")[:2]
             # skip provisioning status
             if code == "PowerState":
                 metadata["status"] = state
