@@ -101,7 +101,7 @@ def _configure_resource_group(config):
     # Addresses issue (https://github.com/Azure/azure-quickstart-templates/issues/2786)
     # where existing subnet properties will get overwritten unless explicitly specified
     # during multiple deployments even if vnet/subnet do not change.
-    # May eventually be addressed by passing an empty list of subnets if they already exist:
+    # May eventually be fixed by passing empty subnet list if they already exist:
     # https://techcommunity.microsoft.com/t5/azure-networking-blog/azure-virtual-network-now-supports-updates-without-subnet/ba-p/4067952
     list_by_rg = get_azure_sdk_function(
         client=resource_client.resources, function_name="list_by_resource_group"
