@@ -41,7 +41,7 @@ steps:
         RELEASE_FREQUENCY: "nightly"
 
   - label: "Check Ray commit in {{matrix}} nightly image"
-    depends_on: forge
+    depends_on: trigger-postmerge
     allow_dependency_failure: true
     key: check-nightly-hash
     job_env: forge

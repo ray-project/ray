@@ -19,7 +19,7 @@ pull_image() {
 
 get_image_ray_commit() {
     TAG=$1
-    docker run -i --rm rayproject/"$RAY_TYPE":"$TAG" bash -c "python -u -c 'import ray; print(ray.__commit__)'"
+    docker run -i --rm rayproject/"$RAY_TYPE":"$TAG" bash -c "python -u -c 'import ray; print(ray.__commit__)'" | grep '^[a-f0-9]\{40\}$'
 }
 
 verify_image_commit() {
