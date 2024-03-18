@@ -12,11 +12,10 @@ from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import starlette.responses
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
 
 import ray
 from ray import cloudpickle
+from ray._private.tracing_utils import setup_tracing
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
@@ -86,17 +85,6 @@ def _load_deployment_def_from_import_path(import_path: str) -> Callable:
         deployment_def = deployment_def.func_or_class
 
     return deployment_def
-
-
-def setup_tracing(tracing_exporter) -> None:
-    # Sets the tracer_provider. This is only allowed once per execution
-    # context and will log a warning if attempted multiple times.
-    span_processors = tracing_exporter()
-
-    trace.set_tracer_provider(TracerProvider())
-
-    for span_processor in span_processors:
-        trace.get_tracer_provider().add_span_processor(span_processor)
 
 
 class ReplicaMetricsManager:
@@ -258,7 +246,7 @@ class ReplicaActor:
         serialized_init_kwargs: bytes,
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
-        serialized_exporter_def: bytes,
+        exporter_import_path: str,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -293,10 +281,9 @@ class ReplicaActor:
             self._event_loop,
             self._deployment_config.autoscaling_config,
         )
-        tracing_exporter = cloudpickle.loads(serialized_exporter_def)
 
-        if tracing_exporter:
-            setup_tracing(tracing_exporter)
+        if exporter_import_path:
+            setup_tracing(exporter_import_path)
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(

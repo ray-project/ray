@@ -414,7 +414,6 @@ class ActorReplicaWrapper:
                     if self._deployment_is_cross_language
                     else deployment_info.replica_config.serialized_init_args
                 )
-
             init_args = (
                 self.replica_id,
                 cloudpickle.dumps(deployment_info.replica_config.deployment_def)
@@ -426,9 +425,7 @@ class ActorReplicaWrapper:
                 else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
-                deployment_info.replica_config.serialized_exporter_def
-                if deployment_info.replica_config.serialized_exporter_def
-                else cloudpickle.dumps({}),
+                deployment_info.replica_config.exporter_import_path,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (

@@ -188,27 +188,59 @@ class LoggingConfig(BaseModel):
 
 @PublicAPI(stability="alpha")
 class TracingConfig(BaseModel):
-    """Tracing config for configuring serve tracing."""
+    """Tracing config for configuring serve tracing.
+
+    Example:
+
+    my_exporter.py:
+
+        .. code-block:: python
+
+        import os
+        from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+        from typing import List
+
+        def tracing_exporter() -> List[SimpleSpanProcessor]:
+            os.makedirs("/tmp/spans", exist_ok=True)
+            return [
+                SimpleSpanProcessor(
+                    ConsoleSpanExporter(out=open(f"/tmp/spans/{os.getpid()}.json", "a"))
+                )
+            ]
+
+    serve_config.yaml:
+
+        tracing_config:
+
+            exporter_import_path: my_exporter:tracing_exporter
+
+            enable: true
+
+    """
 
     class Config:
         extra = Extra.forbid
 
-    export_path: str = Field(
+    exporter_import_path: str = Field(
         default=None,
         description=(
-            "An export path to export traces. Should be of the "
+            "Path to exporter function. Should be of the "
             'form "module.submodule_1...submodule_n.'
             'export_tracing". This is equivalent to '
-            '"from module.submodule_1...submodule_n import export_tracing.'
+            '"from module.submodule_1...submodule_n import export_tracing. '
         ),
     )
 
-    enable_tracing: bool = Field(
+    enable: bool = Field(
         default=False,
-        description=("Whether to enable tracing. Default to False."),
+        description=(
+            "Whether to enable tracing. Default to False. "
+            "If enable is set to True, but no exporter_import_path is defined, "
+            "traces will saved to the /tmp/spans folder."
+        ),
     )
 
-    @validator("export_path")
+    @validator("exporter_import_path")
     def export_path_format_valid(cls, v: str):
         if v is None:
             return

@@ -212,8 +212,9 @@ message ReplicaConfig {
   string placement_group_bundles = 6;
   string placement_group_strategy = 7;
   int32 max_replicas_per_node = 8;
-  optional bytes exporter_def = 9;
+  string exporter_import_path = 9;
 }
+
 
 enum TargetCapacityDirection {
   UNSET = 0;
