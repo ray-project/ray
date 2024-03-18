@@ -25,12 +25,13 @@ config = (
     .training(
         model={
             "fcnet_hiddens": [256],
-            "fcnet_activation": "linear",
+            "fcnet_activation": "relu",
             "epsilon": [(0, 1.0), (10000, 0.05)],
             # "fcnet_weights_initializer": "xavier_uniform_",
             # "post_fcnet_weights_initializer": "xavier_uniform_",
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
+            "post_fcnet_hiddens": [256],
         },
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
@@ -39,7 +40,7 @@ config = (
             "beta": 0.4,
         },
         double_q=False,
-        num_atoms=10,
+        num_atoms=1,
         noisy=False,
         dueling=True,
         # double_q=tune.grid_search([False, True]),
@@ -55,28 +56,30 @@ stop = {
     "sampler_results/episode_reward_mean": 450.0,
     "timesteps_total": 50000,
 }
-
 ray.init(local_mode=True)
-# tuner = tune.Tuner(
-#     "DQN",
-#     param_space=config,
-#     run_config=train.RunConfig(
-#         stop=stop,
-#         name="dqn_new_stack_fixed",
-#         #callbacks=[
-#             # WandbLoggerCallback(
-#             #     api_key_file="data/wandb/wandb_api_key.txt",
-#             #     project="DQN",
-#             #     name="new_stack_fixed",
-#             #     log_config=True,
-#             # )
-#         #],
-#     ),
-#     # tune_config=tune.TuneConfig(
-#     #     num_samples=10,
-#     # )
-# )
-# tuner.fit()
+tuner = tune.Tuner(
+    "DQN",
+    param_space=config,
+    run_config=train.RunConfig(
+        stop=stop,
+        name="dqn_new_stack_fixed",
+        #callbacks=[
+            # WandbLoggerCallback(
+            #     api_key_file="data/wandb/wandb_api_key.txt",
+            #     project="DQN",
+            #     name="new_stack_fixed",
+            #     log_config=True,
+            # )
+        #],
+    ),
+    tune_config=tune.TuneConfig(
+        trial_name_creator=lambda trial: f"target_each_param_requires_grad_{trial}",
+    )
+    # tune_config=tune.TuneConfig(
+    #     num_samples=10,
+    # )
+)
+tuner.fit()
 
 # for double_q, num_atoms, dueling, noisy in product(
 #     *[[False, True], [1, 10], [False, True], [False, True]]
@@ -105,10 +108,10 @@ ray.init(local_mode=True)
 #     )
 #     tuner.fit()
 
-algo = config.build()
-for _ in range(stop["timesteps_total"]):
-    results = algo.train()
-    R = results['sampler_results']['episode_reward_mean']
-    print(f"R={results['sampler_results']['episode_reward_mean']}")
-    if R >= stop["sampler_results/episode_reward_mean"]:
-        break
+# algo = config.build()
+# for _ in range(stop["timesteps_total"]):
+#     results = algo.train()
+#     R = results["sampler_results"]["episode_reward_mean"]
+#     print(f"R={results['sampler_results']['episode_reward_mean']}")
+#     if R >= stop["sampler_results/episode_reward_mean"]:
+#         break

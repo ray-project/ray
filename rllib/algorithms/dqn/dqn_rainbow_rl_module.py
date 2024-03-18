@@ -34,23 +34,21 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         catalog: DQNRainbowCatalog = self.config.get_catalog()
 
         # If a dueling architecture is used.
-        self.is_dueling: bool = self.config.model_config_dict.get("dueling")
-        # If double Q learning is used.
-        self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
+        self.is_dueling: bool = self.config.model_config_dict.get("dueling", True)
         # If we use noisy layers.
-        self.uses_noisy: bool = self.config.model_config_dict.get("noisy")
+        self.uses_noisy: bool = self.config.model_config_dict.get("noisy", False)
         # The number of atoms for a distribution support.
-        self.num_atoms: int = self.config.model_config_dict.get("num_atoms")
+        self.num_atoms: int = self.config.model_config_dict.get("num_atoms", False)
         # If distributional learning is requested configure the support.
         if self.num_atoms > 1:
-            self.v_min: float = self.config.model_config_dict.get("v_min")
-            self.v_max: float = self.config.model_config_dict.get("v_max")
+            self.v_min: float = self.config.model_config_dict.get("v_min", -10.0)
+            self.v_max: float = self.config.model_config_dict.get("v_max", 10.0)
         # In case of noisy networks no need for epsilon greedy (see DQN Rainbow
         # paper).
         if not self.uses_noisy:
             # The epsilon scheduler for epsilon greedy exploration.
             self.epsilon_schedule = Scheduler(
-                fixed_value_or_schedule=self.config.model_config_dict["epsilon"],
+                fixed_value_or_schedule=self.config.model_config_dict.get("epsilon", [(0, 1.0), (10000, 0.02)]),
                 framework=self.framework,
             )
 
@@ -118,9 +116,6 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         return [
             QF_PREDS,
             QF_TARGET_NEXT_PREDS,
-            *(
-                [QF_NEXT_PREDS] if self.uses_double_q else []
-            ),
             *(
                 [
                     ATOMS,

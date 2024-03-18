@@ -224,7 +224,7 @@ class DQNRainbowCatalog(Catalog):
                     output_layer_bias_initializer_config=model_config_dict[
                         "post_fcnet_bias_initializer_config"
                     ],
-                    std_init=model_config_dict["sigma0"],
+                    std_init=model_config_dict.get(["sigma0"], 0.5),
                 )
         # Otherwise return the base encoder config chosen by the parent.
         # This will choose a CNN for 3D Box and LSTM for 'use_lstm=True'.<
