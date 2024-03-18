@@ -1170,6 +1170,8 @@ controlled by your cloud provider's configuration.
 * **Type:** Boolean
 * **Default:** ``False``
 
+.. _cluster-configuration-use-external-head-ip:
+
 ``provider.use_external_head_ip``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
