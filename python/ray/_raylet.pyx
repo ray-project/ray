@@ -1369,6 +1369,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     """
     cdef:
         int64_t gen_index = 0
+        CRayStatus return_status
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1390,7 +1391,8 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     # the yield'ed ObjectRef. Therefore, we must wait for all in-flight object
     # reports to complete before finishing the task.
     with nogil:
-        context.waiter.get().WaitAllObjectsReported()
+        return_status = context.waiter.get().WaitAllObjectsReported()
+    check_status(return_status)
 
 
 async def execute_streaming_generator_async(

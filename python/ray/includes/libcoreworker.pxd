@@ -91,7 +91,7 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
         CGeneratorBackpressureWaiter(
                 int64_t generator_backpressure_num_objects,
                 (CRayStatus() nogil) check_signals)
-        void WaitAllObjectsReported()
+        CRayStatus WaitAllObjectsReported()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
