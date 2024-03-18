@@ -1,23 +1,24 @@
 .. _monitoring-your-workload:
 
-Monitoring Your Workload with the Ray Data Dashboard
-====================================================
+Monitoring Your Workload
+========================
 
 This section helps you debug and monitor the execution of your :class:`~ray.data.Dataset` by viewing the:
 
-* :ref:`Ray Data Overview`
-* :ref:`Ray Dashboard Metrics`
-* :ref:`Ray Data Logs`
+* :ref:`Ray Data dashboard <ray-data-dashboard>`
+* :ref:`Ray Data logs <ray-data-logs>`
+* :ref:`Ray Data stats <ray-data-stats>`
 
-Ray Data Dashboard
+
+.. _ray-data-dashboard:
+
+Ray Data dashboard
 ------------------
 
 Ray Data emits Prometheus metrics in real-time while a Dataset is executing. These metrics are tagged by both dataset and operator, and are displayed in multiple views across the Ray dashboard.
 
 .. note::
    Most metrics are only available for physical operators that use the map operation. For example, physical operators created by :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, and :meth:`~ray.data.Dataset.flat_map`.
-
-.. _Ray Data Overview:
 
 Ray Data overview
 ~~~~~~~~~~~~~~~~~
@@ -40,8 +41,6 @@ For a more fine-grained overview, each dataset row in the table can also be expa
 .. tip::
 
     To evaluate a dataset-level metric where it's not appropriate to sum the values of all the individual operators, it may be more useful to look at the operator-level metrics of the last operator. For example, to calculate a dataset's throughput, use the "Rows Outputted" of the dataset's last operator, because the dataset-level metric contains the sum of rows outputted over all operators.
-
-.. _Ray Dashboard Metrics:
 
 Ray dashboard metrics
 ~~~~~~~~~~~~~~~~~~~~~
@@ -83,9 +82,10 @@ The metrics recorded include:
 .. image:: images/data-dashboard.png
    :align: center
 
+
 To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
 
-.. _Ray Data Logs:
+.. _ray-data-logs:
 
 Ray Data logs
 -------------
@@ -107,3 +107,9 @@ When an operator completes, the metrics for that operator are also logged.
    {'num_inputs_received': 20, 'bytes_inputs_received': 46440, 'num_task_inputs_processed': 20, 'bytes_task_inputs_processed': 46440, 'num_task_outputs_generated': 20, 'bytes_task_outputs_generated': 800, 'rows_task_outputs_generated': 100, 'num_outputs_taken': 20, 'bytes_outputs_taken': 800, 'num_outputs_of_finished_tasks': 20, 'bytes_outputs_of_finished_tasks': 800, 'num_tasks_submitted': 20, 'num_tasks_running': 0, 'num_tasks_have_outputs': 20, 'num_tasks_finished': 20, 'obj_store_mem_freed': 46440, 'obj_store_mem_spilled': 0, 'block_generation_time': 1.191296085, 'cpu_usage': 0, 'gpu_usage': 0, 'ray_remote_args': {'num_cpus': 1, 'scheduling_strategy': 'SPREAD'}}
 
 This log file can be found locally at `/tmp/ray/{SESSION_NAME}/logs/ray-data.log`. It can also be found on the Ray Dashboard under the head node's logs in the :ref:`Logs view <dash-logs-view>`.
+
+.. _ray-data-stats:
+
+Ray Data stats
+--------------
+This is where we will talk about the stats for a dataset.
