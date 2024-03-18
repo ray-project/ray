@@ -16,7 +16,6 @@ This guide shows you how to:
 * :ref:`Transform batches <transforming_batches>`
 * :ref:`Stateful transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
-* :ref:`Shuffle data <shuffling_data>`
 * :ref:`Repartition data <repartitioning_data>`
 
 .. _transforming_rows:
