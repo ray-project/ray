@@ -137,9 +137,9 @@ class AzureNodeProvider(NodeProvider):
         )
         ip_config = nic.ip_configurations[0]
 
-        if (
-            not self.provider_config.get("use_internal_ips", False)
-            or (self.provider.config.get("use_external_head_ip", False) and metadata["tags"][TAG_RAY_NODE_KIND] == NODE_KIND_HEAD)
+        if not self.provider_config.get("use_internal_ips", False) or (
+            self.provider.config.get("use_external_head_ip", False)
+            and metadata["tags"][TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
         ):
             public_ip_id = ip_config.public_ip_address.id
             metadata["public_ip_name"] = public_ip_id.split("/")[-1]
@@ -263,8 +263,11 @@ class AzureNodeProvider(NodeProvider):
 
         template_params = node_config["azure_arm_parameters"].copy()
         template_params["vmName"] = vm_name
-        template_params["provisionPublicIp"] = (
-            not self.provider_config.get("use_internal_ips", False) or (self.provider.config.get("use_external_head_ip", False) and config_tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD) 
+        template_params["provisionPublicIp"] = not self.provider_config.get(
+            "use_internal_ips", False
+        ) or (
+            self.provider.config.get("use_external_head_ip", False)
+            and config_tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
         )
         template_params["vmTags"] = config_tags
         template_params["vmCount"] = count
@@ -371,9 +374,9 @@ class AzureNodeProvider(NodeProvider):
                 if nint.id is not None:
                     nic_name = nint.id.split("/")[-1]
                     nics.add(nic_name)
-                    if (
-                        not self.provider_config.get("use_internal_ips", False)
-                        or (self.provider.config.get("use_external_head_ip", False) and vm.tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD)
+                    if not self.provider_config.get("use_internal_ips", False) or (
+                        self.provider.config.get("use_external_head_ip", False)
+                        and vm.tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
                     ):
                         nic = self.network_client.network_interfaces.get(
                             resource_group_name=resource_group,

@@ -121,7 +121,14 @@ def _configure_resource_group(config):
         subnet = get_by_id(vnid, resource_client.DEFAULT_API_VERSION).properties[
             "subnets"
         ][0]
-        template_vnet = next((rs for rs in template["resources"] if rs["type"] == "Microsoft.Network/virtualNetworks"), None)
+        template_vnet = next(
+            (
+                rs
+                for rs in template["resources"]
+                if rs["type"] == "Microsoft.Network/virtualNetworks"
+            ),
+            None,
+        )
         if template_vnet is not None:
             template_subnets = template_vnet["properties"].get("subnets")
             if template_subnets is not None:
