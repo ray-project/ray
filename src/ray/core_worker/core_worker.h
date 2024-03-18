@@ -27,6 +27,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
+#include "ray/core_worker/experimental_mutable_object_network_manager.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
@@ -738,7 +739,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
              const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -1634,9 +1635,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  Status ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
-                                                   bool is_writer);
-
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1686,7 +1684,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status GetObjects(const std::vector<ObjectID> &ids,
                     const int64_t timeout_ms,
-                    std::vector<std::shared_ptr<RayObject>> *results);
+                    std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Helper for Get, used only to read experimental mutable objects.
   ///
@@ -1694,7 +1692,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
-                                       std::vector<std::shared_ptr<RayObject>> *results);
+                                       std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -1762,8 +1760,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
-  /// Used to read and write experimental channels.
+  /// Manages mutable objects on the local node.
   std::shared_ptr<ExperimentalMutableObjectManager> experimental_mutable_object_manager_;
+
+  /// Coordinates communcation of mutable objects between nodes.
+  std::shared_ptr<ExperimentalMutableObjectNetworkManager<CoreWorkerPlasmaStoreProvider>>
+      mutable_obj_network_manager_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
 
