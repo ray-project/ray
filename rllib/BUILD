@@ -2334,7 +2334,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_learnt_vs_learnt.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-iter=10"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--framework=torch", "--stop-iter=10"],
 )
 
 # @OldAPIStack

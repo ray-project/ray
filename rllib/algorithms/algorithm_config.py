@@ -897,7 +897,11 @@ class AlgorithmConfig(_Config):
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
-                        module_specs=self.rl_module_spec.module_specs,
+                        module_specs=(
+                            self.rl_module_spec.module_specs
+                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            else set(self.policies)
+                        ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
