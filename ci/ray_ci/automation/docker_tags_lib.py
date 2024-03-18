@@ -13,6 +13,51 @@ from ci.ray_ci.utils import logger
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
 
+PYTHON_VERSIONS_RAY = ["", "py39", "py310", "py311"]
+PYTHON_VERSIONS_RAYML = ["", "py39", "py310"]
+PLATFORMS_RAY = [
+    "cpu",
+    "cu115",
+    "cu116",
+    "cu117",
+    "cu118",
+    "cu121",
+    "gpu",
+    "",
+]
+PLATFORMS_RAYML = [
+    "",
+    "cpu",
+    "gpu",
+    "cu118",
+]
+ARCHITECTURES_RAY = ["x86_64", "aarch64"]
+ARCHITECTURES_RAYML = ["x86_64"]
+
+
+def list_docker_image_versions(prefix: str, ray_type: str) -> List[str]:
+    if ray_type not in ["ray", "ray-ml"]:
+        raise ValueError("ray_type must be 'ray' or 'ray-ml'")
+    versions = []
+    python_versions = (
+        PYTHON_VERSIONS_RAY if ray_type == "ray" else PYTHON_VERSIONS_RAYML
+    )
+    platform_versions = PLATFORMS_RAY if ray_type == "ray" else PLATFORMS_RAYML
+    architectures = ARCHITECTURES_RAY if ray_type == "ray" else ARCHITECTURES_RAYML
+
+    for python_version in python_versions:
+        for platform_version in platform_versions:
+            for arch in architectures:
+                version = prefix
+                if python_version:
+                    version += "-" + python_version
+                if platform_version:
+                    version += "-" + platform_version
+                if arch != "x86_64":
+                    version += "-" + arch
+                versions.append(version)
+    return versions
+
 
 class DockerHubRateLimitException(Exception):
     """

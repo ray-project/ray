@@ -162,3 +162,13 @@ py_binary(
         ci_require("click"),
     ],
 )
+
+py_binary(
+    name = "list_docker_tags",
+    srcs = ["list_docker_tags.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
