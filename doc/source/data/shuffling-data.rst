@@ -99,7 +99,7 @@ To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuf
 .. _optimizing_shuffles:
 
 Advanced: Optimizing shuffles
--------------------
+-----------------------------
 
 *Shuffle* operations are all-to-all operations where the entire Dataset must be materialized in memory before execution can proceed.
 Currently, these are:
