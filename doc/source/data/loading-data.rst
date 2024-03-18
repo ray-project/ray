@@ -589,10 +589,13 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
         table and converts it to a Dataset directly.
 
         .. warning::
-            :class:`~ray.data.from_huggingface` doesn't support parallel
-            reads. This isn't an issue with in-memory 🤗 Datasets, but may fail with
-            large memory-mapped 🤗 Datasets. Also, 🤗 ``IterableDataset`` objects aren't
-            supported.
+            :class:`~ray.data.from_huggingface` only supports parallel reads in certain
+            instances, namely for untransformed public 🤗 Datasets. For those datasets,
+            `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
+            will be used to perform a distributed read, otherwise a single node read will be used.
+            This shouldn't be an issue with in-memory 🤗 Datasets, but may fail with
+            large memory-mapped 🤗 Datasets. Additionally, 🤗 ``DatasetDict`` or ``IteraableDatasetDict``
+            objects aren't supported.
 
         .. testcode::
 
