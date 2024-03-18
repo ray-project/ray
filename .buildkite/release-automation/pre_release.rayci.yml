@@ -6,13 +6,12 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
-      - sleep 3h
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - label: "Check commit hash"
+    depends_on: forge
     key: check-commit-hash
     job_env: forge
-    depends_on: check-release-blockers
     allow_dependency_failure: true
     commands:
       - bash .buildkite/release-automation/check-commit-hash.sh
@@ -40,6 +39,18 @@ steps:
       env:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "nightly"
+
+  - label: "Check Ray commit in {{matrix}} nightly image"
+    depends_on: forge
+    allow_dependency_failure: true
+    key: check-nightly-hash
+    job_env: forge
+    commands:
+      - export BUILDKITE_COMMIT="${BUILDKITE_COMMIT}"
+      - bash .buildkite/release-automation/check_nightly_commit.sh {{matrix}}
+    matrix:
+      - ray
+      - ray-ml
 
   - block: "Trigger Release nightly-3x test"
     key: block-release-nightly-3x-test
