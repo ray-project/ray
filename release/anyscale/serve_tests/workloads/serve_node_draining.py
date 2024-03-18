@@ -76,6 +76,7 @@ class NodeDrainerActor:
                 draining_node_id,
                 autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
                 "spot instance preemption",
+                (time.time() + 60) * 1000,
             )
             assert is_accepted
             wait_for_condition(
