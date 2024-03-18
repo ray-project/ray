@@ -10,4 +10,4 @@
     and that you will be able to continue using your existing custom (old stack) classes
     and setups for the foreseeable future.
 
-    Click `here <rllib-new-api-stack.html>`__ for more details on how to use the new API stack.
+    `Click here </rllib/package_ref/rllib-new-api-stack.html>`__ for more details on how to use the new API stack.

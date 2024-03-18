@@ -16,6 +16,7 @@ RLlib: Industry-Grade Reinforcement Learning
     rllib-algorithms
     user-guides
     rllib-examples
+    rllib-new-api-stack
     package_ref/index
 
 
