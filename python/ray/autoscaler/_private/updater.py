@@ -90,9 +90,9 @@ class NodeUpdater:
     ):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
-        use_internal_ip = use_internal_ip or provider_config.get(
+        use_internal_ip = use_internal_ip or (provider_config.get(
             "use_internal_ips", False
-        )
+        ) and not (is_head_node and provider_config.get("use_external_head_ip", False)))
         self.cmd_runner = provider.get_command_runner(
             self.log_prefix,
             node_id,
