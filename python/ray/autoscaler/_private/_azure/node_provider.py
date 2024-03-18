@@ -138,7 +138,7 @@ class AzureNodeProvider(NodeProvider):
         ip_config = nic.ip_configurations[0]
 
         if not self.provider_config.get("use_internal_ips", False) or (
-            self.provider.config.get("use_external_head_ip", False)
+            self.provider_config.get("use_external_head_ip", False)
             and metadata["tags"][TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
         ):
             public_ip_id = ip_config.public_ip_address.id
@@ -266,7 +266,7 @@ class AzureNodeProvider(NodeProvider):
         template_params["provisionPublicIp"] = not self.provider_config.get(
             "use_internal_ips", False
         ) or (
-            self.provider.config.get("use_external_head_ip", False)
+            self.provider_config.get("use_external_head_ip", False)
             and config_tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
         )
         template_params["vmTags"] = config_tags
@@ -375,7 +375,7 @@ class AzureNodeProvider(NodeProvider):
                     nic_name = nint.id.split("/")[-1]
                     nics.add(nic_name)
                     if not self.provider_config.get("use_internal_ips", False) or (
-                        self.provider.config.get("use_external_head_ip", False)
+                        self.provider_config.get("use_external_head_ip", False)
                         and vm.tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
                     ):
                         nic = self.network_client.network_interfaces.get(
