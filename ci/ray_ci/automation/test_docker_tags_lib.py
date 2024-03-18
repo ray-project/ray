@@ -519,7 +519,7 @@ def test_backup_release_tags(
                 "nightly-py310-cpu",
                 "nightly-py310-gpu",
                 "nightly-py310-cu118",
-            ]
+            ],
         ),
     ],
 )
@@ -529,6 +529,7 @@ def test_list_docker_image_versions(prefix, ray_type, expected_tags):
     expected_tags = set(expected_tags)
     for tag in tags:
         assert tag in expected_tags
+
 
 def test_list_docker_image_versions_failure():
     with pytest.raises(ValueError):
