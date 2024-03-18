@@ -1,4 +1,7 @@
-"""Runs the PettingZoo Waterworld env in RLlib using independent multi-agent learning.
+"""Runs the PettingZoo Waterworld multi-agent env in RLlib using single policy learning.
+
+Other than the `pettingzoo_independent_learning.py` example (in this same folder),
+in this example, we simply train a single policy (shared by all agents).
 
 See: https://pettingzoo.farama.org/environments/sisl/waterworld/
 for more details on the environment.
@@ -26,27 +29,24 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The above options can reach a combined reward of 0.0 or more after about 500k env
-timesteps. Keep in mind, though, that due to the separate value functions (and
-learned policies in general), one agent's gain (in per-agent reward) might cause the
-other agent's reward to decrease at the same time. However, over time, both agents
-should simply improve.
+The above options can reach a combined reward of roughly ~0.0 after about 500k-1M env
+timesteps. Keep in mind, though, that in this setup, the agents do not have the
+opportunity to benefit from or even out other agents' mistakes (and behavior in general)
+as everyone is using the same policy. Hence, this example learns a more generic policy,
+which might be less specialized to certain "niche exploitation opportunities" inside
+the env:
 
-+---------------------+------------+-----------------+--------+------------------+
-| Trial name          | status     | loc             |   iter |   total time (s) |
-|---------------------+------------+-----------------+--------+------------------+
-| PPO_env_a82fc_00000 | TERMINATED | 127.0.0.1:28346 |    124 |          363.599 |
-+---------------------+------------+-----------------+--------+------------------+
++---------------------+----------+-----------------+--------+-----------------+
+| Trial name          | status   | loc             |   iter |  total time (s) |
+|---------------------+----------+-----------------+--------+-----------------+
+| PPO_env_91f49_00000 | RUNNING  | 127.0.0.1:63676 |    200 |         605.176 |
++---------------------+----------+-----------------+--------+-----------------+
 
-+--------+-------------------+--------------------+--------------------+
-|     ts |   combined reward |   reward pursuer_1 |   reward pursuer_0 |
-+--------+-------------------+--------------------+--------------------|
-| 496000 |           2.24542 |           -34.6869 |            36.9324 |
-+--------+-------------------+--------------------+--------------------+
-
-Note that the two agents (`pursuer_0` and `pursuer_1`) are optimized on the exact same
-objective and thus differences in the rewards can be attributed to weight initialization
-(and sampling randomness) only.
++--------+-------------------+-------------+
+|     ts |   combined reward |   reward p0 |
++--------+-------------------+-------------|
+| 800000 |          0.323752 |    0.161876 |
++--------+-------------------+-------------+
 """
 from pettingzoo.sisl import waterworld_v4
 
@@ -80,17 +80,14 @@ if __name__ == "__main__":
     # in this same repository folder.
     register_env("env", lambda _: PettingZooEnv(waterworld_v4.env()))
 
-    # Policies are called just like the agents (exact 1:1 mapping).
-    policies = {f"pursuer_{i}" for i in range(args.num_agents)}
-
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env")
         .multi_agent(
-            policies=policies,
-            # Exact 1:1 mapping from AgentID to ModuleID.
-            policy_mapping_fn=(lambda aid, *args, **kwargs: aid),
+            policies={"p0"},
+            # All agents map to the exact same policy.
+            policy_mapping_fn=(lambda aid, *args, **kwargs: "p0"),
         )
         .training(
             model={
@@ -100,7 +97,7 @@ if __name__ == "__main__":
         )
         .rl_module(
             rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs={p: SingleAgentRLModuleSpec() for p in policies},
+                module_specs={"p0": SingleAgentRLModuleSpec()},
             ),
         )
     )

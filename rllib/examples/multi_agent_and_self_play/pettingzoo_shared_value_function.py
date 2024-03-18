@@ -1,7 +1,17 @@
-"""Runs the PettingZoo Waterworld env in RLlib using independent multi-agent learning.
+"""Runs the PettingZoo Waterworld env in RLlib using a shared value function.
 
 See: https://pettingzoo.farama.org/environments/sisl/waterworld/
 for more details on the environment.
+
+Note that this example is different from the old API stack scripts:
+`examples/centralized_critic.py` and `examples/centralized_critic_2.py` in the
+sense that here, a true shared value function is used via the new
+`MultiAgentRLModule` class as opposed to both of the old API stack scripts, which
+do NOT use a single central value function, but 2: One for each policy learnt.
+However, these 2 value functions are trained in the exact same fashion and with
+almost the same data (except for the opponent actions).
+The approach used here is cleaner and should serve as a template for similar setups,
+both cooperative and adversarial.
 
 
 How to run this script?
@@ -26,6 +36,7 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
+TODO
 The above options can reach a combined reward of 0.0 or more after about 500k env
 timesteps. Keep in mind, though, that due to the separate value functions (and
 learned policies in general), one agent's gain (in per-agent reward) might cause the
@@ -91,12 +102,6 @@ if __name__ == "__main__":
             policies=policies,
             # Exact 1:1 mapping from AgentID to ModuleID.
             policy_mapping_fn=(lambda aid, *args, **kwargs: aid),
-        )
-        .training(
-            model={
-                "vf_share_layers": True,
-            },
-            vf_loss_coeff=0.005,
         )
         .rl_module(
             rl_module_spec=MultiAgentRLModuleSpec(

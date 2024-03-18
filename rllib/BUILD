@@ -2289,7 +2289,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=0.0", "--num-cpus=4"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-210.0", "--num-cpus=4"],
 )
 
 py_test(

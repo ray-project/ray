@@ -73,6 +73,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     assert args.num_agents == 2, "Must set --num-agents=2 when running this script!"
+    assert (
+        args.enable_new_api_stack
+    ), "Must set --enable-new-api-stack when running this script!"
 
     base_config = (
         get_trainable_cls(args.algo)

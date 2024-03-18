@@ -14,8 +14,8 @@ modifies the environment.
 """
 
 import argparse
-import numpy as np
 from gymnasium.spaces import Discrete
+import numpy as np
 import os
 
 import ray
