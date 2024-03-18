@@ -11,7 +11,7 @@ This section should help you:
 Deploying Ray Serve on Kubernetes provides the scalable compute of Ray Serve and operational benefits of Kubernetes.
 This also allows you to integrate with existing applications that may be running on Kubernetes. The recommended practice when running on Kubernetes is to use the [RayService] controller that's provided as part of [KubeRay].
 
-Running on Ray workloads on [Anyscale](https://www.anyscale.com/get-started) provides high-availability, high-performance autoscaling, multi-region and multi-cloud capabilities out of the box.
+> NOTE: Running on Ray workloads on [Anyscale](https://www.anyscale.com/get-started) provides high-availability, high-performance autoscaling, multi-region and multi-cloud capabilities out of the box.
 
 A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application that runs on top of it into a single Kubernetes manifest.
 Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands.
