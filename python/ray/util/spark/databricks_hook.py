@@ -177,5 +177,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         and ends up selecting the loopback interface, breaking cross-node
         commnication."""
         return {
+            **super().custom_environment_variables(),
             "GLOO_SOCKET_IFNAME": "eth0",
         }
