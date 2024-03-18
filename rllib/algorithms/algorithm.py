@@ -3300,11 +3300,6 @@ class Algorithm(Trainable, AlgorithmBase):
         pass
 
 
-# TODO: Create a dict that throw a deprecation warning once we have fully moved
-#  to AlgorithmConfig() objects (some algos still missing).
-COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
-
-
 class TrainIterCtx:
     def __init__(self, algo: Algorithm):
         self.algo = algo
@@ -3369,9 +3364,9 @@ class TrainIterCtx:
                 self.algo._counters[NUM_ENV_STEPS_TRAINED] - self.init_env_steps_trained
             )
 
-        min_t = self.algo.config["min_time_s_per_iteration"]
-        min_sample_ts = self.algo.config["min_sample_timesteps_per_iteration"]
-        min_train_ts = self.algo.config["min_train_timesteps_per_iteration"]
+        min_t = self.algo.config.min_time_s_per_iteration
+        min_sample_ts = self.algo.config.min_sample_timesteps_per_iteration
+        min_train_ts = self.algo.config.min_train_timesteps_per_iteration
         # Repeat if not enough time has passed or if not enough
         # env|train timesteps have been processed (or these min
         # values are not provided by the user).

@@ -125,13 +125,13 @@ class PettingZooEnv(MultiAgentEnv):
 
         self._agent_ids = set(self.env.agents)
 
-        self.observation_space = gym.spaces.Dict({
-            aid: self.env.observation_space(aid) for aid in self._agent_ids
-        })
+        self.observation_space = gym.spaces.Dict(
+            {aid: self.env.observation_space(aid) for aid in self._agent_ids}
+        )
         self._obs_space_in_preferred_format = True
-        self.action_space = gym.spaces.Dict({
-            aid: self.env.action_space(aid) for aid in self._agent_ids
-        })
+        self.action_space = gym.spaces.Dict(
+            {aid: self.env.action_space(aid) for aid in self._agent_ids}
+        )
         self._action_space_in_preferred_format = True
 
     def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:

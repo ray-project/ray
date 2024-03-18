@@ -615,6 +615,7 @@ class ConnectorV2(abc.ABC):
         func: Callable[[Any, int, AgentID, ModuleID], Any],
     ) -> None:
         data_to_process = [batch.get(c) for c in force_list(column)]
+        single_col = isinstance(column, str)
         if any(d is None for d in data_to_process):
             raise ValueError(
                 f"Invalid column name(s) ({column})! One or more not found in "
@@ -626,11 +627,13 @@ class ConnectorV2(abc.ABC):
         if isinstance(data_to_process[0], list):
             for list_pos, data_tuple in enumerate(zip(*data_to_process)):
                 results = func(
-                    data_tuple[0] if isinstance(column, str) else data_tuple,
+                    data_tuple[0] if single_col else data_tuple,
                     None,  # episode_id
                     None,  # agent_id
                     None,  # module_id
                 )
+                # Tuple'ize results if single_col.
+                results = (results,) if single_col else results
                 for col_slot, result in enumerate(force_list(results)):
                     data_to_process[col_slot][list_pos] = result
         # Single-agent/multi-agent cases.
@@ -649,12 +652,14 @@ class ConnectorV2(abc.ABC):
                 other_lists = [d[key] for d in data_to_process[1:]]
                 for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
                     results = func(
-                        data_tuple[0] if isinstance(column, str) else data_tuple,
+                        data_tuple[0] if single_col else data_tuple,
                         eps_id,
                         agent_id,
                         module_id,
                     )
-                    for col_slot, result in enumerate(force_list(results)):
+                    # Tuple'ize results if single_col.
+                    results = (results,) if single_col else results
+                    for col_slot, result in enumerate(results):
                         data_to_process[col_slot][key][list_pos] = result
 
     @staticmethod

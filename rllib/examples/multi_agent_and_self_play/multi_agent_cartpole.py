@@ -1,10 +1,20 @@
 """Simple example of setting up an agent-to-module mapping function.
 
+How to run this script?
+-----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2`
+
 Control the number of agents and policies (RLModules) via --num-agents and
 --num-policies.
 
-This works with hundreds of agents and policies, but note that initializing
-many policies might take some time.
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+Which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
 
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -40,7 +50,9 @@ if __name__ == "__main__":
             # TODO (sven): MAEnvRunner does not support vectorized envs yet
             #  due to gym's env checkers and non-compatability with RLlib's
             #  MultiAgentEnv API.
-            num_envs_per_worker=1 if args.num_agents > 0 else 20,
+            num_envs_per_worker=1
+            if args.num_agents > 0
+            else 20,
         )
     )
 

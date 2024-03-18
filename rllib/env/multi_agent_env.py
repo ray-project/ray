@@ -310,7 +310,8 @@ class MultiAgentEnv(gym.Env):
         self,
         groups: Dict[str, List[AgentID]],
         obs_space: gym.Space = None,
-            act_space: gym.Space = None) -> "MultiAgentEnv":
+        act_space: gym.Space = None,
+    ) -> "MultiAgentEnv":
         """Convenience method for grouping together agents in this env.
 
         An agent group is a list of agent IDs that are mapped to a single

@@ -194,9 +194,9 @@ class AgentToModuleMapping(ConnectorV2):
             # Easy way out, user has provided space in the RLModule spec dict.
             if isinstance(self._module_specs, dict) and module_id in self._module_specs:
                 if which == "obs" and self._module_specs[module_id].observation_space:
-                    ret_space[module_id] = (
-                        self._module_specs[module_id].observation_space
-                    )
+                    ret_space[module_id] = self._module_specs[
+                        module_id
+                    ].observation_space
                     continue
                 elif which == "act" and self._module_specs[module_id].action_space:
                     ret_space[module_id] = self._module_specs[module_id].action_space
@@ -235,13 +235,13 @@ class AgentToModuleMapping(ConnectorV2):
                 # Still no space found for this module ID -> Error out.
                 if not one_agent_for_module_found:
                     raise ValueError(
-                        f"Could not find or derive any {what}-space for RLModule "
+                        f"Could not find or derive any {which}-space for RLModule "
                         f"{module_id}! This can happen if your `config.rl_module(rl_"
                         f"module_spec=...)` does NOT contain space information for this"
                         " particular single-agent module AND your agent-to-module-"
                         "mapping function is stochastic (such that for some agent A, "
                         "more than one ModuleID might be returned somewhat randomly). "
-                        f"You can fix this by providing {what}-space information via "
+                        f"You can fix this by providing {which}-space information via "
                         "`config.rl_module(rl_module_spec=MultiAgentRLModuleSpec("
                         f"module_specs={{'{module_id}': SingleAgentRLModuleSpec("
                         "observation_space=..., action_space=...)}}))"

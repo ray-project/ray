@@ -206,8 +206,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     func=lambda item, eps_id, aid, mid: (
                         item
                         if mid is not None and not rl_module[mid].is_stateful()
-                        # Expand on axis 0 (the to-be-time-dim) if item has not been batched'
-                        # yet, otherwise axis=1 (the time-dim).
+                        # Expand on axis 0 (the to-be-time-dim) if item has not been
+                        # batched yet, otherwise axis=1 (the time-dim).
                         else tree.map_structure(
                             lambda s: np.expand_dims(
                                 s, axis=(1 if isinstance(s, BatchedNdArray) else 0)
@@ -216,14 +216,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         )
                     ),
                 )
-            #data = tree.map_structure(
-            #    # Expand on axis 0 (the to-be-time-dim) if item has not been batched'
-            #    # yet, otherwise axis=1 (the time-dim).
-            #    lambda s: np.expand_dims(
-            #        s, axis=(1 if isinstance(s, BatchedNdArray) else 0)
-            #    ),
-            #    data,
-            #)
             shared_data["_added_single_ts_time_rank"] = True
         else:
             # Before adding STATE_IN to the `data`, zero-pad existing data and batch

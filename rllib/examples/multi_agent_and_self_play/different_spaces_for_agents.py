@@ -1,14 +1,23 @@
 """
 Example showing how one can create a multi-agent env, in which the different agents
 have different observation and action spaces.
+
 These spaces do NOT necessarily have to be specified manually by the user. Instead,
 RLlib will try to automatically infer them from the env provided spaces dicts
 (agentID -> obs/act space) and the policy mapping fn (mapping agent IDs to policy IDs).
 
----
-Run this example with defaults (using Tune):
+How to run this script?
+-----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2`
 
-  $ python multi_agent_different_spaces_for_agents.py
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+Which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
 
 import gymnasium as gym

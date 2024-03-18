@@ -12,6 +12,7 @@ class AlwaysSameHeuristicRLM(RLModule):
 
     The first move is random, all the following moves are the same as the first one.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._actions_per_vector_idx = defaultdict(int)
@@ -55,6 +56,7 @@ class BeatLastHeuristicRLM(RLModule):
     For example, after opponent played `rock` (and this policy made a random
     move), the next move would be `paper`(to beat `rock`).
     """
+
     @override(RLModule)
     def _forward_inference(self, batch, **kwargs):
         """Returns the exact action that would beat the previous action of the opponent.

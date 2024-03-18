@@ -1226,8 +1226,7 @@ def run_rllib_example_script_experiment(
 
     # Extend the `base_config` based on provided `args`.
     config = (
-        base_config
-        .framework(args.framework)
+        base_config.framework(args.framework)
         .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .rollouts(
             num_rollout_workers=args.num_env_runners,
@@ -1289,14 +1288,18 @@ def run_rllib_example_script_experiment(
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if args.num_agents > 0:
         progress_reporter = CLIReporter(
-            metric_columns={**{
-                "training_iteration": "iter",
-                "time_total_s": "total time (s)",
-                "timesteps_total": "ts",
-                "sampler_results/episode_reward_mean": "combined reward",
-            }, **{
-                f"policy_reward_mean/{pid}": f"reward {pid}" for pid in config.policies
-            }},
+            metric_columns={
+                **{
+                    "training_iteration": "iter",
+                    "time_total_s": "total time (s)",
+                    "timesteps_total": "ts",
+                    "sampler_results/episode_reward_mean": "combined reward",
+                },
+                **{
+                    f"policy_reward_mean/{pid}": f"reward {pid}"
+                    for pid in config.policies
+                },
+            },
         )
 
     # Force Tuner to use old progress output as the new one silently ignores our custom

@@ -6,12 +6,25 @@ This demonstrates running the following policies in competition:
     Agent 2: Simple, feedforward PPO policy
              OR: PPO Policy with an LSTM network
 
-Without `--use-lstm`, Agent 2 should quickly reach a reward of ~7.0 (always
-beating the `always_same` policy, and only 50% of the time beating the `beat_last`
-policy).
+How to run this script?
+-----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2 [--use-lstm]?`
+
+Without `--use-lstm`, Agent 2 should quickly reach a reward of ~7.0, always
+beating the `always_same` policy, but only 50% of the time beating the `beat_last`
+policy.
 
 With `--use-lstm`, Agent 2 should eventually(!) reach a reward of >9.0 (always
 beating both the `always_same` policy and the `beat_last` policy).
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+Which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
 import random
 
@@ -58,6 +71,8 @@ register_env(
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    assert args.num_agents == 2, "Must set --num-agents=2 when running this script!"
 
     base_config = (
         get_trainable_cls(args.algo)

@@ -2179,7 +2179,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/evaluation/custom_evaluation.py"],
-    args = ["--num-cpus=4", "--framework=torch", "--as-test"]
+    args = ["--enable-new-api-stack", "--framework=torch", "--as-test", "--stop-reward=0.75", "--num-cpus=5"]
 )
 
 py_test(
@@ -2188,7 +2188,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/evaluation/custom_evaluation.py"],
-    args = ["--num-cpus=4", "--as-test", "--framework=torch", "--evaluation-parallel-to-training"]
+    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=0.75", "--evaluation-parallel-to-training", "--num-cpus=5"]
 )
 
 py_test(
@@ -2266,12 +2266,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/independent_learning",
-    main = "examples/multi_agent_and_self_play/independent_learning.py",
+    name = "examples/multi_agent_and_self_play/pettingzoo_independent_learning",
+    main = "examples/multi_agent_and_self_play/pettingzoo_independent_learning.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/independent_learning.py"],
-    args = ["--enable-new-api-stack", "--num-gpus=0", "--as-test"]
+    srcs = ["examples/multi_agent_and_self_play/pettingzoo_independent_learning.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-200.0", "--num-cpus=4"]
 )
 
 py_test(
@@ -2284,12 +2284,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/parameter_sharing",
-    main = "examples/multi_agent_and_self_play/parameter_sharing.py",
+    name = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing",
+    main = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/parameter_sharing.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch"],
+    srcs = ["examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=0.0", "--num-cpus=4"],
 )
 
 py_test(
@@ -2316,15 +2316,15 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_and_self_play/rock_paper_scissors_learnt_vs_learnt.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-iter=10"],
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/two_step_game",
-    main = "examples/multi_agent_and_self_play/two_step_game.py",
+    name = "examples/multi_agent_and_self_play/two_step_game_with_grouped_agents",
+    main = "examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/two_step_game.py"],
+    srcs = ["examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=7.0"]
 )
 

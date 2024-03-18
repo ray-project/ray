@@ -6,10 +6,25 @@ This example has two RLModules (as action computing policies):
 
 The environment is MultiAgentCartPole, in which there are n agents both policies
 
+
+How to run this script?
+-----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+Which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
 In the console output, you can see the PPO policy ("learnable_policy") does much
 better than "random":
-
-Results for running with command line options: `--enable-new-api-stack --num-agents=2`
 
 +-------------------+------------+----------+------+----------------+
 | Trial name        | status     | loc      | iter | total time (s) |
@@ -80,4 +95,3 @@ if __name__ == "__main__":
     )
 
     run_rllib_example_script_experiment(base_config, args)
-
