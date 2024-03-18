@@ -5,8 +5,6 @@ Ray Data Overview
 
 .. _data-intro:
 
-.. image:: images/dataset.svg
-
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
