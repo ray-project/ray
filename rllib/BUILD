@@ -2284,6 +2284,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/multi_agent_and_self_play/multi_agent_cartpole_multi_gpu",
+    main = "examples/multi_agent_and_self_play/multi_agent_cartpole.py",
+    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
+    size = "medium",
+    srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=600.0", "--num-cpus=4", "--num-gpus=2"]
+)
+
+py_test(
     name = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing",
     main = "examples/multi_agent_and_self_play/pettingzoo_parameter_sharing.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2328,6 +2337,44 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-iter=10"],
 )
 
+# @OldAPIStack
+py_test(
+    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_ppo_tf_old_api_stack",
+    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
+)
+
+# @OldAPIStack
+py_test(
+    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_ppo_torch_old_api_stack",
+    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
+)
+
+py_test(
+    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_ppo_torch_envrunner",
+    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
+)
+
+py_test(
+    name = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
+    main = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel.py"],
+    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
+)
+
 py_test(
     name = "examples/multi_agent_and_self_play/two_step_game_with_grouped_agents",
     main = "examples/multi_agent_and_self_play/two_step_game_with_grouped_agents.py",
@@ -2338,9 +2385,7 @@ py_test(
 )
 
 
-
-
-
+# TODO (sven): Continue cleanup from here with adding more subdirectories.
 py_test(
     name = "examples/action_masking_tf2",
     main = "examples/action_masking.py",
@@ -2851,42 +2896,6 @@ py_test(
     args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
 )
 
-py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_ppo_tf",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
-)
-
-py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_ppo_torch",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=3"]
-)
-
-py_test(
-    name = "examples/self_play_with_open_spiel_connect_4_ppo_torch_envrunner",
-    main = "examples/self_play_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/self_play_with_open_spiel.py"],
-    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.9", "--num-episodes-human-play=0", "--min-league-size=4"]
-)
-
-py_test(
-    name = "examples/self_play_league_based_with_open_spiel_connect_4_ppo_torch_envrunner",
-    main = "examples/self_play_league_based_with_open_spiel.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-    args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
-)
-
 # --------------------------------------------------------------------
 # examples/learner directory
 #
@@ -2896,33 +2905,6 @@ py_test(
 #
 # NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
-
-py_test(
-    name = "examples/learner/multi_agent_cartpole_ppo_torch",
-    main = "examples/learner/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--framework=torch", "--num-gpus=0"]
-)
-
-py_test(
-    name = "examples/learner/multi_agent_cartpole_ppo_torch_gpu",
-    main = "examples/learner/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "examples", "gpu"],
-    size = "medium",
-    srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--framework=torch", "--num-gpus=1"]
-)
-
-py_test(
-    name = "examples/learner/multi_agent_cartpole_ppo_torch_multi_gpu",
-    main = "examples/learner/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
-    size = "medium",
-    srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--framework=torch", "--num-gpus=2"]
-)
 
 py_test(
     name = "examples/learner/ppo_tuner_local_cpu_torch",
