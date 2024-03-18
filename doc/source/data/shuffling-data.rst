@@ -4,7 +4,7 @@
 Shuffling Data
 ==============
 
-When consuming or iterating over :class:`Ray Datasets <ray.data.dataset.Dataset>`, it can be useful to
+When consuming or iterating over Ray :class:`Datasets <ray.data.dataset.Dataset>`, it can be useful to
 shuffle or randomize the order of data (for example, randomizing data ingest order during ML training). 
 This guide shows several different methods of shuffling data with Ray Data and their respective trade-offs.
 
@@ -101,15 +101,15 @@ To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuf
 Advanced: Optimizing shuffles
 -----------------------------
 
-*Shuffle* operations are all-to-all operations where the entire Dataset must be materialized in memory before execution can proceed.
+Shuffle operations are *all-to-all* operations where the entire Dataset must be materialized in memory before execution can proceed.
 Currently, these are:
 
 * :meth:`Dataset.groupby <ray.data.Dataset.groupby>`
 * :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`
-* :meth:`Dataset.repartition <ray.data.Dataset.repartition>`
 * :meth:`Dataset.sort <ray.data.Dataset.sort>`
 
-.. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle, `file a Ray Data issue on GitHub`._
+.. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle, 
+    `file a Ray Data issue on GitHub <https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+>`_. 
 
 When should you use global per-epoch shuffling?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
