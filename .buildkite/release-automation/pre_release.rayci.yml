@@ -6,6 +6,7 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
+      - sleep 3h
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - label: "Check commit hash"
@@ -17,6 +18,7 @@ steps:
       - bash .buildkite/release-automation/check-commit-hash.sh
 
   - label: "Trigger Postmerge test"
+    key: trigger-postmerge
     trigger: "postmerge"
     depends_on: check-commit-hash
     build:
