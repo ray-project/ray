@@ -283,6 +283,10 @@ class Router:
         self._event_loop = event_loop
         self.deployment_id = deployment_id
 
+        logger.info(
+            f"Created DeploymentHandle '{handle_id}' for {deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
         if inside_ray_client_context():
             # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
             # to override the behavior.

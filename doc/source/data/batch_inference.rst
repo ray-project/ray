@@ -3,10 +3,6 @@
 End-to-end: Offline Batch Inference
 ===================================
 
-.. tip::
-
-    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference.
-
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
 For an overview on why you should use Ray Data for offline batch inference, and how it compares to alternatives, see the :ref:`Ray Data Overview <data_overview>`.
@@ -31,7 +27,7 @@ Using Ray Data for offline inference involves four basic steps:
 - **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming_data>`.
 - **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the :ref:`Iterating over data <iterating-over-data>` and :ref:`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see :ref:`the batch inference examples<batch_inference_examples>`.
+For more in-depth examples for your use case, see :doc:`the batch inference examples</data/examples>`.
 For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
 .. tab-set::
@@ -178,14 +174,6 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             {'output': array([0.625576], dtype=float32)}
 
-.. _batch_inference_examples:
-
-More examples
--------------
-- :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`
-- :doc:`Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50 </data/examples/batch_inference_object_detection>`
-- :doc:`Image Classification Batch Inference with Hugging Face Vision Transformer </data/examples/huggingface_vit_batch_prediction>`
-
 .. _batch_inference_configuration:
 
 Configuration and troubleshooting
@@ -330,7 +318,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
                 concurrency=2,
-                )
+            )
             predictions.show(limit=1)
 
         .. testoutput::
@@ -369,9 +357,10 @@ Increasing batch size results in faster execution because inference is a vectori
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <batch_inference_batch_size>`.
-
-If your batch size is already set to 1, then use either a smaller model or GPU devices with more memory.
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease 
+the batch size by following :ref:`these steps <batch_inference_batch_size>`. If your 
+batch size is already set to 1, then use either a smaller model or GPU devices with more 
+memory.
 
 For advanced users working with large models, you can use model parallelism to shard the model across multiple GPUs.
 
@@ -385,7 +374,7 @@ For an example where preprocessing is done in a separate `map` call, see :doc:`I
 Handling CPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run out of CPU RAM, you likely that you have too many model replicas that are running concurrently on the same node. For example, if a model
+If you run out of CPU RAM, you likely have too many model replicas that are running concurrently on the same node. For example, if a model
 uses 5 GB of RAM when created / run, and a machine has 16 GB of RAM total, then no more
 than three of these models can be run at the same time. The default resource assignments
 of one CPU per task/actor might lead to `OutOfMemoryError` from Ray in this situation.
@@ -421,92 +410,3 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         concurrency=12,
         )
     predictions.show(limit=1)
-
-
-.. _batch_inference_ray_train:
-
-
-Using models from Ray Train
----------------------------
-
-Models that have been trained with :ref:`Ray Train <train-docs>` can then be used for batch inference with :ref:`Ray Data <data>` via the :class:`Checkpoint <ray.train.Checkpoint>` that is returned by :ref:`Ray Train <train-docs>`.
-
-**Step 1:** Train a model with :ref:`Ray Train <train-docs>`.
-
-.. testcode::
-
-    import ray
-    from ray.train import ScalingConfig
-    from ray.train.xgboost import XGBoostTrainer
-
-    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-    train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
-
-    trainer = XGBoostTrainer(
-        scaling_config=ScalingConfig(
-            num_workers=2,
-            use_gpu=False,
-        ),
-        label_column="target",
-        num_boost_round=20,
-        params={
-            "objective": "binary:logistic",
-            "eval_metric": ["logloss", "error"],
-        },
-        datasets={"train": train_dataset, "valid": valid_dataset},
-    )
-    result = trainer.fit()
-
-
-**Step 2:** Extract the :class:`Checkpoint <ray.train.Checkpoint>` from the training :class:`Result <ray.train.Result>`.
-
-.. testcode::
-
-    checkpoint = result.checkpoint
-
-**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.train.Checkpoint>` inside the Python class, use the methodology corresponding to the Trainer used to train the model.
-
-- **Deep Learning Trainers:** :ref:`train-checkpointing`
-- **Tree-Based Trainers:** :ref:`train-gbdt-checkpoints`
-
-In this case, use :meth:`XGBoostTrainer.get_model() <ray.train.xgboost.XGBoostTrainer.get_model>` to load the model.
-
-The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
-
-.. testcode::
-
-    from typing import Dict
-    import pandas as pd
-    import numpy as np
-    import xgboost
-
-    from ray.train import Checkpoint
-    from ray.train.xgboost import XGBoostTrainer
-
-    test_dataset = valid_dataset.drop_columns(["target"])
-
-    class XGBoostPredictor:
-        def __init__(self, checkpoint: Checkpoint):
-            self.model = XGBoostTrainer.get_model(checkpoint)
-
-        def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
-            dmatrix = xgboost.DMatrix(data)
-            return {"predictions": self.model.predict(dmatrix)}
-
-
-    # Map the Predictor over the Dataset to get predictions.
-    # Use 2 parallel actors for inference. Each actor predicts on a
-    # different partition of data.
-    predictions = test_dataset.map_batches(
-        XGBoostPredictor,
-        concurrency=2,
-        batch_format="pandas",
-        # Pass in the Checkpoint to the XGBoostPredictor constructor.
-        fn_constructor_kwargs={"checkpoint": checkpoint}
-    )
-    predictions.show(limit=1)
-
-.. testoutput::
-    :options: +MOCK
-
-    {'predictions': 0.9969483017921448}

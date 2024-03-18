@@ -1241,8 +1241,45 @@ def test_change_route_prefix(client: ServeControllerClient):
     wait_for_condition(check_switched)
 
 
-def test_num_replicas_auto(client: ServeControllerClient):
-    """Test `num_replicas="auto"`."""
+def test_num_replicas_auto_api(client: ServeControllerClient):
+    """Test setting only `num_replicas="auto"`."""
+
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+        "deployments": [{"name": "f", "num_replicas": "auto"}],
+    }
+
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    print("Application is RUNNING.")
+    check_num_replicas_eq("f", 1)
+
+    app_details = client.get_serve_details()["applications"][SERVE_DEFAULT_APP_NAME]
+    deployment_config = app_details["deployments"]["f"]["deployment_config"]
+    assert "num_replicas" not in deployment_config
+    assert deployment_config["max_ongoing_requests"] == 5
+    assert deployment_config["autoscaling_config"] == {
+        # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
+        "target_num_ongoing_requests_per_replica": 2.0,
+        "min_replicas": 1,
+        "max_replicas": 100,
+        # Untouched defaults
+        "look_back_period_s": 30.0,
+        "metrics_interval_s": 10.0,
+        "upscale_delay_s": 30.0,
+        "downscale_delay_s": 600.0,
+        "upscale_smoothing_factor": None,
+        "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
+        "smoothing_factor": 1.0,
+        "initial_replicas": None,
+    }
+
+
+def test_num_replicas_auto_basic(client: ServeControllerClient):
+    """Test `num_replicas="auto"` and the default values are used in autoscaling."""
 
     signal = SignalActor.options(name="signal123").remote()
 

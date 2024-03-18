@@ -135,9 +135,28 @@ class MockClusterNodeInfoCache:
         self.available_resources_per_node[node_id] = deepcopy(resources)
 
 
+class FakeRemoteFunction:
+    def remote(self):
+        pass
+
+
 class MockActorHandle:
     def __init__(self, **kwargs):
         self._options = kwargs
+        self._actor_id = "fake_id"
+        self.initialize_and_get_metadata_called = False
+        self.is_allocated_called = False
+
+    @property
+    def initialize_and_get_metadata(self):
+        self.initialize_and_get_metadata_called = True
+        # return a mock object so that we can call `remote()` on it.
+        return FakeRemoteFunction()
+
+    @property
+    def is_allocated(self):
+        self.is_allocated_called = True
+        return FakeRemoteFunction()
 
 
 class MockActorClass:
