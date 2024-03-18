@@ -18,27 +18,28 @@ on this "new API stack" and it is now available for the following select algorit
    :header-rows: 1
    :widths: 40 40 40
 
-   * - Algorithm
-     - Single Agent
-     - Multi Agent
-     - Fully-connected (MLP)
-     - Image inputs (CNN)
-     - RNN support (LSTM)
-     - Complex inputs (flatten)
-   * - **PPO**
+   * - Feature/Algo
+     - **PPO**
+     - **SAC**
+   * - Single Agent
      - Yes
      - Yes
-     - Yes
-     - Yes
-     - Yes
-     - Yes
-   * - **SAC**
+   * - Multi Agent
      - Yes
      - No
+   * - Fully-connected (MLP)
+     - Yes
+     - Yes
+   * - Image inputs (CNN)
      - Yes
      - No
-     - No
+   * - RNN support (LSTM)
      - Yes
+     - No
+   * - Complex inputs (flatten)
+     - Yes
+     - Yes
+
 
 Over the next couple of months, we will continue to test, benchmark, bug-fix, and
 further polish these new APIs as well as rollout more and more algorithms that can be run in
@@ -83,32 +84,32 @@ Here is a quick comparison table listing features and design choices from the ne
    :header-rows: 1
    :widths: 40 40 40
 
-   * - Features / Design Choices
-     - Reduced code complexity (for beginners and advanced users)
-     - Classes are usable outside of RLlib
-     - Separation-of-concerns design (e.g. during sampling, only action must be computed)
-     - Distributed/scalable sample collection
-     - Full 360° read/write access to (multi-)agent trajectories
-     - Multi-GPU & multi-node/multi-GPU
-     - Support for shared (multi-agent) model components (e.g. communication channels, shared value functions, etc..)
-     - Env vectorization via `gym.vector.Env`
-   * - **New API Stack**
+   * -
+     - **New API Stack**
+     - **Old API Stack**
+   * - Reduced code complexity (for beginners and advanced users)
      - 4 user-facing classes (AlgorithmConfig, RLModule, Learner, ConnectorV2, Episode)
-     - Yes
-     - Yes
-     - Yes
-     - Yes
-     - Yes
-     - Yes
-     - Yes
-   * - **Old API Stack**
      - 7 user-facing classes (AlgorithmConfig, ModelV2, Policy, build_policy, Connector, BaseEnv, ViewRequirement)
+   * - Classes are usable outside of RLlib
+     - Yes
      - Partly
-     - No
+   * - Separation-of-concerns design (e.g. during sampling, only action must be computed)
      - Yes
      - No
-     - Yes & No
+   * - Distributed/scalable sample collection
+     - Yes
+     - Yes
+   * - Full 360° read/write access to (multi-)agent trajectories
+     - Yes
      - No
+   * - Multi-GPU & multi-node/multi-GPU
+     - Yes
+     - Yes & No
+   * - Support for shared (multi-agent) model components (e.g. communication channels, shared value functions, etc..)
+     - Yes
+     - No
+   * - Env vectorization via `gym.vector.Env`
+     - Yes
      - No (RLlib's own solution)
 
 
