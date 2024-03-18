@@ -1171,7 +1171,7 @@ controlled by your cloud provider's configuration.
 * **Default:** ``False``
 
 ``provider.use_external_head_ip``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
