@@ -180,4 +180,4 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    run_rllib_example_script_experiment(config, args, stop)
+    run_rllib_example_script_experiment(config, args, stop=stop)

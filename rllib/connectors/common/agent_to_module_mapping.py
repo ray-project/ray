@@ -69,7 +69,7 @@ class AgentToModuleMapping(ConnectorV2):
 
         # Create our connector piece.
         connector = AgentToModuleMapping(
-            modules=["module0", "module1"],
+            module_specs={"module0", "module1"},
             agent_to_module_mapping_fn=(
                 lambda agent_id, eps: "module1" if agent_id == "agent1" else "module0"
             ),

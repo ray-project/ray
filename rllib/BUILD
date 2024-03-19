@@ -1966,7 +1966,7 @@ py_test(
     main = "examples/_old_api_stack/complex_struct_space.py",
     tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
     size = "small",
-    srcs = ["examples/complex_struct_space.py"],
+    srcs = ["examples/_old_api_stack/complex_struct_space.py"],
     args = ["--framework=tf2"],
 )
 
@@ -2177,7 +2177,7 @@ py_test(
     name = "examples/evaluation/custom_evaluation",
     main = "examples/evaluation/custom_evaluation.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/evaluation/custom_evaluation.py"],
     args = ["--enable-new-api-stack", "--framework=torch", "--as-test", "--stop-reward=0.75", "--num-cpus=5"]
 )
@@ -2186,7 +2186,7 @@ py_test(
     name = "examples/evaluation/custom_evaluation_parallel_to_training",
     main = "examples/evaluation/custom_evaluation.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/evaluation/custom_evaluation.py"],
     args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=0.75", "--evaluation-parallel-to-training", "--num-cpus=5"]
 )
