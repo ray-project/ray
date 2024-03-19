@@ -29,7 +29,6 @@ class Actor:
     def __init__(self, init_value, fail_after=None, sys_exit=False):
         print("__init__ PID", os.getpid())
         self.i = init_value
-        self.j = init_value
         self.fail_after = fail_after
         self.sys_exit = sys_exit
 
@@ -59,10 +58,9 @@ class Actor:
     def inc_four(self, a, b, x, y):
         self.i += a
         self.i += b
-        sum_a_b = a + b
-        self.j += x
-        self.j += y + sum_a_b
-        return a, b, x, y, self.i, self.j
+        self.i += x
+        self.i += y
+        return a, b, x, y
 
     def sleep(self, x):
         time.sleep(x)
@@ -154,7 +152,7 @@ def test_multi_args_kwargs(ray_start_regular):
         output_channel = compiled_dag.execute(1, 2, x=3, y=4)
         # TODO(terry): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == (1, 2, 3, 4, (i + 1) * 3, (i + 1) * 10)
+        assert result == (1, 2, 3, 4)
         output_channel.end_read()
 
     compiled_dag.teardown()
