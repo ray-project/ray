@@ -1,7 +1,7 @@
 .. _execution_configurations:
 
 =================================
-Ray Data Execution Configurations
+Execution Configurations
 =================================
 
 Ray Data provides a number of configurations that can be used to control various aspects
