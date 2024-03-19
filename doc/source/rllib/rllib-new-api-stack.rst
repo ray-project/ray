@@ -16,7 +16,6 @@ on this "new API stack" and it is now available (via opt-in) for the following s
 
 .. list-table::
    :header-rows: 1
-   :max-width: 50%
    :widths: 40 40 40
 
    * - Feature/Algo (on new API stack)
@@ -139,7 +138,31 @@ Here is a quick comparison table listing features and design choices from the ne
 How to Use the New API Stack?
 -----------------------------
 
-The new API stack is disabled by default for all algorithms. If you want to activate it for PPO (single- and multi-agent)
-or SAC (single-agent only), you should make the following simple changes in your `AlgorithmConfig` object:
+The new API stack is disabled by default for all algorithms.
+If you want to activate it for PPO (single- and multi-agent) or SAC (single-agent only),
+you should make the following simple changes in your `AlgorithmConfig` object:
+
+.. tab-set::
+
+    .. tab-item:: Single Agent **PPO**
+
+        .. literalinclude:: doc_code/new_api_stack.py
+            :language: python
+            :start-after: __enabling-new-api-stack-sa-ppo-begin__
+            :end-before: __enabling-new-api-stack-sa-ppo-end__
 
 
+    .. tab-item:: Multi Agent **PPO**
+
+        .. literalinclude:: doc_code/new_api_stack.py
+            :language: python
+            :start-after: __enabling-new-api-stack-ma-ppo-begin__
+            :end-before: __enabling-new-api-stack-ma-ppo-end__
+
+
+    .. tab-item:: Single Agent **SAC**
+
+        .. literalinclude:: doc_code/new_api_stack.py
+            :language: python
+            :start-after: __enabling-new-api-stack-sa-sac-begin__
+            :end-before: __enabling-new-api-stack-sa-sac-end__
