@@ -204,7 +204,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         for eps in episodes:
             new_episode_ids.append(eps.id_)
             # We subtract a single timestep per episode b/c each sample consists
-            # of a transition from `o_t` to `o_(t+n)`, so the first timestep is 
+            # of a transition from `o_t` to `o_(t+n)`, so the first timestep is
             # never sampled.
             self._num_timesteps += len(eps)
             self._num_timesteps_added += len(eps)
@@ -220,14 +220,16 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             eps_evicted.append(self.episodes.popleft())
             eps_evicted_ids.append(eps_evicted[-1].id_)
             eps_evicted_idxs.append(self.episode_id_to_index.pop(eps_evicted_ids[-1]))
-            #eps_evicted_idxs.append(self.episode_id_to_index[eps_evicted_ids[-1]])   # Simon: Do we remove this later from the episode_id_to_index?
-            #del self.episode_id_to_index[eps_evicted[-1].id_]
+            # eps_evicted_idxs.append(self.episode_id_to_index[eps_evicted_ids[-1]])   # Simon: Do we remove this later from the episode_id_to_index?
+            # del self.episode_id_to_index[eps_evicted[-1].id_]
             # If this episode has a new chunk in the new episodes added,
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
             # as a new episode?
-            if eps_evicted_idxs[-1] in new_episode_ids:                                 # Simon: Is this really the index or the episode ID we need to sue here?
-                # Subtract again the single timestep at the beginning that was not 
+            if (
+                eps_evicted_idxs[-1] in new_episode_ids
+            ):  # Simon: Is this really the index or the episode ID we need to sue here?
+                # Subtract again the single timestep at the beginning that was not
                 # counted.
                 len_to_subtract = len(
                     episodes[new_episode_ids.index(eps_evicted_idxs[-1])]
@@ -294,7 +296,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     self.episode_id_to_index[eps.id_] = eps_idx
                     self._indices.extend(
                         [
-                            (eps_idx, i + 1, self._get_free_node_and_assign(j + i, weight))
+                            (
+                                eps_idx,
+                                i + 1,
+                                self._get_free_node_and_assign(j + i, weight),
+                            )
                             for i in range(len(eps))
                         ]
                     )
@@ -498,7 +504,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
             # If the sampled time step is the episode's last time step check, if
             # the episode is terminated or truncated.
-            if episode_ts == episode.t:                
+            if episode_ts == episode.t:
                 is_terminated[B] = episode.is_terminated
                 is_truncated[B] = episode.is_truncated
 

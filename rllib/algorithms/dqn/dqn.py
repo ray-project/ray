@@ -479,7 +479,7 @@ class DQN(SimpleQ):
                 )
 
             # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(  
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
                 e.agent_steps() for e in episodes
             )
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
@@ -520,9 +520,11 @@ class DQN(SimpleQ):
                 # DEBUGGING
                 new_batch = train_batch.copy()
                 import numpy as np
+
                 new_batch["obs"] = np.where(new_batch["obs"] == 1)[1]
                 new_batch["new_obs"] = np.where(new_batch["new_obs"] == 1)[1]
                 import pandas as pd
+
                 df = pd.DataFrame.from_dict(new_batch)
 
                 # Convert to multi-agent batch as `LearnerGroup` depends on it.
@@ -649,12 +651,13 @@ class DQN(SimpleQ):
                     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
                 )
 
-
                 new_batch = train_batch.copy()["default_policy"]
                 import numpy as np
+
                 new_batch["obs"] = np.where(new_batch["obs"] == 1)[1]
                 new_batch["new_obs"] = np.where(new_batch["new_obs"] == 1)[1]
                 import pandas as pd
+
                 df = pd.DataFrame.from_dict(new_batch)
 
                 # Postprocess batch before we learn on it

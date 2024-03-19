@@ -48,7 +48,9 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if not self.uses_noisy:
             # The epsilon scheduler for epsilon greedy exploration.
             self.epsilon_schedule = Scheduler(
-                fixed_value_or_schedule=self.config.model_config_dict.get("epsilon", [(0, 1.0), (10000, 0.02)]),
+                fixed_value_or_schedule=self.config.model_config_dict.get(
+                    "epsilon", [(0, 1.0), (10000, 0.02)]
+                ),
                 framework=self.framework,
             )
 

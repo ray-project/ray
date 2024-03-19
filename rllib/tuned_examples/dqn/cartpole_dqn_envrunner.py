@@ -63,14 +63,14 @@ tuner = tune.Tuner(
     run_config=train.RunConfig(
         stop=stop,
         name="dqn_new_stack_fixed",
-        #callbacks=[
-            # WandbLoggerCallback(
-            #     api_key_file="data/wandb/wandb_api_key.txt",
-            #     project="DQN",
-            #     name="new_stack_fixed",
-            #     log_config=True,
-            # )
-        #],
+        # callbacks=[
+        # WandbLoggerCallback(
+        #     api_key_file="data/wandb/wandb_api_key.txt",
+        #     project="DQN",
+        #     name="new_stack_fixed",
+        #     log_config=True,
+        # )
+        # ],
     ),
     tune_config=tune.TuneConfig(
         trial_name_creator=lambda trial: f"target_each_param_requires_grad_{trial}",

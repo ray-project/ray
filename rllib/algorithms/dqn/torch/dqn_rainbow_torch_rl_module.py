@@ -119,7 +119,6 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     ) -> Dict[str, TensorStructType]:
         output = {}
 
-    
         batch_base = {Columns.OBS: batch[Columns.OBS]}
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
@@ -133,7 +132,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         if self.num_atoms > 1:
             # Add distribution artefacts to the output.
             # Distribution support.
-            output[ATOMS] = qf_target_next_outs[ATOMS]            
+            output[ATOMS] = qf_target_next_outs[ATOMS]
             # Original logits from the Q-head.
             output[QF_LOGITS] = qf_outs[QF_LOGITS]
             # Probabilities of the Q-value distribution of the current state.
@@ -220,7 +219,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Reshape the action values.
         # NOTE: Handcrafted action shape.
         logits_per_action_per_atom = torch.reshape(
-                batch, shape=(-1, self.config.action_space.n, self.num_atoms)
+            batch, shape=(-1, self.config.action_space.n, self.num_atoms)
         )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value

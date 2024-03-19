@@ -105,10 +105,11 @@ class TorchLearner(Learner):
 
         def get_trainable_parameters(model):
             return list(filter(lambda p: p.requires_grad, model.parameters()))
+
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
-        #optimizer = torch.optim.Adam(self.get_parameters(module))
+        # optimizer = torch.optim.Adam(self.get_parameters(module))
         optimizer = torch.optim.Adam(get_trainable_parameters(module))
         params = get_trainable_parameters(module)
         # params = self.get_parameters(module)

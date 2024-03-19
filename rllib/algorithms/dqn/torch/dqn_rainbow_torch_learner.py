@@ -70,9 +70,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         # )
 
         # Mark the maximum Q-value(s).
-        q_next_best_idx = (
-            torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
-        )
+        q_next_best_idx = torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
         # Get the maximum Q-value(s).
         q_next_best = torch.nan_to_num(
             torch.gather(q_target_next, dim=1, index=q_next_best_idx),
@@ -111,7 +109,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 .long(),
             ).squeeze(dim=1)
             # Get the probabilies for the maximum Q-value(s).
-            #print(f"next probs: {fwd_out[QF_TARGET_NEXT_PROBS]}")
+            # print(f"next probs: {fwd_out[QF_TARGET_NEXT_PROBS]}")
             q_probs_next_best = torch.gather(
                 fwd_out[QF_TARGET_NEXT_PROBS],
                 dim=1,
@@ -145,8 +143,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # TODO (simon): Check, if we need to unsqueeze here.
             r_tau = torch.clamp(
                 batch[Columns.REWARDS].unsqueeze(dim=-1)
-                + 
-                (
+                + (
                     self.config.gamma ** batch["n_steps"]
                     * (1.0 - batch[Columns.TERMINATEDS].float())
                 ).unsqueeze(dim=-1)
