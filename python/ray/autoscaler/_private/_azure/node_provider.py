@@ -97,7 +97,9 @@ class AzureNodeProvider(NodeProvider):
 
         # Update terminating nodes list by removing nodes that
         # have finished termination.
-        self.terminating_nodes = {k: v for k, v in self.terminating_nodes.items() if not v.done()}
+        self.terminating_nodes = {
+            k: v for k, v in self.terminating_nodes.items() if not v.done()
+        }
 
         return {k: v for k, v in self.cached_nodes.items() if match_tags(v["tags"])}
 
