@@ -96,12 +96,7 @@ class AzureNodeProvider(NodeProvider):
 
         # Update terminating nodes list by removing nodes that
         # have finished termination.
-        terminated = []
-        for k, v in self.terminating_nodes.items():
-            if v.done():
-                terminated.append(k)
-        for tm in terminated:
-            self.terminating_nodes.pop(tm)
+        self.terminating_nodes = {k: v for k, v in self.terminating_nodes.items() if not v.done()}
 
         return {k: v for k, v in self.cached_nodes.items() if match_tags(v["tags"])}
 
@@ -456,7 +451,7 @@ class AzureNodeProvider(NodeProvider):
         return self.cached_nodes[node_id]
 
     def _get_cached_node(self, node_id):
-        return self.cached_nodes.get(node_id) or self._get_node(node_id=node_id)
+        return self.cached_nodes.get(node_id, self._get_node(node_id=node_id))
 
     @staticmethod
     def bootstrap_config(cluster_config):
