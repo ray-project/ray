@@ -534,20 +534,20 @@ class MultiAgentRLModuleSpec:
     def add_modules(
         self,
         module_specs: Dict[ModuleID, SingleAgentRLModuleSpec],
-        overwrite: bool = True,
+        override: bool = True,
     ) -> None:
         """Add new module specs to the spec or updates existing ones.
 
         Args:
             module_specs: The mapping for the module_id to the single-agent module
                 specs to be added to this multi-agent module spec.
-            overwrite: Whether to overwrite the existing module specs if they already
+            override: Whether to override the existing module specs if they already
                 exist. If False, they will be updated only.
         """
         if self.module_specs is None:
             self.module_specs = {}
         for module_id, module_spec in module_specs.items():
-            if overwrite or module_id not in self.module_specs:
+            if override or module_id not in self.module_specs:
                 self.module_specs[module_id] = module_spec
             else:
                 self.module_specs[module_id].update(module_spec)
@@ -607,7 +607,7 @@ class MultiAgentRLModuleSpec:
     def update(
         self,
         other: Union["MultiAgentRLModuleSpec", SingleAgentRLModuleSpec],
-        overwrite=False,
+        override=False,
     ) -> None:
         """Updates this spec with the other spec.
 
@@ -616,14 +616,14 @@ class MultiAgentRLModuleSpec:
 
         Args:
             other: The other spec to update this spec with.
-            overwrite: Whether to overwrite the existing module specs if they already
+            override: Whether to override the existing module specs if they already
                 exist. If False, they will be updated only.
         """
         if isinstance(other, SingleAgentRLModuleSpec):
             for mid, spec in self.module_specs.items():
                 self.module_specs[mid].update(other, override=False)
         elif isinstance(other.module_specs, dict):
-            self.add_modules(other.module_specs, overwrite=overwrite)
+            self.add_modules(other.module_specs, override=override)
         else:
             if not self.module_specs:
                 self.module_specs = other.module_specs
