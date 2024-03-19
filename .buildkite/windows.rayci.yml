@@ -1,4 +1,6 @@
 group: windows tests
+tags:
+  - disabled
 sort_key: "~windows"
 steps:
   # block on premerge

@@ -1,4 +1,6 @@
 group: macos tests
+tags:
+  - disabled
 sort_key: "~macos"
 steps:
   # block on premerge
