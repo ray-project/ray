@@ -809,15 +809,11 @@ class RLModule(abc.ABC):
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
-    def from_checkpoint(
-        cls,
-        checkpoint_dir_path: Union[str, pathlib.Path],
-    ) -> None:
+    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         """Loads the module from a checkpoint directory.
 
         Args:
             checkpoint_dir_path: The directory to load the checkpoint from.
-            map_location: The device on which the module resides.
         """
         path = pathlib.Path(checkpoint_dir_path)
         if not path.exists():

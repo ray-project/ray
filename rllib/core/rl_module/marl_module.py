@@ -367,7 +367,6 @@ class MultiAgentRLModule(RLModule):
             modules_to_load: The modules whose state is to be loaded from the path. If
                 this is None, all modules that are checkpointed will be loaded into this
                 marl module.
-            map_location: The device the module resides on.
 
 
         """

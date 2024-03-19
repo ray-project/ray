@@ -69,9 +69,6 @@ class TfRLModule(tf.keras.Model, RLModule):
         self.save_weights(path, save_format="tf")
 
     @override(RLModule)
-    def load_state(
-        self,
-        dir: Union[str, pathlib.Path],
-    ) -> None:
+    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
         self.load_weights(path)

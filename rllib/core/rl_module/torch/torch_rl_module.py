@@ -121,10 +121,7 @@ class TorchRLModule(nn.Module, RLModule):
         torch.save(convert_to_numpy(self.state_dict()), path)
 
     @override(RLModule)
-    def load_state(
-        self,
-        dir: Union[str, pathlib.Path],
-    ) -> None:
+    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
         self.set_state(torch.load(path))
 
