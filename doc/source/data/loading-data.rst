@@ -457,7 +457,7 @@ Ray Data interoperates with distributed data processing frameworks like
 .. note::
 
     These operations are community maintained and might not be actively maintained. If you run into issues,
-    please create a Github issue `here <https://github.com/ray-project/ray/issues>`__.
+    create a GitHub issue `here <https://github.com/ray-project/ray/issues>`__.
 
 .. tab-set::
 

@@ -180,7 +180,7 @@ The user defined function passed to :meth:`~ray.data.Dataset.map_batches` is mor
 can be represented in multiple ways (more on this in :ref:`Configuring batch format <configure_batch_format>`), so the function should be of type
 ``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
 other words, your function should take as input and output a batch of data which can be represented as a
-pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. Your function does not need
+pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. Your function doesn't need
 to return a batch in the same format as its input, so you could input a pandas DataFrame and output a
 dictionary of NumPy ndarrays. For example, your function might look like:
 
