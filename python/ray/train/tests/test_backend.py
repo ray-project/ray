@@ -217,40 +217,43 @@ def test_train_failure(ray_start_2_cpus):
     assert e.finish_training() == [1, 1]
 
 
-def test_train_single_worker_failure(ray_start_2_cpus):
-    """Tests if training fails immediately if only one worker raises an Exception."""
+def test_single_worker_user_failure(ray_start_2_cpus):
+    """Tests if training fails immediately if one worker raises an Exception
+    while executing the user training code."""
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    def single_worker_fail():
+    def single_worker_user_failure():
         if train.get_context().get_world_rank() == 0:
-            raise ValueError
+            raise RuntimeError
         else:
             time.sleep(1000000)
 
-    _start_training(e, single_worker_fail)
+    _start_training(e, single_worker_user_failure)
 
     with pytest.raises(StartTraceback) as exc:
         e.get_next_results()
-    assert isinstance(exc.value.__cause__, ValueError)
+    assert isinstance(exc.value.__cause__, RuntimeError)
 
 
-# TODO(@justinvyu: fix test and/or deprecate relevant code path)
-@pytest.mark.skip("Mocked execute_async doesn't work as intended")
-def test_worker_failure(ray_start_2_cpus):
+def test_single_worker_actor_failure(ray_start_2_cpus):
+    """Tests is training fails immediately if one worker actor dies."""
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    def train_fail():
-        ray.actor.exit_actor()
+    def single_worker_actor_failure():
+        if train.get_context().get_world_rank() == 0:
+            # Simulate actor failure
+            os._exit(1)
+        else:
+            time.sleep(1000)
 
-    new_execute_func = gen_execute_special(train_fail)
-    with patch.object(WorkerGroup, "execute_async", new_execute_func):
-        with pytest.raises(TrainingWorkerError):
-            _start_training(e, lambda: 1)
-            e.finish_training()
+    _start_training(e, single_worker_actor_failure)
+
+    with pytest.raises(TrainingWorkerError):
+        e.get_next_results()
 
 
 def test_tensorflow_start(ray_start_2_cpus):
@@ -323,7 +326,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=1
+        config, num_workers=num_workers, resources_per_worker={"GPU": 1}
     )
     e.start()
     _start_training(e, get_resources)
@@ -369,7 +372,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=0.5
+        config, num_workers=num_workers, resources_per_worker={"GPU": 0.5}
     )
     e.start()
     _start_training(e, get_resources)
@@ -408,7 +411,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
+        config, num_workers=num_workers, resources_per_worker={"GPU": 2}
     )
     e.start()
     _start_training(e, get_resources)
@@ -443,8 +446,7 @@ def test_neuron_core_accelerator_ids(ray_2_node_2_neuron_cores, worker_results):
     e = BackendExecutor(
         config,
         num_workers=num_workers,
-        num_cpus_per_worker=0,
-        additional_resources_per_worker={"neuron_cores": 1},
+        resources_per_worker={"neuron_cores": 1},
     )
     e.start()
     _start_training(e, get_resources)
@@ -481,8 +483,7 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
     e = BackendExecutor(
         config,
         num_workers=num_workers,
-        num_cpus_per_worker=0,
-        additional_resources_per_worker={"neuron_cores": 1},
+        resources_per_worker={"neuron_cores": 1},
     )
     e.start()
     _start_training(e, get_resources)

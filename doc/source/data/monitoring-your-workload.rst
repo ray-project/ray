@@ -1,7 +1,7 @@
 .. _monitoring-your-workload:
 
-Monitoring Your Workload
-========================
+Monitoring Your Workload with the Ray Data Dashboard
+====================================================
 
 This section helps you debug and monitor the execution of your :class:`~ray.data.Dataset` by viewing the:
 
@@ -48,7 +48,7 @@ Ray dashboard metrics
 
 For a time-series view of these metrics, see the Ray Data section in the :ref:`Metrics view <dash-metrics-view>`. This section contains time-series graphs of all metrics emitted by Ray Data. Execution metrics are grouped by dataset and operator, and iteration metrics are grouped by dataset.
 
-The metrics recorded are:
+The metrics recorded include:
 
 * Bytes spilled by objects from object store to disk
 * Bytes of objects allocated in object store
@@ -58,7 +58,25 @@ The metrics recorded are:
 * Logical GPUs allocated to dataset operators
 * Bytes outputted by dataset operators
 * Rows outputted by dataset operators
+* Input blocks received by data operators
+* Input blocks/bytes processed in tasks by data operators
+* Input bytes submitted to tasks by data operators
+* Output blocks/bytes/rows generated in tasks by data operators
+* Output blocks/bytes taken by downstream operators
+* Output blocks/bytes from finished tasks
+* Submitted tasks
+* Running tasks
+* Tasks with at least one output block
+* Finished tasks
+* Failed tasks
+* Operator internal inqueue size (in blocks/bytes)
+* Operator internal outqueue size (in blocks/bytes)
+* Size of blocks used in pending tasks
+* Freed memory in object store 
+* Spilled memory in object store
 * Time spent generating blocks
+* Time spent in task submission backpressure
+* Time spent to initialize iteration.
 * Time user code is blocked during iteration.
 * Time spent in user code during iteration.
 
@@ -86,6 +104,6 @@ When an operator completes, the metrics for that operator are also logged.
 .. code-block:: text
 
    Operator InputDataBuffer[Input] -> TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. Operator Metrics:
-   {'num_inputs_received': 20, 'bytes_inputs_received': 46440, 'num_inputs_processed': 20, 'bytes_inputs_processed': 46440, 'num_outputs_generated': 20, 'bytes_outputs_generated': 800, 'rows_outputs_generated': 100, 'num_outputs_taken': 20, 'bytes_outputs_taken': 800, 'num_outputs_of_finished_tasks': 20, 'bytes_outputs_of_finished_tasks': 800, 'num_tasks_submitted': 20, 'num_tasks_running': 0, 'num_tasks_have_outputs': 20, 'num_tasks_finished': 20, 'obj_store_mem_alloc': 800, 'obj_store_mem_freed': 46440, 'obj_store_mem_cur': 0, 'obj_store_mem_peak': 23260, 'obj_store_mem_spilled': 0, 'block_generation_time': 1.191296085, 'cpu_usage': 0, 'gpu_usage': 0, 'ray_remote_args': {'num_cpus': 1, 'scheduling_strategy': 'SPREAD'}}
+   {'num_inputs_received': 20, 'bytes_inputs_received': 46440, 'num_task_inputs_processed': 20, 'bytes_task_inputs_processed': 46440, 'num_task_outputs_generated': 20, 'bytes_task_outputs_generated': 800, 'rows_task_outputs_generated': 100, 'num_outputs_taken': 20, 'bytes_outputs_taken': 800, 'num_outputs_of_finished_tasks': 20, 'bytes_outputs_of_finished_tasks': 800, 'num_tasks_submitted': 20, 'num_tasks_running': 0, 'num_tasks_have_outputs': 20, 'num_tasks_finished': 20, 'obj_store_mem_freed': 46440, 'obj_store_mem_spilled': 0, 'block_generation_time': 1.191296085, 'cpu_usage': 0, 'gpu_usage': 0, 'ray_remote_args': {'num_cpus': 1, 'scheduling_strategy': 'SPREAD'}}
 
 This log file can be found locally at `/tmp/ray/{SESSION_NAME}/logs/ray-data.log`. It can also be found on the Ray Dashboard under the head node's logs in the :ref:`Logs view <dash-logs-view>`.

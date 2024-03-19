@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
-    DEFAULT_ISSUE_OWNER,
+    WEEKLY_RELEASE_BLOCKER_TAG,
 )
 from ray_release.test import Test, TestState
 from ray_release.logger import logger
@@ -12,6 +12,7 @@ MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
+UNSTABLE_RELEASE_TEST_TAG = "unstable-release-test"
 
 
 class ReleaseTestStateMachine(TestStateMachine):
@@ -69,11 +70,14 @@ class ReleaseTestStateMachine(TestStateMachine):
             "bug",
             "release-test",
             "ray-test-bot",
+            "stability",
             "triage",
             self.test.get_oncall(),
         ]
         if not self.test.is_stable():
-            labels.append("unstable-release-test")
+            labels.append(UNSTABLE_RELEASE_TEST_TAG)
+        else:
+            labels.append(WEEKLY_RELEASE_BLOCKER_TAG)
         issue_number = self.ray_repo.create_issue(
             title=f"Release test {self.test.get_name()} failed",
             body=(
@@ -82,7 +86,6 @@ class ReleaseTestStateMachine(TestStateMachine):
                 f"Managed by OSS Test Policy"
             ),
             labels=labels,
-            assignee=DEFAULT_ISSUE_OWNER,
         ).number
         self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
 

@@ -67,7 +67,7 @@ def read_csv(
 
 
 def test_file_extension_filter_is_deprecated():
-    with pytest.warns(DeprecationWarning):
+    with pytest.raises(DeprecationWarning):
         FileExtensionFilter("csv")
 
 

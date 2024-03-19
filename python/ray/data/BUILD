@@ -178,6 +178,14 @@ py_test(
 )
 
 py_test(
+    name = "test_datasink",
+    size = "small",
+    srcs = ["tests/test_datasink.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_ecosystem",
     size = "small",
     srcs = ["tests/test_ecosystem.py"],
@@ -309,7 +317,7 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/test_tfrecords.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "tfxbsl"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -355,7 +363,7 @@ py_test(
 
 py_test(
     name = "test_huggingface",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_huggingface.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -483,9 +491,9 @@ py_test(
 )
 
 py_test(
-    name = "test_streaming_executor_resource_limits",
+    name = "test_resource_manager",
     size = "medium",
-    srcs = ["tests/test_streaming_executor_resource_limits.py"],
+    srcs = ["tests/test_resource_manager.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -502,14 +510,6 @@ py_test(
     name = "test_streaming_integration",
     size = "medium",
     srcs = ["tests/test_streaming_integration.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_streaming_backpressure_edge_case",
-    size = "medium",
-    srcs = ["tests/test_streaming_backpressure_edge_case.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -539,9 +539,25 @@ py_test(
 )
 
 py_test(
+    name = "test_zip",
+    size = "small",
+    srcs = ["tests/test_zip.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_backpressure_policies",
     size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_backpressure_e2e",
+    size = "large",
+    srcs = ["tests/test_backpressure_e2e.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

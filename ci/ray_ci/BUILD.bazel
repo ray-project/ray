@@ -41,6 +41,12 @@ py_binary(
     deps = [":ray_ci_lib"],
 )
 
+py_binary(
+    name = "build_in_docker_windows",
+    srcs = ["build_in_docker_windows.py"],
+    deps = [":ray_ci_lib"],
+)
+
 py_test(
     name = "test_linux_container",
     size = "small",

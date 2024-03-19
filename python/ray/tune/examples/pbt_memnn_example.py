@@ -297,6 +297,7 @@ if __name__ == "__main__":
             metric="mean_accuracy",
             mode="max",
             num_samples=2,
+            reuse_actors=True,
         ),
         param_space={
             "finish_fast": args.smoke_test,

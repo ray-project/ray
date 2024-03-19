@@ -38,7 +38,7 @@ import click
 from pybuildkite.buildkite import Buildkite
 
 BUILDKITE_ORGANIZATION = "ray-project"
-BUILDKITE_PIPELINE = "release-tests-branch"
+BUILDKITE_PIPELINE = "release"
 
 # Format: job name regex --> filename to save results to
 RESULTS_TO_FETCH = {

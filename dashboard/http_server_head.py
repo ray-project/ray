@@ -109,11 +109,13 @@ class HttpServerDashboardHead:
                 "This error message is harmless and can be ignored. "
                 f"Error: {e}"
             )
-        return aiohttp.web.FileResponse(
+        resp = aiohttp.web.FileResponse(
             os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
             )
         )
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     @routes.get("/favicon.ico")
     async def get_favicon(self, req) -> aiohttp.web.FileResponse:
@@ -190,6 +192,14 @@ class HttpServerDashboardHead:
             except Exception as e:
                 logger.exception(f"Error emitting api metrics: {e}")
 
+    @aiohttp.web.middleware
+    async def cache_control_static_middleware(self, request, handler):
+        if request.path.startswith("/static"):
+            response = await handler(request)
+            response.headers["Cache-Control"] = "max-age=31536000"
+            return response
+        return await handler(request)
+
     async def run(self, modules):
         # Bind http routes of each module.
         for c in modules:
@@ -203,6 +213,7 @@ class HttpServerDashboardHead:
                 self.metrics_middleware,
                 self.path_clean_middleware,
                 self.browsers_no_post_put_middleware,
+                self.cache_control_static_middleware,
             ],
         )
         app.add_routes(routes=routes.bound_routes())

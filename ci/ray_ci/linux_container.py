@@ -20,8 +20,7 @@ class LinuxContainer(Container):
         envs: Optional[List[str]] = None,
         tmp_filesystem: Optional[str] = None,
     ) -> None:
-        super().__init__(docker_tag, envs)
-        self.volumes = volumes or []
+        super().__init__(docker_tag, volumes, envs)
 
         if tmp_filesystem is not None:
             if tmp_filesystem != "tmpfs":
@@ -41,6 +40,8 @@ class LinuxContainer(Container):
                 f"BASE_IMAGE={self._get_docker_image()}",
                 "--build-arg",
                 f"BUILD_TYPE={build_type or ''}",
+                "--build-arg",
+                f"BUILDKITE_PIPELINE_ID={env.get('BUILDKITE_PIPELINE_ID')}",
                 "-t",
                 self._get_docker_image(),
                 "-f",
@@ -70,8 +71,6 @@ class LinuxContainer(Container):
                 "--mount",
                 f"type={self.tmp_filesystem},destination=/tmp",
             ]
-        for volume in self.volumes:
-            extra_args += ["--volume", volume]
         for cap in _DOCKER_CAP_ADD:
             extra_args += ["--cap-add", cap]
         if gpu_ids:

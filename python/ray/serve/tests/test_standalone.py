@@ -22,7 +22,6 @@ from ray._private.test_utils import (
 )
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -35,7 +34,6 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
@@ -118,8 +116,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_alive)
 
     serve.shutdown()
-    with pytest.raises(RayServeException):
-        _private_api.list_deployments()
 
     def check_dead():
         for actor_name in actor_names:
@@ -227,7 +223,6 @@ def test_deployment(ray_cluster):
         return "from_f"
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
-    handle = handle.options(use_new_handle_api=True)
     assert handle.remote().result() == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
@@ -243,7 +238,6 @@ def test_deployment(ray_cluster):
         return "from_g"
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
-    handle = handle.options(use_new_handle_api=True)
     assert handle.remote().result() == "from_g"
     assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
@@ -534,8 +528,7 @@ def test_http_head_only(ray_cluster):
 
     # They should all be placed on the head node
     cpu_per_nodes = {
-        r["CPU"]
-        for r in ray._private.state.state._available_resources_per_node().values()
+        r["CPU"] for r in ray._private.state.available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
 
@@ -543,7 +536,6 @@ def test_http_head_only(ray_cluster):
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
     serve.start()
-    client = _get_global_client()
 
     @serve.deployment
     class A:
@@ -552,17 +544,16 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.run(A.bind())
 
-    assert len(client.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
     serve.shutdown()
     serve.start()
-    client = _get_global_client()
 
-    assert len(client.list_deployments()) == 0
+    assert len(serve.status().applications) == 0
 
     serve.run(A.bind())
 
-    assert len(client.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
@@ -672,7 +663,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def f(*args):
         pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     def updating_message():
         deployment_status = (
@@ -701,7 +692,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         def __call__(self, request):
             pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     wait_for_condition(
         lambda: serve.status()

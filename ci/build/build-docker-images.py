@@ -38,14 +38,13 @@ DOCKER_HUB_DESCRIPTION = {
 }
 
 PY_MATRIX = {
-    "py38": "3.8",
     "py39": "3.9",
     "py310": "3.10",
     "py311": "3.11",
 }
 
 # Versions for which we build the ray-ml image
-ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
+ML_IMAGES_PY_VERSIONS = {"py39", "py310"}
 
 BASE_IMAGES = {
     "cu121": "nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04",

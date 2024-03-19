@@ -7,8 +7,8 @@ steps:
 
   - wait: ~
     depends_on:
-    - serverlessbuild
-    - forge
+      - serverlessbuild
+      - forge
 
   # tests
   - label: ":serverless: serverless: python tests"
@@ -18,23 +18,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
         --parallelism-per-worker 3
         --except-tags manual,spark_plugin_tests
-
-  - label: ":serverless: serverless: :windows: tests"
-    tags: python
-    job_env: WINDOWS
-    mount_windows_artifacts: true
-    instance_type: windows
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
-        --build-name windowsbuild
-        --operating-system windows
-        --except-tags no_windows
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-        --parallelism-per-worker 3
-    depends_on: windowsbuild
 
   - label: ":serverless: serverless: spark tests"
     tags: python

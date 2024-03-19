@@ -92,12 +92,10 @@ class FunctionActorManager:
         # Deserialize an ActorHandle will call load_actor_class(). If a
         # function closure captured an ActorHandle, the deserialization of the
         # function will be:
-        #     import_thread.py
         #         -> fetch_and_register_remote_function (acquire lock)
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
-        self.cv = threading.Condition(lock=self.lock)
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
@@ -173,10 +171,6 @@ class FunctionActorManager:
                     > 0
                 ):
                     break
-        # Notify all subscribers that there is a new function exported. Note
-        # that the notification doesn't include any actual data.
-        # TODO(mwtian) implement per-job notification here.
-        self._worker.gcs_publisher.publish_function_key(key)
 
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None
@@ -479,9 +473,6 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
-            # Try importing in case the worker did not get notified, or the
-            # importer thread did not run.
-            self._worker.import_thread._do_importing()
             time.sleep(0.001)
 
     def export_actor_class(
