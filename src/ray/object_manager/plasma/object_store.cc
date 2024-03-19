@@ -49,8 +49,7 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
 
   if (object_info.is_mutable) {
     RAY_LOG(DEBUG) << "PlasmaObjectHeader::Init " << object_info.object_id;
-    auto plasma_header = entry->GetPlasmaObjectHeader();
-    plasma_header->Init();
+    entry->GetPlasmaObjectHeader()->Init();
   }
 
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
@@ -77,12 +76,8 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
 
 bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   auto entry = GetMutableObject(object_id);
-  if (entry == nullptr) {
+  if (!entry) {
     return false;
-  }
-  if (entry->object_info.is_mutable) {
-    auto plasma_header = entry->GetPlasmaObjectHeader();
-    plasma_header->Destroy();
   }
 
   allocator_.Free(std::move(entry->allocation));

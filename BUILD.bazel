@@ -1212,6 +1212,7 @@ ray_cc_test(
     ],
     tags = ["team:core", "no_windows"],
     deps = [
+        ":core_worker_lib",
         ":plasma_store_server_lib",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
