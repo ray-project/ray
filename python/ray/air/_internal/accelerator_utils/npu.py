@@ -3,8 +3,9 @@ import os
 from typing import List
 
 import torch
+
 if importlib.util.find_spec("torch_npu"):
-    import torch_npu
+    import torch_npu  # noqa: F401
 
 import ray
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
@@ -17,7 +18,7 @@ class NPUTorchDeviceManager(TorchDeviceManager):
     @staticmethod
     def get_accelerator_name() -> str:
         return "NPU"
-    
+
     @staticmethod
     def get_device_type() -> str:
         return "npu"
@@ -30,14 +31,14 @@ class NPUTorchDeviceManager(TorchDeviceManager):
                 "please use `pip install torch-npu` to install torch-npu."
             )
         return torch.npu
-    
+
     @staticmethod
     def is_device_available() -> bool():
         if not importlib.util.find_spec("torch_npu"):
             return False
-        
+
         return torch.npu.is_available()
-    
+
     @staticmethod
     def get_torch_device() -> List[torch.device]:
         """Gets the correct torch device list configured for this process.
@@ -67,8 +68,8 @@ class NPUTorchDeviceManager(TorchDeviceManager):
                         raise RuntimeError(
                             "ASCEND_RT_VISIBLE_DEVICES set incorrectly. "
                             f"Got {npu_visible_str}, expected to include {npu_id}. "
-                            "Did you override the `ASCEND_RT_VISIBLE_DEVICES` environment"
-                            " variable? If not, please help file an issue on Github."
+                            "Did you override the `ASCEND_RT_VISIBLE_DEVICES` "
+                            "environment variable?"
                         )
             else:
                 # If called on the driver or outside of Ray Train, return the
@@ -78,5 +79,5 @@ class NPUTorchDeviceManager(TorchDeviceManager):
             devices = [torch.device(f"npu:{device_id}") for device_id in device_ids]
         else:
             devices = [torch.device("cpu")]
-        
+
         return devices

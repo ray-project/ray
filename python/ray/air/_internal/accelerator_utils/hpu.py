@@ -9,13 +9,12 @@ if HPU_PACKAGE_AVAILABLE:
 
 
 class HPUTorchDeviceManager(TorchDeviceManager):
-    """HPU device manager
-    """
+    """HPU device manager"""
 
     @staticmethod
     def get_accelerator_name() -> str:
         return "HPU"
-    
+
     @staticmethod
     def get_device_type() -> str:
         return "hpu"
@@ -27,19 +26,19 @@ class HPUTorchDeviceManager(TorchDeviceManager):
                 "habana_frameworks is not installed so that hpu is not available."
             )
         return torch_hpu
-    
+
     @staticmethod
     def is_device_available() -> bool():
         if not HPU_PACKAGE_AVAILABLE:
             return False
-        
+
         return torch_hpu.is_available()
-    
+
     @staticmethod
     def get_devices() -> List[torch.device]:
         if HPU_PACKAGE_AVAILABLE and torch_hpu.is_available():
             devices = [torch.device("hpu")]
         else:
             devices = [torch.device("cpu")]
-        
+
         return devices

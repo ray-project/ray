@@ -4,7 +4,6 @@ from typing import List
 import torch
 
 import ray
-from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray.air._internal.accelerator_utils.device_manager import TorchDeviceManager
 
 
@@ -18,15 +17,15 @@ class CUDATorchDeviceMananger(TorchDeviceManager):
     @staticmethod
     def get_device_type() -> str:
         return "cuda"
-    
+
     @staticmethod
     def get_device_module():
         return torch.cuda
-    
+
     @staticmethod
     def is_device_available() -> bool():
         return torch.cuda.is_available()
-    
+
     @staticmethod
     def get_devices() -> List[torch.device]:
         """Gets the correct torch device list configured for this process.

@@ -6,11 +6,12 @@ import logging
 import ray
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
 from ray.air._internal.accelerator_utils.device_manager import TorchDeviceManager
-from python.ray.air._internal.accelerator_utils.nvidia_gpu import CUDATorchDeviceMananger
+from ray.air._internal.accelerator_utils.nvidia_gpu import CUDATorchDeviceMananger
 from ray.air._internal.accelerator_utils.npu import NPUTorchDeviceManager
 from ray.air._internal.accelerator_utils.hpu import HPUTorchDeviceManager
 
 logger = logging.getLogger(__name__)
+
 
 def try_import_torch():
     try:
@@ -24,24 +25,19 @@ def try_import_torch():
                     "/dev path and torch_npu will not be imported."
                 )
             else:
-                import torch_npu    # noqa: F401
-        
+                import torch_npu  # noqa: F401
+
         if HPU_PACKAGE_AVAILABLE:
-            import habana_frameworks.torch.hpu as torch_hpu   # noqa: F401
-        
+            import habana_frameworks.torch.hpu as torch_hpu  # noqa: F401
+
         return torch, nn
     except ImportError:
-        raise ImportError(
-            "Could not import PyTorch"
-        )
+        raise ImportError("Could not import PyTorch")
+
 
 def get_all_torch_device_manager() -> Set[TorchDeviceManager]:
     """Get all device manager supported by Ray"""
-    return {
-        CUDATorchDeviceMananger,
-        HPUTorchDeviceManager,
-        NPUTorchDeviceManager
-    }
+    return {CUDATorchDeviceMananger, HPUTorchDeviceManager, NPUTorchDeviceManager}
 
 
 def get_torch_device_manager_for_resources(
@@ -55,8 +51,9 @@ def get_torch_device_manager_for_resources(
         if torch_device_manager.get_accelerator_name() == resource_name:
             return torch_device_manager
 
+
 def get_torch_device_manager_by_runtime_context() -> Optional[TorchDeviceManager]:
-    """Return a corresponding TorchDeviceManager class if some 
+    """Return a corresponding TorchDeviceManager class if some
     accelerator is allocated and supported, otherwise return None.
     """
     allocated_accelerators = ray.get_runtime_context().get_accelerator_ids()
@@ -67,11 +64,14 @@ def get_torch_device_manager_by_runtime_context() -> Optional[TorchDeviceManager
                 # Raise a warning if device manager is selected but another
                 # accelerators are allocated
                 logger.warning(
-                    "There is more than one "
+                    "There is more than one accelerator allocated which may "
+                    "not be fully used."
                 )
             else:
-                device_manager = get_torch_device_manager_for_resources(accelerator_type)
-        
+                device_manager = get_torch_device_manager_for_resources(
+                    accelerator_type
+                )
+
     return device_manager
 
 
@@ -82,5 +82,5 @@ __all__ = [
     "NPUTorchDeviceManager",
     "get_all_torch_device_manager",
     "get_torch_device_manager_for_resource",
-    "get_torch_device_manager_by_runtime_context"
+    "get_torch_device_manager_by_runtime_context",
 ]

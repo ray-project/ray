@@ -11,28 +11,26 @@ class TorchDeviceManager(ABC):
     @staticmethod
     @abstractmethod
     def get_accelerator_name() -> str:
-        """Gets the corresponding accelerator type, e.g. GPU, NPU.
-        """
-    
+        """Gets the corresponding accelerator type, e.g. GPU, NPU."""
+
     @staticmethod
     @abstractmethod
     def get_device_type() -> str:
         """Gets the device type in deeplearning framwork,
         e.g. cuda, hpu, npu in torch.
         """
-    
+
     @staticmethod
     @abstractmethod
     def get_device_module():
-        """Gets the torch device extention module, e.g. 
+        """Gets the torch device extention module, e.g.
         torch.cuda, torch.hpu, torch.npu
         """
-    
+
     @staticmethod
     @abstractmethod
     def is_device_available() -> bool():
-        """Validate if device is available.
-        """
+        """Validate if device is available."""
 
     @staticmethod
     @abstractmethod
