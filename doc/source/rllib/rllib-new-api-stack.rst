@@ -16,9 +16,10 @@ on this "new API stack" and it is now available for the following select algorit
 
 .. list-table::
    :header-rows: 1
+   :max-width: 50%
    :widths: 40 40 40
 
-   * - Feature/Algo
+   * - Feature/Algo (on new API stack)
      - **PPO**
      - **SAC**
    * - Single Agent
@@ -54,18 +55,19 @@ on the old API stack for the foreseeable future (beyond Ray 3.0).
 What is the New API Stack?
 --------------------------
 
-In a nutshell, the new API stack is the result of re-writing from scratch
-RLlib's core APIs and reducing its user-facing classes from more than a dozen critical one
-to only a handful. When designing these new interfaces from the ground up, we strictly
-applied the following design principles:
+The new API stack is the result of re-writing from scratch RLlib's core APIs and reducing
+its user-facing classes from more than a dozen critical ones
+down to only a handful of classes. During the design of these new interfaces from the ground up,
+we strictly applied the following principles:
 
-* Always suppose a simple mental-model underlying a new API
+* Suppose a simple mental-model underlying the new APIs
 * Classes must be usable outside of RLlib
-* Always separate concerns as much as possible (in other word, always try to clearly answer: "WHAT should be done WHEN and by WHOM?")
-* Offer more finegrained modularity, better interoperability, and friction-less pluggability of classes
+* Separate concerns as much as possible (in other words: Try to answer: "**WHAT** should be done **WHEN** and by **WHOM**?")
+* Offer finegrained modularity, full interoperability, and friction-less pluggability of classes
 
-Applying these principles above, we were able to reduce the important "must-know" classes
-for the average RLlib user from 7 (old stack) to only 4 (new stack):
+Applying these principles above, we were able to reduce the important **must-know** classes
+for the average RLlib user from seven (on the old stack) to only four (on the new stack).
+Those **core** new API stack classes are:
 
 * RLModule (replaces ModelV2 and PolicyMap APIs)
 * Learner (replaces Policy and some of RolloutWorker)
