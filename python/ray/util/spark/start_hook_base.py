@@ -15,4 +15,4 @@ class RayOnSparkStartHook:
         pass
 
     def custom_environment_variables(self):
-        return {"DISABLE_MLFLOW_INTEGRATION": "TRUE"}
+        return {}
