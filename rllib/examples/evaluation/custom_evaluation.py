@@ -14,7 +14,7 @@ runs.
 We define a custom evaluation method that does the following:
 - It changes the corridor length of all environments used on the evaluation EnvRunners.
 - It runs a defined number of episodes for evaluation purposes.
-- It collects the metrics from those runs, summarizes these metrics and return them.
+- It collects the metrics from those runs, summarizes these metrics and returns them.
 
 """
 from ray.rllib.algorithms.algorithm import Algorithm
