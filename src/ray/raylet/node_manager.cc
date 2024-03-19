@@ -1515,7 +1515,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
-  cluster_task_manager_->CancelTaskForOwner(worker->GetAssignedTaskId());
+  cluster_task_manager_->CancelAllTaskOwnedBy(worker->WorkerId());
 
   client->Close();
 
