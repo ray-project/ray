@@ -4,6 +4,7 @@ import os
 import random
 import sys
 import time
+import asyncio
 
 import pytest
 
@@ -12,6 +13,9 @@ import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
+from ray._private.utils import (
+    get_or_create_event_loop,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,9 @@ class Actor:
                 else:
                     raise ValueError("injected fault")
         return self.i
+
+    def echo(self, x):
+        return x
 
     def append_to(self, lst):
         lst.append(self.i)
@@ -165,10 +172,9 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
     for i in range(3):
         output_channels = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
-        results = [chan.begin_read() for chan in output_channels]
+        results = output_channels.begin_read()
         assert results == [i + 1] * num_actors
-        for chan in output_channels:
-            chan.end_read()
+        output_channels.end_read()
 
     compiled_dag.teardown()
 
@@ -264,18 +270,15 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
     for i in range(99):
         output_channels = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
-        results = [chan.begin_read() for chan in output_channels]
+        results = output_channels.begin_read()
         assert results == [i + 1] * 4
-        for chan in output_channels:
-            chan.end_read()
+        output_channels.end_read()
 
     with pytest.raises(ValueError):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
-            for chan in output_channels:
-                chan.begin_read()
-            for chan in output_channels:
-                chan.end_read()
+            output_channels.begin_read()
+            output_channels.end_read()
 
     compiled_dag.teardown()
 
@@ -291,18 +294,15 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
     for i in range(99):
         output_channels = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
-        results = [chan.begin_read() for chan in output_channels]
+        results = output_channels.begin_read()
         assert results == [i + 1] * 4
-        for chan in output_channels:
-            chan.end_read()
+        output_channels.end_read()
 
     with pytest.raises(RaySystemError, match="channel closed"):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
-            for chan in output_channels:
-                chan.begin_read()
-            for chan in output_channels:
-                chan.end_read()
+            output_channels.begin_read()
+            output_channels.end_read()
 
 
 def test_dag_teardown_while_running(ray_start_regular_shared):
@@ -329,6 +329,78 @@ def test_dag_teardown_while_running(ray_start_regular_shared):
     assert result == 0.1
     chan.end_read()
 
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("max_queue_size", [None, 2])
+def test_asyncio(ray_start_regular_shared, max_queue_size):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(
+        enable_asyncio=True, async_max_queue_size=max_queue_size
+    )
+
+    async def main(i):
+        output_channel = await compiled_dag.execute_async(i)
+        # Using context manager.
+        async with output_channel as result:
+            assert result == i
+
+        # Using begin_read() / end_read().
+        output_channel = await compiled_dag.execute_async(i)
+        result = await output_channel.begin_read()
+        assert result == i
+        output_channel.end_read()
+
+    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("max_queue_size", [None, 2])
+def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
+    a = Actor.remote(0, fail_after=100)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(
+        enable_asyncio=True, async_max_queue_size=max_queue_size
+    )
+
+    async def main():
+        for i in range(99):
+            output_channel = await compiled_dag.execute_async(1)
+            async with output_channel as result:
+                assert result == i + 1
+
+        # Using context manager.
+        exc = None
+        for i in range(99):
+            output_channel = await compiled_dag.execute_async(1)
+            async with output_channel as result:
+                if isinstance(result, Exception):
+                    exc = result
+        assert isinstance(exc, ValueError), exc
+
+        # Using begin_read() / end_read().
+        exc = None
+        for i in range(99):
+            output_channel = await compiled_dag.execute_async(1)
+            try:
+                result = await output_channel.begin_read()
+            except Exception as e:
+                exc = e
+            output_channel.end_read()
+        assert isinstance(exc, ValueError), exc
+
+    loop.run_until_complete(main())
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
 
 

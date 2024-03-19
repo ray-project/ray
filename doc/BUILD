@@ -122,6 +122,7 @@ py_test_run_all_subdirectory(
     include = ["source/serve/doc_code/**/*.py"],
     exclude = [
         "source/serve/doc_code/aws_neuron_core_inference_serve.py",
+        "source/serve/doc_code/aws_neuron_core_inference_serve_stable_diffusion.py",
         "source/serve/doc_code/hpu_inference_serve.py",
         "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
         "source/serve/doc_code/hpu_inference_client.py",
@@ -157,6 +158,7 @@ py_test_run_all_subdirectory(
     ],
     exclude = [
         "source/serve/doc_code/aws_neuron_core_inference_serve.py",
+        "source/serve/doc_code/aws_neuron_core_inference_serve_stable_diffusion.py",
         "source/serve/doc_code/hpu_inference_serve.py",
         "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
         "source/serve/doc_code/hpu_inference_client.py",

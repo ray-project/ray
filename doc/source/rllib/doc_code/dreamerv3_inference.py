@@ -2,8 +2,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -42,16 +41,16 @@ while not terminated and not truncated:
     # `is_first` flag.
     batch = {
         # states is already batched (B=1)
-        STATE_IN: states,
+        Columns.STATE_IN: states,
         # obs is already batched (due to vector env).
-        SampleBatch.OBS: tf.convert_to_tensor(obs),
+        Columns.OBS: tf.convert_to_tensor(obs),
         # set to True at beginning of episode.
         "is_first": tf.convert_to_tensor([is_first]),
     }
     outs = rl_module.forward_inference(batch)
     # Extract actions (which are in one hot format) and state-outs from outs
-    actions = np.argmax(outs[SampleBatch.ACTIONS].numpy(), axis=-1)
-    states = outs[STATE_OUT]
+    actions = np.argmax(outs[Columns.ACTIONS].numpy(), axis=-1)
+    states = outs[Columns.STATE_OUT]
 
     # Perform a step in the env.
     obs, reward, terminated, truncated, info = env.step(actions)

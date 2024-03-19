@@ -77,10 +77,6 @@ class MapOperator(OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
-        # When the streaming generator ref is GC'ed, the objects it generated
-        # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
-        self._finished_streaming_gens: List[ObjectRefGenerator] = []
         super().__init__(name, input_op, target_max_block_size)
 
         # If set, then all output blocks will be split into
@@ -316,8 +312,7 @@ class MapOperator(OneToOneOperator, ABC):
                 / self._metrics.num_tasks_finished
             )
 
-            task = self._data_tasks.pop(task_index)
-            self._finished_streaming_gens.append(task.get_waitable())
+            self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
             if task_done_callback:
@@ -385,7 +380,6 @@ class MapOperator(OneToOneOperator, ABC):
     def shutdown(self):
         self._data_tasks.clear()
         self._metadata_tasks.clear()
-        self._finished_streaming_gens.clear()
 
     @abstractmethod
     def current_processor_usage(self) -> ExecutionResources:
@@ -396,7 +390,9 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(
+        self, consider_autoscaling=True
+    ) -> ExecutionResources:
         raise NotImplementedError
 
 
@@ -424,6 +420,7 @@ def _map_task(
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()
+        m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx
         yield b_out
         yield m_out

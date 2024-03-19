@@ -129,6 +129,8 @@ Provider
             :ref:`location <cluster-configuration-location>`: str
             :ref:`resource_group <cluster-configuration-resource-group>`: str
             :ref:`subscription_id <cluster-configuration-subscription-id>`: str
+            :ref:`msi_name <cluster-configuration-msi-name>`: str
+            :ref:`msi_resource_group <cluster-configuration-msi-resource-group>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
 
@@ -1040,6 +1042,62 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** High
         * **Type:** String
         * **Default:** ``""``
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-msi-name:
+
+``provider.msi_name``
+~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity to use for deployment of the Ray cluster. If not specified, Ray will create a default user-assigned managed identity.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-default-msi
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-msi-resource-group:
+
+``provider.msi_resource_group``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity's resource group to use for deployment of the Ray cluster, used in conjunction with msi_name. If not specified, Ray will create a default user-assigned managed identity in resource group specified in the provider config.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-cluster
 
     .. tab-item:: GCP
 

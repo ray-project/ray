@@ -1,14 +1,18 @@
+---
+orphan: true
+---
+
 # Serve a model on Intel Habana Gaudi
 
 [Habana Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Habana Labs. For more information, see [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/).
 
 This tutorial shows how to deploy [Llama2-7b](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf) using a single HPU:
 
-    * How to load a model in an HPU
+* How to load a model in an HPU
 
-    * How to perform generation on an HPU
+* How to perform generation on an HPU
 
-    * How to enable HPU Graph optimizations
+* How to enable HPU Graph optimizations
 
 This tutorial helps you serve a large language model on HPUs.
 

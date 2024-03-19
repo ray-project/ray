@@ -1,9 +1,11 @@
+import asyncio
+import concurrent
 import io
 import logging
 from typing import Any, Dict, List, Optional
 
 import ray
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -174,9 +176,8 @@ class Channel:
         Read the latest value from the channel. This call will block until a
         value is available to read.
 
-        Subsequent calls to begin_read() will return the same value, until
-        end_read() is called. Then, the client must begin_read() again to get
-        the next value.
+        Subsequent calls to begin_read() will *block*, until end_read() is
+        called and the next value is available to read.
 
         Returns:
             Any: The deserialized value.
@@ -205,3 +206,176 @@ class Channel:
         logger.debug(f"Setting error bit on channel: {self._base_ref}")
         self._ensure_registered_as_writer()
         self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+
+
+# Interfaces for channel I/O.
+@DeveloperAPI
+class ReaderInterface:
+    def __init__(self, input_channels: List[Channel]):
+        if isinstance(input_channels, List):
+            for chan in input_channels:
+                assert isinstance(chan, Channel)
+            self._has_single_output = False
+        else:
+            assert isinstance(input_channels, Channel)
+            self._has_single_output = True
+            input_channels = [input_channels]
+
+        self._input_channels = input_channels
+        self._closed = False
+        self._num_reads = 0
+
+    def get_num_reads(self) -> int:
+        return self._num_reads
+
+    def start(self):
+        raise NotImplementedError
+
+    def _begin_read_list(self) -> Any:
+        raise NotImplementedError
+
+    def begin_read(self) -> Any:
+        outputs = self._begin_read_list()
+        self._num_reads += 1
+        if self._has_single_output:
+            return outputs[0]
+        else:
+            return outputs
+
+    def end_read(self) -> Any:
+        raise NotImplementedError
+
+    def close(self) -> None:
+        self._closed = True
+        for channel in self._input_channels:
+            channel.close()
+
+
+@DeveloperAPI
+class SynchronousReader(ReaderInterface):
+    def __init__(self, input_channels: List[Channel]):
+        super().__init__(input_channels)
+
+    def start(self):
+        pass
+
+    def _begin_read_list(self) -> Any:
+        return [c.begin_read() for c in self._input_channels]
+
+    def end_read(self) -> Any:
+        for c in self._input_channels:
+            c.end_read()
+
+
+@DeveloperAPI
+class AwaitableBackgroundReader(ReaderInterface):
+    """
+    Asyncio-compatible channel reader.
+
+    The reader is constructed with an async queue of futures whose values it
+    will fulfill. It uses a threadpool to execute the blocking calls to read
+    from the input channel(s).
+    """
+
+    def __init__(self, input_channels: List[Channel], fut_queue: asyncio.Queue):
+        super().__init__(input_channels)
+        self._fut_queue = fut_queue
+        self._background_task = None
+        self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="channel.AwaitableBackgroundReader"
+        )
+
+    def start(self):
+        self._background_task = asyncio.ensure_future(self.run())
+
+    def _run(self):
+        vals = [c.begin_read() for c in self._input_channels]
+        if self._has_single_output:
+            vals = vals[0]
+        return vals
+
+    async def run(self):
+        loop = asyncio.get_running_loop()
+        while not self._closed:
+            res, fut = await asyncio.gather(
+                loop.run_in_executor(self._background_task_executor, self._run),
+                self._fut_queue.get(),
+                return_exceptions=True,
+            )
+
+            # Set the result on the main thread.
+            fut.set_result(res)
+
+    def end_read(self) -> Any:
+        for c in self._input_channels:
+            c.end_read()
+
+    def close(self):
+        self._background_task.cancel()
+        super().close()
+
+
+@DeveloperAPI
+class WriterInterface:
+    def __init__(self, output_channel: Channel):
+        self._output_channel = output_channel
+        self._closed = False
+        self._num_writes = 0
+
+    def get_num_writes(self) -> int:
+        return self._num_writes
+
+    def start(self):
+        raise NotImplementedError()
+
+    def write(self, val: Any) -> None:
+        raise NotImplementedError()
+
+    def close(self) -> None:
+        self._closed = True
+        self._output_channel.close()
+
+
+@DeveloperAPI
+class SynchronousWriter(WriterInterface):
+    def start(self):
+        pass
+
+    def write(self, val: Any) -> None:
+        self._output_channel.write(val)
+        self._num_writes += 1
+
+
+@DeveloperAPI
+class AwaitableBackgroundWriter(WriterInterface):
+    def __init__(self, output_channel: Channel, max_queue_size: Optional[int] = None):
+        super().__init__(output_channel)
+        if max_queue_size is None:
+            max_queue_size = 0
+        self._queue = asyncio.Queue(max_queue_size)
+        self._background_task = None
+        self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="channel.AwaitableBackgroundWriter"
+        )
+
+    def start(self):
+        self._background_task = asyncio.ensure_future(self.run())
+
+    def _run(self, res):
+        self._output_channel.write(res)
+
+    async def run(self):
+        loop = asyncio.get_event_loop()
+        while True:
+            res = await self._queue.get()
+            await loop.run_in_executor(self._background_task_executor, self._run, res)
+
+    async def write(self, val: Any) -> None:
+        if self._closed:
+            raise RuntimeError("DAG execution cancelled")
+        await self._queue.put(val)
+        self._num_writes += 1
+
+    def close(self):
+        self._background_task.cancel()
+        super().close()

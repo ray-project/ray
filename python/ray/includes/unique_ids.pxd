@@ -73,6 +73,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         CNodeID FromHex(const c_string &hex_str)
 
+        @staticmethod
+        const CNodeID Nil()
+
     cdef cppclass CConfigID "ray::ConfigID"(CUniqueID):
 
         @staticmethod

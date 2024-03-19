@@ -111,18 +111,28 @@ class DAGNode(DAGNodeBase):
         self.cache_from_last_execute = {}
 
     def experimental_compile(
-        self, buffer_size_bytes: Optional[int] = None
+        self,
+        buffer_size_bytes: Optional[int] = None,
+        enable_asyncio: bool = False,
+        async_max_queue_size: Optional[int] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
         Args:
             buffer_size_bytes: The maximum size of messages that can be passed
                 between tasks in the DAG.
+            max_concurrency: The max number of concurrent executions to allow for
+                the DAG.
 
         Returns:
             A compiled DAG.
         """
-        return build_compiled_dag_from_ray_dag(self, buffer_size_bytes)
+        return build_compiled_dag_from_ray_dag(
+            self,
+            buffer_size_bytes,
+            enable_asyncio,
+            async_max_queue_size,
+        )
 
     def execute(
         self, *args, _ray_cache_refs: bool = False, **kwargs
