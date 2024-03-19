@@ -1,12 +1,10 @@
 import os
 import sys
-import time
 import pytest
 from unittest.mock import patch
 
 import ray
 from ray._private.accelerators import hpu, HPUAcceleratorManager
-from ray._private.test_utils import RayTestTimeoutException
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
