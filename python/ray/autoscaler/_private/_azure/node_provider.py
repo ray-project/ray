@@ -27,6 +27,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 
+TERMINATION_TIMEOUT = 300
 VM_NAME_MAX_LEN = 64
 UNIQUE_ID_LEN = 4
 
@@ -387,7 +388,10 @@ class AzureNodeProvider(NodeProvider):
             client=self.compute_client.virtual_machines,
             function_name="delete",
         )
-        delete(resource_group_name=resource_group, vm_name=node_id).wait()
+        try:
+            delete(resource_group_name=resource_group, vm_name=node_id).wait(timeout=TERMINATION_TIMEOUT)
+        except Exception as e:
+            logger.warning("Failed to delete VM: {}".format(e))
 
         # Delete disks (no need to wait for these, but gather the LROs for end)
         disk_lros = []
@@ -421,7 +425,8 @@ class AzureNodeProvider(NodeProvider):
             except Exception as e:
                 logger.warning("Failed to delete NIC: {}".format(e))
 
-        while not all(nlro.done() for nlro in nic_lros):
+        st = time.monotonic()
+        while not all(nlro.done() for nlro in nic_lros) and (time.monotonic() - st) < TERMINATION_TIMEOUT:
             time.sleep(0.1)
 
         # Delete Public IPs
@@ -440,10 +445,12 @@ class AzureNodeProvider(NodeProvider):
                 )
             except Exception as e:
                 logger.warning("Failed to delete public IP: {}".format(e))
-
-        while not all(dlro.done() for dlro in disk_lros):
+        
+        st = time.monotonic()
+        while not all(dlro.done() for dlro in disk_lros) and (time.monotonic() - st) < TERMINATION_TIMEOUT:
             time.sleep(0.1)
-        while not all(iplro.done() for iplro in ip_lros):
+        st = time.monotonic()
+        while not all(iplro.done() for iplro in ip_lros) and (time.monotonic() - st) < TERMINATION_TIMEOUT:
             time.sleep(0.1)
 
     def _get_node(self, node_id):
