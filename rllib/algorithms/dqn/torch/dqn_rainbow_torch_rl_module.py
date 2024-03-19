@@ -118,12 +118,28 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     ) -> Dict[str, TensorStructType]:
         output = {}
 
-        batch_base = {Columns.OBS: batch[Columns.OBS]}
+        # If we use a double-Q setup.
+        if self.uses_double_q:
+            # Then we need to make a single forward pass with both,
+            # current and next observations.
+            batch_base = {
+                Columns.OBS: torch.concat(
+                    [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=0
+                ),
+            }
+        # Otherwise we can just use the current observations.
+        else:
+            batch_base = {Columns.OBS: batch[Columns.OBS]}
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Q-network forward passes.
         qf_outs = self._qf(batch_base)
-        output[QF_PREDS] = qf_outs[QF_PREDS]
+        if self.uses_double_q:
+            output[QF_PREDS], output[QF_NEXT_PREDS] = torch.chunk(
+                qf_outs[QF_PREDS], chunks=2, dim=0
+            )
+        else:
+            output[QF_PREDS] = qf_outs[QF_PREDS]
         # The target Q-values for the next observations.
         qf_target_next_outs = self._qf_target(batch_target)
         output[QF_TARGET_NEXT_PREDS] = qf_target_next_outs[QF_PREDS]

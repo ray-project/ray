@@ -60,13 +60,30 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             neginf=0.0,
         ).squeeze()
 
-        # Mark the maximum Q-value(s).
-        q_next_best_idx = torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
-        # Get the maximum Q-value(s).
-        q_next_best = torch.nan_to_num(
-            torch.gather(q_target_next, dim=1, index=q_next_best_idx),
-            neginf=0.0,
-        ).squeeze()
+        # Use double Q learning.
+        if self.config.double_q:
+            # Then we evaluate the target Q-function at the best action (greedy action)
+            # over the online Q-function.
+            # Mark the best online Q-value of the next state.
+            q_next_best_idx = (
+                torch.argmax(fwd_out[QF_NEXT_PREDS], dim=1).unsqueeze(dim=-1).long()
+            )
+            # Get the Q-value of the target network at maximum of the online network
+            # (bootstrap action).
+            q_next_best = torch.nan_to_num(
+                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
+                neginf=0.0,
+            ).squeeze()
+        else:
+            # Mark the maximum Q-value(s).
+            q_next_best_idx = (
+                torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
+            )
+            # Get the maximum Q-value(s).
+            q_next_best = torch.nan_to_num(
+                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
+                neginf=0.0,
+            ).squeeze()
 
         # If we learn a Q-distribution.
         if self.config.num_atoms > 1:
