@@ -50,30 +50,48 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         q_target_next = fwd_out[QF_TARGET_NEXT_PREDS]
 
         # Get the Q-values for the selected actions in the rollout.
-        # TODO (simon): Check, if we can use `gather` with a complex action
+        # TODO (simon, sven): Check, if we can use `gather` with a complex action
         # space - we might need the one_hot_selection. Also test performance.
-        one_hot_selection = nn.functional.one_hot(
-            batch[Columns.ACTIONS].long(), 4
-        )
-        q_selected = torch.sum(
-            torch.where(q_curr > FLOAT_MIN, q_curr, torch.tensor(0.0, device=q_curr.device))
-            * one_hot_selection,
-            1,
-        )
+        q_selected = torch.nan_to_num(
+            torch.gather(
+                q_curr,
+                dim=1,
+                index=batch[Columns.ACTIONS].view(-1, 1).expand(-1, 1).long(),
+            ),
+            neginf=0.0,
+        ).squeeze()
+        # one_hot_selection = nn.functional.one_hot(batch[Columns.ACTIONS].long(), 4)
+        # q_selected = torch.sum(
+        #     torch.where(
+        #         q_curr > FLOAT_MIN, q_curr, torch.tensor(0.0, device=q_curr.device)
+        #     )
+        #     * one_hot_selection,
+        #     1,
+        # )
 
-        
         # Mark the maximum Q-value(s).
-        q_tp1_best_one_hot_selection = nn.functional.one_hot(
-            torch.argmax(q_target_next, 1), 4
+        q_next_best_idx = (
+            torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
         )
         # Get the maximum Q-value(s).
-        q_next_best = torch.sum(
-            torch.where(
-                q_target_next > FLOAT_MIN, q_target_next, torch.tensor(0.0, device=q_target_next.device)
-            )
-            * q_tp1_best_one_hot_selection,
-            1,
-        )
+        q_next_best = torch.nan_to_num(
+            torch.gather(q_target_next, dim=1, index=q_next_best_idx),
+            neginf=0.0,
+        ).squeeze()
+        # # Mark the maximum Q-value(s).
+        # q_tp1_best_one_hot_selection = nn.functional.one_hot(
+        #     torch.argmax(q_target_next, 1), 4
+        # )
+        # # Get the maximum Q-value(s).
+        # q_next_best = torch.sum(
+        #     torch.where(
+        #         q_target_next > FLOAT_MIN,
+        #         q_target_next,
+        #         torch.tensor(0.0, device=q_target_next.device),
+        #     )
+        #     * q_tp1_best_one_hot_selection,
+        #     1,
+        # )
 
         # If we learn a Q-distribution.
         if self.config.num_atoms > 1:
@@ -93,6 +111,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 .long(),
             ).squeeze(dim=1)
             # Get the probabilies for the maximum Q-value(s).
+            #print(f"next probs: {fwd_out[QF_TARGET_NEXT_PROBS]}")
             q_probs_next_best = torch.gather(
                 fwd_out[QF_TARGET_NEXT_PROBS],
                 dim=1,
@@ -103,6 +122,19 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                     -1, 1, self.config.num_atoms
                 ),
             ).squeeze(dim=1)
+            # q_probs_next_best = torch.sum(
+            #     fwd_out[QF_TARGET_NEXT_PROBS] * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1
+            # )
+            # q_probs_next_best = torch.gather(
+            #     fwd_out[QF_TARGET_NEXT_PROBS],
+            #     dim=1,
+            #     # Change the view and then expand to get to the dimensions
+            #     # of the probabilities (dims 0 and 2, 1 should be reduced
+            #     # from 2 -> 1).
+            #     index=q_next_best_idx.view(-1, 1, 1).expand(
+            #         -1, 1, self.config.num_atoms
+            #     ),
+            # ).squeeze(dim=1)
 
             # For distributional Q-learning we use an entropy loss.
 
@@ -112,9 +144,10 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
             # TODO (simon): Check, if we need to unsqueeze here.
             r_tau = torch.clamp(
+                batch[Columns.REWARDS].unsqueeze(dim=-1)
+                + 
                 (
-                    batch[Columns.REWARDS]
-                    + self.config.gamma ** batch["n_steps"]
+                    self.config.gamma ** batch["n_steps"]
                     * (1.0 - batch[Columns.TERMINATEDS].float())
                 ).unsqueeze(dim=-1)
                 * z,
@@ -156,16 +189,16 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             total_loss = torch.mean(batch["weights"] * td_error)
         else:
             # Masked all Q-values with terminated next states in the targets.
-            q_next_best_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * q_next_best
+            q_next_best_masked = (
+                1.0 - batch[Columns.TERMINATEDS].float()
+            ) * q_next_best
 
             # Compute the RHS of the Bellman equation.
             # Detach this node from the computation graph as we do not want to
             # backpropagate through the target network when optimizing the Q loss.
             q_selected_target = (
-                (
-                    batch[Columns.REWARDS] + self.config.gamma ** batch["n_steps"]
-                )
-                * q_next_best_masked
+                batch[Columns.REWARDS]
+                + (self.config.gamma ** batch["n_steps"]) * q_next_best_masked
             ).detach()
 
             # Choose the requested loss function. Note, in case of the Huber loss

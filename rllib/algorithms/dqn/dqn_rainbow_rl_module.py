@@ -89,7 +89,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return [Columns.OBS, Columns.T]
+        return [Columns.OBS]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:

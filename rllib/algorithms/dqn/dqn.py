@@ -479,7 +479,7 @@ class DQN(SimpleQ):
                 )
 
             # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(  
                 e.agent_steps() for e in episodes
             )
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
@@ -502,7 +502,7 @@ class DQN(SimpleQ):
 
         # TODO (simon): Check, if this can be managed differently or even needs to be
         # put into the sampling loop above.
-        #self.workers.sync_env_runner_states(env_steps_sampled=current_ts)
+        self.workers.sync_env_runner_states(env_steps_sampled=current_ts)
 
         # If enough experiences have been sampled start training.
         if current_ts > self.config.num_steps_sampled_before_learning_starts:
@@ -572,47 +572,21 @@ class DQN(SimpleQ):
                 )
 
                 # Update the target networks if necessary.
-                if current_ts - self._counters[LAST_TARGET_UPDATE_TS] >= self.config.target_network_update_freq:
-                    modules_to_update = set(train_results.keys()) - {ALL_MODULES}
-                    # --- Encoder Update
-                    model_state_dict = self.learner_group._learner.module["default_policy"].encoder.state_dict()
-                    target_state_dict = self.learner_group._learner.module["default_policy"].target_encoder.state_dict()
-                    model_state_dict = {
-                        k: self.config.tau * model_state_dict[k] + (1 - self.config.tau) * v
-                        for k, v in target_state_dict.items()
-                    }
-                    self.learner_group._learner.module["default_policy"].target_encoder.load_state_dict(model_state_dict)
-                    # --- Advatnage Update
-                    model_state_dict = self.learner_group._learner.module["default_policy"].af.state_dict()
-                    target_state_dict = self.learner_group._learner.module["default_policy"].af_target.state_dict()
-                    model_state_dict = {
-                        k: self.config.tau * model_state_dict[k] + (1 - self.config.tau) * v
-                        for k, v in target_state_dict.items()
-                    }
-                    self.learner_group._learner.module["default_policy"].af_target.load_state_dict(model_state_dict)
-                    # --- Value Update
-                    model_state_dict = self.learner_group._learner.module["default_policy"].vf.state_dict()
-                    target_state_dict = self.learner_group._learner.module["default_policy"].vf_target.state_dict()
-                    model_state_dict = {
-                        k: self.config.tau * model_state_dict[k] + (1 - self.config.tau) * v
-                        for k, v in target_state_dict.items()
-                    }
-                    self.learner_group._learner.module["default_policy"].vf_target.load_state_dict(model_state_dict)
-                    self._counters[NUM_TARGET_UPDATES] += 1
-                    self._counters[LAST_TARGET_UPDATE_TS] = current_ts
-                # additional_results = self.learner_group.additional_update(
-                #     module_ids_to_update=modules_to_update,
-                #     timestep=current_ts,
-                #     last_update=self._counters[LAST_TARGET_UPDATE_TS],
-                # )
-                # for pid, res in additional_results.items():
-                #     if LAST_TARGET_UPDATE_TS in res:
-                #         self._counters[LAST_TARGET_UPDATE_TS] = res[
-                #             LAST_TARGET_UPDATE_TS
-                #         ]
-                #     if NUM_TARGET_UPDATES in res:
-                #         self._counters[NUM_TARGET_UPDATES] += res[NUM_TARGET_UPDATES]
-                #     train_results[pid].update(res)
+                modules_to_update = set(train_results.keys()) - {ALL_MODULES}
+                additional_results = self.learner_group.additional_update(
+                    module_ids_to_update=modules_to_update,
+                    timestep=current_ts,
+                    last_update=self._counters[LAST_TARGET_UPDATE_TS],
+                )
+                # Add the additional results to the training results.
+                for pid, res in additional_results.items():
+                    if LAST_TARGET_UPDATE_TS in res:
+                        self._counters[LAST_TARGET_UPDATE_TS] = res[
+                            LAST_TARGET_UPDATE_TS
+                        ]
+                    if NUM_TARGET_UPDATES in res:
+                        self._counters[NUM_TARGET_UPDATES] += res[NUM_TARGET_UPDATES]
+                    train_results[pid].update(res)
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
@@ -674,6 +648,14 @@ class DQN(SimpleQ):
                     self.config.train_batch_size,
                     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
                 )
+
+
+                new_batch = train_batch.copy()["default_policy"]
+                import numpy as np
+                new_batch["obs"] = np.where(new_batch["obs"] == 1)[1]
+                new_batch["new_obs"] = np.where(new_batch["new_obs"] == 1)[1]
+                import pandas as pd
+                df = pd.DataFrame.from_dict(new_batch)
 
                 # Postprocess batch before we learn on it
                 post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)

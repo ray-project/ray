@@ -218,8 +218,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Rescale the support.
         z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
         # Reshape the action values.
+        # NOTE: Handcrafted action shape.
         logits_per_action_per_atom = torch.reshape(
-                action_scores, shape=(-1, self.action_space.n, self.num_atoms)
+                batch, shape=(-1, self.config.action_space.n, self.num_atoms)
         )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value
@@ -313,9 +314,13 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # b/c we backpropagate through these values. See for a discussion
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
+                af_outs_mean = torch.unsqueeze(
+                    torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
+                )
+                qf_outs = qf_outs - af_outs_mean
                 # Has to be a mean for each batch element.
-                af_outs_mean = reduce_mean_ignore_inf(qf_outs, 1)
-                qf_outs = qf_outs - torch.unsqueeze(af_outs_mean, 1)
+                # af_outs_mean = reduce_mean_ignore_inf(qf_outs, 1)
+                # qf_outs = qf_outs - torch.unsqueeze(af_outs_mean, 1)
                 # TODO (simon): Check if unsqueeze is necessary.
                 # Add advantage and value stream. Note, we broadcast here.
                 output[QF_PREDS] = qf_outs + vf_outs
