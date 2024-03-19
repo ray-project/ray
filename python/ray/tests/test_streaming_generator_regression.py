@@ -113,10 +113,11 @@ def test_segfault_report_streaming_generator_output(
     worker_state_before = [(a.worker_id, a.exit_type) for a in list_workers()]
     print(">>> Workers state before: ", worker_state_before)
 
-    with pytest.raises(RayTaskError) as exc_info:
+    try:
         ray.get(caller.run.remote())
-
-    assert isinstance(exc_info.value.cause, TaskCancelledError)
+    except Exception as exc:
+        assert isinstance(exc, RayTaskError)
+        assert isinstance(exc.cause, TaskCancelledError)
 
     worker_state_after = [(a.worker_id, a.exit_type) for a in list_workers()]
     print(">>> Workers state after: ", worker_state_after)
