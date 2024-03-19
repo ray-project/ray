@@ -17,11 +17,11 @@ show you how achieve several tasks.
     inspecting-data
     iterating-over-data
     saving-data
-    execution-configurations
     working-with-images
     working-with-text
     working-with-tensors
     working-with-pytorch
+    execution-configurations
     batch_inference
     performance-tips
     monitoring-your-workload
