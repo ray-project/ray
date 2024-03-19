@@ -20,9 +20,13 @@ resource consumption and runtime; choose the most appropriate method for your us
 Shuffle the ordering of files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To randomly shuffle the ordering of input files before reading, call a function like
-:func:`~ray.data.read_images` and specify ``shuffle="files"``. This randomly assigns
+To randomly shuffle the ordering of input files before reading, call a :ref:`read function <input-output>` function that supports shuffling, such as
+:func:`~ray.data.read_images`, and use the ``shuffle="files"`` parameter. This randomly assigns
 input files to workers for reading.
+
+This is the fastest option for shuffle, and is a purely metadata operation. This
+option doesn't shuffle the actual rows inside files, so the randomness might be
+poor if each file has many rows.
 
 .. testcode::
 
@@ -33,21 +37,20 @@ input files to workers for reading.
         shuffle="files",
     )
 
-.. tip::
-
-    This is the fastest option for shuffle, and is a purely metadata operation. This
-    option doesn't shuffle the actual rows inside files, so the randomness might be
-    poor if each file has many rows.
-
 .. _local_shuffle_buffer:
 
 Local shuffle when iterating over batches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To locally shuffle a subset of rows, call a function like :meth:`~ray.data.Dataset.iter_batches`
-and specify `local_shuffle_buffer_size`. This shuffles the rows up to a provided buffer
+To locally shuffle a subset of rows using iteration methods, such as :meth:`~ray.data.Dataset.iter_batches`,
+:meth:`~ray.data.Dataset.iter_torch_batches`, and :meth:`~ray.data.Dataset.iter_tf_batches`,
+specify `local_shuffle_buffer_size`. This shuffles the rows up to a provided buffer
 size during iteration. See more details in
 :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+
+This is slower than shuffling ordering of files, and shuffles rows locally without
+network transfer. This local shuffle buffer can be used together with shuffling
+ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order>`.
 
 .. testcode::
 
@@ -64,23 +67,19 @@ size during iteration. See more details in
 
 .. tip::
 
-    This is slower than shuffling ordering of files, and shuffles rows locally without
-    network transfer. This local shuffle buffer can be used together with shuffling
-    ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order>`.
-
-    If you observe reduced throughput when using ``local_shuffle_buffer_size``;
-    one way to diagnose this is to check the total time spent in batch creation by
+    If you observe reduced throughput when using ``local_shuffle_buffer_size``,
+    check the total time spent in batch creation by
     examining the ``ds.stats()`` output (``In batch formatting``, under
-    ``Batch iteration time breakdown``).
-    
-    If this time is significantly larger than the
-    time spent in other steps, one way to improve performance is to decrease
-    ``local_shuffle_buffer_size`` or turn off the local shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
+    ``Batch iteration time breakdown``). If this time is significantly larger than the
+    time spent in other steps, decrease ``local_shuffle_buffer_size`` or turn off the local
+    shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
 
 Shuffle all rows
 ~~~~~~~~~~~~~~~~
 
 To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
+This is the slowest option for shuffle, and requires transferring data across
+network between workers. This option achieves the best randomness among all options.
 
 .. testcode::
 
@@ -91,23 +90,10 @@ To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuf
         .random_shuffle()
     )
 
-.. tip::
-
-    This is the slowest option for shuffle, and requires transferring data across
-    network between workers. This option achieves the best randomness among all options.
-
 .. _optimizing_shuffles:
 
 Advanced: Optimizing shuffles
------------------------------
-
-Shuffle operations are *all-to-all* operations where the entire Dataset must be materialized in memory before execution can proceed.
-Currently, these are:
-
-* :meth:`Dataset.groupby <ray.data.Dataset.groupby>`
-* :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`
-* :meth:`Dataset.sort <ray.data.Dataset.sort>`
-
+=============================
 .. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle, 
     `file a Ray Data issue on GitHub <https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+>`_. 
 
@@ -116,7 +102,7 @@ When should you use global per-epoch shuffling?
 
 Use global per-epoch shuffling only if your model is sensitive to the
 randomness of the training data. Based on a
-`theoretical foundation <https://arxiv.org/abs/1709.10432>`__ all
+`theoretical foundation <https://arxiv.org/abs/1709.10432>`__, all
 gradient-descent-based model trainers benefit from improved (global) shuffle quality.
 In practice, the benefit is particularly pronounced for tabular data/models.
 However, the more global the shuffle is, the more expensive the shuffling operation.
@@ -144,10 +130,11 @@ Enabling push-based shuffle
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
 These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
-:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
-Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size can't fit into memory.
+:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`. 
+For example, during a sort operation, data is reordered between blocks and therefore requires shuffling across partitions.
+Shuffling can be challenging to scale to large data sizes and clusters, especially when the total dataset size can't fit into memory.
 
-Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
+Ray Data provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
 Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
 To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
