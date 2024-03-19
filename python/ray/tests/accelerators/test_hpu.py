@@ -228,70 +228,36 @@ def test_hpu_ids(shutdown_only):
     f0 = ray.remote(resources={"HPU": 0})(lambda: get_hpu_ids(0))
     f1 = ray.remote(resources={"HPU": 1})(lambda: get_hpu_ids(1))
 
-    # Wait for all workers to start up.
-    @ray.remote
-    def g():
-        time.sleep(0.2)
-        return os.getpid()
-
-    start_time = time.time()
-    while True:
-        num_workers_started = len(set(ray.get([g.remote() for _ in range(num_hpus)])))
-        if num_workers_started == num_hpus:
-            break
-        if time.time() > start_time + 10:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for workers to start up."
-            )
-
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
     ray.get([f1.remote() for _ in range(10)])
 
-    # Test that actors have NEURON_RT_VISIBLE_CORES set properly.
+    # Test that actors have HABANA_VISIBLE_MODULES set properly.
 
     @ray.remote
-    class Actor0:
-        def __init__(self):
+    class Actor:
+        def __init__(self, num_hpus):
+            self.num_hpus = num_hpus
             hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
-            assert len(hpu_ids) == 0
+            assert len(hpu_ids) == num_hpus
             assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
                 [str(i) for i in hpu_ids]  # noqa
             )
             # Set self.x to make sure that we got here.
-            self.x = 0
+            self.x = num_hpus
 
         def test(self):
             hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
-            assert len(hpu_ids) == 0
+            assert len(hpu_ids) == self.num_hpus
             assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
                 [str(i) for i in hpu_ids]  # noqa
             )
             return self.x
 
-    @ray.remote(resources={"HPU": 1})
-    class Actor1:
-        def __init__(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
-            assert len(hpu_ids) == 1
-            assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
-                [str(i) for i in hpu_ids]  # noqa
-            )
-            # Set self.x to make sure that we got here.
-            self.x = 1
-
-        def test(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
-            assert len(hpu_ids) == 1
-            assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
-                [str(i) for i in hpu_ids]
-            )
-            return self.x
-
-    a0 = Actor0.remote()
+    a0 = Actor.remote(0)
     assert ray.get(a0.test.remote()) == 0
 
-    a1 = Actor1.remote()
+    a1 = Actor.options(resources={"HPU": 1}).remote(1)
     assert ray.get(a1.test.remote()) == 1
 
 
