@@ -3,17 +3,25 @@
 
 import fnmatch
 import io
+import logging
 import re
 import tarfile
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+import ray
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.progress_tracker import (
+    CACHED_PROGRESS_TRACKERS,
+    ProgressTracker,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = logging.getLogger(__name__)
 
 
 def _base_plus_ext(path: str):
@@ -101,6 +109,7 @@ def _tar_file_iterator(
     fileselect: Optional[Union[bool, callable, list]] = None,
     filerename: Optional[Union[bool, callable, list]] = None,
     verbose_open: bool = False,
+    skip_files: Optional[set[str]] = None,
     meta: dict = None,
 ):
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
@@ -118,6 +127,9 @@ def _tar_file_iterator(
     for tarinfo in stream:
         fname = tarinfo.name
         if not tarinfo.isreg() or fname is None:
+            continue
+        if skip_files and fname in skip_files:
+            logger.debug(f"Skipping {fname}")
             continue
         data = stream.extractfile(tarinfo).read()
         fname = _apply_list(filerename, fname)
@@ -314,8 +326,20 @@ class WebDatasetDatasource(FileBasedDatasource):
         filerename: Optional[Union[bool, callable, list]] = None,
         suffixes: Optional[Union[bool, callable, list]] = None,
         verbose_open: bool = False,
+        progress_path: str | None = None,
         **file_based_datasource_kwargs,
     ):
+        write_paths_to_sink = file_based_datasource_kwargs.get("include_paths", False)
+
+        if progress_path is not None:
+            logger.warning(
+                (
+                    "Warning: Progress tracking requires `path` to be included in the dataset. "
+                    "This has been automatically enabled. Make sure to not remove it from the samples."
+                )
+            )
+            file_based_datasource_kwargs["include_paths"] = True
+
         super().__init__(paths, **file_based_datasource_kwargs)
 
         self.decoder = decoder
@@ -323,6 +347,12 @@ class WebDatasetDatasource(FileBasedDatasource):
         self.filerename = filerename
         self.suffixes = suffixes
         self.verbose_open = verbose_open
+        self.progress_tracker = ProgressTracker.remote(
+            progress_path,
+            write_paths_=write_paths_to_sink,
+        )
+
+        CACHED_PROGRESS_TRACKERS[progress_path] = self.progress_tracker
 
     def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
@@ -344,14 +374,34 @@ class WebDatasetDatasource(FileBasedDatasource):
         """
         import pandas as pd
 
+        completed_keys, completed_shards = {}, {}
+
+        if self.progress_tracker is not None:
+            completed_keys_ref, completed_shards_ref = ray.get(
+                self.progress_tracker.get_initial_progress.remote()
+            )
+            completed_keys = set(ray.get(completed_keys_ref))
+            completed_shards = set(ray.get(completed_shards_ref))
+
+            logger.info(
+                f"Found {len(completed_keys)} completed keys across {len(completed_shards)} shards."
+            )
+
         files = _tar_file_iterator(
             stream,
             fileselect=self.fileselect,
             filerename=self.filerename,
             verbose_open=self.verbose_open,
+            skip_files=completed_shards,
         )
         samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)
         for sample in samples:
+            if sample["__key__"] in completed_keys:
+                # if the path isnt in completed shards, update the path (aka, index is incorrect)
+                if path not in completed_shards:
+                    logger.debug(f"Updating path for {sample['__key__']} to {path}")
+                    self.progress_tracker.update_path.remote(sample["__key__"], path)
+                continue
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=_default_decoder)
             yield pd.DataFrame({k: [v] for k, v in sample.items()})

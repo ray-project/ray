@@ -1607,6 +1607,7 @@ def read_webdataset(
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    progress_path: str | None = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1665,6 +1666,7 @@ def read_webdataset(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        progress_path=progress_path,
     )
     return read_datasource(datasource, parallelism=parallelism)
 
@@ -2062,7 +2064,7 @@ def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
 
 @PublicAPI
 def from_pandas(
-    dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
+    dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]],
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of pandas dataframes.
 
