@@ -903,18 +903,19 @@ class DatasetStatsSummary:
 
             output_num_rows = self.operators_stats[-1].output_num_rows
             total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
-            total_wall_time = self.get_total_wall_time()
-            if total_num_out_rows and self.time_total_s and total_wall_time:
+            total_time = self.get_total_wall_time()
+            total_time_all_blocks = self.get_total_time_all_blocks()
+            if total_num_out_rows and total_time and total_time_all_blocks:
                 out += "\n"
                 out += "Dataset throughput:\n"
                 out += (
                     "\t* Ray Data throughput:"
-                    f" {total_num_out_rows / self.time_total_s} "
+                    f" {total_num_out_rows / total_time} "
                     "rows/s\n"
                 )
                 out += (
                     "\t* Estimated single node throughput:"
-                    f" {total_num_out_rows / total_wall_time} "
+                    f" {total_num_out_rows / total_time_all_blocks} "
                     "rows/s\n"
                 )
         if verbose_stats_logs and add_global_stats:
@@ -985,6 +986,14 @@ class DatasetStatsSummary:
         parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
         return parent_max_wall_time + sum(
             ss.wall_time.get("max", 0) if ss.wall_time else 0
+            for ss in self.operators_stats
+        )
+
+    def get_total_time_all_blocks(self) -> float:
+        parent_total_times = [p.get_total_time_all_blocks() for p in self.parents]
+        parent_time_total = sum(parent_total_times) if parent_total_times else 0
+        return parent_time_total + sum(
+            ss.wall_time.get("sum", 0) if ss.wall_time else 0
             for ss in self.operators_stats
         )
 
