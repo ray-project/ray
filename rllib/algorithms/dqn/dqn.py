@@ -489,9 +489,9 @@ class DQN(SimpleQ):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
 
-            self.workers.sync_env_runner_states(
-                env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
-            )
+            # self.workers.sync_env_runner_states(
+            #     env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
+            # )
 
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
@@ -502,7 +502,7 @@ class DQN(SimpleQ):
 
         # TODO (simon): Check, if this can be managed differently or even needs to be
         # put into the sampling loop above.
-        self.workers.sync_env_runner_states(env_steps_sampled=current_ts)
+        # self.workers.sync_env_runner_states(env_steps_sampled=current_ts)
 
         # If enough experiences have been sampled start training.
         if current_ts > self.config.num_steps_sampled_before_learning_starts:
@@ -570,6 +570,7 @@ class DQN(SimpleQ):
                     timestep=current_ts,
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
+                # Add the additional results to the training results.
                 for pid, res in additional_results.items():
                     if LAST_TARGET_UPDATE_TS in res:
                         self._counters[LAST_TARGET_UPDATE_TS] = res[

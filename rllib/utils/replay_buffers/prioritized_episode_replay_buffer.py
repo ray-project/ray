@@ -203,6 +203,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         new_episode_ids = []
         for eps in episodes:
             new_episode_ids.append(eps.id_)
+            # We subtract a single timestep per episode b/c each sample consists
+            # of a transition from `o_t` to `o_(t+n)`, so the first timestep is
+            # never sampled.
             self._num_timesteps += len(eps)
             self._num_timesteps_added += len(eps)
 
@@ -216,8 +219,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Evict episode
             eps_evicted.append(self.episodes.popleft())
             eps_evicted_ids.append(eps_evicted[-1].id_)
-            eps_evicted_idxs.append(self.episode_id_to_index[eps_evicted_ids[-1]])
-            del self.episode_id_to_index[eps_evicted[-1].id_]
+            eps_evicted_idxs.append(self.episode_id_to_index.pop(eps_evicted_ids[-1]))
             # If this episode has a new chunk in the new episodes added,
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
@@ -226,7 +228,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 len_to_subtract = len(
                     episodes[new_episode_ids.index(eps_evicted_idxs[-1])]
                 )
-                # Subtract again the timesteps that were added above.
                 self._num_timesteps -= len_to_subtract
                 self._num_timesteps_added -= len_to_subtract
             # Remove the timesteps of the evicted episode from the counter.
@@ -272,7 +273,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                         [
                             (
                                 eps_idx,
-                                old_len + i,
+                                # Note, we add 1 b/c the first timestep is never
+                                # sampled.
+                                old_len + i + 1,
                                 # Get the index in the segment trees.
                                 self._get_free_node_and_assign(j + i, weight),
                             )
@@ -287,7 +290,13 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     self.episode_id_to_index[eps.id_] = eps_idx
                     self._indices.extend(
                         [
-                            (eps_idx, i, self._get_free_node_and_assign(j + i, weight))
+                            (
+                                eps_idx,
+                                # Note, we add 1 b/c the first timestep is never
+                                # sampled.
+                                i + 1,
+                                self._get_free_node_and_assign(j + i, weight),
+                            )
                             for i in range(len(eps))
                         ]
                     )

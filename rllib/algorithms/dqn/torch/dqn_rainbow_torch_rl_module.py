@@ -33,14 +33,14 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # We do not want to train the target networks.
         # AND sync all target nets with the actual (trained) ones.
-        self.target_encoder.trainable = False
+        self.target_encoder.requires_grad_(False)
         self.target_encoder.load_state_dict(self.encoder.state_dict())
 
-        self.af_target.trainable = False
+        self.af_target.requires_grad_(False)
         self.af_target.load_state_dict(self.af.state_dict())
 
         if self.is_dueling:
-            self.vf_target.trainable = False
+            self.vf_target.requires_grad_(False)
             self.vf_target.load_state_dict(self.vf.state_dict())
 
     @override(RLModule)
@@ -118,29 +118,12 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     ) -> Dict[str, TensorStructType]:
         output = {}
 
-        # DQN needs the Q-values for the current and the next observation.
-        if self.uses_double_q:
-            # In this case we need to make one forward pass for both the current
-            # and the next observation to keep the graph backpropagatable (this
-            # is specifically for the noise net as per forward pass we create new
-            # noise).
-            batch_base = {
-                Columns.OBS: torch.concat(
-                    [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=0
-                )
-            }
-        else:
-            batch_base = {Columns.OBS: batch[Columns.OBS]}
+        batch_base = {Columns.OBS: batch[Columns.OBS]}
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Q-network forward passes.
         qf_outs = self._qf(batch_base)
-        if self.uses_double_q:
-            output[QF_PREDS], output[QF_NEXT_PREDS] = torch.chunk(
-                qf_outs[QF_PREDS], 2, dim=0
-            )
-        else:
-            output[QF_PREDS] = qf_outs[QF_PREDS]
+        output[QF_PREDS] = qf_outs[QF_PREDS]
         # The target Q-values for the next observations.
         qf_target_next_outs = self._qf_target(batch_target)
         output[QF_TARGET_NEXT_PREDS] = qf_target_next_outs[QF_PREDS]
@@ -149,17 +132,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             # Add distribution artefacts to the output.
             # Distribution support.
             output[ATOMS] = qf_target_next_outs[ATOMS]
-            # If we use double Q-learning we need to chunk the outputs first.
-            if self.uses_double_q:
-                # Original logits from the Q-head.
-                output[QF_LOGITS] = torch.chunk(qf_outs[QF_LOGITS], 2, dim=0)[0]
-                # Probabilities of the Q-value distribution of the current state.
-                output[QF_PROBS] = torch.chunk(qf_outs[QF_PROBS], 2, dim=0)[0]
-            else:
-                # Original logits from the Q-head.
-                output[QF_LOGITS] = qf_outs[QF_LOGITS]
-                # Probabilities of the Q-value distribution of the current state.
-                output[QF_PROBS] = qf_outs[QF_PROBS]
+            # Original logits from the Q-head.
+            output[QF_LOGITS] = qf_outs[QF_LOGITS]
+            # Probabilities of the Q-value distribution of the current state.
+            output[QF_PROBS] = qf_outs[QF_PROBS]
             # Probabilities of the target Q-value distribution of the next state.
             output[QF_TARGET_NEXT_PROBS] = qf_target_next_outs[QF_PROBS]
 
@@ -240,9 +216,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Rescale the support.
         z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
         # Reshape the action values.
+        # NOTE: Handcrafted action shape.
         logits_per_action_per_atom = torch.reshape(
-            batch,
-            shape=(-1, self.config.action_space.n, self.num_atoms),
+            batch, shape=(-1, self.config.action_space.n, self.num_atoms)
         )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value
@@ -340,6 +316,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                     torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
                 )
                 qf_outs = qf_outs - af_outs_mean
+                # Has to be a mean for each batch element.
+                # af_outs_mean = reduce_mean_ignore_inf(qf_outs, 1)
+                # qf_outs = qf_outs - torch.unsqueeze(af_outs_mean, 1)
                 # TODO (simon): Check if unsqueeze is necessary.
                 # Add advantage and value stream. Note, we broadcast here.
                 output[QF_PREDS] = qf_outs + vf_outs

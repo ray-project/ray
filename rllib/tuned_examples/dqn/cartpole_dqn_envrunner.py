@@ -108,7 +108,7 @@ ray.init(local_mode=True)
 algo = config.build()
 for _ in range(stop["timesteps_total"]):
     results = algo.train()
-    R = results['sampler_results']['episode_reward_mean']
+    R = results["sampler_results"]["episode_reward_mean"]
     print(f"R={results['sampler_results']['episode_reward_mean']}")
     if R >= stop["sampler_results/episode_reward_mean"]:
         break

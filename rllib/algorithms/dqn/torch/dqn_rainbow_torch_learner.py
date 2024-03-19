@@ -49,42 +49,24 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         q_target_next = fwd_out[QF_TARGET_NEXT_PREDS]
 
         # Get the Q-values for the selected actions in the rollout.
-        # TODO (simon): Check, if we can use `gather` with a complex action
+        # TODO (simon, sven): Check, if we can use `gather` with a complex action
         # space - we might need the one_hot_selection. Also test performance.
         q_selected = torch.nan_to_num(
             torch.gather(
                 q_curr,
                 dim=1,
-                index=batch[Columns.ACTIONS].view(-1, 1).long(),
+                index=batch[Columns.ACTIONS].view(-1, 1).expand(-1, 1).long(),
             ),
             neginf=0.0,
-        )
+        ).squeeze()
 
-        # Use double Q learning.
-        if self.config.double_q:
-            # Then we evaluate the target Q-function at the best action (greedy action)
-            # over the online Q-function.
-            # batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
-            # qf_next_outs = self.module[module_id]._qf(batch_next)
-            qf_next_outs = fwd_out[QF_NEXT_PREDS]
-            # Mark the best online Q-value of the next state.
-            q_next_best_idx = torch.argmax(qf_next_outs, dim=1).unsqueeze(dim=-1).long()
-            # Get the Q-value of the target network at maximum of the online network
-            # (bootstrap action).
-            q_next_best = torch.nan_to_num(
-                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
-                neginf=0.0,
-            )
-        else:
-            # Mark the maximum Q-value(s).
-            q_next_best_idx = (
-                torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
-            )
-            # Get the maximum Q-value(s).
-            q_next_best = torch.nan_to_num(
-                torch.gather(q_target_next, dim=1, index=q_next_best_idx),
-                neginf=0.0,
-            )
+        # Mark the maximum Q-value(s).
+        q_next_best_idx = torch.argmax(q_target_next, dim=1).unsqueeze(dim=-1).long()
+        # Get the maximum Q-value(s).
+        q_next_best = torch.nan_to_num(
+            torch.gather(q_target_next, dim=1, index=q_next_best_idx),
+            neginf=0.0,
+        ).squeeze()
 
         # If we learn a Q-distribution.
         if self.config.num_atoms > 1:
@@ -104,6 +86,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 .long(),
             ).squeeze(dim=1)
             # Get the probabilies for the maximum Q-value(s).
+            # print(f"next probs: {fwd_out[QF_TARGET_NEXT_PROBS]}")
             q_probs_next_best = torch.gather(
                 fwd_out[QF_TARGET_NEXT_PROBS],
                 dim=1,
@@ -123,9 +106,9 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
             # TODO (simon): Check, if we need to unsqueeze here.
             r_tau = torch.clamp(
-                (
-                    batch[Columns.REWARDS]
-                    + self.config.gamma ** batch["n_steps"]
+                batch[Columns.REWARDS].unsqueeze(dim=-1)
+                + (
+                    self.config.gamma ** batch["n_steps"]
                     * (1.0 - batch[Columns.TERMINATEDS].float())
                 ).unsqueeze(dim=-1)
                 * z,
@@ -167,18 +150,16 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             total_loss = torch.mean(batch["weights"] * td_error)
         else:
             # Masked all Q-values with terminated next states in the targets.
-            q_next_best_masked = (1.0 - batch[Columns.TERMINATEDS].float()).unsqueeze(
-                dim=1
+            q_next_best_masked = (
+                1.0 - batch[Columns.TERMINATEDS].float()
             ) * q_next_best
 
             # Compute the RHS of the Bellman equation.
             # Detach this node from the computation graph as we do not want to
             # backpropagate through the target network when optimizing the Q loss.
             q_selected_target = (
-                (
-                    batch[Columns.REWARDS] + self.config.gamma ** batch["n_steps"]
-                ).unsqueeze(dim=1)
-                * q_next_best_masked
+                batch[Columns.REWARDS]
+                + (self.config.gamma ** batch["n_steps"]) * q_next_best_masked
             ).detach()
 
             # Choose the requested loss function. Note, in case of the Huber loss

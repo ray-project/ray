@@ -118,9 +118,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         return [
             QF_PREDS,
             QF_TARGET_NEXT_PREDS,
-            *(
-                [QF_NEXT_PREDS] if self.uses_double_q else []
-            ),
+            *([QF_NEXT_PREDS] if self.uses_double_q else []),
             *(
                 [
                     ATOMS,
