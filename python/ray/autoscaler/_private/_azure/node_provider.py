@@ -389,7 +389,9 @@ class AzureNodeProvider(NodeProvider):
             function_name="delete",
         )
         try:
-            delete(resource_group_name=resource_group, vm_name=node_id).wait(timeout=TERMINATION_TIMEOUT)
+            delete(resource_group_name=resource_group, vm_name=node_id).wait(
+                timeout=TERMINATION_TIMEOUT
+            )
         except Exception as e:
             logger.warning("Failed to delete VM: {}".format(e))
 
@@ -426,7 +428,10 @@ class AzureNodeProvider(NodeProvider):
                 logger.warning("Failed to delete NIC: {}".format(e))
 
         st = time.monotonic()
-        while not all(nlro.done() for nlro in nic_lros) and (time.monotonic() - st) < TERMINATION_TIMEOUT:
+        while (
+            not all(nlro.done() for nlro in nic_lros)
+            and (time.monotonic() - st) < TERMINATION_TIMEOUT
+        ):
             time.sleep(0.1)
 
         # Delete Public IPs
@@ -445,12 +450,18 @@ class AzureNodeProvider(NodeProvider):
                 )
             except Exception as e:
                 logger.warning("Failed to delete public IP: {}".format(e))
-        
+
         st = time.monotonic()
-        while not all(dlro.done() for dlro in disk_lros) and (time.monotonic() - st) < TERMINATION_TIMEOUT:
+        while (
+            not all(dlro.done() for dlro in disk_lros)
+            and (time.monotonic() - st) < TERMINATION_TIMEOUT
+        ):
             time.sleep(0.1)
         st = time.monotonic()
-        while not all(iplro.done() for iplro in ip_lros) and (time.monotonic() - st) < TERMINATION_TIMEOUT:
+        while (
+            not all(iplro.done() for iplro in ip_lros)
+            and (time.monotonic() - st) < TERMINATION_TIMEOUT
+        ):
             time.sleep(0.1)
 
     def _get_node(self, node_id):
