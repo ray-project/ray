@@ -315,3 +315,35 @@ class DAGInputData:
                 "Please only use int index or str as first-level key to "
                 "access fields of dag input."
             )
+
+
+class MultiInputNode(DAGNode):
+    """InputNode with multiple args/kwargs packed inside"""
+
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        counter = 0
+        self.idx2arg = {}
+        self.arg2idx = {}
+        for arg in args:
+            self.idx2arg[counter] = arg
+            counter = counter + 1
+        for kwarg in kwargs:
+            self.idx2arg[counter] = kwarg
+            counter = counter + 1
+        for idx, arg in self.idx2arg.items():
+            self.arg2idx[arg] = idx
+
+        super().__init__([], {}, {}, other_args_to_resolve=None)
+
+    def get_arg(self, idx: int):
+        return self.idx2arg.get(idx, None)
+
+    def get_arg_idx(self, arg):
+        return self.arg2idx.get(arg, None)
+
+    def get_idx_and_args(self):
+        return self.idx2arg.items()

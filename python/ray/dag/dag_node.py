@@ -66,6 +66,11 @@ class DAGNode(DAGNodeBase):
 
         return self._bound_args
 
+    def set_args(self, args) -> None:
+        """Set the tuple of arguments for this node."""
+
+        self._bound_args = args
+
     def get_kwargs(self) -> Dict[str, Any]:
         """Return the dict of keyword arguments for this node."""
 

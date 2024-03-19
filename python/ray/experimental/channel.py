@@ -18,8 +18,14 @@ class ArgsKwargsWrapper:
     kwargs: Dict[str, Any]
 
     def __init__(self, args: List[Any], kwargs: Dict[str, Any]) -> None:
-        self.args = args
+        try:
+            self.args = list(args)
+        except Exception:
+            self.args = [args]
         self.kwargs = kwargs
+
+    def get(self):
+        return self.args + list(self.kwargs.values())
 
 
 def _create_channel_ref(
@@ -177,11 +183,7 @@ class Channel:
         """
         self._ensure_registered_as_reader()
         values = ray.get(self._base_ref)
-        return (
-            tuple(values.args) + tuple(values.kwargs.values())
-            if isinstance(values, ArgsKwargsWrapper)
-            else values
-        )
+        return values.get() if isinstance(values, ArgsKwargsWrapper) else values
 
     def end_read(self):
         """

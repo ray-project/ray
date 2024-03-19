@@ -75,6 +75,7 @@ def do_exec_compiled_task(
         while True:
             for idx, channel, read_idx in input_channel_idxs:
                 read_value = channel.begin_read()
+                assert read_value, "got empty value from channel"
                 resolved_inputs[idx] = (
                     read_value[read_idx] if read_idx >= 0 else read_value
                 )
@@ -210,13 +211,16 @@ class CompiledDAG:
             FunctionNode,
             InputAttributeNode,
             InputNode,
+            MultiInputNode,
             MultiOutputNode,
         )
 
         self.input_task_idxs, self.output_task_idx = [], None
         self.actor_task_count.clear()
 
-        # If InputAttributeNodes are used, remove InputNode and reorder nodes
+        # If InputAttributeNodes are used, remove the InputNode and
+        # InputAttributeNodes and pack their info into a MultiInputNode,
+        # then reorder nodes
         has_attr_node = any(
             [
                 isinstance(task.dag_node, InputAttributeNode)
@@ -225,26 +229,40 @@ class CompiledDAG:
         )
         if has_attr_node:
             self.counter = 0
-            dag_nodes = [task.dag_node for _, task in self.idx_to_task.items()]
+            tasks = [task for _, task in self.idx_to_task.items()]
             self.idx_to_task.clear()
             self.dag_node_to_idx.clear()
+            arg_list = []
             # Add attribute nodes first
-            for dag_node in dag_nodes:
-                if isinstance(dag_node, InputAttributeNode):
-                    self._add_node(dag_node)
-            for dag_node in dag_nodes:
-                if not (
-                    isinstance(dag_node, InputNode)
-                    or isinstance(dag_node, InputAttributeNode)
-                ):
-                    self._add_node(dag_node)
+            for task in tasks:
+                if isinstance(task.dag_node, InputAttributeNode):
+                    arg_list.append(task.dag_node._key)
+            multi_input_node = MultiInputNode(*arg_list)
+            self._add_node(multi_input_node)
+            for task in tasks:
+                if isinstance(task.dag_node, InputAttributeNode):
+                    for down_stream_idx in task.downstream_node_idxs:
+                        tasks[down_stream_idx].args = (multi_input_node,)
+                elif not isinstance(task.dag_node, InputNode):
+                    self._add_node(task.dag_node)
+            for idx, task in self.idx_to_task.items():
+                task.dag_node.set_args(
+                    tuple(
+                        [
+                            multi_input_node
+                            if isinstance(arg, InputAttributeNode)
+                            else arg
+                            for arg in task.args
+                        ]
+                    )
+                )
 
         # For each task node, set its upstream and downstream task nodes.
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
-                or isinstance(dag_node, InputAttributeNode)
+                or isinstance(dag_node, MultiInputNode)
                 or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
             ):
@@ -282,11 +300,11 @@ class CompiledDAG:
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode) or isinstance(
-                task.dag_node, InputAttributeNode
+                task.dag_node, MultiInputNode
             ):
                 self.input_task_idxs.append(idx)
         # TODO: Support no-input DAGs (use an empty object to signal).
-        if len(self.input_task_idxs) == 0:
+        if len(self.input_task_idxs) != 1:
             raise NotImplementedError(
                 "Compiled DAGs currently require exactly one InputNode"
             )
@@ -294,28 +312,6 @@ class CompiledDAG:
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
             if len(task.downstream_node_idxs) == 0:
-                # For multi-arg scenario, input args are passed through
-                # InputAttributeNodes, InputNode is not connected to any node
-                #                             ┌───────────────────────────────────┐
-                #                             │           InputNode               │
-                #       ┌───────────┐         ├────────────────┐  ┌───────────────┤
-                #     ┌─┤ InputNode ├─┐       │ InputAttribute │  │InputAttribute │
-                #     │ └───────────┘ │       │      Node      │  │     Node      │
-                #     │               │       └──────┬─────────┴──┴───────┬───────┘
-                #     │               │              │                    │
-                # ┌───▼────┐     ┌────▼───┐      ┌───▼────┐          ┌────▼────┐
-                # │DagNode │     │DagNode │      │DagNode │          │ DagNode │
-                # └───────┬┘     └┬───────┘      └────┬───┘          └────┬────┘
-                #         │       │                   │                   │
-                #         │       │                   │                   │
-                #      ┌──▼───────▼──┐                │   ┌───────────┐   │
-                #      │ OutputNode  │                └───►OutputNode ◄───┘
-                #      └─────────────┘                    └───────────┘
-                if (
-                    isinstance(task.dag_node, InputNode)
-                    and len(self.input_task_idxs) > 1
-                ):
-                    continue
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
@@ -352,6 +348,7 @@ class CompiledDAG:
             DAGNode,
             InputNode,
             InputAttributeNode,
+            MultiInputNode,
             MultiOutputNode,
             ClassMethodNode,
         )
@@ -390,22 +387,15 @@ class CompiledDAG:
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
-            elif isinstance(task.dag_node, InputNode):
+            elif isinstance(task.dag_node, InputNode) or isinstance(
+                task.dag_node, MultiInputNode
+            ):
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
                     num_readers=task.num_readers,
                 )
-            elif isinstance(task.dag_node, InputAttributeNode):
-                if not arg_channel:
-                    arg_channel = Channel(
-                        buffer_size_bytes=self._buffer_size_bytes,
-                        num_readers=1,
-                    )
-                task.output_channel = arg_channel
             else:
-                assert isinstance(task.dag_node, MultiOutputNode) or isinstance(
-                    task.dag_node, InputAttributeNode
-                )
+                assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
                 queue.append(idx)
@@ -434,19 +424,23 @@ class CompiledDAG:
                     node_idx = self.dag_node_to_idx[arg]
                     arg_channel = self.idx_to_task[node_idx].output_channel
                     assert arg_channel is not None
-                    resolved_args.append(arg_channel)
-                    read_idx = -1
-                    if isinstance(arg, InputAttributeNode):
-                        # Assumption: all InputAttributeNodes are at the beginning
-                        # of IR, this is made sure explictly when reordering nodes
-                        read_idx = self.dag_node_to_idx[arg]
+                    if isinstance(arg, MultiInputNode):
+                        # Each MultiInputNode reference is responsible for
+                        # a single argument, corresponding to a non-negative
+                        # index in read_idx
+                        read_idx = len([i for i in read_idxs if i >= 0])
+                        read_idxs.append(read_idx)
+                        resolved_args.append(arg_channel)
                     elif isinstance(arg, InputNode):
-                        read_idx = 0
-                    read_idxs.append(read_idx)
+                        read_idxs.append(0)
+                        resolved_args.append(arg_channel)
+                    elif isinstance(arg, ClassMethodNode):
+                        read_idxs.append(-1)
+                        resolved_args.append(arg_channel)
                     has_at_least_one_channel_input = True
                 else:
-                    resolved_args.append(arg)
                     read_idxs.append(-1)
+                    resolved_args.append(arg)
             # TODO: Support no-input DAGs (use an empty object to signal).
             if not has_at_least_one_channel_input:
                 raise ValueError(

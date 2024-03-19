@@ -5,6 +5,7 @@ from ray.dag.input_node import (
     InputNode,
     InputAttributeNode,
     DAGInputData,
+    MultiInputNode,
 )
 from ray.dag.output_node import MultiOutputNode
 from ray.dag.constants import (
@@ -26,5 +27,6 @@ __all__ = [
     "PREV_CLASS_METHOD_CALL_KEY",
     "DAGNODE_TYPE_KEY",
     "plot",
+    "MultiInputNode",
     "MultiOutputNode",
 ]
