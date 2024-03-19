@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
+from ray._private.tracing_utils import get_exporter_import_path
 from ray.dag import DAGNode
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -55,7 +56,12 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ServeInstanceDetails,
+    ServeStatus,
+    TracingConfig,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -266,6 +272,7 @@ def deployment(
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+    tracing_config: Default[Union[Dict, TracingConfig, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -430,6 +437,11 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
+    exporter_import_path = None
+    if isinstance(tracing_config, Dict):
+        tracing_config = TracingConfig(**tracing_config)
+        exporter_import_path = get_exporter_import_path(tracing_config)
+
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -467,6 +479,7 @@ def deployment(
                 if max_replicas_per_node is not DEFAULT.VALUE
                 else None
             ),
+            exporter_import_path=exporter_import_path,
         )
 
         return Deployment(
@@ -490,6 +503,7 @@ def _run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    tracing_config: Optional[Union[Dict, TracingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -533,6 +547,14 @@ def _run(
             if isinstance(logging_config, dict):
                 logging_config = LoggingConfig(**logging_config)
             deployment.set_logging_config(logging_config.dict())
+
+        if deployment._replica_config.exporter_import_path is None and tracing_config:
+            if isinstance(tracing_config, Dict):
+                tracing_config = TracingConfig(**tracing_config)
+
+            exporter_import_path = get_exporter_import_path(tracing_config)
+            deployment._replica_config.exporter_import_path = exporter_import_path
+
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,
@@ -566,6 +588,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    tracing_config: Optional[Union[Dict, TracingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -597,6 +620,7 @@ def run(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
+        tracing_config=tracing_config,
     )
     logger.info(f"Deployed app '{name}' successfully.")
 

@@ -975,7 +975,7 @@ def build_serve_application(
         Error message: a string if an error was raised, otherwise None.
     """
     try:
-        from ray._private.tracing_utils import get_tracing_exporter
+        from ray._private.tracing_utils import get_exporter_import_path
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
         from ray.serve._private.deployment_graph_build import build as pipeline_build
         from ray.serve._private.deployment_graph_build import (
@@ -987,12 +987,18 @@ def build_serve_application(
         deployments = pipeline_build(app._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
 
-        exporter_import_path = get_tracing_exporter(tracing_config)
+        exporter_import_path = get_exporter_import_path(tracing_config)
 
         deploy_args_list = []
         for deployment in deployments:
             is_ingress = deployment.name == ingress.name
-            deployment._replica_config.exporter_import_path = exporter_import_path
+
+            if (
+                deployment._replica_config.exporter_import_path is None
+                and tracing_config
+            ):
+                deployment._replica_config.exporter_import_path = exporter_import_path
+
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,

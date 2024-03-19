@@ -8,7 +8,10 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
 
-DEFAULT_TRACING_EXPORTER_IMPORT_PATH = "ray._private.tracing_utils:default_tracing_exporter"
+DEFAULT_TRACING_EXPORTER_IMPORT_PATH = (
+    "ray._private.tracing_utils:default_tracing_exporter"
+)
+
 
 def default_tracing_exporter() -> List[SimpleSpanProcessor]:
     os.makedirs("/tmp/spans", exist_ok=True)
@@ -17,6 +20,7 @@ def default_tracing_exporter() -> List[SimpleSpanProcessor]:
             ConsoleSpanExporter(out=open(f"/tmp/spans/{os.getpid()}.json", "a"))
         )
     ]
+
 
 def validate_tracing_exporter(func: Callable) -> None:
     if inspect.isfunction(func) is False:
@@ -28,7 +32,7 @@ def validate_tracing_exporter(func: Callable) -> None:
             "exporter_def. Expected exporter_def to be a "
             "function."
         )
-    
+
     output = func()
     if not isinstance(output, list) or not all(
         isinstance(x, SimpleSpanProcessor) for x in output
@@ -38,8 +42,8 @@ def validate_tracing_exporter(func: Callable) -> None:
         )
 
 
-
-def get_tracing_exporter(tracing_config: TracingConfig) -> str:
+def get_exporter_import_path(tracing_config: TracingConfig) -> str:
+    """If tracing is enabled, validate and return the exporter_import_path"""
     if not tracing_config or tracing_config.enable is False:
         return None
 
@@ -52,7 +56,6 @@ def get_tracing_exporter(tracing_config: TracingConfig) -> str:
         # If tracing is enabled, but an export path is not set
         # Use the default tracing exporter
         return DEFAULT_TRACING_EXPORTER_IMPORT_PATH
-
 
 
 def setup_tracing(exporter_import_path: str) -> None:
