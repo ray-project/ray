@@ -210,7 +210,6 @@ if os.environ.get("LINKCHECK_ALL"):
         # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
         "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
         # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
-        "https://scikit-optimize.github.io/stable/modules/",
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
@@ -244,6 +243,7 @@ else:
     linkcheck_ignore = [
         r"^(?!https://(raw\.githubusercontent|github)\.com/ray-project/).*$"
     ]
+
 
 # -- Options for HTML output ----------------------------------------------
 def render_svg_logo(path):
@@ -498,7 +498,6 @@ autodoc_mock_imports = [
     "setproctitle",
     "skimage",
     "sklearn",
-    "skopt",
     "starlette",
     "tensorflow",
     "torch",
@@ -566,7 +565,6 @@ intersphinx_mapping = {
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "sklearn": ("https://scikit-learn.org/stable/", None),
-    "skopt": ("https://scikit-optimize.github.io/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",

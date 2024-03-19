@@ -56,8 +56,8 @@ object.
 to restore the training state. This usually includes the trained model.
 
 You can use checkpoints for common downstream tasks such as
-:ref:`offline batch inference with Ray Data <batch_inference_ray_train>`,
-or :doc:`online model serving with Ray Serve </serve/index>`.
+:doc:`offline batch inference with Ray Data </data/data>` or 
+:doc:`online model serving with Ray Serve </serve/index>`.
 
 The checkpoints retrieved from the :class:`~ray.train.Result` object
 correspond to those you passed to :func:`train.report <ray.train.report>`

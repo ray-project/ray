@@ -26,15 +26,6 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
-    @classmethod
-    def from_ray_resource_dict(cls, ray_resource_dict: Dict):
-        num_cpus = ray_resource_dict.get("CPU", 0)
-        num_gpus = ray_resource_dict.get("GPU", 0)
-        memory = ray_resource_dict.get("memory", 0)
-        custom_resources = ray_resource_dict.get("resources", dict())
-
-        return cls(CPU=num_cpus, GPU=num_gpus, memory=memory, **custom_resources)
-
     def get(self, key: str):
         val = super().get(key)
         if val is not None:
@@ -310,14 +301,11 @@ class DeploymentScheduler(ABC):
         assert deployment_id in self._deployments
 
         info = self._deployments[deployment_id]
-        info.actor_resources = Resources.from_ray_resource_dict(
-            replica_config.resource_dict
-        )
+        info.actor_resources = Resources(replica_config.resource_dict)
         info.max_replicas_per_node = replica_config.max_replicas_per_node
         if replica_config.placement_group_bundles:
             info.placement_group_bundles = [
-                Resources.from_ray_resource_dict(bundle)
-                for bundle in replica_config.placement_group_bundles
+                Resources(bundle) for bundle in replica_config.placement_group_bundles
             ]
         if replica_config.placement_group_strategy:
             info.placement_group_strategy = replica_config.placement_group_strategy

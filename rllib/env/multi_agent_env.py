@@ -729,9 +729,6 @@ class MultiAgentEnvWrapper(BaseEnv):
                         "Trying to close old and replaced sub-environment (at vector "
                         f"index={idx}), but closing resulted in error:\n{e}"
                     )
-            del self.env_states[idx]
-            del self.envs[idx]
-
             # Try recreating the sub-env.
             logger.warning(f"Trying to restart sub-environment at index {idx}.")
             self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
