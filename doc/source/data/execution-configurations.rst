@@ -1,8 +1,8 @@
 .. _execution_configurations:
 
-=================================
+========================
 Execution Configurations
-=================================
+========================
 
 Ray Data provides a number of configurations that control various aspects
 of Ray Dataset execution. You can modify these configurations by using
