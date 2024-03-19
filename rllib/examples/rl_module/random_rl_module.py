@@ -1,4 +1,3 @@
-import pathlib
 from typing import Mapping, Any
 
 import gymnasium as gym
@@ -41,9 +40,6 @@ class RandomRLModule(RLModule):
             [self.config.action_space.sample() for _ in range(obs_batch_size)]
         )
         return {SampleBatch.ACTIONS: actions}
-
-    def _module_state_file_name(self) -> pathlib.Path:
-        return pathlib.Path("random_rl_module_dummy_state")
 
     def compile(self, *args, **kwargs):
         """Dummy method for compatibility with TorchRLModule.

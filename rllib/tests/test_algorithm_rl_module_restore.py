@@ -79,7 +79,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             marl_module = marl_module_spec.build()
             marl_module_weights = convert_to_numpy(marl_module.get_state())
             marl_checkpoint_path = tempfile.mkdtemp()
-            marl_module.save_to_checkpoint(marl_checkpoint_path)
+            marl_module.save(path=marl_checkpoint_path)
 
             # create a new MARL_spec with the checkpoint from the previous one
             marl_module_spec_from_checkpoint = MultiAgentRLModuleSpec(

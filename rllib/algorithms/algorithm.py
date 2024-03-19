@@ -2287,8 +2287,6 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         state = self.__getstate__()
 
-        # TODO (sven): Move LearnerGroup `get_state` call here as well.
-
         # Extract policy states from worker state (Policies get their own
         # checkpoint sub-dirs).
         policy_states = {}

@@ -256,10 +256,6 @@ class TfLearner(Learner):
             self._load_optimizer_state(path, new_optim, name)
 
     @override(Learner)
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        self._module.set_state(state)
-
-    @override(Learner)
     def get_optimizer_state(self) -> Dict[str, Any]:
         optim_state = {}
         with tf.init_scope():

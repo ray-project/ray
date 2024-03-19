@@ -1,7 +1,7 @@
 import pathlib
 from typing import Any, Mapping, Union
 
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule, RLMODULE_STATE_FILE_OR_DIR_NAME
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
@@ -44,13 +44,6 @@ class TfRLModule(tf.keras.Model, RLModule):
         self.set_weights(state_dict)
 
     @override(RLModule)
-    def _module_state_file_name(self) -> pathlib.Path:
-        # TF checkpointing in the native tf format saves the weights as multiple
-        # files, and when calling save_weights, the name passed should have no
-        # file ending (e.g. .h5).
-        return pathlib.Path("module_state")
-
-    @override(RLModule)
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
         """Saves the weights of this RLModule to the directory dir.
 
@@ -65,7 +58,7 @@ class TfRLModule(tf.keras.Model, RLModule):
             "my_checkpoint/module_state".
 
         """
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
+        path = str(pathlib.Path(dir) / RLMODULE_STATE_FILE_OR_DIR_NAME)
         self.save_weights(path, save_format="tf")
 
     @override(RLModule)

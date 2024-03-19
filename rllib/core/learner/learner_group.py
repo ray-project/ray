@@ -17,10 +17,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.core.rl_module.rl_module import (
-    SingleAgentRLModuleSpec,
-    RLMODULE_STATE_DIR_NAME,
-)
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
@@ -544,12 +541,12 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            state = self._learner.get_module_state(module_ids)
+            state = self._learner.module.get_state(module_ids)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             state = self._worker_manager.foreach_actor(
-                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
+                lambda w: w.module.get_state(module_ids), remote_actor_ids=[worker]
             )
             state = self._get_results(state)[0]
 
@@ -566,10 +563,10 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            self._learner.set_module_state(weights)
+            self._learner.module.set_state(weights)
         else:
             results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_module_state(weights)
+                lambda w: w.module.set_state(weights)
             )
             # raise errors if any
             self._get_results(results_or_errors)
@@ -625,96 +622,93 @@ class LearnerGroup:
             return [func(self._learner, **kwargs)]
         return self._worker_manager.foreach_actor(partial(func, **kwargs))
 
-    # TODO (sven): Why did we chose to re-invent the wheel here and provide load/save
-    #  from/to disk functionality? This should all be replaced with a simple
-    #  get/set_state logic, which returns/takes a dict and then loading and saving
-    #  should be managed by the owner class (Algorithm/Trainable).
-    def save_state(self, path: str) -> None:
-        """Saves the state of the LearnerGroup.
+    # def save_state(self, path: str) -> None:
+    #    """Saves the state of this LearnerGroup to a path on disk.
 
-        Args:
-            path: The path to save the state to.
-        """
-        if self.is_local:
-            self._learner.save_state(path)
-        else:
-            worker = self._worker_manager.healthy_actor_ids()[0]
-            worker_ip_addr = self._worker_manager.foreach_actor(
-                self._get_ip_address, remote_actor_ids=[worker]
-            )
-            worker_ip_addr = self._get_results(worker_ip_addr)[0]
-            self_ip_addr = self._get_ip_address()
+    #    Args:
+    #        path: The path to save the state to.
+    #    """
+    #    if self.is_local:
+    #        self._learner.save_state(path)
+    #    else:
+    #        worker = self._worker_manager.healthy_actor_ids()[0]
+    #        worker_ip_addr = self._worker_manager.foreach_actor(
+    #            self._get_ip_address, remote_actor_ids=[worker]
+    #        )
+    #        worker_ip_addr = self._get_results(worker_ip_addr)[0]
+    #        self_ip_addr = self._get_ip_address()
 
-            if worker_ip_addr == self_ip_addr:
-                self._worker_manager.foreach_actor(
-                    lambda w: w.save_state(path), remote_actor_ids=[worker]
-                )
-            else:
-                # save the checkpoint to a temporary location on the worker
+    #        # Worker is on this node, save to local path.
+    #        if worker_ip_addr == self_ip_addr:
+    #            self._worker_manager.foreach_actor(
+    #                lambda w: w.save_state(path), remote_actor_ids=[worker]
+    #            )
+    #        # Save the checkpoint to a temporary location on the worker, then sync that
+    #        # location over to the local drive.
+    #        else:
+    #            # Create a temporary directory on the worker.
+    #            worker_temp_dir = self._worker_manager.foreach_actor(
+    #                self._create_temporary_dir, remote_actor_ids=[worker]
+    #            )
+    #            worker_temp_dir = self._get_results(worker_temp_dir)[0]
 
-                # create a temporary directory on the worker
-                worker_temp_dir = self._worker_manager.foreach_actor(
-                    self._create_temporary_dir, remote_actor_ids=[worker]
-                )
-                worker_temp_dir = self._get_results(worker_temp_dir)[0]
+    #            # Save the checkpoint to the temporary directory on the worker.
+    #            self._worker_manager.foreach_actor(
+    #                lambda w: w.save_state(worker_temp_dir), remote_actor_ids=[worker]
+    #            )
 
-                # save the checkpoint to the temporary directory on the worker
-                self._worker_manager.foreach_actor(
-                    lambda w: w.save_state(worker_temp_dir), remote_actor_ids=[worker]
-                )
+    #            # Sync the temporary directory on the worker to the local directory.
+    #            sync_dir_between_nodes(
+    #                worker_ip_addr, worker_temp_dir, self_ip_addr, path
+    #            )
 
-                # sync the temporary directory on the worker to the local directory
-                sync_dir_between_nodes(
-                    worker_ip_addr, worker_temp_dir, self_ip_addr, path
-                )
+    #            # Creating this function here instead of making it a member function
+    #            # because it uses the worker_temp_dir variable, and this can't
+    #            # be passed in as an argument to foreach_actor
+    #            def remove_dir(w):
+    #                import shutil
 
-                # creating this function here instead of making it a member funciton
-                # becasue it uses the worker_temp_dir variable, and this can't
-                # be passed in as an argument to foreach_actor
-                def remove_dir(w):
-                    import shutil
+    #                shutil.rmtree(worker_temp_dir)
 
-                    shutil.rmtree(worker_temp_dir)
+    #            # Remove the temporary directory on the worker again.
+    #            self._worker_manager.foreach_actor(
+    #                remove_dir, remote_actor_ids=[worker]
+    #            )
 
-                # remove the temporary directory on the worker
-                self._worker_manager.foreach_actor(
-                    remove_dir, remote_actor_ids=[worker]
-                )
+    # def load_state(self, path: str) -> None:
+    #    """Loads the state of the LearnerGroup.
 
-    def load_state(self, path: str) -> None:
-        """Loads the state of the LearnerGroup.
+    #    Args:
+    #        path: The path to load the state from.
+    #    """
+    #    path = str(self._resolve_checkpoint_path(path))
 
-        Args:
-            path: The path to load the state from.
-        """
-        path = str(self._resolve_checkpoint_path(path))
+    #    if self.is_local:
+    #        self._learner.load_state(path)
+    #    else:
+    #        assert len(self._workers) == self._worker_manager.num_healthy_actors()
+    #        head_node_ip = ray.util.get_node_ip_address()
+    #        workers = self._worker_manager.healthy_actor_ids()
 
-        if self.is_local:
-            self._learner.load_state(path)
-        else:
-            assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            head_node_ip = ray.util.get_node_ip_address()
-            workers = self._worker_manager.healthy_actor_ids()
+    #        def _load_state(w):
+    #            # doing imports here since they might not be imported on the worker
+    #            import ray
+    #            import tempfile
 
-            def _load_state(w):
-                # doing imports here since they might not be imported on the worker
-                import ray
-                import tempfile
+    #            worker_node_ip = ray.util.get_node_ip_address()
+    #            # if the worker is on the same node as the head, load the checkpoint
+    #            # directly from the path otherwise sync the checkpoint from the head
+    #            # to the worker and load it from there
+    #            if worker_node_ip == head_node_ip:
+    #                w.load_state(path)
+    #            else:
+    #                with tempfile.TemporaryDirectory() as temp_dir:
+    #                    sync_dir_between_nodes(
+    #                        head_node_ip, path, worker_node_ip, temp_dir
+    #                    )
+    #                    w.load_state(temp_dir)
 
-                worker_node_ip = ray.util.get_node_ip_address()
-                # if the worker is on the same node as the head, load the checkpoint
-                # directly from the path otherwise sync the checkpoint from the head
-                # to the worker and load it from there
-                if worker_node_ip == head_node_ip:
-                    w.load_state(path)
-                else:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        sync_dir_between_nodes(
-                            head_node_ip, path, worker_node_ip, temp_dir
-                        )
-                        w.load_state(temp_dir)
-
-            self._worker_manager.foreach_actor(_load_state, remote_actor_ids=workers)
+    #        self._worker_manager.foreach_actor(_load_state, remote_actor_ids=workers)
 
     def load_module_state(
         self,
@@ -814,9 +808,7 @@ class LearnerGroup:
             if rl_module_ckpt_dirs:
                 # load the RLModule if they were specified
                 for module_id, path in rl_module_ckpt_dirs.items():
-                    self._learner.module[module_id].load_state(
-                        path / RLMODULE_STATE_DIR_NAME
-                    )
+                    self._learner.module[module_id].restore(path)
         else:
             self._distributed_load_module_state(
                 marl_module_ckpt_dir=marl_module_ckpt_dir,
@@ -890,7 +882,7 @@ class LearnerGroup:
             if rl_module_ckpt_dirs:
                 # load the RLModule if they were specified
                 for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                    w.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
+                    w.module[module_id].load_state(path)
 
             # remove the temporary directories on the worker if any were created
             if worker_node_ip != head_node_ip:
