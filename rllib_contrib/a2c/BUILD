@@ -2,50 +2,69 @@
 
 py_test(
     name = "example_a2c_cartpole_v1",
-    main = "a2c_cartpole_v1.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/a2c_cartpole_v1.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "a2c_cartpole_v1.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
 
 py_test(
     name = "learning_tests_cartpole_a2c",
-    main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "large",
     srcs = ["run_regression_tests.py"],
+    args = ["--dir=a2c/tuned_examples/"],
     data = ["tuned_examples/cartpole-a2c.yaml"],
-    args = ["--dir=a2c/tuned_examples/"]
+    main = "run_regression_tests.py",
+    tags = [
+        "learning_tests",
+        "rllib_contrib",
+        "team:rllib",
+    ],
 )
 
 py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
-    main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "large",
     srcs = ["run_regression_tests.py"],
+    args = ["--dir=a2c/tuned_examples/"],
     data = ["tuned_examples/cartpole-a2c-microbatch.yaml"],
-    args = ["--dir=a2c/tuned_examples/"]
+    main = "run_regression_tests.py",
+    tags = [
+        "learning_tests",
+        "rllib_contrib",
+        "team:rllib",
+    ],
 )
 
 py_test(
     name = "learning_tests_cartpole_a2c_fake_gpus",
-    main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "rllib_contrib", "no_tf_eager_tracing"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
+    args = ["--dir=a2c/tuned_examples/"],
     data = ["tuned_examples/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--dir=a2c/tuned_examples/"]
+    main = "run_regression_tests.py",
+    tags = [
+        "learning_tests",
+        "no_tf_eager_tracing",
+        "rllib_contrib",
+        "team:rllib",
+    ],
 )
 
 # Compilation Tests
 
 py_test(
     name = "test_a2c",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_a2c.py"]
+    srcs = ["tests/test_a2c.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )

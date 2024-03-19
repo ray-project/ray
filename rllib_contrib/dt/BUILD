@@ -2,19 +2,26 @@
 
 py_test(
     name = "example_dt_cartpole_v1",
-    main = "dt_cartpole_v1.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/dt_cartpole_v1.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "dt_cartpole_v1.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 py_test(
     name = "policy_inference_after_training_with_dt_torch",
-    main = "policy_inference_after_training_with_dt.py",
-    tags = ["team:rllib", "examples", "ray_data"],
     size = "medium",
     srcs = ["examples/policy_inference_after_training_with_dt.py"],
+    main = "policy_inference_after_training_with_dt.py",
+    tags = [
+        "examples",
+        "ray_data",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
@@ -35,41 +42,57 @@ py_test(
 
 py_test(
     name = "learning_tests_cartpole_dt",
-    main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
+    args = ["--dir=dt/tuned_examples/"],
     data = ["tuned_examples/cartpole-v1-dt.yaml"],
-    args = ["--dir=dt/tuned_examples/"]
+    main = "run_regression_tests.py",
+    tags = [
+        "learning_tests",
+        "rllib_contrib",
+        "team:rllib",
+        "torch_only",
+    ],
 )
-
 
 # Compilation Tests
 
 py_test(
     name = "test_dt",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_dt.py"]
+    srcs = ["tests/test_dt.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )
 
 py_test(
     name = "test_dt_model",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_dt_model.py"]
+    srcs = ["tests/test_dt_model.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )
 
 py_test(
     name = "test_dt_policy",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_dt_policy.py"]
+    srcs = ["tests/test_dt_policy.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )
 
 py_test(
     name = "test_segmentation_buffer",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_segmentation_buffer.py"]
+    srcs = ["tests/test_segmentation_buffer.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )

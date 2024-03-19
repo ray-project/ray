@@ -2,30 +2,41 @@
 
 py_test(
     name = "example_ddpg_pendulum_v1",
-    main = "ddpg_pendulum_v1.py",
-    tags = ["team:rllib", "example"],
     size = "large",
     srcs = ["examples/ddpg_pendulum_v1.py"],
-    args = ["--run-as-test"]
+    args = ["--run-as-test"],
+    main = "ddpg_pendulum_v1.py",
+    tags = [
+        "example",
+        "team:rllib",
+    ],
 )
 
 # Learning Tests
 
 py_test(
-   name = "learning_tests_pendulum_ddpg_fake_gpus",
-   main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "rllib_contrib", "no_tf_eager_tracing"],
-   size = "large",
-   srcs = ["run_regression_tests.py"],
-   data = ["tuned_examples/pendulum-ddpg-fake-gpus.yaml"],
-   args = ["--dir=ddpg/tuned_examples/"]
+    name = "learning_tests_pendulum_ddpg_fake_gpus",
+    size = "large",
+    srcs = ["run_regression_tests.py"],
+    args = ["--dir=ddpg/tuned_examples/"],
+    data = ["tuned_examples/pendulum-ddpg-fake-gpus.yaml"],
+    main = "run_regression_tests.py",
+    tags = [
+        "learning_tests",
+        "no_tf_eager_tracing",
+        "rllib_contrib",
+        "team:rllib",
+    ],
 )
 
 # Compilation Tests
 
 py_test(
     name = "test_ddpg",
-    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_ddpg.py"]
+    srcs = ["tests/test_ddpg.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )
