@@ -182,5 +182,5 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             # Ray nodes runs as subprocess of spark UDF or spark driver,
             # in databricks, it doens't have MLflow service credentials
             # so it can't use MLflow.
-            "DISABLE_MLFLOW_INTEGRATION": "TRUE"
+            "DISABLE_MLFLOW_INTEGRATION": "TRUE",
         }
