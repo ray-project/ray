@@ -37,7 +37,9 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
 )
 from ray.serve.config import AutoscalingConfig
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
+from ray.util.state import list_actors
 
 
 def get_running_replica_ids(name: str, controller: ServeController) -> List[ReplicaID]:
@@ -102,84 +104,231 @@ def test_assert_no_replicas_deprovisioned():
         assert_no_replicas_deprovisioned(replica_ids_2, replica_ids_1)
 
 
-@pytest.mark.parametrize(
-    "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
-    [(True, True), (True, False), (False, True)],
-)
-def test_autoscaling_metrics(
-    serve_instance,
-    use_target_num_ongoing_requests_per_replica,
-    use_target_ongoing_requests,
-):
-    """Test that request metrics are sent correctly to the controller."""
+def get_num_requests(client, dep_id: DeploymentID):
+    ref = client._controller._dump_autoscaling_metrics_for_testing.remote()
+    total_num_requests = ray.get(ref)[dep_id]
+    print("total num requests", total_num_requests)
+    return total_num_requests
 
-    signal = SignalActor.remote()
 
-    autoscaling_config = {
-        "metrics_interval_s": 0.1,
-        "min_replicas": 1,
-        "max_replicas": 10,
-        "upscale_delay_s": 0,
-        "downscale_delay_s": 0,
-        "look_back_period_s": 1,
-    }
-    if use_target_ongoing_requests and not use_target_num_ongoing_requests_per_replica:
-        autoscaling_config["target_ongoing_requests"] = 10
-    elif use_target_ongoing_requests and use_target_num_ongoing_requests_per_replica:
-        autoscaling_config["target_ongoing_requests"] = 10
-        # Random setting, should get ignored
-        autoscaling_config["target_num_ongoing_requests_per_replica"] = 234
-    else:
-        autoscaling_config["target_num_ongoing_requests_per_replica"] = 10
+def check_num_requests_eq(client, id: DeploymentID, expected: int):
+    assert get_num_requests(client, id) == expected
+    return True
 
-    @serve.deployment(
-        autoscaling_config=autoscaling_config,
-        # We will send over a lot of queries. This will make sure replicas are
-        # killed quickly during cleanup.
-        graceful_shutdown_timeout_s=1,
-        max_ongoing_requests=25,
-        version="v1",
+
+def check_num_requests_ge(client, id: DeploymentID, expected: int):
+    assert get_num_requests(client, id) >= expected
+    return True
+
+
+class TestAutoscalingMetrics:
+    @pytest.mark.parametrize(
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
     )
-    class A:
-        async def __call__(self):
-            await signal.wait.remote()
+    def test_basic(
+        self,
+        serve_instance,
+        use_target_num_ongoing_requests_per_replica,
+        use_target_ongoing_requests,
+    ):
+        """Test that request metrics are sent correctly to the controller."""
 
-    handle = serve.run(A.bind())
-    dep_id = DeploymentID(name="A")
-    [handle.remote() for _ in range(50)]
+        client = serve_instance
+        signal = SignalActor.remote()
 
-    # Wait for metrics to propagate
-    def get_data():
-        data = ray.get(
-            serve_instance._controller._dump_autoscaling_metrics_for_testing.remote()
-        )[dep_id]
-        print(data)
-        return data
+        autoscaling_config = {
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+            "look_back_period_s": 1,
+        }
+        if (
+            use_target_ongoing_requests
+            and not use_target_num_ongoing_requests_per_replica
+        ):
+            autoscaling_config["target_ongoing_requests"] = 10
+        elif (
+            use_target_ongoing_requests and use_target_num_ongoing_requests_per_replica
+        ):
+            autoscaling_config["target_ongoing_requests"] = 10
+            # Random setting, should get ignored
+            autoscaling_config["target_num_ongoing_requests_per_replica"] = 234
+        else:
+            autoscaling_config["target_num_ongoing_requests_per_replica"] = 10
 
-    wait_for_condition(lambda: get_data() > 0)
-    print("Autoscaling metrics started recording on controller.")
+        @serve.deployment(
+            autoscaling_config=autoscaling_config,
+            # We will send many requests. This will make sure replicas are
+            # killed quickly during cleanup.
+            graceful_shutdown_timeout_s=1,
+            max_ongoing_requests=25,
+            version="v1",
+        )
+        class A:
+            async def __call__(self):
+                await signal.wait.remote()
 
-    # Many queries should be inflight.
-    def last_timestamp_value_high():
-        metrics = get_data()
-        assert metrics > 45
-        return True
+        handle = serve.run(A.bind())
+        dep_id = DeploymentID(name="A")
+        [handle.remote() for _ in range(50)]
 
-    wait_for_condition(last_timestamp_value_high)
-    print("Confirmed many queries are inflight.")
+        # Wait for metrics to propagate
+        wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=1)
+        print("Autoscaling metrics started recording on controller.")
 
-    wait_for_condition(check_num_replicas_eq, name="A", target=5)
-    print("Confirmed deployment scaled to 5 replicas.")
-    print("Releasing signal.")
-    signal.send.remote()
+        # Many queries should be inflight.
+        wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
+        print("Confirmed many queries are inflight.")
 
-    # After traffic stops, num replica should drop to 1
-    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=15)
-    print("Num replicas dropped to 1.")
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        print("Confirmed deployment scaled to 5 replicas.")
+        print("Releasing signal.")
+        signal.send.remote()
 
-    # Request metrics should drop to 0
-    wait_for_condition(lambda: get_data() == 0)
-    print("Queued and ongoing requests dropped to 0.")
+        # After traffic stops, num replica should drop to 1
+        wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=15)
+        print("Num replicas dropped to 1.")
+
+        # Request metrics should drop to 0
+        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
+        print("Queued and ongoing requests dropped to 0.")
+
+    @pytest.mark.parametrize("use_generator", [True, False])
+    def test_replicas_die(self, serve_instance, use_generator):
+        """If replicas die while requests are still executing, that
+        should be tracked correctly."""
+
+        client = serve_instance
+        signal = SignalActor.remote()
+
+        config = {
+            "autoscaling_config": {
+                "target_ongoing_requests": 10,
+                "metrics_interval_s": 0.1,
+                "min_replicas": 1,
+                "max_replicas": 10,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+                "look_back_period_s": 1,
+            },
+            "graceful_shutdown_timeout_s": 0.1,
+            "max_ongoing_requests": 25,
+        }
+
+        if use_generator:
+
+            @serve.deployment(**config)
+            class A:
+                async def __call__(self):
+                    await signal.wait.remote()
+                    async for i in range(3):
+                        yield i
+
+        else:
+
+            @serve.deployment(**config)
+            class A:
+                async def __call__(self):
+                    await signal.wait.remote()
+
+        handle = serve.run(A.bind(), name="app1").options(stream=use_generator)
+        dep_id = DeploymentID(name="A", app_name="app1")
+        [handle.remote() for _ in range(50)]
+
+        # Many queries should be inflight.
+        wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
+        print("Confirmed many queries are inflight.")
+
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
+        print("Confirmed deployment scaled to 5 replicas.")
+
+        # Wait for all requests to be scheduled to replicas so they'll be failed
+        # when the replicas are removed.
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 50)
+
+        # Remove all replicas before they can finish the requests.
+        serve.delete("app1")
+
+        # Num requests should still drop to 0 despite all requests failing.
+        def check_handle_metrics(handle):
+            num_requests = handle._router._metrics_manager.num_requests_sent_to_replicas
+            for replica_id, num in num_requests.items():
+                assert (
+                    num == 0
+                ), f"Replica {replica_id} still has {num} ongoing requests"
+
+            return True
+
+        wait_for_condition(check_handle_metrics, handle=handle)
+
+    def test_handle_deleted(self, serve_instance):
+        """If handles are deleted while requests are still inflight, the
+        metrics should be invalidated after a certain time so the info
+        doesn't become stale.
+        """
+
+        client = serve_instance
+        dep_id = DeploymentID(name="A")
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            autoscaling_config={
+                "target_ongoing_requests": 4,
+                "metrics_interval_s": 0.1,
+                "min_replicas": 0,
+                "max_replicas": 10,
+                "upscale_delay_s": 1,
+                "downscale_delay_s": 1,
+                "look_back_period_s": 10,
+            },
+            graceful_shutdown_timeout_s=0.1,
+            max_ongoing_requests=10,
+        )
+        class A:
+            async def __call__(self):
+                await signal.wait.remote()
+                return "sup"
+
+        @serve.deployment(graceful_shutdown_timeout_s=1)
+        class Router:
+            def __init__(self, handle: DeploymentHandle):
+                self._handle = handle
+                self.x = list()
+
+            async def __call__(self):
+                return await self._handle.remote()
+
+        app = Router.bind(A.bind())
+        handle = serve.run(app)
+        refs = [handle.remote() for _ in range(20)]
+
+        # Wait for deployment A to scale up
+        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        print("Confirmed deployment scaled to 5 replicas.")
+
+        router_name = [
+            actor
+            for actor in list_actors(filters=[("state", "=", "ALIVE")])
+            if actor["class_name"] == "ServeReplica:default:Router"
+        ][0]["name"]
+        router = ray.get_actor(router_name, namespace=SERVE_NAMESPACE)
+
+        print("Releasing signal at", time.time())
+        signal.send.remote()
+        print("Request results:", [ref.result() for ref in refs])
+
+        # Kill Router replica
+        print("Killing Router at", time.time())
+        ray.kill(router)
+
+        wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=20)
+        wait_for_condition(
+            check_num_requests_eq, client=client, id=dep_id, expected=0, timeout=20
+        )
 
 
 @pytest.mark.parametrize("min_replicas", [1, 2])

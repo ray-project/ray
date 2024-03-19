@@ -128,7 +128,7 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
 
 def test_log_file_exists(shutdown_only):
     """Verify all log files exist as specified in
-    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure # noqa
     """
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]

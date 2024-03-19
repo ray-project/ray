@@ -5,8 +5,6 @@ Ray Data Overview
 
 .. _data-intro:
 
-.. image:: images/dataset.svg
-
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
@@ -15,25 +13,16 @@ Ray Data is a scalable data processing library for ML workloads, particularly su
 -  :ref:`Offline batch inference <batch_inference_overview>`
 -  :ref:`Data preprocessing and ingest for ML training <ml_ingest_overview>`
 
-It provides flexible and performant APIs for distributed data processing:
-
-- Simple transformations such as maps (:meth:`~ray.data.Dataset.map_batches`)
-- Global and grouped aggregations (:meth:`~ray.data.Dataset.groupby`)
-- Shuffling operations (:meth:`~ray.data.Dataset.random_shuffle`, :meth:`~ray.data.Dataset.sort`, :meth:`~ray.data.Dataset.repartition`).
+It provides flexible and performant APIs for distributed data processing. For more details, see :ref:`Transforming Data <transforming_data>`.
 
 Ray Data is built on top of Ray, so it scales effectively to large clusters and offers scheduling support for both CPU and GPU resources. Ray Data uses `streaming execution <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__ to efficiently process large datasets.
-
-.. note::
-
-    Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic
-    ETL pipelines like Spark.
 
 Why choose Ray Data?
 --------------------
 
 .. dropdown:: Faster and cheaper for modern deep learning applications
 
-    Ray Data is designed for deep learning applications that involve both CPU preprocessing and GPU inference. Through its powerful streaming :ref:`Dataset <dataset_concept>` primitive, Ray Data streams working data from CPU preprocessing tasks to GPU inferencing or training tasks, allowing you to utilize both sets of resources concurrently.
+    Ray Data is designed for deep learning applications that involve both CPU preprocessing and GPU inference. Ray Data streams working data from CPU preprocessing tasks to GPU inferencing or training tasks, allowing you to utilize both sets of resources concurrently.
 
     By using Ray Data, your GPUs are no longer idle during CPU computation, reducing overall cost of the batch inference job.
 
@@ -41,26 +30,23 @@ Why choose Ray Data?
 
     Ray Data has no restrictions on cloud provider, ML framework, or data format.
 
-    Through the :ref:`Ray cluster launcher <cluster-index>`, you can start a Ray cluster on AWS, GCP, or Azure clouds. You can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including CSV, Parquet, and raw images.
+    You can start a Ray cluster on AWS, GCP, or Azure clouds. You can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including Parquet, images, JSON, text, CSV, etc.
 
-.. dropdown:: Out of the box scaling
+.. dropdown:: Out-of-the-box scaling on heterogeneous clusters
 
-    Ray Data is built on Ray, so it easily scales to many machines. Code that works on one machine also runs on a large cluster without any changes.
+    Ray Data is built on Ray, so it easily scales on a heterogeneous cluster, which has different types of CPU and GPU machines. Code that works on one machine also runs on a large cluster without any changes.
 
-.. dropdown:: Python first
+    Ray Data can easily scale to hundreds of nodes to process hundreds of TB of data.
 
-    With Ray Data, you can express your inference job directly in Python instead of
-    YAML or other formats, allowing for faster iterations, easier debugging, and a native developer experience.
+.. dropdown:: Unified API and backend for batch inference and ML training
+
+    With Ray Data, you can express batch inference and ML training job directly under the same Ray Dataset API.
 
 
 .. _batch_inference_overview:
 
 Offline Batch Inference
 -----------------------
-
-.. tip::
-
-    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference.
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications. For more details on how to use Ray Data for offline batch inference, see the :ref:`batch inference user guide <batch_inference_home>`.
 
@@ -72,8 +58,8 @@ Offline batch inference is a process for generating model predictions on a fixed
  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit#slide=id.g230eb261ad2_0_0
 
 
-How does Ray Data compare to X for offline inference?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How does Ray Data compare to other solutions for offline inference?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. dropdown:: Batch Services: AWS Batch, GCP Batch
 
@@ -94,12 +80,15 @@ How does Ray Data compare to X for offline inference?
 
     Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
 
+    Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic ETL pipelines like Spark.
+
     For a more detailed performance comarison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
 
 Batch inference case studies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- `ByteDance scales offline inference with multi-modal LLMs to 200 TB on Ray Data <https://www.anyscale.com/blog/how-bytedance-scales-offline-inference-with-multi-modal-llms-to-200TB-data>`_
+- `Spotify's new ML platform built on Ray Data for batch inference <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
 - `Sewer AI speeds up object detection on videos 3x using Ray Data <https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video>`_
-- `Spotify's new ML platform built on Ray, using Ray Data for batch inference <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
 
 .. _ml_ingest_overview:
 
@@ -114,8 +103,9 @@ Key supported features for distributed training include:
 - No dropped rows during distributed dataset iteration
 
 Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
-applications and libraries in Ray. Don't use it as a replacement for more general data
-processing systems. For more details on how to use Ray Data for preprocessing and ingest for ML training, see :ref:`Data loading for ML training <data-ingest-torch>`.
+applications and libraries in Ray. Use it for unstructured data processing. For more details
+on how to use Ray Data for preprocessing and ingest for ML training, see
+:ref:`Data loading for ML training <data-ingest-torch>`.
 
 .. image:: images/dataset-loading-1.svg
    :width: 650px
@@ -125,8 +115,8 @@ processing systems. For more details on how to use Ray Data for preprocessing an
   https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
 
 
-How does Ray Data compare to X for ML training ingest?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How does Ray Data compare to other solutions for ML training ingest?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. dropdown:: PyTorch Dataset and DataLoader
 
@@ -156,7 +146,9 @@ How does Ray Data compare to X for ML training ingest?
     * **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between processes, in contrast to the multi-processing-based pipelines used by NVTabular.
     * **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g. both CPU and GPU transformations), while Ray Data supports this.
 
-ML ingest case studies
-~~~~~~~~~~~~~~~~~~~~~~
+ML training ingest case studies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- `Pinterest uses Ray Data to do last mile data processing for model training <https://medium.com/pinterest-engineering/last-mile-data-processing-with-ray-629affbf34ff>`_
+- `DoorDash elevates model training with Ray Data <https://raysummit.anyscale.com/agenda/sessions/144>`_
+- `Instacart builds distributed machine learning model training on Ray Data <https://tech.instacart.com/distributed-machine-learning-at-instacart-4b11d7569423>`_
 - `Predibase speeds up image augmentation for model training using Ray Data <https://predibase.com/blog/ludwig-v0-7-fine-tuning-pretrained-image-and-text-models-50x-faster-and>`_
-- `Spotify's new ML platform built on Ray, using Ray Data for feature preprocessing <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
