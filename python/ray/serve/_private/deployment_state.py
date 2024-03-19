@@ -824,10 +824,11 @@ class ActorReplicaWrapper:
         elif response is ReplicaHealthCheckResponse.SUCCEEDED:
             # Health check succeeded. Reset the consecutive failure counter
             # and mark the replica healthy.
-            logger.info(
-                f"Replica {self._replica_id} passed the health check after "
-                f"{self._consecutive_health_check_failures} failures in a row."
-            )
+            if self._consecutive_health_check_failures > 0:
+                logger.info(
+                    f"Replica {self._replica_id} passed the health check after "
+                    f"{self._consecutive_health_check_failures} failures in a row."
+                )
             self._consecutive_health_check_failures = 0
             self._healthy = True
         elif response is ReplicaHealthCheckResponse.APP_FAILURE:
