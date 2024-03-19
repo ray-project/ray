@@ -15,8 +15,8 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
     QF_PROBS,
     TD_ERROR_KEY,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -53,7 +53,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             torch.gather(
                 q_curr,
                 dim=1,
-                index=batch[SampleBatch.ACTIONS].long(),
+                index=batch[Columns.ACTIONS].long(),
             ),
             neginf=0.0,
         )
@@ -62,7 +62,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         if self.config.double_q:
             # Then we evaluate the target Q-function at the best action (greedy action)
             # over the online Q-function.
-            batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
+            batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
             qf_next_outs = self.module.qf(batch_next)
             # Mark the best online Q-value of the next state.
             q_next_best_idx = (
@@ -102,7 +102,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 # Note, the Q-logits are of shape (B, action_space.n, num_atoms)
                 # while the actions have shape (B, 1). We reshape actions to
                 # (B, 1, num_atoms).
-                index=batch[SampleBatch.ACTIONS]
+                index=batch[Columns.ACTIONS]
                 .view(-1, 1, 1)
                 .expand(-1, 1, self.config.num_atoms)
                 .long(),
@@ -127,9 +127,9 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
             # TODO (simon): Check, if we need to unsqueeze here.
             r_tau = torch.clamp(
-                batch[SampleBatch.REWARDS]
+                batch[Columns.REWARDS]
                 + self.config.gamma ** batch["n_steps"]
-                * (1.0 - batch[SampleBatch.TERMINATEDS].float())
+                * (1.0 - batch[Columns.TERMINATEDS].float())
                 * z,
                 self.config.v_min,
                 self.config.v_max,
@@ -166,14 +166,14 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         else:
             # Masked all Q-values with terminated next states in the targets.
             q_next_best_masked = (
-                1.0 - batch[SampleBatch.TERMINATEDS].float()
+                1.0 - batch[Columns.TERMINATEDS].float()
             ) * q_next_best
 
             # Compute the RHS of the Bellman equation.
             # Detach this node from the computation graph as we do not want to
             # backpropagate through the target network when optimizing the Q loss.
             q_selected_target = (
-                batch[SampleBatch.REWARDS]
+                batch[Columns.REWARDS]
                 + self.config.gamma ** batch["n_steps"] * q_next_best_masked
             ).detach()
 

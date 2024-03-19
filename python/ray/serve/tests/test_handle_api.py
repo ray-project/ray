@@ -8,7 +8,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES
+from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
@@ -31,11 +31,21 @@ def test_basic(serve_instance):
             response = self._handle.remote()
             assert isinstance(response, DeploymentResponse)
             val = await response
+
+            # Check that the response can be awaited multiple times.
+            for _ in range(10):
+                assert (await response) == val
+
             return val
 
     handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
     assert isinstance(handle, DeploymentHandle)
-    assert handle.remote().result() == "hello"
+    r = handle.remote()
+    assert r.result() == "hello"
+
+    # Check that `.result()` can be called multiple times.
+    for _ in range(10):
+        assert r.result() == "hello"
 
 
 def test_result_timeout(serve_instance):
@@ -291,7 +301,7 @@ def test_handle_eager_execution(serve_instance):
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_STRICT_MAX_CONCURRENT_QUERIES,
+    not RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     reason="Strict enforcement must be enabled.",
 )
 @pytest.mark.asyncio

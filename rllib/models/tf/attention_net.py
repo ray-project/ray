@@ -24,7 +24,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor, one_hot
@@ -35,7 +35,7 @@ from ray.util import log_once
 tf1, tf, tfv = try_import_tf()
 
 
-# TODO(sven): Use RLlib's FCNet instead.
+@OldAPIStack
 class PositionwiseFeedforward(tf.keras.layers.Layer if tf else object):
     """A 2x linear layer with ReLU activation in between described in [1].
 
@@ -71,6 +71,7 @@ class PositionwiseFeedforward(tf.keras.layers.Layer if tf else object):
         return self._output_layer(output)
 
 
+@OldAPIStack
 class TrXLNet(RecurrentNetwork):
     """A TrXL net Model described in [1]."""
 

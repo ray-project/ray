@@ -1112,7 +1112,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.storage = StorageContext(
             storage_path=tmpdir, experiment_dir_name="test_trial_scheduler"
         )
-        self.storage.storage_local_path = tmpdir
         runner = _MockTrialRunner(pbt)
         for i in range(num_trials):
             trial_hyperparams = hyperparams or {
@@ -1122,6 +1121,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 "id_factor": i,
             }
             trial = _MockTrial(i, trial_hyperparams, self.storage)
+            trial.init_local_path()
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
         for i in range(num_trials):
@@ -1614,11 +1614,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for log_file in log_files:
             self.assertTrue(
                 os.path.exists(
-                    os.path.join(self.storage.experiment_local_path, log_file)
+                    os.path.join(self.storage.experiment_driver_staging_path, log_file)
                 )
             )
             raw_policy = open(
-                os.path.join(self.storage.experiment_local_path, log_file), "r"
+                os.path.join(self.storage.experiment_driver_staging_path, log_file), "r"
             ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
@@ -1651,11 +1651,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for log_file in log_files:
             self.assertTrue(
                 os.path.exists(
-                    os.path.join(self.storage.experiment_local_path, log_file)
+                    os.path.join(self.storage.experiment_driver_staging_path, log_file)
                 )
             )
             raw_policy = open(
-                os.path.join(self.storage.experiment_local_path, log_file), "r"
+                os.path.join(self.storage.experiment_driver_staging_path, log_file), "r"
             ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
@@ -1792,7 +1792,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
             replay = PopulationBasedTrainingReplay(
                 os.path.join(
-                    self.storage.experiment_local_path,
+                    self.storage.experiment_driver_staging_path,
                     "pbt_policy_{}.txt".format(trial.trial_id),
                 )
             )
@@ -1809,7 +1809,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         with self.assertRaises(ValueError):
             replay = PopulationBasedTrainingReplay(
                 os.path.join(
-                    self.storage.experiment_local_path,
+                    self.storage.experiment_driver_staging_path,
                     "pbt_policy_{}.txt".format(trials[1].trial_id),
                 )
             )

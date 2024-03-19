@@ -145,6 +145,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
         (requests.RequestException, AssertionError),
         timeout_ms=20000,
         retry_interval_ms=1000,
+        raise_last_ex=True,
     )
 
     def get_actor_memory_multiple_flamegraphs():
@@ -168,6 +169,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
         (requests.RequestException, AssertionError),
         timeout_ms=20000,
         retry_interval_ms=1000,
+        raise_last_ex=True,
     )
 
 

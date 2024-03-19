@@ -1334,90 +1334,6 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
-    def testConvertSkOpt(self):
-        from ray.tune.search.skopt import SkOptSearch
-        from skopt.space import Real, Integer, Categorical
-
-        # Grid search not supported, should raise ValueError
-        with self.assertRaises(ValueError):
-            SkOptSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
-
-        config = {
-            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
-            "a2": ray.tune.search.sample.Categorical([2, 10]).uniform(),
-            "b": {
-                "x": ray.tune.search.sample.Integer(0, 5),
-                "y": 4,
-                "z": ray.tune.search.sample.Float(1e-4, 1e-2).loguniform(),
-            },
-        }
-        converted_config = SkOptSearch.convert_search_space(config)
-        skopt_config = {
-            "a": Categorical([2, 3, 4]),
-            "a2": Categorical([2, 10]),
-            "b/x": Integer(0, 4),
-            "b/z": Real(1e-4, 1e-2, prior="log-uniform"),
-        }
-
-        searcher1 = SkOptSearch(space=converted_config, metric="a", mode="max")
-        searcher2 = SkOptSearch(space=skopt_config, metric="a", mode="max")
-
-        np.random.seed(1234)
-        config1 = searcher1.suggest("0")
-        np.random.seed(1234)
-        config2 = searcher2.suggest("0")
-
-        self.assertEqual(config1, config2)
-        self.assertIn(config1["a"], [2, 3, 4])
-        self.assertIn(config1["a2"], [2, 10])
-        self.assertIn(config1["b"]["x"], list(range(5)))
-        self.assertLess(1e-4, config1["b"]["z"])
-        self.assertLess(config1["b"]["z"], 1e-2)
-
-        searcher = SkOptSearch(metric="a", mode="max")
-        analysis = tune.run(
-            _mock_objective, config=config, search_alg=searcher, num_samples=1
-        )
-        trial = analysis.trials[0]
-        self.assertIn(trial.config["a"], [2, 3, 4])
-        self.assertIn(trial.config["a2"], [2, 10])
-        self.assertEqual(trial.config["b"]["y"], 4)
-
-        mixed_config = {"a": tune.uniform(5, 6), "b": (8, 9)}
-        searcher = SkOptSearch(space=mixed_config, metric="a", mode="max")
-        config = searcher.suggest("0")
-        self.assertTrue(5 <= config["a"] <= 6)
-        self.assertTrue(8 <= config["b"] <= 9)
-
-    def testSampleBoundsSkOpt(self):
-        from ray.tune.search.skopt import SkOptSearch
-
-        ignore = [
-            "func",
-            "randn",
-            "qrandn",
-            "qloguniform",
-            "qlograndint",
-            "quniform",
-            "qrandint",
-            "qrandint_q1",
-            "qrandint_q3",
-        ]
-
-        config = self.config.copy()
-        for k in ignore:
-            config.pop(k)
-
-        searcher = SkOptSearch(
-            space=config, metric="a", mode="max", convert_to_python=True
-        )
-
-        def config_generator():
-            for i in range(1000):
-                yield searcher.suggest(f"trial_{i}")
-
-        self._testTuneSampleAPI(config_generator(), ignore=ignore)
-
     def testConvertZOOpt(self):
         from ray.tune.search.zoopt import ZOOptSearch
         from zoopt import ValueType
@@ -1685,18 +1601,6 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.search.optuna import OptunaSearch
 
         return self._testPointsToEvaluate(OptunaSearch, config)
-
-    def testPointsToEvaluateSkOpt(self):
-        config = {
-            "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": ray.tune.search.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": ray.tune.search.sample.Integer(0, 5),
-            "c": ray.tune.search.sample.Float(1e-4, 1e-1).loguniform(),
-        }
-
-        from ray.tune.search.skopt import SkOptSearch
-
-        return self._testPointsToEvaluate(SkOptSearch, config)
 
     def testPointsToEvaluateZoOpt(self):
         self.skipTest(

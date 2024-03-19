@@ -129,7 +129,7 @@ import pyarrow
 result_path: str = result.path
 result_filesystem: pyarrow.fs.FileSystem = result.filesystem
 
-print("Results location (fs, path) = ({result_filesystem}, {result_path})")
+print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 # __result_path_end__
 
 

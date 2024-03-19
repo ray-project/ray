@@ -61,8 +61,6 @@ if __name__ == "__main__":
     def _make_learner_connector(input_observation_space, input_action_space):
         # Create the learner connector.
         return FrameStackingLearner(
-            # input_observation_space=input_observation_space,
-            # input_action_space=input_action_space,
             num_frames=args.num_frames,
             multi_agent=args.num_agents > 0,
         )
@@ -113,6 +111,7 @@ if __name__ == "__main__":
                 else _make_env_to_module_connector
             ),
             num_rollout_workers=args.num_env_runners,
+            num_envs_per_worker=1 if args.num_agents > 0 else 2,
             # Set up the correct env-runner to use depending on
             # old-stack/new-stack and multi-agent settings.
             env_runner_cls=(

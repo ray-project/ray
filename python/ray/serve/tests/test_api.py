@@ -335,41 +335,6 @@ def test_run_get_ingress_node(serve_instance):
     assert handle.remote().result() == "got f"
 
 
-class TestSetOptions:
-    def test_set_options_basic(self):
-        @serve.deployment(
-            num_replicas=4,
-            max_concurrent_queries=3,
-            ray_actor_options={"num_cpus": 2},
-            health_check_timeout_s=17,
-        )
-        def f():
-            pass
-
-        f.set_options(
-            num_replicas=9,
-            version="efgh",
-            ray_actor_options={"num_gpus": 3},
-        )
-
-        assert f.num_replicas == 9
-        assert f.max_concurrent_queries == 3
-        assert f.version == "efgh"
-        assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
-        assert f._deployment_config.health_check_timeout_s == 17
-
-    def test_set_options_validation(self):
-        @serve.deployment
-        def f():
-            pass
-
-        with pytest.raises(TypeError):
-            f.set_options(init_args=-4)
-
-        with pytest.raises(ValueError):
-            f.set_options(max_concurrent_queries=-4)
-
-
 def test_deploy_application_basic(serve_instance):
     """Test deploy multiple applications"""
 
@@ -796,6 +761,34 @@ def test_no_slash_route_prefix(serve_instance):
         ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
     ):
         serve.run(f.bind(), route_prefix="no_slash")
+
+
+def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles():
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "placement_group_bundles is provided."
+        ),
+    ):
+
+        @serve.deployment(max_replicas_per_node=3, placement_group_bundles=[{"CPU": 1}])
+        def f():
+            pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "placement_group_bundles is provided."
+        ),
+    ):
+
+        @serve.deployment
+        def g():
+            pass
+
+        g.options(max_replicas_per_node=3, placement_group_bundles=[{"CPU": 1}])
 
 
 def test_status_basic(serve_instance):

@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-import shutil
 import tempfile
 import unittest
 
@@ -33,8 +32,10 @@ def creator_generator(logdir):
 
 class FunctionCheckpointingTest(unittest.TestCase):
     def setUp(self):
-        self.logdir = tempfile.mkdtemp()
-        self.logger_creator = creator_generator(self.logdir)
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.logger_creator = creator_generator(
+            os.path.join(self.tmpdir.name, "logdir")
+        )
 
     def create_trainable(self, train_fn):
         return wrap_function(train_fn)(
@@ -42,7 +43,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         )
 
     def tearDown(self):
-        shutil.rmtree(self.logdir)
+        self.tmpdir.cleanup()
 
     def testCheckpointReuse(self):
         """Test that repeated save/restore never reuses same checkpoint dir."""

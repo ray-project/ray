@@ -231,8 +231,14 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     - Has max_worker set for each node type.
     """
     is_local = config.get("provider", {}).get("type") == "local"
+    is_kuberay = config.get("provider", {}).get("type") == "kuberay"
     if is_local:
         config = prepare_local(config)
+    elif is_kuberay:
+        # With KubeRay, we don't need to do anything here since KubeRay
+        # generate the autoscaler config from the RayCluster CR instead
+        # of loading from the files.
+        return config
 
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)

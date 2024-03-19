@@ -5,8 +5,11 @@ import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeDeployments } from "./hook/useServeApplications";
+import {
+  SERVE_SYSTEM_METRICS_CONFIG,
+  ServeMetricsSection,
+} from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
-
 const useStyles = makeStyles((theme) =>
   createStyles({
     root: {
@@ -14,6 +17,9 @@ const useStyles = makeStyles((theme) =>
     },
     serveInstanceWarning: {
       marginBottom: theme.spacing(2),
+    },
+    section: {
+      marginTop: theme.spacing(4),
     },
   }),
 );
@@ -53,6 +59,10 @@ export const ServeSystemDetailPage = () => {
           setPage={setProxiesPage}
         />
       )}
+      <ServeMetricsSection
+        className={classes.section}
+        metricsConfig={SERVE_SYSTEM_METRICS_CONFIG}
+      />
     </div>
   );
 };

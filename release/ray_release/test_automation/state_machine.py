@@ -233,7 +233,6 @@ class TestStateMachine(abc.ABC):
         issue = self.ray_repo.get_issue(github_issue_number)
         issue.create_comment(f"Test passed on latest run: {self.test_results[0].url}")
         issue.edit(state="closed")
-        self.test.pop(Test.KEY_GITHUB_ISSUE_NUMBER, None)
 
     def _keep_github_issue_open(self) -> None:
         github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)

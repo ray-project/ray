@@ -3,12 +3,14 @@ from typing import Optional
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 from ray.rllib.utils.typing import LearningRateOrSchedule, TensorType
+from ray.util.annotations import DeveloperAPI
 
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@DeveloperAPI
 class Scheduler:
     """Class to manage a scheduled (framework-dependent) tensor variable.
 

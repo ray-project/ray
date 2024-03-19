@@ -405,9 +405,11 @@ class TestReservationOpResourceAllocator:
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 137.5
-        assert allocator.max_task_output_bytes_to_read(o2) == 137.5
+        # (will be rounded down).
+        assert allocator.max_task_output_bytes_to_read(o2) == 137
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257.5
-        assert allocator.max_task_output_bytes_to_read(o3) == 257.5
+        # (will be rounded down).
+        assert allocator.max_task_output_bytes_to_read(o3) == 257
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)

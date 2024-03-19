@@ -2,7 +2,10 @@ from typing import List, Tuple
 
 import numpy as np
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 def create_mask_and_seq_lens(
     episode_lens: List[int],
     T: int,
@@ -99,6 +102,7 @@ def split_and_pad(data_chunks: List[np._typing.NDArray], T: int) -> np._typing.N
     return result
 
 
+@DeveloperAPI
 def split_and_pad_single_record(
     data: np._typing.NDArray, episode_lengths: List[int], T: int
 ):
@@ -135,15 +139,16 @@ def split_and_pad_single_record(
     return split_and_pad(episodes_data, T)
 
 
+@DeveloperAPI
 def unpad_data_if_necessary(episode_lens, data):
     """Removes right-side zero-padding from data based on `episode_lens`.
 
     ..testcode::
 
-        from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+        from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
         import numpy as np
 
-        unpadded = PPOLearner._unpad_data_if_necessary(
+        unpadded = unpad_data_if_necessary(
             episode_lens=[4, 2],
             data=np.array([
                 [2, 4, 5, 3, 0, 0, 0, 0],
@@ -152,7 +157,7 @@ def unpad_data_if_necessary(episode_lens, data):
         )
         assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
 
-        unpadded = PPOLearner._unpad_data_if_necessary(
+        unpadded = unpad_data_if_necessary(
             episode_lens=[1, 5],
             data=np.array([
                 [2, 0, 0, 0, 0],

@@ -312,35 +312,21 @@ RLlib will report online training rewards, however in some cases you may want to
 rewards with different settings (e.g., with exploration turned off, or on a specific set
 of environment configurations). You can activate evaluating policies during training
 (``Algorithm.train()``) by setting the ``evaluation_interval`` to an int value (> 0)
-indicating every how many ``Algorithm.train()`` calls an "evaluation step" is run:
+indicating every how many ``Algorithm.train()`` calls an "evaluation step" should be run:
 
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_1_begin__
+   :end-before: __rllib-adv_api_evaluation_1_end__
 
-    # Run one evaluation step on every 3rd `Algorithm.train()` call.
-    {
-        "evaluation_interval": 3,
-    }
-
-
-An evaluation step runs - using its own ``RolloutWorker``s - for ``evaluation_duration``
+An evaluation step runs - using its own ``EnvRunner``s - for ``evaluation_duration``
 episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can
 take values of either ``"episodes"`` (default) or ``"timesteps"``.
 
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
-
-    # Every time we run an evaluation step, run it for exactly 10 episodes.
-    {
-        "evaluation_duration": 10,
-        "evaluation_duration_unit": "episodes",
-    }
-    # Every time we run an evaluation step, run it for (close to) 200 timesteps.
-    {
-        "evaluation_duration": 200,
-        "evaluation_duration_unit": "timesteps",
-    }
-
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_2_begin__
+   :end-before: __rllib-adv_api_evaluation_2_end__
 
 Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration``
 setting is not divisible by the number of evaluation workers (configurable via
@@ -350,24 +336,14 @@ workers.
 Also, when using ``evaluation_duration_unit=episodes`` and your
 ``evaluation_duration`` setting is not divisible by the number of evaluation workers
 (configurable via ``evaluation_num_workers``), RLlib will run the remainder of episodes
-on the first n eval RolloutWorkers and leave the remaining workers idle for that time.
+on the first n eval EnvRunners and leave the remaining workers idle for that time.
 
 For example:
 
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
-
-    # Every time we run an evaluation step, run it for exactly 10 episodes, no matter, how many eval workers we have.
-    {
-        "evaluation_duration": 10,
-        "evaluation_duration_unit": "episodes",
-
-        # What if number of eval workers is non-dividable by 10?
-        # -> Run 7 episodes (1 per eval worker), then run 3 more episodes only using
-        #    evaluation workers 1-3 (evaluation workers 4-7 remain idle during that time).
-        "evaluation_num_workers": 7,
-    }
-
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_3_begin__
+   :end-before: __rllib-adv_api_evaluation_3_end__
 
 Before each evaluation step, weights from the main model are synchronized
 to all evaluation workers.
@@ -405,34 +381,20 @@ When running with the ``evaluation_parallel_to_training=True`` setting, a specia
 is supported for ``evaluation_duration``. This can be used to make the evaluation step take
 roughly as long as the concurrently ongoing training step:
 
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
-
-    # Run evaluation and training at the same time via threading and make sure they roughly
-    # take the same time, such that the next `Algorithm.train()` call can execute
-    # immediately and not have to wait for a still ongoing (e.g. b/c of very long episodes)
-    # evaluation step:
-    {
-        "evaluation_interval": 1,
-        "evaluation_parallel_to_training": True,
-        "evaluation_duration": "auto",  # automatically end evaluation when train step has finished
-        "evaluation_duration_unit": "timesteps",  # <- more fine grained than "episodes"
-    }
-
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_4_begin__
+   :end-before: __rllib-adv_api_evaluation_4_end__
 
 The ``evaluation_config`` key allows you to override any config settings for
 the evaluation workers. For example, to switch off exploration in the evaluation steps,
 do:
 
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_5_begin__
+   :end-before: __rllib-adv_api_evaluation_5_end__
 
-    # Switching off exploration behavior for evaluation workers
-    # (see rllib/algorithms/algorithm.py). Use any keys in this sub-dict that are
-    # also supported in the main Algorithm config.
-    "evaluation_config": {
-       "explore": False
-    }
 
 .. note::
 
@@ -445,59 +407,29 @@ The level of parallelism within the evaluation step is determined via the
 ``evaluation_num_workers`` setting. Set this to larger values if you want the desired
 evaluation episodes or time-steps to run as much in parallel as possible.
 For example, if your ``evaluation_duration=10``, ``evaluation_duration_unit=episodes``,
-and ``evaluation_num_workers=10``, each evaluation ``RolloutWorker``
+and ``evaluation_num_workers=10``, each evaluation ``EnvRunner``
 only has to run one episode in each evaluation step.
 
-In case you observe occasional failures in your (evaluation) RolloutWorkers during
-evaluation (e.g. you have an environment that sometimes crashes),
-you can use an (experimental) new setting: ``enable_async_evaluation=True``.
-This will run the parallel sampling of all evaluation RolloutWorkers via a fault
-tolerant, asynchronous manager, such that if one of the workers takes too long to run
-through an episode and return data or fails entirely, the other evaluation
-RolloutWorkers will pick up its task and complete the job.
+In case you observe occasional failures in your (evaluation) EnvRunners during
+evaluation (e.g. you have an environment that sometimes crashes or stalls),
+you should use the following combination of settings, minimizing the negative effects
+of such environment behavior:
 
-Note that with or without async evaluation, all
+Note that with or without parallel evaluation, all
 :ref:`fault tolerance settings <rllib-scaling-guide>`, such as
 ``ignore_worker_failures`` or ``recreate_failed_workers`` will be respected and applied
 to the failed evaluation workers.
 
 Here's an example:
 
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_6_begin__
+   :end-before: __rllib-adv_api_evaluation_6_end__
 
-    # Having an environment that occasionally blocks completely for e.g. 10min would
-    # also affect (and block) training:
-    {
-        "evaluation_interval": 1,
-        "evaluation_parallel_to_training": True,
-        "evaluation_num_workers": 5,  # each worker runs two episodes
-        "evaluation_duration": 10,
-        "evaluation_duration_unit": "episodes",
-    }
-
-**Problem with the above example:**
-
-In case the environment used by worker 3 blocks for 10min, the entire training
-and evaluation pipeline will come to a (10min) halt b/c of this.
-The next ``train`` step cannot start before all evaluation has been finished.
-
-**Solution:**
-
-Switch on asynchronous evaluation, meaning, we don't wait for individual
-evaluation RolloutWorkers to complete their n episode(s) (or ``n`` time-steps).
-Instead, any evaluation RolloutWorker can cover the load of another one that failed
-or is stuck in a very long lasting environment step.
-
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
-
-    {
-        # ...
-        # same settings as above, plus:
-        "enable_async_evaluation": True,  # evaluate asynchronously
-    }
-
+This will run the parallel sampling of all evaluation EnvRunners, such that if one of
+the workers takes too long to run through an episode and return data or fails entirely,
+the other evaluation EnvRunners will still complete the job.
 
 In case you would like to entirely customize the evaluation step,
 set ``custom_eval_function`` in your config to a callable, which takes the Algorithm

@@ -14,6 +14,7 @@ import ray._private.services
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._raylet import GcsClientOptions
+from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,13 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict, **config_kwargs):
+    def __init__(
+        self,
+        head_resources: dict,
+        worker_node_types: dict,
+        autoscaler_v2: bool = False,
+        **config_kwargs,
+    ):
         """Create the cluster.
 
         Args:
@@ -37,10 +44,16 @@ class AutoscalingCluster:
         """
         self._head_resources = head_resources
         self._config = self._generate_config(
-            head_resources, worker_node_types, **config_kwargs
+            head_resources,
+            worker_node_types,
+            autoscaler_v2=autoscaler_v2,
+            **config_kwargs,
         )
+        self._autoscaler_v2 = autoscaler_v2
 
-    def _generate_config(self, head_resources, worker_node_types, **config_kwargs):
+    def _generate_config(
+        self, head_resources, worker_node_types, autoscaler_v2=False, **config_kwargs
+    ):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
@@ -56,6 +69,11 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
+
+        # Autoscaler v2 specific configs
+        if autoscaler_v2:
+            custom_config["provider"]["launch_multiple"] = True
+            custom_config["provider"]["head_node_id"] = FAKE_HEAD_NODE_ID
         custom_config.update(config_kwargs)
         return custom_config
 
@@ -95,6 +113,15 @@ class AutoscalingCluster:
             )
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
+        if self._autoscaler_v2:
+            # Set the necessary environment variables for autoscaler v2.
+            env.update(
+                {
+                    "RAY_enable_autoscaler_v2": "1",
+                    "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+                    "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+                }
+            )
         if override_env:
             env.update(override_env)
         subprocess.check_call(cmd, env=env)

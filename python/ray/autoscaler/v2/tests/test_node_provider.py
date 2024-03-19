@@ -19,7 +19,10 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_LAUNCH_BATCH,
 )
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
-from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
+from ray.autoscaler._private.kuberay.node_provider import (
+    KUBERAY_TYPE_HEAD,
+    IKubernetesHttpApiClient,
+)
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
     KubeRayProvider,
 )
@@ -85,7 +88,7 @@ class FakeMultiNodeProviderTester(CloudInstanceProviderTesterBase):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
-        self.config = self.config_reader.get_autoscaling_config()
+        self.config = self.config_reader.get_cached_autoscaling_config()
         self.ray_session = None
 
         os.environ["RAY_FAKE_CLUSTER"] = "1"
@@ -126,7 +129,7 @@ class MockProviderTester(CloudInstanceProviderTesterBase):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
-        self.config = self.config_reader.get_autoscaling_config()
+        self.config = self.config_reader.get_cached_autoscaling_config()
         self.base_provider = MockProvider()
         provider = NodeProviderAdapter(
             self.base_provider,
@@ -151,7 +154,7 @@ class MagicMockProviderTester(CloudInstanceProviderTesterBase):
         self.config_reader = FileConfigReader(
             get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
         )
-        self.config = self.config_reader.get_autoscaling_config()
+        self.config = self.config_reader.get_cached_autoscaling_config()
         self.base_provider = MagicMock()
         provider = NodeProviderAdapter(
             self.base_provider,
@@ -367,7 +370,10 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         )
         self.provider = KubeRayProvider(
             cluster_name="test",
-            namespace="test-namespace",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": KUBERAY_TYPE_HEAD,
+            },
             k8s_api_client=self.mock_client,
         )
 

@@ -11,7 +11,7 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12
+apt-get install -y curl zip clang-12 git
 
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
@@ -27,8 +27,12 @@ chmod +x /usr/local/bin/bazelisk
 
 ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
+# A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
+adduser --home /home/forge --uid 2000 forge --gid 100
+
 EOF
 
+USER forge
 ENV CC=clang
 ENV CXX=clang++-12
 ENV USE_BAZEL_VERSION=5.4.1

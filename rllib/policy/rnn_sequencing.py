@@ -18,7 +18,7 @@ from typing import List, Optional
 import functools
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
@@ -31,7 +31,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 def pad_batch_to_sequences_of_same_size(
     batch: SampleBatch,
     max_seq_len: int,
@@ -190,7 +190,7 @@ def pad_batch_to_sequences_of_same_size(
         )
 
 
-@DeveloperAPI
+@OldAPIStack
 def add_time_dimension(
     padded_inputs: TensorType,
     *,
@@ -264,7 +264,7 @@ def add_time_dimension(
         return padded_outputs
 
 
-@DeveloperAPI
+@OldAPIStack
 def chop_into_sequences(
     *,
     feature_columns,
@@ -452,7 +452,7 @@ def chop_into_sequences(
     return feature_sequences, initial_states, seq_lens
 
 
-@DeveloperAPI
+@OldAPIStack
 def timeslice_along_seq_lens_with_overlap(
     sample_batch: SampleBatchType,
     seq_lens: Optional[List[int]] = None,
@@ -601,7 +601,7 @@ def timeslice_along_seq_lens_with_overlap(
     return timeslices
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_fold_unfold_fns(b_dim: int, t_dim: int, framework: str):
     """Produces two functions to fold/unfold any Tensors in a struct.
 

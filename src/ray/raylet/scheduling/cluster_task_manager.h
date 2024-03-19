@@ -86,17 +86,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
                   const std::string &scheduling_failure_message = "") override;
 
-  /// Attempt to cancel an already queued task that belongs to an owner.
-  ///
-  /// \param owner_task_id: The id of the parent.
-  /// \param failure_type: The failure type.
-  /// \param scheduling_failure_message: The failure message.
-  void CancelTaskForOwner(
-      const TaskID &owner_task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") override;
-
   /// Cancel all tasks owned by a specific worker.
   bool CancelAllTaskOwnedBy(
       const WorkerID &worker_id,

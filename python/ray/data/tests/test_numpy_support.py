@@ -96,7 +96,7 @@ def test_scalar_lists_not_converted(ray_start_regular_shared):
 
 def test_scalar_numpy(ray_start_regular_shared):
     data = np.int64(1)
-    ds = ray.data.range(2, parallelism=1)
+    ds = ray.data.range(2, override_num_blocks=1)
     ds = ds.map(lambda x: {"output": data})
     output = ds.take_batch()["output"]
     assert_structure_equals(output, np.array([1, 1], dtype=np.int64))
@@ -104,7 +104,7 @@ def test_scalar_numpy(ray_start_regular_shared):
 
 def test_scalar_arrays(ray_start_regular_shared):
     data = np.array([1, 2, 3])
-    ds = ray.data.range(2, parallelism=1)
+    ds = ray.data.range(2, override_num_blocks=1)
     ds = ds.map(lambda x: {"output": data})
     output = ds.take_batch()["output"]
     assert_structure_equals(output, np.array([[1, 2, 3], [1, 2, 3]], dtype=np.int64))
@@ -113,7 +113,7 @@ def test_scalar_arrays(ray_start_regular_shared):
 def test_bytes(ray_start_regular_shared):
     """Tests that bytes are converted to object dtype instead of zero-terminated."""
     data = b"\x1a\n\x00\n\x1a"
-    ds = ray.data.range(1, parallelism=1)
+    ds = ray.data.range(1, override_num_blocks=1)
     ds = ds.map(lambda x: {"output": data})
     output = ds.take_batch()["output"]
     assert_structure_equals(output, np.array([b"\x1a\n\x00\n\x1a"], dtype=object))
@@ -121,7 +121,7 @@ def test_bytes(ray_start_regular_shared):
 
 def test_scalar_array_like(ray_start_regular_shared):
     data = torch.Tensor([1, 2, 3])
-    ds = ray.data.range(2, parallelism=1)
+    ds = ray.data.range(2, override_num_blocks=1)
     ds = ds.map(lambda x: {"output": data})
     output = ds.take_batch()["output"]
     assert_structure_equals(output, np.array([[1, 2, 3], [1, 2, 3]], dtype=np.float32))
@@ -129,7 +129,7 @@ def test_scalar_array_like(ray_start_regular_shared):
 
 def test_scalar_ragged_arrays(ray_start_regular_shared):
     data = [np.array([1, 2, 3]), np.array([1, 2])]
-    ds = ray.data.range(2, parallelism=1)
+    ds = ray.data.range(2, override_num_blocks=1)
     ds = ds.map(lambda x: {"output": data[x["id"]]})
     output = ds.take_batch()["output"]
     assert_structure_equals(
@@ -139,7 +139,7 @@ def test_scalar_ragged_arrays(ray_start_regular_shared):
 
 def test_scalar_ragged_array_like(ray_start_regular_shared):
     data = [torch.Tensor([1, 2, 3]), torch.Tensor([1, 2])]
-    ds = ray.data.range(2, parallelism=1)
+    ds = ray.data.range(2, override_num_blocks=1)
     ds = ds.map(lambda x: {"output": data[x["id"]]})
     output = ds.take_batch()["output"]
     assert_structure_equals(
@@ -147,7 +147,7 @@ def test_scalar_ragged_array_like(ray_start_regular_shared):
     )
 
     data = [torch.zeros((3, 5, 10)), torch.zeros((3, 8, 8))]
-    ds = ray.data.range(2, parallelism=1)
+    ds = ray.data.range(2, override_num_blocks=1)
     ds = ds.map(lambda x: {"output": data[x["id"]]})
     output = ds.take_batch()["output"]
     assert_structure_equals(

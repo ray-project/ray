@@ -466,6 +466,23 @@ define can run. This also implies that tasks are scheduled more flexibly,
 and that if you don't need the stateful part of an actor, you're mostly
 better off using tasks.
 
+Task Events 
+-----------
+
+By default, Ray traces the execution of actor tasks, reporting task status events and profiling events
+that Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
+
+You can disable task events for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data the being sent to the Ray Dashboard.
+
+You can also disable task events for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
+Method settings override the actor setting:
+
+.. literalinclude:: doc_code/actors.py
+    :language: python
+    :start-after: __enable_task_events_start__
+    :end-before: __enable_task_events_end__
+
+
 More about Ray Actors
 ---------------------
 

@@ -73,8 +73,6 @@ def experiment_analysis(request):
     load_from = request.param
     tmp_path = Path(tempfile.mkdtemp())
 
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = str(tmp_path / "ray_results")
-
     context_manager = (
         mock_s3_bucket_uri if load_from == "cloud" else dummy_context_manager
     )

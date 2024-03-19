@@ -70,6 +70,7 @@ class ReleaseTestStateMachine(TestStateMachine):
             "bug",
             "release-test",
             "ray-test-bot",
+            "stability",
             "triage",
             self.test.get_oncall(),
         ]

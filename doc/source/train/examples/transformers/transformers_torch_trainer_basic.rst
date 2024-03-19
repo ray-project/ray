@@ -18,4 +18,4 @@ See also
 
 * :ref:`Get Started with Hugging Face Transformers <train-pytorch-transformers>` for a tutorial
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases
+* :doc:`Ray Train Examples <../../examples>` for more use cases

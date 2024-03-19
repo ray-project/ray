@@ -11,7 +11,7 @@ from ray.rllib.evaluation.collectors.simple_list_collector import (
 from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EnvInfoDict, PolicyID, TensorType
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
-@DeveloperAPI
+@OldAPIStack
 class EpisodeV2:
     """Tracks the current state of a (possibly multi-agent) episode."""
 
@@ -97,7 +97,6 @@ class EpisodeV2:
         # us something.
         self._last_infos: Dict[AgentID, Dict] = {}
 
-    @DeveloperAPI
     def policy_for(
         self, agent_id: AgentID = _DUMMY_AGENT_ID, refresh: bool = False
     ) -> PolicyID:
@@ -133,7 +132,6 @@ class EpisodeV2:
             )
         return policy_id
 
-    @DeveloperAPI
     def get_agents(self) -> List[AgentID]:
         """Returns list of agent IDs that have appeared in this episode.
 

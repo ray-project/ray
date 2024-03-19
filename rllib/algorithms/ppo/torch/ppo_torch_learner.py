@@ -9,10 +9,10 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -63,15 +63,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         )
 
         curr_action_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         prev_action_dist = action_dist_class_exploration.from_logits(
-            batch[SampleBatch.ACTION_DIST_INPUTS]
+            batch[Columns.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(
-            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
-            - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -92,7 +91,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Compute a value function loss.
         if config.use_critic:
-            value_fn_out = fwd_out[SampleBatch.VF_PREDS]
+            value_fn_out = fwd_out[Columns.VF_PREDS]
             vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)

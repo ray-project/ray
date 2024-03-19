@@ -32,12 +32,6 @@ class MetricsAgentClient {
  public:
   virtual ~MetricsAgentClient() = default;
 
-  /// Report metrics to metrics agent.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_VIRTUAL_METHOD_DECL(ReporterService, ReportMetrics)
-
   /// Report open census protobuf metrics to metrics agent.
   ///
   /// \param[in] request The request message.
@@ -61,12 +55,6 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
     grpc_client_ = std::make_unique<GrpcClient<ReporterService>>(
         address, port, client_call_manager_);
   };
-
-  VOID_RPC_CLIENT_METHOD(ReporterService,
-                         ReportMetrics,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
 
   VOID_RPC_CLIENT_METHOD(ReporterService,
                          ReportOCMetrics,

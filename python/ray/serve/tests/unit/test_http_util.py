@@ -125,6 +125,22 @@ class TestASGIReceiveProxy:
         with pytest.raises(RuntimeError, match="oopsies"):
             await asgi_receive_proxy()
 
+    async def test_does_not_raise_key_error(
+        self, setup_receive_proxy: Tuple[ASGIReceiveProxy, MessageQueue]
+    ):
+        asgi_receive_proxy, queue = setup_receive_proxy
+
+        queue.put_nowait({"type": "foo"})
+        queue.put_nowait({"type": "bar"})
+        assert await asgi_receive_proxy() == {"type": "foo"}
+        assert await asgi_receive_proxy() == {"type": "bar"}
+
+        queue.put_nowait(KeyError("not found"))
+        _, pending = await asyncio.wait(
+            [asyncio.create_task(asgi_receive_proxy())], timeout=0.01
+        )
+        assert len(pending) == 1
+
     async def test_receive_asgi_messages_raises(self):
         async def receive_asgi_messages(request_id: str) -> bytes:
             raise RuntimeError("maybe actor crashed")

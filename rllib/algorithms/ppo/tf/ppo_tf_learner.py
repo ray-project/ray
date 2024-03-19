@@ -9,10 +9,10 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
@@ -48,8 +48,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
             # In the RNN case, we expect incoming tensors to be padded to the maximum
             # sequence length. We infer the max sequence length from the actions
             # tensor.
-            maxlen = tf.math.reduce_max(batch[SampleBatch.SEQ_LENS])
-            mask = tf.sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen)
+            maxlen = tf.math.reduce_max(batch[Columns.SEQ_LENS])
+            mask = tf.sequence_mask(batch[Columns.SEQ_LENS], maxlen)
 
             def possibly_masked_mean(t):
                 return tf.reduce_mean(tf.boolean_mask(t, mask))
@@ -64,15 +64,14 @@ class PPOTfLearner(PPOLearner, TfLearner):
             module_id
         ].get_exploration_action_dist_cls()
         curr_action_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         prev_action_dist = action_dist_class_exploration.from_logits(
-            batch[SampleBatch.ACTION_DIST_INPUTS]
+            batch[Columns.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = tf.exp(
-            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
-            - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -95,7 +94,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
         # Compute a value function loss.
         if config.use_critic:
-            value_fn_out = fwd_out[SampleBatch.VF_PREDS]
+            value_fn_out = fwd_out[Columns.VF_PREDS]
             vf_loss = tf.math.square(value_fn_out - batch[Postprocessing.VALUE_TARGETS])
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
@@ -134,10 +133,10 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 ),
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-                # "advantages": possibly_masked_mean(batch[Postprocessing.ADVANTAGES]),
-                # "values": possibly_masked_mean(batch[SampleBatch.VF_PREDS]),
+                # "advantages": possibly_masked_mean(batch[Columns.ADVANTAGES]),
+                # "values": possibly_masked_mean(batch[Columns.VF_PREDS]),
                 # "value_targets": possibly_masked_mean(
-                #    batch[Postprocessing.VALUE_TARGETS]
+                #    batch[Columns.VALUE_TARGETS]
                 # ),
             },
         )

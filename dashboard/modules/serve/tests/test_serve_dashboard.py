@@ -447,13 +447,12 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
                     len(deployment.replicas)
                     == deployment.deployment_config.num_replicas
                 )
+                assert len(deployment.replicas) == deployment.target_num_replicas
 
             for replica in deployment.replicas:
+                assert replica.replica_id
                 assert replica.state == ReplicaState.RUNNING
-                assert (
-                    deployment.name in replica.replica_id
-                    and deployment.name in replica.actor_name
-                )
+                assert deployment.name in replica.actor_name
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
                 file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path

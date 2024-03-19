@@ -223,14 +223,16 @@ KEYS *
 # [Expected output]: (empty list or set)
 ```
 
-Starting from KubeRay v1.0.0, the KubeRay operator creates a Kubernetes Job to delete the Redis key when a user removes the RayCluster custom resource.
-To ensure Redis cleanup, the KubeRay operator adds a Kubernetes finalizer to the RayCluster with GCS fault tolerance enabled.
+In KubeRay v1.0.0, the KubeRay operator adds a Kubernetes finalizer to the RayCluster with GCS fault tolerance enabled to ensure Redis cleanup.
 KubeRay only removes this finalizer after the Kubernetes Job successfully cleans up Redis.
 
 * In other words, if the Kubernetes Job fails, the RayCluster won't be deleted. In that case, you should remove the finalizer and cleanup Redis manually.
   ```shell
   kubectl patch rayclusters.ray.io raycluster-external-redis --type json --patch='[ { "op": "remove", "path": "/metadata/finalizers" } ]'
   ```
+
+Starting with KubeRay v1.1.0, KubeRay changes the Redis cleanup behavior from a mandatory to a best-effort basis.
+KubeRay still removes the Kubernetes finalizer from the RayCluster if the Kubernetes Job fails, thereby unblocking the deletion of the RayCluster.
 
 Users can turn off this by setting the feature gate value `ENABLE_GCS_FT_REDIS_CLEANUP`.
 Refer to the [KubeRay GCS fault tolerance configurations](kuberay-redis-cleanup-gate) section for more details.

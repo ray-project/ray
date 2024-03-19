@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 (serve-ml-models-tutorial)=
 
 # Serve ML Models (Tensorflow, PyTorch, Scikit-Learn, others)

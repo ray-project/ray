@@ -8,7 +8,7 @@ from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.tf_utils import one_hot
@@ -17,6 +17,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 # __sphinx_doc_begin__
+@OldAPIStack
 class ComplexInputNetwork(TFModelV2):
     """TFModelV2 concat'ing CNN outputs to flat input(s), followed by FC(s).
 

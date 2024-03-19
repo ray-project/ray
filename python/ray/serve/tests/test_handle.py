@@ -9,7 +9,6 @@ import ray
 from ray import serve
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, _HandleOptions
 
@@ -357,28 +356,6 @@ def test_handle_options_with_same_router(serve_instance):
     handle2 = handle.options(multiplexed_model_id="model2")
     assert handle._router
     assert id(handle2._router) == id(handle._router)
-
-
-class MyRouter(PowerOfTwoChoicesReplicaScheduler):
-    pass
-
-
-def test_handle_options_custom_router(serve_instance):
-    @serve.deployment
-    def echo(name: str):
-        return f"Hi {name}"
-
-    handle = serve.run(echo.bind()).options(
-        _router_cls="ray.serve.tests.test_handle.MyRouter",
-    )
-
-    result = handle.remote("HI").result()
-    assert result == "Hi HI"
-
-    print("Router class used", handle._router._replica_scheduler)
-    assert (
-        "MyRouter" in handle._router._replica_scheduler.__class__.__name__
-    ), handle._router._replica_scheduler
 
 
 def test_set_request_protocol(serve_instance):

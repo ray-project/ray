@@ -1,8 +1,10 @@
 import subprocess
 from datetime import datetime
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Tuple
 import os
 from dateutil import parser
+import runfiles
+import platform
 
 import requests
 
@@ -233,3 +235,130 @@ def query_tags_from_docker_with_oci(namespace: str, repository: str) -> List[str
         raise Exception(f"Failed to query tags from Docker: {response.json()}")
 
     return [f"{namespace}/{repository}:{t}" for t in response.json()["tags"]]
+
+
+def _is_release_tag(
+    tag: str,
+    release_versions: Optional[List[str]] = None,
+) -> bool:
+    """
+    Check if tag is a release tag & is in the list of release versions.
+    Tag input format should be just the tag name, without namespace/repository.
+    Tag input can be in any format queried from Docker Hub: "x.y.z-...", "a1s2d3-..."
+    Args:
+        tag: Docker tag name
+        release_versions: List of release versions.
+            If None, don't filter by release version.
+    Returns:
+        True if tag is a release tag and is in the list of release versions.
+            False otherwise.
+    """
+    versions = tag.split(".")
+    if len(versions) != 3 and "post1" not in tag:
+        return False
+    # Parse variables into major, minor, patch version
+    major, minor, patch = versions[0], versions[1], versions[2]
+    extra = versions[3] if len(versions) > 3 else None
+    if not major.isnumeric() or not minor.isnumeric():
+        return False
+    if not patch.isnumeric() and "rc" not in patch and "-" not in patch:
+        return False
+
+    if "-" in patch:
+        patch = patch.split("-")[0]
+    release_version = ".".join([major, minor, patch])
+    if extra:
+        release_version += f".{extra}"
+    if release_versions and release_version not in release_versions:
+        return False
+
+    return True
+
+
+def _crane_binary():
+    r = runfiles.Create()
+    system = platform.system()
+    if system != "Linux" or platform.processor() != "x86_64":
+        raise ValueError(f"Unsupported platform: {system}")
+    return r.Rlocation("crane_linux_x86_64/crane")
+
+
+def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
+    try:
+        with subprocess.Popen(
+            [
+                _crane_binary(),
+                "cp",
+                source,
+                f"{aws_ecr_repo}:{tag}",
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        ) as proc:
+            output = ""
+            for line in proc.stdout:
+                logger.info(line + "\n")
+                output += line
+            return_code = proc.wait()
+            if return_code:
+                raise subprocess.CalledProcessError(return_code, proc.args)
+            return return_code, output
+    except subprocess.CalledProcessError as e:
+        return e.returncode, e.output
+
+
+def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
+    """
+    Copy tag from Docker Hub to AWS ECR.
+    Args:
+        tag: Docker tag name in format "namespace/repository:tag"
+    Returns:
+        True if tag was copied successfully, False otherwise.
+    """
+    _, repo_tag = tag.split("/")
+    tag_name = repo_tag.split(":")[1]
+    logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
+    return_code, output = _call_crane_cp(
+        tag=tag_name,
+        source=tag,
+        aws_ecr_repo=aws_ecr_repo,
+    )
+    if return_code:
+        logger.info(f"Failed to copy {tag} to {aws_ecr_repo}:{tag_name}......")
+        logger.info(f"Error: {output}")
+        return False
+    logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name} successfully")
+    return True
+
+
+def backup_release_tags(
+    namespace: str,
+    repository: str,
+    aws_ecr_repo: str,
+    docker_username: str,
+    docker_password: str,
+    release_versions: Optional[List[str]] = None,
+) -> None:
+    """
+    Backup release tags to AWS ECR.
+    Args:
+        release_versions: List of release versions to backup
+        aws_ecr_repo: AWS ECR repository
+    """
+    docker_hub_token = _get_docker_hub_auth_token(docker_username, docker_password)
+    docker_hub_tags = query_tags_from_docker_hub(
+        filter_func=lambda t: _is_release_tag(t, release_versions),
+        namespace=namespace,
+        repository=repository,
+        docker_hub_token=docker_hub_token,
+    )
+    _write_to_file("release_tags.txt", docker_hub_tags)
+    for t in docker_hub_tags:
+        copy_tag_to_aws_ecr(tag=t, aws_ecr_repo=aws_ecr_repo)
+
+
+def _write_to_file(file_path: str, content: List[str]) -> None:
+    file_path = os.path.join(bazel_workspace_dir, file_path)
+    logger.info(f"Writing to {file_path}......")
+    with open(file_path, "w") as f:
+        f.write("\n".join(content))

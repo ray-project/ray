@@ -1,9 +1,12 @@
 import gymnasium as gym
 from typing import List, Any
 
+from ray.rllib.utils.annotations import OldAPIStack
+
 TaskType = Any  # Can be different types depending on env, e.g., int or dict
 
 
+@OldAPIStack
 class TaskSettableEnv(gym.Env):
     """
     Extension of gym.Env to define a task-settable Env.

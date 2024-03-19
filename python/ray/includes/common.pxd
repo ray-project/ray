@@ -328,6 +328,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
                      c_string serialized_runtime_env)
+        CTaskOptions(c_string name, int num_returns,
+                     unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects,
+                     c_string serialized_runtime_env, c_bool enable_task_events)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -344,7 +349,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,
-            int32_t max_pending_calls)
+            int32_t max_pending_calls,
+            c_bool enable_task_events)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -423,6 +429,12 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             int64_t timeout_ms,
             c_string &serialized_reply)
         CClusterID GetClusterId()
+        CRayStatus GetClusterResourceState(
+            int64_t timeout_ms,
+            c_string &serialized_reply)
+        CRayStatus ReportAutoscalingState(
+            int64_t timeout_ms,
+            const c_string &serialized_reply)
         CRayStatus DrainNode(
             const c_string &node_id,
             int32_t reason,

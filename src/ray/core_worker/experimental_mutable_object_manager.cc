@@ -112,12 +112,24 @@ bool ExperimentalMutableObjectManager::ReaderChannelRegistered(
 Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                                      std::shared_ptr<RayObject> *result) {
 #ifdef __linux__
+  RAY_LOG(DEBUG) << "ReadAcquire  " << object_id;
   auto reader_channel_entry = reader_channels_.find(object_id);
   if (reader_channel_entry == reader_channels_.end()) {
     return Status::ObjectNotFound("Reader channel has not been registered");
   }
   auto &channel = reader_channel_entry->second;
-  RAY_RETURN_NOT_OK(EnsureGetAcquired(channel));
+
+  // If there is a concurrent ReadRelease, wait for that to finish first.
+  sem_wait(&channel.reader_semaphore);
+
+  int64_t version_read = 0;
+  RAY_LOG(DEBUG) << "ReadAcquire " << object_id
+                 << " version: " << channel.next_version_to_read;
+  RAY_RETURN_NOT_OK(channel.mutable_object->header->ReadAcquire(
+      channel.next_version_to_read, &version_read));
+  RAY_CHECK(version_read > 0);
+  channel.next_version_to_read = version_read;
+  channel.read_acquired = true;
 
   RAY_CHECK(static_cast<int64_t>(channel.mutable_object->header->data_size +
                                  channel.mutable_object->header->metadata_size) <=
@@ -144,7 +156,10 @@ Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id) 
   }
 
   auto &channel = reader_channel_entry->second;
-  RAY_RETURN_NOT_OK(EnsureGetAcquired(channel));
+  if (!channel.read_acquired) {
+    return Status::Invalid(
+        "Caller must call begin_read() before end_read() on a channel");
+  }
 
   RAY_RETURN_NOT_OK(
       channel.mutable_object->header->ReadRelease(channel.next_version_to_read));
@@ -152,22 +167,8 @@ Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id) 
   channel.next_version_to_read++;
   channel.read_acquired = false;
 
-#endif
-  return Status::OK();
-}
+  sem_post(&channel.reader_semaphore);
 
-Status ExperimentalMutableObjectManager::EnsureGetAcquired(ReaderChannel &channel) {
-#ifdef __linux__
-  if (channel.read_acquired) {
-    return Status::OK();
-  }
-
-  int64_t version_read = 0;
-  RAY_RETURN_NOT_OK(channel.mutable_object->header->ReadAcquire(
-      channel.next_version_to_read, &version_read));
-  RAY_CHECK(version_read > 0);
-  channel.next_version_to_read = version_read;
-  channel.read_acquired = true;
 #endif
   return Status::OK();
 }

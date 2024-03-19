@@ -1,4 +1,5 @@
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -59,7 +60,7 @@ def test_large_e2e_backpressure_no_spilling(
 
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
-    ds = ray.data.range(NUM_ROWS_TOTAL, parallelism=NUM_TASKS)
+    ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
     ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
     ds = ds.map_batches(consume, batch_size=None, num_cpus=0.9)
     # Check core execution metrics every 10 rows, because it's expensive.
@@ -106,7 +107,7 @@ def _build_dataset(
         del batch["data"]
         return batch
 
-    ds = ray.data.range(1, parallelism=1).materialize()
+    ds = ray.data.range(1, override_num_blocks=1).materialize()
     ds = ds.map_batches(producer, batch_size=None, num_cpus=producer_num_cpus)
     # Add a limit op in the middle, to test that ReservationOpResourceAllocator
     # will account limit op's resource usage to the previous producer map op.
@@ -183,7 +184,17 @@ def test_no_deadlock_on_resource_contention(
         block_size=block_size,
         insert_limit_op=insert_limit_op,
     )
-    assert len(ds.take_all()) == num_blocks
+
+    from ray.data._internal.execution.resource_manager import (
+        ReservationOpResourceAllocator,
+    )
+
+    with patch.object(
+        ReservationOpResourceAllocator.IdleDetector,
+        "DETECTION_INTERVAL_S",
+        0.1,
+    ):
+        assert len(ds.take_all()) == num_blocks
 
 
 def test_no_deadlock_with_preserve_order(
@@ -210,7 +221,7 @@ def test_no_deadlock_with_preserve_order(
         batch["data"] = [np.zeros(block_size, dtype=np.uint8)]
         return batch
 
-    ds = ray.data.range(num_blocks, parallelism=num_blocks)
+    ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
     ds = ds.map_batches(map_fn, batch_size=None, num_cpus=1)
     assert len(ds.take_all()) == num_blocks
 
@@ -265,7 +276,7 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
     ctx.execution_options.resource_limits.object_store_memory = 10e6
 
     # 10GiB dataset.
-    ds = ray.data.read_datasource(source, n=10000, parallelism=1000)
+    ds = ray.data.read_datasource(source, n=10000, override_num_blocks=1000)
     it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
     next(it)
     time.sleep(3)
@@ -290,7 +301,7 @@ def test_streaming_backpressure_e2e(restore_data_context):  # noqa: F811
             return {"id": np.random.randn(1, 20, 1024, 1024)}
 
     ctx = ray.init(object_store_memory=4e9)
-    ds = ray.data.range_tensor(20, shape=(3, 1024, 1024), parallelism=20)
+    ds = ray.data.range_tensor(20, shape=(3, 1024, 1024), override_num_blocks=20)
 
     pipe = ds.map_batches(
         TestFast,

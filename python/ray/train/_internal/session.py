@@ -222,15 +222,14 @@ class _TrainSession:
         self.training_started = False
         self._first_report = True
 
-        # Change the working directory to the local trial directory.
-        # -> All workers on the same node share a working directory.
-        os.makedirs(storage.trial_local_path, exist_ok=True)
+        # Change the working directory to a special trial folder.
+        # This is to ensure that all Ray Train workers have a common working directory.
+        os.makedirs(storage.trial_working_directory, exist_ok=True)
         if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
             logger.debug(
-                "Switching the working directory to the trial directory: "
-                f"{storage.trial_local_path}"
+                f"Changing the working directory to: {storage.trial_working_directory}"
             )
-            os.chdir(storage.trial_local_path)
+            os.chdir(storage.trial_working_directory)
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""

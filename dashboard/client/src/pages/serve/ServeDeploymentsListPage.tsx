@@ -20,7 +20,10 @@ import { HelpInfo } from "../../components/Tooltip";
 import { useServeDeployments } from "./hook/useServeApplications";
 import { ServeApplicationRows } from "./ServeApplicationRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
-import { ServeMetricsSection } from "./ServeMetricsSection";
+import {
+  APPS_METRICS_CONFIG,
+  ServeMetricsSection,
+} from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
 const useStyles = makeStyles((theme) =>
@@ -172,7 +175,10 @@ export const ServeDeploymentsListPage = () => {
           </CollapsibleSection>
         </React.Fragment>
       )}
-      <ServeMetricsSection className={classes.section} />
+      <ServeMetricsSection
+        className={classes.section}
+        metricsConfig={APPS_METRICS_CONFIG}
+      />
     </div>
   );
 };

@@ -22,11 +22,9 @@ watchfiles
 # Python version-specific requirements
 grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
-numpy>=1.16; python_version < '3.9'
-numpy>=1.19.3; python_version >= '3.9'
+numpy>=1.20
 
-pyarrow >= 6.0.1; platform_system != "Windows"
-pyarrow >= 6.0.1, < 7.0.0; platform_system == "Windows"
+pyarrow >= 6.0.1
 
 # ray[all]
 smart_open
@@ -47,11 +45,11 @@ opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-scikit-image
+scikit-image==0.21.0
 prometheus_client>=0.7.1
 requests
 pandas
-tensorboardX<=2.6.0,>=1.9  # >=2.6.1 uses protobuf>=4, and conflicts with other packages.
+tensorboardX
 aiohttp>=3.7,<3.9
 starlette
 typer

@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -21,7 +21,7 @@ class Postprocessing:
     VALUE_TARGETS = "value_targets"
 
 
-@DeveloperAPI
+@OldAPIStack
 def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     """Rewrites `batch` to encode n-step rewards, terminateds, truncateds, and next-obs.
 
@@ -85,7 +85,7 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
                 )
 
 
-@DeveloperAPI
+@OldAPIStack
 def compute_advantages(
     rollout: SampleBatch,
     last_r: float,
@@ -154,7 +154,7 @@ def compute_advantages(
     return rollout
 
 
-@DeveloperAPI
+@OldAPIStack
 def compute_gae_for_sample_batch(
     policy: Policy,
     sample_batch: SampleBatch,
@@ -222,7 +222,7 @@ def compute_gae_for_sample_batch(
     return batch
 
 
-@DeveloperAPI
+@OldAPIStack
 def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> SampleBatch:
     """Performs a value function computation at the end of a trajectory.
 
@@ -327,7 +327,7 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
     return sample_batch
 
 
-@DeveloperAPI
+@OldAPIStack
 def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 

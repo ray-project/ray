@@ -69,7 +69,7 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Ingress:
         def __init__(self):
             self._num_requests = 0
@@ -128,7 +128,7 @@ def test_cancel_sync_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (sync context)."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Ingress:
         def __init__(self):
             self._num_requests = 0
@@ -196,7 +196,7 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (async context)."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Downstream:
         def __init__(self):
             self._num_requests = 0

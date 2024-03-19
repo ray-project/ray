@@ -68,3 +68,16 @@ register_execution_platforms(
     "@local_config_platform//:host",
     "//:hermetic_python_platform",
 )
+
+http_archive(
+    name = "crane_linux_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
+    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"]
+)

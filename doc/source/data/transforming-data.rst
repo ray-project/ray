@@ -398,7 +398,7 @@ Repartitioning data
 
 A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
 :term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
-increase the number of blocks by setting a higher ``parallelism`` at read time.
+increase the number of blocks by setting a higher ``override_num_blocks`` at read time.
 
 To change the number of blocks for an existing Dataset, call
 :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
@@ -407,7 +407,7 @@ To change the number of blocks for an existing Dataset, call
 
     import ray
 
-    ds = ray.data.range(10000, parallelism=1000)
+    ds = ray.data.range(10000, override_num_blocks=1000)
 
     # Repartition the data into 100 blocks. Since shuffle=False, Ray Data will minimize
     # data movement during this operation by merging adjacent blocks.

@@ -580,7 +580,7 @@ class FaultTolerantActorManager:
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
             timeout_seconds: Ray.get() timeout. Default is None.
-                Note(jungong) : setting timeout_seconds to 0 effectively makes all the
+                Setting this to 0.0 effectively makes all the
                 remote calls fire-and-forget, while setting timeout_seconds to None
                 make them synchronous calls.
             return_obj_refs: whether to return ObjectRef instead of actual results.
@@ -601,11 +601,13 @@ class FaultTolerantActorManager:
                 func, remote_actor_ids
             )
 
+        # Send out remote requests.
         remote_calls = self._call_actors(
             func=func,
             remote_actor_ids=remote_actor_ids,
         )
 
+        # Collect remote request results (if available given timeout and/or errors).
         _, remote_results = self._fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,

@@ -308,7 +308,7 @@ def test_completed_next_ready_is_finished(shutdown_only):
 def test_streaming_generator_load(shutdown_only):
     app = FastAPI()
 
-    @serve.deployment(max_concurrent_queries=1000)
+    @serve.deployment(max_ongoing_requests=1000)
     @serve.ingress(app)
     class Router:
         def __init__(self, handle) -> None:
@@ -326,7 +326,7 @@ def test_streaming_generator_load(shutdown_only):
 
             return StreamingResponse(consume_obj_ref_gen(), media_type="text/plain")
 
-    @serve.deployment(max_concurrent_queries=1000)
+    @serve.deployment(max_ongoing_requests=1000)
     class SimpleGenerator:
         async def hi_gen(self):
             for i in range(100):

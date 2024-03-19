@@ -46,7 +46,9 @@ def test_from_huggingface(hf_dataset, ray_start_regular_shared, num_par):
         ray.data.from_huggingface(hf_dataset)
 
     ray_datasets = {
-        "train": ray.data.from_huggingface(hf_dataset["train"], parallelism=num_par),
+        "train": ray.data.from_huggingface(
+            hf_dataset["train"], override_num_blocks=num_par
+        ),
     }
 
     assert isinstance(ray_datasets["train"], ray.data.Dataset)

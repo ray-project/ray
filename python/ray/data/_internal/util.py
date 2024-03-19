@@ -27,7 +27,7 @@ import numpy as np
 import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-from ray.data.context import WARN_PREFIX, DataContext
+from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
     import pandas
@@ -113,8 +113,8 @@ def _autodetect_parallelism(
 
     This detects parallelism using the following heuristics, applied in order:
 
-     1) We start with the default parallelism of 200. This can be overridden by
-        setting the `min_parallelism` attribute of
+     1) We start with the default value of 200. This can be overridden by
+        setting the `read_op_min_num_blocks` attribute of
         :class:`~ray.data.context.DataContext`.
      2) Min block size. If the parallelism would make blocks smaller than this
         threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
@@ -156,18 +156,33 @@ def _autodetect_parallelism(
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
+
+        if (
+            ctx.min_parallelism is not None
+            and ctx.min_parallelism != DEFAULT_READ_OP_MIN_NUM_BLOCKS
+            and ctx.read_op_min_num_blocks == DEFAULT_READ_OP_MIN_NUM_BLOCKS
+        ):
+            logger.warning(
+                "``DataContext.min_parallelism`` is deprecated in Ray 2.10. "
+                "Please specify ``DataContext.read_op_min_num_blocks`` instead."
+            )
+            ctx.read_op_min_num_blocks = ctx.min_parallelism
+
         # Start with 2x the number of cores as a baseline, with a min floor.
         if placement_group is None:
             placement_group = ray.util.get_current_placement_group()
         avail_cpus = avail_cpus or _estimate_avail_cpus(placement_group)
         parallelism = max(
-            min(ctx.min_parallelism, max_reasonable_parallelism),
+            min(ctx.read_op_min_num_blocks, max_reasonable_parallelism),
             min_safe_parallelism,
             avail_cpus * 2,
         )
 
-        if parallelism == ctx.min_parallelism:
-            reason = f"DataContext.get_current().min_parallelism={ctx.min_parallelism}"
+        if parallelism == ctx.read_op_min_num_blocks:
+            reason = (
+                "DataContext.get_current().read_op_min_num_blocks="
+                f"{ctx.read_op_min_num_blocks}"
+            )
         elif parallelism == max_reasonable_parallelism:
             reason = (
                 "output blocks of size at least "

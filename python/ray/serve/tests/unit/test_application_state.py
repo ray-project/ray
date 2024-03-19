@@ -879,7 +879,7 @@ class TestOverrideDeploymentInfo:
                 DeploymentSchema(
                     name="A",
                     num_replicas=3,
-                    max_concurrent_queries=200,
+                    max_ongoing_requests=200,
                     user_config={"price": "4"},
                     graceful_shutdown_wait_loop_s=4,
                     graceful_shutdown_timeout_s=40,
@@ -893,7 +893,7 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
-        assert updated_info.deployment_config.max_concurrent_queries == 200
+        assert updated_info.deployment_config.max_ongoing_requests == 200
         assert updated_info.deployment_config.user_config == {"price": "4"}
         assert updated_info.deployment_config.graceful_shutdown_wait_loop_s == 4
         assert updated_info.deployment_config.graceful_shutdown_timeout_s == 40

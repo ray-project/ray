@@ -21,7 +21,6 @@ except (ImportError, ModuleNotFoundError) as e:
     ) from e
 # isort: on
 
-import dataclasses
 import fnmatch
 import logging
 import os
@@ -29,10 +28,10 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
 from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
-from ray.train.constants import _get_defaults_results_dir
+from ray.train.constants import _get_ray_train_session_dir
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
@@ -346,27 +345,29 @@ class _FilesystemSyncer(_BackgroundSyncer):
         return _delete_fs_path, dict(fs=self.storage_filesystem, fs_path=fs_path)
 
 
+@DeveloperAPI
 class StorageContext:
-    """Shared context that holds all paths and storage utilities, passed along from
-    the driver to workers.
+    """Shared context that holds the source of truth for all paths and
+    storage utilities, passed along from the driver to workers.
 
-    The properties of this context may not all be set at once, depending on where
-    the context lives.
-    For example, on the driver, the storage context is initialized, only knowing
-    the experiment path. On the Trainable actor, the trial_dir_name is accessible.
-
-    There are 2 types of paths:
+    This object defines a few types of paths:
     1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
         which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and
         can be joined with `Path(...).as_posix()`.
-    2. *_local_path: The path on the local filesystem where results are saved to
-       before persisting to storage.
+    2. *_driver_staging_path: The temporary staging directory on the local filesystem
+        where driver artifacts are saved to before persisting them to storage.
+    3. trial_working_directory: The local filesystem path that the remote
+        actors' working directories are moved to by default.
+        This is separated from the driver staging path so that driver syncing
+        does not implicitly upload the trial working directory, for trials on the
+        driver node.
 
     Example with storage_path="mock:///bucket/path?param=1":
 
+        >>> import ray
         >>> from ray.train._internal.storage import StorageContext
         >>> import os
-        >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
+        >>> _ = ray.init()
         >>> storage = StorageContext(
         ...     storage_path="mock://netloc/bucket/path?param=1",
         ...     experiment_dir_name="exp_name",
@@ -375,36 +376,31 @@ class StorageContext:
         <pyarrow._fs._MockFileSystem object...
         >>> storage.experiment_fs_path
         'bucket/path/exp_name'
-        >>> storage.experiment_local_path
-        '/tmp/ray_results/exp_name'
+        >>> storage.experiment_driver_staging_path  # doctest: +ELLIPSIS
+        '/tmp/ray/session_.../artifacts/.../exp_name/driver_artifacts'
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
         'bucket/path/exp_name/trial_dir'
-        >>> storage.trial_local_path
-        '/tmp/ray_results/exp_name/trial_dir'
+        >>> storage.trial_driver_staging_path  # doctest: +ELLIPSIS
+        '/tmp/ray/session_.../artifacts/.../exp_name/driver_artifacts/trial_dir'
+        >>> storage.trial_working_directory   # doctest: +ELLIPSIS
+        '/tmp/ray/session_.../artifacts/.../exp_name/working_dirs/trial_dir'
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
+        >>> ray.shutdown()
 
-    Example with storage_path=None:
+    Example with storage_path="/tmp/ray_results":
 
         >>> from ray.train._internal.storage import StorageContext
-        >>> import os
-        >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
-        ...     storage_path=None,
+        ...     storage_path="/tmp/ray_results",
         ...     experiment_dir_name="exp_name",
         ... )
-        >>> storage.storage_fs_path  # Auto-resolved
+        >>> storage.storage_fs_path
         '/tmp/ray_results'
-        >>> storage.storage_local_path
-        '/tmp/ray_results'
-        >>> storage.experiment_local_path
-        '/tmp/ray_results/exp_name'
         >>> storage.experiment_fs_path
         '/tmp/ray_results/exp_name'
-        >>> storage.syncer is None
-        True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
 
@@ -416,70 +412,57 @@ class StorageContext:
             Path(storage.trial_fs_path, "subdir").as_posix(),
             destination_filesystem=storage.filesystem
         )
+
+    .. warning::
+        This is an experimental developer API and is subject to change
+        without notice between versions.
     """
 
     def __init__(
         self,
-        storage_path: Optional[Union[str, os.PathLike]],
+        storage_path: Union[str, os.PathLike],
         experiment_dir_name: str,
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
         current_checkpoint_index: int = -1,
     ):
+        from ray.tune.utils import date_str
+
         self.custom_fs_provided = storage_filesystem is not None
 
-        self.storage_local_path = _get_defaults_results_dir()
-
-        # If no remote path is set, try to get Ray Storage URI
-        ray_storage_uri: Optional[str] = _get_storage_uri()
-        if ray_storage_uri and storage_path is None:
-            logger.info(
-                "Using configured Ray Storage URI as the `storage_path`: "
-                f"{ray_storage_uri}"
-            )
-
-        # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        storage_path = storage_path or ray_storage_uri or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
-        self.sync_config = (
-            dataclasses.replace(sync_config) if sync_config else SyncConfig()
-        )
+        self.sync_config = sync_config or SyncConfig()
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             storage_path, storage_filesystem
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
-        # Syncing is always needed if a custom `storage_filesystem` is provided.
-        # Otherwise, syncing is only needed if storage_local_path
-        # and storage_fs_path point to different locations.
-        syncing_needed = (
-            self.custom_fs_provided or self.storage_fs_path != self.storage_local_path
-        )
-        self.syncer: Optional[Syncer] = (
-            _FilesystemSyncer(
-                storage_filesystem=self.storage_filesystem,
-                sync_period=self.sync_config.sync_period,
-                sync_timeout=self.sync_config.sync_timeout,
-            )
-            if syncing_needed
-            else None
+        self.syncer: Syncer = _FilesystemSyncer(
+            storage_filesystem=self.storage_filesystem,
+            sync_period=self.sync_config.sync_period,
+            sync_timeout=self.sync_config.sync_timeout,
         )
 
         self._create_validation_file()
         self._check_validation_file()
+
+        # Timestamp is used to create a unique session directory for the current
+        # training job. This is used to avoid conflicts when multiple training jobs
+        # run with the same name in the same cluster.
+        # This is set ONCE at the creation of the storage context, on the driver.
+        self._timestamp = date_str()
 
     def __str__(self):
         return (
             "StorageContext<\n"
             f"  storage_filesystem='{self.storage_filesystem.type_name}',\n"
             f"  storage_fs_path='{self.storage_fs_path}',\n"
-            f"  storage_local_path='{self.storage_local_path}',\n"
             f"  experiment_dir_name='{self.experiment_dir_name}',\n"
             f"  trial_dir_name='{self.trial_dir_name}',\n"
             f"  current_checkpoint_index={self.current_checkpoint_index},\n"
@@ -577,7 +560,7 @@ class StorageContext:
         depending on the `sync_period` + `sync_artifacts_on_checkpoint`
         settings of `SyncConfig`.
 
-        `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
+        `(local_fs, trial_working_dir) -> (storage_filesystem, trial_fs_path)`
 
         Args:
             force: If True, wait for a previous sync to finish, launch a new one,
@@ -587,20 +570,20 @@ class StorageContext:
         if not self.sync_config.sync_artifacts:
             return
 
-        # Skip if we don't need to sync (e.g., storage_path == storage_local_path, and
-        # all trial artifacts are already in the right place)
-        if not self.syncer:
+        # Skip if there are no artifacts to sync
+        is_empty = not any(os.scandir(self.trial_working_directory))
+        if is_empty:
             return
 
         if force:
             self.syncer.wait()
             self.syncer.sync_up(
-                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+                local_dir=self.trial_working_directory, remote_dir=self.trial_fs_path
             )
             self.syncer.wait()
         else:
             self.syncer.sync_up_if_needed(
-                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+                local_dir=self.trial_working_directory, remote_dir=self.trial_fs_path
             )
 
     @property
@@ -613,26 +596,33 @@ class StorageContext:
         """
         return Path(self.storage_fs_path, self.experiment_dir_name).as_posix()
 
-    @property
-    def experiment_local_path(self) -> str:
-        """The local filesystem path to the experiment directory.
-
-        This local "cache" path refers to location where files are dumped before
-        syncing them to the `storage_path` on the `storage_filesystem`.
-        """
-        return Path(self.storage_local_path, self.experiment_dir_name).as_posix()
+    def _get_session_path(self) -> str:
+        """The Ray Train/Tune session local directory used to stage files
+        before persisting to the storage filesystem."""
+        return Path(
+            _get_ray_train_session_dir(), self._timestamp, self.experiment_dir_name
+        ).as_posix()
 
     @property
-    def trial_local_path(self) -> str:
-        """The local filesystem path to the trial directory.
+    def experiment_driver_staging_path(self) -> str:
+        """The local filesystem path of the experiment directory on the driver node.
 
-        Raises a ValueError if `trial_dir_name` is not set beforehand.
+        The driver is the node where `Trainer.fit`/`Tuner.fit` is being called.
+
+        This path is of the form:
+        `/tmp/ray/session_<session_id>/artifacts/<ray-train-job-timestamp>/
+        <experiment_dir_name>/driver_artifacts`
+
+        This should be used as the temporary staging location for files *on the driver*
+        before syncing them to `experiment_fs_path`.
+        For example, the search algorithm should dump its state to this directory.
+        See `trial_driver_staging_path` for writing trial-specific artifacts.
+
+        The directory is synced to
+        `{storage_path}/{experiment_dir_name}` periodically.
+        See `_ExperimentCheckpointManager.checkpoint` for where that happens.
         """
-        if self.trial_dir_name is None:
-            raise RuntimeError(
-                "Should not access `trial_local_path` without setting `trial_dir_name`"
-            )
-        return Path(self.experiment_local_path, self.trial_dir_name).as_posix()
+        return Path(self._get_session_path(), "driver_artifacts").as_posix()
 
     @property
     def trial_fs_path(self) -> str:
@@ -645,6 +635,52 @@ class StorageContext:
                 "Should not access `trial_fs_path` without setting `trial_dir_name`"
             )
         return Path(self.experiment_fs_path, self.trial_dir_name).as_posix()
+
+    @property
+    def trial_driver_staging_path(self) -> str:
+        """The local filesystem path of the trial directory on the driver.
+
+        The driver is the node where `Trainer.fit`/`Tuner.fit` is being called.
+
+        This path is of the form:
+        `/tmp/ray/session_<session_id>/artifacts/<ray-train-job-timestamp>/
+        <experiment_dir_name>/driver_artifacts/<trial_dir_name>`
+
+        This should be used as the temporary location for files on the driver
+        before persisting them to `trial_fs_path`.
+
+        For example, callbacks (e.g., JsonLoggerCallback) should write trial-specific
+        logfiles within this directory.
+        """
+        if self.trial_dir_name is None:
+            raise RuntimeError(
+                "Should not access `trial_driver_staging_path` "
+                "without setting `trial_dir_name`"
+            )
+        return Path(self.experiment_driver_staging_path, self.trial_dir_name).as_posix()
+
+    @property
+    def trial_working_directory(self) -> str:
+        """The local filesystem path to trial working directory.
+
+        This path is of the form:
+        `/tmp/ray/session_<session_id>/artifacts/<ray-train-job-timestamp>/
+        <experiment_dir_name>/working_dirs/<trial_dir_name>`
+
+        Ray Train/Tune moves the remote actor's working directory to this path
+        by default, unless disabled by `RAY_CHDIR_TO_TRIAL_DIR` environment variable.
+
+        Writing files to this directory allows users to persist training artifacts
+        if `SyncConfig(sync_artifacts=True)` is set.
+        """
+        if self.trial_dir_name is None:
+            raise RuntimeError(
+                "Cannot access `trial_working_directory` without "
+                "setting `trial_dir_name`"
+            )
+        return Path(
+            self._get_session_path(), "working_dirs", self.trial_dir_name
+        ).as_posix()
 
     @property
     def checkpoint_fs_path(self) -> str:

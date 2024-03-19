@@ -25,7 +25,7 @@ config = (
     .evaluation(
         evaluation_num_workers=1,
         evaluation_interval=1,
-        enable_async_evaluation=True,
+        evaluation_parallel_to_training=True,
     )
 )
 

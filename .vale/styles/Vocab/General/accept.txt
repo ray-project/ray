@@ -15,3 +15,4 @@ URI[s]
 Kueue
 GKE
 namespace
+ARM

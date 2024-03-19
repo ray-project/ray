@@ -210,7 +210,7 @@ In this example, here's how trial checkpoints will be saved:
 .. _tune-syncing-restore-from-uri:
 
 If this run stopped for any reason (ex: user CTRL+C, terminated due to out of memory issues),
-you can resume it any time starting from the experiment checkpoint state saved in the cloud:
+you can resume it any time starting from the experiment state saved in the cloud:
 
 .. code-block:: python
 

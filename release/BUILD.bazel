@@ -233,11 +233,11 @@ py_test(
 ####
 
 py_test(
-    name = "air_benchmark_xgboost_smoke_test",
+    name = "xgboost_train_batch_inference_benchmark_smoke_test",
     size = "small",
     srcs = test_srcs,
-    args = ["--smoke-test"],
-    main = "air_tests/air_benchmarks/workloads/xgboost_benchmark.py",
+    args = ["xgboost", "--smoke-test"],
+    main = "train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py",
     tags = [
         "exclusive",
         "team:ml",

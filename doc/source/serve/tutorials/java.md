@@ -1,3 +1,6 @@
+---
+orphan: true
+---
 (serve-java-tutorial)=
 
 # Serve a Java App

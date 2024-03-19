@@ -2,6 +2,7 @@ import os
 import random
 import subprocess
 import tempfile
+from copy import deepcopy
 
 import pytest
 import requests
@@ -11,7 +12,6 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
-from ray.serve._private import api as _private_api
 from ray.serve._private.test_utils import TELEMETRY_ROUTE_PREFIX, check_ray_stopped
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
@@ -47,7 +47,10 @@ def ray_cluster():
 
 @pytest.fixture
 def ray_autoscaling_cluster(request):
-    cluster = AutoscalingCluster(**request.param)
+    # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
+    # modifies the dictionary that's passed in.
+    params = deepcopy(request.param)
+    cluster = AutoscalingCluster(**params)
     cluster.start()
     yield
     serve.shutdown()
@@ -115,8 +118,6 @@ def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
-    # Clear all state for 1.x deployments.
-    _shared_serve_instance.delete_deployments(_private_api.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles()
 
@@ -150,6 +151,35 @@ def ray_start_stop():
     )
 
 
+@pytest.fixture(scope="function")
+def ray_start_stop_in_specific_directory(request):
+    original_working_dir = os.getcwd()
+
+    # Change working directory so Ray will start in the requested directory.
+    new_working_dir = request.param
+    os.chdir(new_working_dir)
+    print(f"\nChanged working directory to {new_working_dir}\n")
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    try:
+        yield
+    finally:
+        # Change the directory back to the original one.
+        os.chdir(original_working_dir)
+        print(f"\nChanged working directory back to {original_working_dir}\n")
+
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(
+            check_ray_stop,
+            timeout=15,
+        )
+
+
 @pytest.fixture
 def ray_instance(request):
     """Starts and stops a Ray instance for this test.
@@ -167,7 +197,6 @@ def ray_instance(request):
         requested_env_vars = {}
 
     os.environ.update(requested_env_vars)
-
     yield ray.init(
         _metrics_export_port=9999,
         _system_config={

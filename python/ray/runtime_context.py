@@ -424,7 +424,7 @@ class RuntimeContext(object):
                 accelerator_resource_name,
                 f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
-            ids_dict[accelerator_resource_name] = accelerator_ids
+            ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
 
 

@@ -2,12 +2,11 @@ from typing import Optional
 
 import tree
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
     Encoder,
     ActorCriticEncoder,
     StatefulActorCriticEncoder,
-    STATE_IN,
-    STATE_OUT,
     ENCODER_OUT,
 )
 from ray.rllib.core.models.base import Model, tokenize
@@ -23,7 +22,6 @@ from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.models.utils import get_initializer_fn
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -85,7 +83,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="torch"
                 ),
             }
@@ -103,7 +101,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+        return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
@@ -137,7 +135,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
@@ -167,7 +165,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+        return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
 class TorchGRUEncoder(TorchModel, Encoder):
@@ -226,12 +224,12 @@ class TorchGRUEncoder(TorchModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, t, d",
                     d=self.config.input_dims[0],
                     framework="torch",
                 ),
-                STATE_IN: {
+                Columns.STATE_IN: {
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
@@ -249,7 +247,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, t, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: {
+                Columns.STATE_OUT: {
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
@@ -275,17 +273,21 @@ class TorchGRUEncoder(TorchModel, Encoder):
             out = tokenize(self.tokenizer, inputs, framework="torch")
         else:
             # Otherwise, just use the raw observations.
-            out = inputs[SampleBatch.OBS].float()
+            out = inputs[Columns.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
-        states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
+        states_in = tree.map_structure(
+            lambda s: s.transpose(0, 1), inputs[Columns.STATE_IN]
+        )
 
         out, states_out = self.gru(out, states_in["h"])
         states_out = {"h": states_out}
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        outputs[Columns.STATE_OUT] = tree.map_structure(
+            lambda s: s.transpose(0, 1), states_out
+        )
         return outputs
 
 
@@ -366,10 +368,10 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, t, d", d=self.config.input_dims[0], framework="torch"
                 ),
-                STATE_IN: self._state_in_out_spec,
+                Columns.STATE_IN: self._state_in_out_spec,
             }
         )
 
@@ -380,7 +382,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, t, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: self._state_in_out_spec,
+                Columns.STATE_OUT: self._state_in_out_spec,
             }
         )
 
@@ -400,15 +402,19 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             out = tokenize(self.tokenizer, inputs, framework="torch")
         else:
             # Otherwise, just use the raw observations.
-            out = inputs[SampleBatch.OBS].float()
+            out = inputs[Columns.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
-        states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
+        states_in = tree.map_structure(
+            lambda s: s.transpose(0, 1), inputs[Columns.STATE_IN]
+        )
 
         out, states_out = self.lstm(out, (states_in["h"], states_in["c"]))
         states_out = {"h": states_out[0], "c": states_out[1]}
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        outputs[Columns.STATE_OUT] = tree.map_structure(
+            lambda s: s.transpose(0, 1), states_out
+        )
         return outputs

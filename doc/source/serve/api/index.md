@@ -236,7 +236,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Translator",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": {
                             "language": "german"
                         },
@@ -274,7 +274,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Summarizer",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": null,
                         "graceful_shutdown_wait_loop_s": 2.0,
                         "graceful_shutdown_timeout_s": 20.0,

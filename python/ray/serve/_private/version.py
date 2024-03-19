@@ -79,8 +79,8 @@ class DeploymentVersion:
         changed.
         """
         return (
-            self.deployment_config.max_concurrent_queries
-            != new_version.deployment_config.max_concurrent_queries
+            self.deployment_config.max_ongoing_requests
+            != new_version.deployment_config.max_ongoing_requests
         )
 
     def compute_hashes(self):

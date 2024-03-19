@@ -170,14 +170,6 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-        # TODO(justinvyu): These env vars aren't used at the moment.
-        # Consider having these be settings in SyncConfig if we want to
-        # keep this feature.
-        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
-        self.sync_sleep_time = float(
-            os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
-        )
-
     @classmethod
     def default_resource_request(
         cls, config: Dict[str, Any]

@@ -3,13 +3,11 @@ import shutil
 import tempfile
 import unittest
 from collections import namedtuple
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from mlflow.tracking import MlflowClient
 
 from ray._private.dict import flatten_dict
-from ray.train._internal.session import init_session, shutdown_session
-from ray.train._internal.storage import StorageContext
 from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow, _NoopModule
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 
@@ -49,8 +47,7 @@ class MLflowTest(unittest.TestCase):
         assert client.get_experiment_by_name("existing_experiment").experiment_id == "1"
 
     def tearDown(self) -> None:
-        # Shutdown session to clean up for next test
-        shutdown_session()
+        pass
 
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
@@ -225,23 +222,14 @@ class MLflowTest(unittest.TestCase):
         )
         mlflow.end_run()
 
-    def testMlFlowSetupRankNonRankZero(self):
+    @patch("ray.train.get_context")
+    def testMlFlowSetupRankNonRankZero(self, mock_get_context):
         """Assert that non-rank-0 workers get a noop module"""
-        storage = StorageContext(
-            storage_path=tempfile.mkdtemp(),
-            experiment_dir_name="exp_name",
-            trial_dir_name="trial_name",
-        )
+        mock_context = MagicMock()
+        mock_context.get_world_rank.return_value = 1
 
-        init_session(
-            training_func=None,
-            world_rank=1,
-            local_rank=1,
-            node_rank=1,
-            local_world_size=2,
-            world_size=2,
-            storage=storage,
-        )
+        mock_get_context.return_value = mock_context
+
         mlflow = setup_mlflow({})
         assert isinstance(mlflow, _NoopModule)
 

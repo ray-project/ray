@@ -74,13 +74,25 @@ class TestSpaceUtils(unittest.TestCase):
         self.assertEqual(action[0], 6)
         self.assertEqual(action[1], 6)
 
-    def test_batch_and_unbatch(self):
+    def test_batch_and_unbatch_simple(self):
         """Tests the two utility functions `batch` and `unbatch`."""
-        # Test, whether simple structs are batch/unbatch'able as well.
+        # Test, whether simple structs are batch/unbatch'able.
         # B=8
         simple_struct = [0, 1, 2, 3, 4, 5, 6, 7]
         simple_struct_batched = batch(simple_struct)
         check(unbatch(simple_struct_batched), simple_struct)
+
+        # Test, whether simple structs that are already batched are
+        # batch/unbatch'able.
+        # B=1 or 2
+        simple_struct = [np.array([0]), np.array([1, 2]), np.array([3, 4, 5])]
+        simple_struct_batched = batch(
+            simple_struct, individual_items_already_have_batch_dim=True
+        )
+        check(simple_struct_batched, np.array([0, 1, 2, 3, 4, 5]))
+        # Unbatching here does NOT restore the original list of items as these
+        # had arrays in them of different batch dims.
+        check(unbatch(simple_struct_batched), [0, 1, 2, 3, 4, 5])
 
         # Create a complex struct of individual batches (B=2).
         complex_struct = {

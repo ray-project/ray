@@ -148,6 +148,52 @@ class InstanceUtilTest(unittest.TestCase):
             instance, Instance.QUEUED
         ) == [1, 3]
 
+    @patch("time.time_ns")
+    def test_get_last_status_transition(self, mock_time):
+        mock_time.return_value = 1
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
+        assert (
+            InstanceUtil.get_last_status_transition(instance).instance_status
+            == Instance.QUEUED
+        )
+        assert InstanceUtil.get_last_status_transition(instance).timestamp_ns == 1
+
+        mock_time.return_value = 2
+        InstanceUtil.set_status(instance, Instance.REQUESTED)
+        assert (
+            InstanceUtil.get_last_status_transition(instance).instance_status
+            == Instance.REQUESTED
+        )
+        assert InstanceUtil.get_last_status_transition(instance).timestamp_ns == 2
+
+        mock_time.return_value = 3
+        InstanceUtil.set_status(instance, Instance.QUEUED)
+        assert (
+            InstanceUtil.get_last_status_transition(instance).instance_status
+            == Instance.QUEUED
+        )
+        assert InstanceUtil.get_last_status_transition(instance).timestamp_ns == 3
+
+        assert (
+            InstanceUtil.get_last_status_transition(
+                instance, select_instance_status=Instance.REQUESTED
+            ).instance_status
+            == Instance.REQUESTED
+        )
+        assert (
+            InstanceUtil.get_last_status_transition(
+                instance, select_instance_status=Instance.REQUESTED
+            ).timestamp_ns
+            == 2
+        )
+
+        assert (
+            InstanceUtil.get_last_status_transition(
+                instance, select_instance_status=Instance.RAY_RUNNING
+            )
+            is None
+        )
+
     def test_is_cloud_instance_allocated(self):
         all_status = set(Instance.InstanceStatus.values())
         instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
@@ -173,6 +219,37 @@ class InstanceUtilTest(unittest.TestCase):
             instance.status = s
             assert not InstanceUtil.is_cloud_instance_allocated(instance.status)
 
+    def test_is_ray_running(self):
+        all_statuses = set(Instance.InstanceStatus.values())
+        positive_statuses = {
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
+            Instance.RAY_STOPPING,
+        }
+        all_statuses.remove(Instance.UNKNOWN)
+        for s in positive_statuses:
+            assert InstanceUtil.is_ray_running(s)
+            all_statuses.remove(s)
+
+        for s in all_statuses:
+            assert not InstanceUtil.is_ray_running(s)
+
+    def test_is_ray_pending(self):
+        all_statuses = set(Instance.InstanceStatus.values())
+        all_statuses.remove(Instance.UNKNOWN)
+        positive_statuses = {
+            Instance.QUEUED,
+            Instance.REQUESTED,
+            Instance.RAY_INSTALLING,
+            Instance.ALLOCATED,
+        }
+        for s in positive_statuses:
+            assert InstanceUtil.is_ray_pending(s), Instance.InstanceStatus.Name(s)
+            all_statuses.remove(s)
+
+        for s in all_statuses:
+            assert not InstanceUtil.is_ray_pending(s), Instance.InstanceStatus.Name(s)
+
     def test_is_ray_running_reachable(self):
         all_status = set(Instance.InstanceStatus.values())
         positive_status = {
@@ -184,13 +261,17 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_STOP_REQUESTED,
         }
         for s in positive_status:
-            assert InstanceUtil.is_ray_running_reachable(s)
+            assert InstanceUtil.is_ray_running_reachable(
+                s
+            ), Instance.InstanceStatus.Name(s)
             all_status.remove(s)
 
         # Unknown not possible.
         all_status.remove(Instance.UNKNOWN)
         for s in all_status:
-            assert not InstanceUtil.is_ray_running_reachable(s)
+            assert not InstanceUtil.is_ray_running_reachable(
+                s
+            ), Instance.InstanceStatus.Name(s)
 
     def test_reachable_from(self):
         def add_reachable_from(reachable, src, transitions):

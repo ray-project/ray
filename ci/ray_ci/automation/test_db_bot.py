@@ -3,7 +3,7 @@ import os
 import click
 
 from ci.ray_ci.utils import logger
-from ci.ray_ci.tester_container import TesterContainer, PIPELINE_POSTMERGE
+from ci.ray_ci.tester_container import TesterContainer, PIPELINE_MACOS_POSTMERGE
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
 
@@ -18,7 +18,7 @@ def main(team: str, bazel_log_dir: str) -> None:
         logger.info("Skip upload test results. We only upload on master branch.")
         return
 
-    if os.environ.get("BUILDKITE_PIPELINE_ID") != PIPELINE_POSTMERGE:
+    if os.environ.get("BUILDKITE_PIPELINE_ID") != PIPELINE_MACOS_POSTMERGE:
         logger.info("Skip upload test results. We only upload on postmerge pipeline.")
         return
 

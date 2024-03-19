@@ -123,11 +123,13 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DataContext.get_current()
 
-    ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+    ray.data.range(8, override_num_blocks=8).write_csv(str(tmp_path))
     if not block_split:
         # Setting a huge block size effectively disables block splitting.
         ctx.target_max_block_size = 2**64
-    ds = ray.data.read_datasource(SlowCSVDatasource(str(tmp_path)), parallelism=8)
+    ds = ray.data.read_datasource(
+        SlowCSVDatasource(str(tmp_path)), override_num_blocks=8
+    )
 
     start = time.time()
     ds.map(lambda x: x)
@@ -194,7 +196,7 @@ def test_dataset(
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=num_tasks,
+        override_num_blocks=num_tasks,
         num_batches_per_task=num_blocks_per_task,
         row_size=ctx.target_max_block_size,
     )
@@ -293,7 +295,7 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=1,
+        override_num_blocks=1,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
     )
@@ -318,7 +320,7 @@ def test_lazy_block_list(shutdown_only, target_max_block_size):
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=num_tasks,
+        override_num_blocks=num_tasks,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
     )
@@ -424,7 +426,7 @@ def test_read_large_data(ray_start_cluster):
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=1,
+        override_num_blocks=1,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
     )
@@ -442,7 +444,7 @@ def _test_write_large_data(
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=1,
+        override_num_blocks=1,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
         use_bytes=use_bytes,
@@ -588,7 +590,7 @@ def test_block_slicing(
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=num_tasks,
+        override_num_blocks=num_tasks,
         num_batches_per_task=num_batches,
         num_rows_per_batch=num_rows_per_batch,
         row_size=row_size,
@@ -625,7 +627,7 @@ def test_dynamic_block_split_deterministic(
     ctx.target_max_block_size = target_max_block_size
 
     # ~800 bytes per block
-    ds = ray.data.range(1000, parallelism=10).map_batches(lambda x: x)
+    ds = ray.data.range(1000, override_num_blocks=10).map_batches(lambda x: x)
     data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
     # Maps: first item of block -> block
     block_map = {block["id"][0]: block for block in data}

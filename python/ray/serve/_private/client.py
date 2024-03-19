@@ -2,7 +2,7 @@ import logging
 import random
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -14,7 +14,6 @@ from ray.serve._private.common import (
     MultiplexedReplicaInfo,
     StatusOverview,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
@@ -26,11 +25,7 @@ from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import (
-    DeploymentArgs,
-    DeploymentRoute,
-    DeploymentRouteList,
-)
+from ray.serve.generated.serve_pb2 import DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
@@ -244,42 +239,6 @@ class ServeControllerClient:
             )
 
     @_ensure_connected
-    def deploy(
-        self,
-        name: str,
-        replica_config: ReplicaConfig,
-        deployment_config: Union[None, DeploymentConfig, Dict[str, Any]] = None,
-        version: Optional[str] = None,
-        route_prefix: Optional[str] = None,
-        url: Optional[str] = None,
-        _blocking: Optional[bool] = True,
-    ):
-        controller_deploy_args = get_deploy_args(
-            name=name,
-            replica_config=replica_config,
-            deployment_config=deployment_config,
-            version=version,
-            route_prefix=route_prefix,
-        )
-        controller_deploy_args.pop("ingress")
-        controller_deploy_args["name"] = controller_deploy_args.pop("deployment_name")
-
-        updating = ray.get(
-            self._controller.deploy.remote(
-                # TODO(edoakes): this is a hack because the deployment_language
-                # doesn't seem to get set properly from Java.
-                is_deployed_from_python=True,
-                **controller_deploy_args,
-            )
-        )
-
-        tag = self.log_deployment_update_status(name, version, updating)
-
-        if _blocking:
-            self._wait_for_deployment_healthy(name)
-            self.log_deployment_ready(name, version, url, tag)
-
-    @_ensure_connected
     def deploy_application(
         self,
         name,
@@ -418,27 +377,6 @@ class ServeControllerClient:
             DeploymentInfo.from_proto(deployment_route.deployment_info),
             deployment_route.route if deployment_route.route != "" else None,
         )
-
-    @_ensure_connected
-    def list_deployments_v1(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        """Gets the current information about all 1.x deployments."""
-
-        deployment_route_list = DeploymentRouteList.FromString(
-            ray.get(self._controller.list_deployments_v1.remote())
-        )
-        return {
-            deployment_route.deployment_info.name: (
-                DeploymentInfo.from_proto(deployment_route.deployment_info),
-                deployment_route.route if deployment_route.route != "" else None,
-            )
-            for deployment_route in deployment_route_list.deployment_routes
-        }
-
-    @_ensure_connected
-    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
-        """Gets the current information about all deployments (1.x and 2.x)."""
-
-        return ray.get(self._controller.list_deployments.remote())
 
     @_ensure_connected
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:

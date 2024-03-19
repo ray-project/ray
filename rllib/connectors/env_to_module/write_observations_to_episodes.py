@@ -1,8 +1,8 @@
 from typing import Any, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
@@ -86,11 +86,11 @@ class WriteObservationsToEpisodes(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = data.get(SampleBatch.OBS)
+        observations = data.get(Columns.OBS)
 
         if observations is None:
             raise ValueError(
-                f"`batch` must already have a column named {SampleBatch.OBS} in it "
+                f"`batch` must already have a column named {Columns.OBS} in it "
                 f"for this connector to work!"
             )
 

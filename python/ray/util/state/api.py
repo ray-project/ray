@@ -8,6 +8,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 
+import ray
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
     get_address_for_submission_client,
@@ -710,7 +711,7 @@ def get_worker(
 
 @DeveloperAPI
 def get_task(
-    id: str,
+    id: Union[str, "ray.ObjectRef"],
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -718,7 +719,7 @@ def get_task(
     """Get task attempts of a task by id.
 
     Args:
-        id: Id of the task
+        id: String id of the task or ObjectRef that corresponds to task
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
@@ -734,9 +735,14 @@ def get_task(
         Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
+    str_id: str
+    if isinstance(id, str):
+        str_id = id
+    else:
+        str_id = id.task_id().hex()
     return StateApiClient(address=address).get(
         StateResource.TASKS,
-        id,
+        str_id,
         GetApiOptions(timeout=timeout),
         _explain=_explain,
     )

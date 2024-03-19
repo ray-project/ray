@@ -10,16 +10,13 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 """  # noqa: E501
 
 import logging
-from typing import List, Optional, Type, Callable
+from typing import Callable, List, Optional, Type, Union
 import numpy as np
 
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.algorithms.simple_q.simple_q import (
-    SimpleQ,
-    SimpleQConfig,
-)
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -29,9 +26,9 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -40,13 +37,17 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.replay_buffers.utils import (
+    sample_min_n_steps_from_buffer,
+    update_priorities_in_replay_buffer,
+    validate_buffer_config,
+)
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
 
-class DQNConfig(SimpleQConfig):
+class DQNConfig(AlgorithmConfig):
     r"""Defines a configuration class from which a DQN Algorithm can be built.
 
     .. testcode::
@@ -97,9 +98,46 @@ class DQNConfig(SimpleQConfig):
         """Initializes a DQNConfig instance."""
         super().__init__(algo_class=algo_class or DQN)
 
+        # Overrides of AlgorithmConfig defaults
+        # `rollouts()`
+        # Set to `self.n_step`, if 'auto'.
+        self.rollout_fragment_length = "auto"
+
+        # `training()`
+        self.grad_clip = 40.0
+        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+        self.lr = 5e-4
+        self.train_batch_size = 32
+
+        # `exploration()`
+        self.exploration_config = {
+            "type": "EpsilonGreedy",
+            "initial_epsilon": 1.0,
+            "final_epsilon": 0.02,
+            "epsilon_timesteps": 10000,
+        }
+
+        # `evaluation()`
+        self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
+
+        # `reporting()`
+        self.min_time_s_per_iteration = None
+        self.min_sample_timesteps_per_iteration = 1000
+
         # DQN specific config settings.
         # fmt: off
         # __sphinx_doc_begin__
+        self.target_network_update_freq = 500
+        self.num_steps_sampled_before_learning_starts = 1000
+        self.store_buffer_in_checkpoints = False
+        self.lr_schedule = None
+        self.adam_epsilon = 1e-8
+
+        self.tau = 1.0
+
         self.num_atoms = 1
         self.v_min = -10.0
         self.v_max = 10.0
@@ -114,7 +152,7 @@ class DQNConfig(SimpleQConfig):
         self.td_error_loss_fn = "huber"
         self.categorical_distribution_temperature = 1.0
 
-        # Changes to SimpleQConfig's default:
+        # Replay buffer configuration.
         self.replay_buffer_config = {
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
@@ -134,15 +172,32 @@ class DQNConfig(SimpleQConfig):
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }
-        # Set to `self.n_step`, if 'auto'.
-        self.rollout_fragment_length = "auto"
         # fmt: on
         # __sphinx_doc_end__
 
-    @override(SimpleQConfig)
+        # Deprecated.
+        self.buffer_size = DEPRECATED_VALUE
+        self.prioritized_replay = DEPRECATED_VALUE
+        self.learning_starts = DEPRECATED_VALUE
+        self.replay_batch_size = DEPRECATED_VALUE
+        # Can not use DEPRECATED_VALUE here because -1 is a common config value
+        self.replay_sequence_length = None
+        self.prioritized_replay_alpha = DEPRECATED_VALUE
+        self.prioritized_replay_beta = DEPRECATED_VALUE
+        self.prioritized_replay_eps = DEPRECATED_VALUE
+
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
+        target_network_update_freq: Optional[int] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
+        store_buffer_in_checkpoints: Optional[bool] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        adam_epsilon: Optional[float] = NotProvided,
+        grad_clip: Optional[int] = NotProvided,
+        num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
+        tau: Optional[float] = NotProvided,
         num_atoms: Optional[int] = NotProvided,
         v_min: Optional[float] = NotProvided,
         v_max: Optional[float] = NotProvided,
@@ -164,38 +219,8 @@ class DQNConfig(SimpleQConfig):
         """Sets the training related configuration.
 
         Args:
-            num_atoms: Number of atoms for representing the distribution of return.
-                When this is greater than 1, distributional Q-learning is used.
-            v_min: Minimum value estimation
-            v_max: Maximum value estimation
-            noisy: Whether to use noisy network to aid exploration. This adds parametric
-                noise to the model weights.
-            sigma0: Control the initial parameter noise for noisy nets.
-            dueling: Whether to use dueling DQN.
-            hiddens: Dense-layer setup for each the advantage branch and the value
-                branch
-            double_q: Whether to use double DQN.
-            n_step: N-step for Q-learning.
-            before_learn_on_batch: Callback to run before learning on a multi-agent
-                batch of experiences.
-            training_intensity: The intensity with which to update the model (vs
-                collecting samples from the env).
-                If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
-                If not None, will make sure that the ratio between timesteps inserted
-                into and sampled from the buffer matches the given values.
-                Example:
-                training_intensity=1000.0
-                train_batch_size=250
-                rollout_fragment_length=1
-                num_workers=1 (or 0)
-                num_envs_per_worker=1
-                -> natural value = 250 / 1 = 250.0
-                -> will make sure that replay+train op will be executed 4x asoften as
-                rollout+insert op (4 * 250 = 1000).
-                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
-                details.
+            target_network_update_freq: Update the target network every
+                `target_network_update_freq` sample steps.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
@@ -229,6 +254,55 @@ class DQNConfig(SimpleQConfig):
                 prioritized_replay_eps: Epsilon parameter sets the baseline probability
                 for sampling so that when the temporal-difference error of a sample is
                 zero, there is still a chance of drawing the sample.
+            store_buffer_in_checkpoints: Set this to True, if you want the contents of
+                your buffer(s) to be stored in any saved checkpoints as well.
+                Warnings will be created if:
+                - This is True AND restoring from a checkpoint that contains no buffer
+                data.
+                - This is False AND restoring from a checkpoint that does contain
+                buffer data.
+            lr_schedule: Learning rate schedule. In the format of [[timestep, value],
+                [timestep, value], ...]. A schedule should normally start from
+                timestep 0.
+            adam_epsilon: Adam optimizer's epsilon hyper parameter.
+            grad_clip: If not None, clip gradients during optimization at this value.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config.multi_agent(count_steps_by=..).
+            tau: Update the target by \tau * policy + (1-\tau) * target_policy.
+            num_atoms: Number of atoms for representing the distribution of return.
+                When this is greater than 1, distributional Q-learning is used.
+            v_min: Minimum value estimation
+            v_max: Maximum value estimation
+            noisy: Whether to use noisy network to aid exploration. This adds parametric
+                noise to the model weights.
+            sigma0: Control the initial parameter noise for noisy nets.
+            dueling: Whether to use dueling DQN.
+            hiddens: Dense-layer setup for each the advantage branch and the value
+                branch
+            double_q: Whether to use double DQN.
+            n_step: N-step for Q-learning.
+            before_learn_on_batch: Callback to run before learning on a multi-agent
+                batch of experiences.
+            training_intensity: The intensity with which to update the model (vs
+                collecting samples from the env).
+                If None, uses "natural" values of:
+                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+                `num_envs_per_worker`).
+                If not None, will make sure that the ratio between timesteps inserted
+                into and sampled from the buffer matches the given values.
+                Example:
+                training_intensity=1000.0
+                train_batch_size=250
+                rollout_fragment_length=1
+                num_workers=1 (or 0)
+                num_envs_per_worker=1
+                -> natural value = 250 / 1 = 250.0
+                -> will make sure that replay+train op will be executed 4x asoften as
+                rollout+insert op (4 * 250 = 1000).
+                See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
+                details.
             td_error_loss_fn: "huber" or "mse". loss function for calculating TD error
                 when num_atoms is 1. Note that if num_atoms is > 1, this parameter
                 is simply ignored, and softmax cross entropy loss will be used.
@@ -243,6 +317,33 @@ class DQNConfig(SimpleQConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
+        if target_network_update_freq is not NotProvided:
+            self.target_network_update_freq = target_network_update_freq
+        if replay_buffer_config is not NotProvided:
+            # Override entire `replay_buffer_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_replay_buffer_config = deep_update(
+                {"replay_buffer_config": self.replay_buffer_config},
+                {"replay_buffer_config": replay_buffer_config},
+                False,
+                ["replay_buffer_config"],
+                ["replay_buffer_config"],
+            )
+            self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
+        if store_buffer_in_checkpoints is not NotProvided:
+            self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
+        if adam_epsilon is not NotProvided:
+            self.adam_epsilon = adam_epsilon
+        if grad_clip is not NotProvided:
+            self.grad_clip = grad_clip
+        if num_steps_sampled_before_learning_starts is not NotProvided:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
+        if tau is not NotProvided:
+            self.tau = tau
         if num_atoms is not NotProvided:
             self.num_atoms = num_atoms
         if v_min is not NotProvided:
@@ -274,10 +375,21 @@ class DQNConfig(SimpleQConfig):
 
         return self
 
-    @override(SimpleQConfig)
+    @override(AlgorithmConfig)
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        if self.exploration_config["type"] == "ParameterNoise":
+            if self.batch_mode != "complete_episodes":
+                raise ValueError(
+                    "ParameterNoise Exploration requires `batch_mode` to be "
+                    "'complete_episodes'. Try setting `config.rollouts("
+                    "batch_mode='complete_episodes')`."
+                )
+
+        if not self.in_evaluation:
+            validate_buffer_config(self)
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
             raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
@@ -342,14 +454,14 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
         return [1, int(np.round(sample_and_train_weight))]
 
 
-class DQN(SimpleQ):
+class DQN(Algorithm):
     @classmethod
-    @override(SimpleQ)
+    @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return DQNConfig()
 
     @classmethod
-    @override(SimpleQ)
+    @override(Algorithm)
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
@@ -358,7 +470,7 @@ class DQN(SimpleQ):
         else:
             return DQNTFPolicy
 
-    @override(SimpleQ)
+    @override(Algorithm)
     def training_step(self) -> ResultDict:
         """DQN training iteration function.
 

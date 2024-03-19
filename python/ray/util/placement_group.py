@@ -191,72 +191,22 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
+
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    if not isinstance(bundles, list):
-        raise ValueError("The type of bundles must be list, got {}".format(bundles))
+    validate_placement_group(
+        bundles=bundles,
+        strategy=strategy,
+        lifetime=lifetime,
+        _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
+        _soft_target_node_id=_soft_target_node_id,
+    )
 
-    if not bundles:
-        raise ValueError(
-            "The placement group `bundles` argument cannot contain an empty list"
-        )
-
-    assert _max_cpu_fraction_per_node is not None
-
-    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
-        raise ValueError(
-            "Invalid argument `_max_cpu_fraction_per_node`: "
-            f"{_max_cpu_fraction_per_node}. "
-            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
-        )
-
-    if _soft_target_node_id and strategy != "STRICT_PACK":
-        raise ValueError(
-            "_soft_target_node_id currently only works "
-            f"with STRICT_PACK but got {strategy}"
-        )
-
-    if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
-        raise ValueError(
-            f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
-        )
-
-    # Validate bundles
-    for bundle in bundles:
-        if len(bundle) == 0 or all(
-            resource_value == 0 for resource_value in bundle.values()
-        ):
-            raise ValueError(
-                "Bundles cannot be an empty dictionary or "
-                f"resources with only 0 values. Bundles: {bundles}"
-            )
-
-        if "object_store_memory" in bundle.keys():
-            warnings.warn(
-                "Setting 'object_store_memory' for"
-                " bundles is deprecated since it doesn't actually"
-                " reserve the required object store memory."
-                f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
-                "instead to bypass the object store memory size limitation.",
-                DeprecationWarning,
-                stacklevel=1,
-            )
-
-    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
-        raise ValueError(
-            f"Invalid placement group strategy {strategy}. "
-            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
-        )
-
-    if lifetime is None:
-        detached = False
-    elif lifetime == "detached":
+    if lifetime == "detached":
         detached = True
     else:
-        raise ValueError(
-            "placement group `lifetime` argument must be either `None` or 'detached'"
-        )
+        detached = False
 
     placement_group_id = worker.core_worker.create_placement_group(
         name,
@@ -389,6 +339,100 @@ def check_placement_group_index(
             f"is invalid. Valid placement group indexes: "
             f"0-{placement_group.bundle_count}"
         )
+
+
+def validate_placement_group(
+    bundles: List[Dict[str, float]],
+    strategy: str = "PACK",
+    lifetime: Optional[str] = None,
+    _max_cpu_fraction_per_node: float = 1.0,
+    _soft_target_node_id: Optional[str] = None,
+) -> bool:
+    """Validates inputs for placement_group.
+
+    Raises ValueError if inputs are invalid.
+    """
+
+    assert _max_cpu_fraction_per_node is not None
+
+    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
+        raise ValueError(
+            "Invalid argument `_max_cpu_fraction_per_node`: "
+            f"{_max_cpu_fraction_per_node}. "
+            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
+        )
+
+    if _soft_target_node_id and strategy != "STRICT_PACK":
+        raise ValueError(
+            "_soft_target_node_id currently only works "
+            f"with STRICT_PACK but got {strategy}"
+        )
+
+    if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
+        raise ValueError(
+            f"Invalid hex ID of _soft_target_node_id, got {_soft_target_node_id}"
+        )
+
+    _validate_bundles(bundles)
+
+    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+        raise ValueError(
+            f"Invalid placement group strategy {strategy}. "
+            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+        )
+
+    if lifetime not in [None, "detached"]:
+        raise ValueError(
+            "Placement group `lifetime` argument must be either `None` or "
+            f"'detached'. Got {lifetime}."
+        )
+
+
+def _validate_bundles(bundles: List[Dict[str, float]]):
+    """Validates each bundle and raises a ValueError if any bundle is invalid."""
+
+    if not isinstance(bundles, list):
+        raise ValueError(
+            "Placement group bundles must be a list, " f"got {type(bundles)}."
+        )
+
+    if len(bundles) == 0:
+        raise ValueError(
+            "Bundles must be a non-empty list of resource "
+            'dictionaries. For example: `[{"CPU": 1.0}, {"GPU": 1.0}]`. '
+            "Got empty list instead."
+        )
+
+    for bundle in bundles:
+        if (
+            not isinstance(bundle, dict)
+            or not all(isinstance(k, str) for k in bundle.keys())
+            or not all(isinstance(v, (int, float)) for v in bundle.values())
+        ):
+            raise ValueError(
+                "Bundles must be a non-empty list of "
+                "resource dictionaries. For example: "
+                '`[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+            )
+
+        if len(bundle) == 0 or all(
+            resource_value == 0 for resource_value in bundle.values()
+        ):
+            raise ValueError(
+                "Bundles cannot be an empty dictionary or "
+                f"resources with only 0 values. Bundles: {bundles}"
+            )
+
+        if "object_store_memory" in bundle.keys():
+            warnings.warn(
+                "Setting 'object_store_memory' for"
+                " bundles is deprecated since it doesn't actually"
+                " reserve the required object store memory."
+                f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+                "instead to bypass the object store memory size limitation.",
+                DeprecationWarning,
+                stacklevel=1,
+            )
 
 
 def _valid_resource_shape(resources, bundle_specs):

@@ -1,4 +1,6 @@
-(aws-neuron-core-inference-stable-diffusion-tutorial)=
+---
+orphan: true
+---
 
 # Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
 This example uses a precompiled Stable Diffusion XL model and deploys on an AWS Inferentia2 (Inf2)

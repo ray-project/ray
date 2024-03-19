@@ -208,7 +208,7 @@ format_frontend() {
     local filenames
     # shellcheck disable=SC2207
     filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))
-    "${folder}/"node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    "${folder}/"node_modules/.bin/eslint --fix --max-warnings 0 "${filenames[@]}"
     "${folder}/"node_modules/.bin/prettier -w "${filenames[@]}"
     "${folder}/"node_modules/.bin/prettier --check "${folder}/"public/index.html
   )

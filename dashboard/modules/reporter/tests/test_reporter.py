@@ -222,7 +222,8 @@ def test_prometheus_physical_stats_record(
     prom_addresses = [f"{addr}:{metrics_export_port}"]
 
     def test_case_stats_exist():
-        components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
+        metric_names = metric_descriptors.keys()
         predicates = [
             "ray_node_cpu_utilization" in metric_names,
             "ray_node_cpu_count" in metric_names,
@@ -255,7 +256,7 @@ def test_prometheus_physical_stats_record(
         return all(predicates)
 
     def test_case_ip_correct():
-        components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        _, _, metric_samples = fetch_prometheus(prom_addresses)
         raylet_proc = ray._private.worker._global_node.all_processes[
             ray_constants.PROCESS_TYPE_RAYLET
         ][0]
@@ -292,7 +293,8 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
     ray.get(ret)
 
     def test_worker_stats():
-        _, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
+        metric_names = metric_descriptors.keys()
         expected_metrics = [
             "ray_component_cpu_percentage",
             "ray_component_rss_mb",

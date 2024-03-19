@@ -18,41 +18,27 @@ logger = logging.getLogger(__name__)
 class ConnectorPipelineV2(ConnectorV2):
     """Utility class for quick manipulation of a connector pipeline."""
 
-    @property
-    def observation_space(self):
-        return (
-            self.connectors[-1].observation_space
-            if len(self) > 0
-            else self.input_observation_space
-        )
+    @override(ConnectorV2)
+    def recompute_observation_space_from_input_spaces(self):
+        self._fix_spaces()
+        return self.observation_space
 
-    @property
-    def action_space(self):
-        return (
-            self.connectors[-1].action_space
-            if len(self) > 0
-            else self.input_action_space
-        )
+    @override(ConnectorV2)
+    def recompute_action_space_from_input_spaces(self):
+        self._fix_spaces()
+        return self.action_space
 
     def __init__(
         self,
-        input_observation_space: gym.Space = None,
-        input_action_space: gym.Space = None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
         connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
     ):
-        super().__init__(input_observation_space, input_action_space, **kwargs)
-
         self.connectors = connectors or []
-        if len(self) > 0:
-            if input_observation_space is None:
-                self.input_observation_space = self.connectors[
-                    0
-                ].input_observation_space
-            if input_action_space is None:
-                self.input_action_space = self.connectors[0].input_action_space
-        self._fix_input_output_types()
+
+        super().__init__(input_observation_space, input_action_space, **kwargs)
 
         self.timers = defaultdict(_Timer)
 
@@ -102,7 +88,7 @@ class ConnectorPipelineV2(ConnectorV2):
                 break
         if idx >= 0:
             del self.connectors[idx]
-            self._fix_input_output_types()
+            self._fix_spaces()
             logger.info(
                 f"Removed connector {name_or_class} from {self.__class__.__name__}."
             )
@@ -139,7 +125,7 @@ class ConnectorPipelineV2(ConnectorV2):
         next_connector = self.connectors[idx]
 
         self.connectors.insert(idx, connector)
-        self._fix_input_output_types()
+        self._fix_spaces()
 
         logger.info(
             f"Inserted {connector.__class__.__name__} before {name_or_class} "
@@ -175,7 +161,7 @@ class ConnectorPipelineV2(ConnectorV2):
         prev_connector = self.connectors[idx]
 
         self.connectors.insert(idx + 1, connector)
-        self._fix_input_output_types()
+        self._fix_spaces()
 
         logger.info(
             f"Inserted {connector.__class__.__name__} after {name_or_class} "
@@ -191,7 +177,7 @@ class ConnectorPipelineV2(ConnectorV2):
             connector: The new connector piece to be prepended to this pipeline.
         """
         self.connectors.insert(0, connector)
-        self._fix_input_output_types()
+        self._fix_spaces()
 
         logger.info(
             f"Added {connector.__class__.__name__} to the beginning of "
@@ -205,7 +191,7 @@ class ConnectorPipelineV2(ConnectorV2):
             connector: The new connector piece to be appended to this pipeline.
         """
         self.connectors.append(connector)
-        self._fix_input_output_types()
+        self._fix_spaces()
 
         logger.info(
             f"Added {connector.__class__.__name__} to the end of "
@@ -289,16 +275,22 @@ class ConnectorPipelineV2(ConnectorV2):
                 f"supported!"
             )
 
-    def _fix_input_output_types(self):
+    @property
+    def observation_space(self):
+        if len(self) > 0:
+            return self.connectors[-1].observation_space
+        return self._observation_space
+
+    @property
+    def action_space(self):
+        if len(self) > 0:
+            return self.connectors[-1].action_space
+        return self._action_space
+
+    def _fix_spaces(self):
         if len(self) > 0:
             # Fix each connector's input_observation- and input_action space in
             # the pipeline.
-            if self.input_observation_space is None:
-                self.input_observation_space = self.connectors[
-                    0
-                ].input_observation_space
-            if self.input_action_space is None:
-                self.input_action_space = self.connectors[0].input_action_space
             obs_space = self.input_observation_space
             act_space = self.input_action_space
             for con in self.connectors:

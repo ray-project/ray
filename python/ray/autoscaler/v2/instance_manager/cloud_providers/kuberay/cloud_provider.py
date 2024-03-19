@@ -14,9 +14,9 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KUBERAY_KIND_WORKER,
     KUBERAY_LABEL_KEY_KIND,
     KUBERAY_LABEL_KEY_TYPE,
-    KUBERAY_TYPE_HEAD,
     RAY_HEAD_POD_NAME,
     IKubernetesHttpApiClient,
+    KubernetesHttpApiClient,
     _worker_group_index,
     _worker_group_max_replicas,
     _worker_group_replicas,
@@ -49,19 +49,23 @@ class KubeRayProvider(ICloudInstanceProvider):
     def __init__(
         self,
         cluster_name: str,
-        namespace: str,
-        k8s_api_client: IKubernetesHttpApiClient,
+        provider_config: Dict[str, Any],
+        k8s_api_client: Optional[IKubernetesHttpApiClient] = None,
     ):
         """
         Args:
             cluster_name: The name of the RayCluster resource.
             namespace: The namespace of the RayCluster resource.
             k8s_api_client: The client to the Kubernetes API server.
+                This could be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
-        self._namespace = namespace
+        self._namespace = provider_config["namespace"]
+        self._head_node_type = provider_config["head_node_type"]
 
-        self._k8s_api_client = k8s_api_client
+        self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
+            namespace=self._namespace
+        )
 
         # Below are states that are cached locally.
         self._requests = set()
@@ -114,8 +118,10 @@ class KubeRayProvider(ICloudInstanceProvider):
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         if request_id in self._requests:
             # This request is already processed.
+            logger.warning(f"Request {request_id} is already processed for: {ids}")
             return
         self._requests.add(request_id)
+        logger.info("Terminating worker pods: {}".format(ids))
 
         scale_request = self._initialize_scale_request(
             to_launch={}, to_delete_instances=ids
@@ -138,8 +144,8 @@ class KubeRayProvider(ICloudInstanceProvider):
         try:
             self._submit_scale_request(scale_request)
         except Exception as e:
-            logger.exception(f"Error terminating nodes: {e}")
-            self._add_terminate_errors(ids, request_id, details=str(e), cause=e)
+            logger.exception(f"Error terminating nodes: {scale_request}")
+            self._add_terminate_errors(ids, request_id, details=str(e), e=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
@@ -168,8 +174,8 @@ class KubeRayProvider(ICloudInstanceProvider):
         try:
             self._submit_scale_request(scale_request)
         except Exception as e:
-            logger.exception(f"Error launching nodes: {e}")
-            self._add_launch_errors(shape, request_id, details=str(e), cause=e)
+            logger.exception(f"Error launching nodes: {scale_request}")
+            self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
         errors = []
@@ -214,11 +220,11 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         # Calculate the desired number of workers by type.
         num_workers_dict = defaultdict(int)
-        for instance_id, instance in cur_instances.items():
-            if instance.node_kind == NodeKind.HEAD:
+        for _, cur_instance in cur_instances.items():
+            if cur_instance.node_kind == NodeKind.HEAD:
                 # Only track workers.
                 continue
-            num_workers_dict[instance.node_type] += 1
+            num_workers_dict[cur_instance.node_type] += 1
 
         # Add to launch nodes.
         for node_type, count in to_launch.items():
@@ -239,7 +245,9 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             num_workers_dict[to_delete_instance.node_type] -= 1
             assert num_workers_dict[to_delete_instance.node_type] >= 0
-            to_delete_instances_by_type[instance.node_type].append(instance)
+            to_delete_instances_by_type[to_delete_instance.node_type].append(
+                to_delete_instance
+            )
 
         scale_request = KubeRayProvider.ScaleRequest(
             desired_num_workers=num_workers_dict,
@@ -470,20 +478,26 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # Ignore pods marked for termination.
                 continue
             pod_name = pod["metadata"]["name"]
-            cloud_instance = self._cloud_instance_from_pod(pod)
+            cloud_instance = self._cloud_instance_from_pod(pod, self._head_node_type)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
         return cloud_instances
 
     @staticmethod
-    def _cloud_instance_from_pod(pod: Dict[str, Any]) -> Optional[CloudInstance]:
+    def _cloud_instance_from_pod(
+        pod: Dict[str, Any], head_node_type: NodeType
+    ) -> Optional[CloudInstance]:
         """
         Convert a pod to a Ray CloudInstance.
+
+        Args:
+            pod: The pod resource dict.
+            head_node_type: The node type of the head node.
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
             kind = NodeKind.HEAD
-            type = KUBERAY_TYPE_HEAD
+            type = head_node_type
         elif labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_WORKER:
             kind = NodeKind.WORKER
             type = labels[KUBERAY_LABEL_KEY_TYPE]

@@ -109,7 +109,7 @@ The Ray cluster is still running because `shutdownAfterJobFinishes` isn't set in
 Next, run:
 
 ```text
-kubetcl logs rayjob-sample-w98c7
+kubectl logs rayjob-sample-w98c7
 ```
 
 to get the standard output of the `entrypoint` command for the `RayJob`.  Sample output:

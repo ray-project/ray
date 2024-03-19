@@ -126,7 +126,9 @@ def test_streaming_split(
         return x
 
     num_splits = 2
-    splits = ray.data.range(10, parallelism=10).map(f).streaming_split(num_splits)
+    splits = (
+        ray.data.range(10, override_num_blocks=10).map(f).streaming_split(num_splits)
+    )
 
     @ray.remote(num_cpus=0)
     def consume(split):
@@ -156,7 +158,7 @@ placement_group = ray.util.placement_group(
 )
 ray.get(placement_group.ready())
 context.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-ds = ray.data.range(100, parallelism=2).map(lambda x: {"id": x["id"] + 1})
+ds = ray.data.range(100, override_num_blocks=2).map(lambda x: {"id": x["id"] + 1})
 assert ds.take_all() == [{"id": x} for x in range(1, 101)]
 placement_group_assert_no_leak([placement_group])
 ray.shutdown()

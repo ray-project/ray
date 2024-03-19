@@ -28,7 +28,7 @@ def test_serve_graceful_shutdown(serve_instance):
 
     @serve.deployment(
         name="wait",
-        max_concurrent_queries=10,
+        max_ongoing_requests=10,
         graceful_shutdown_timeout_s=1000,
         graceful_shutdown_wait_loop_s=0.5,
     )

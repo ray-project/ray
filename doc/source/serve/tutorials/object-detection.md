@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 (serve-object-detection-tutorial)=
 
 # Serve an Object Detection Model

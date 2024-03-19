@@ -21,7 +21,9 @@ def test_num_rows_per_write(tmp_path, ray_start_regular_shared, num_rows_per_wri
         def num_rows_per_write(self):
             return self._num_rows_per_write
 
-    ray.data.range(100, parallelism=20).write_datasink(MockDatasink(num_rows_per_write))
+    ray.data.range(100, override_num_blocks=20).write_datasink(
+        MockDatasink(num_rows_per_write)
+    )
 
 
 if __name__ == "__main__":

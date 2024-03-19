@@ -127,9 +127,10 @@ XGBoost training
 ----------------
 
 This task uses the XGBoostTrainer module to train on different sizes of data
-with different amounts of parallelism.
+with different amounts of parallelism to show near-linear scaling from distributed
+data parallelism.
 
-XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
+XGBoost parameters were kept as defaults for ``xgboost==1.7.6`` this task.
 
 
 - `XGBoost Training Script`_
@@ -138,17 +139,20 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
 .. list-table::
 
     * - **Cluster Setup**
+      - **Number of distributed training workers**
       - **Data Size**
       - **Performance**
       - **Command**
-    * - 1 m5.4xlarge node (1 actor)
+    * - 1 m5.4xlarge node with 16 CPUs
+      - 1 training worker using 12 CPUs, leaving 4 CPUs for Ray Data tasks
       - 10 GB (26M rows)
-      - 692 s
-      - `python xgboost_benchmark.py --size 10GB`
-    * - 10 m5.4xlarge nodes (10 actors)
+      - 310.22 s
+      - `python train_batch_inference_benchmark.py "xgboost" --size=10GB`
+    * - 10 m5.4xlarge nodes
+      - 10 training workers (one per node), using 10x12 CPUs, leaving 10x4 CPUs for Ray Data tasks
       - 100 GB (260M rows)
-      - 693 s
-      - `python xgboost_benchmark.py --size 100GB`
+      - 326.86 s
+      - `python train_batch_inference_benchmark.py "xgboost" --size=100GB`
 
 .. _`GPU image training script`: https://github.com/ray-project/ray/blob/cec82a1ced631525a4d115e4dc0c283fa4275a7f/release/air_tests/air_benchmarks/workloads/pytorch_training_e2e.py#L95-L106
 .. _`GPU training small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_aws.yaml#L6-L24
@@ -159,5 +163,5 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
 .. _`Tensorflow comparison training script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/tensorflow_benchmark.py
 .. _`Tensorflow comparison CPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_cpu_4_aws.yaml
 .. _`Tensorflow comparison GPU cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
-.. _`XGBoost Training Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L40-L58
-.. _`XGBoost Cluster Configuration`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/xgboost_compute_tpl.yaml#L6-L24
+.. _`XGBoost Training Script`: https://github.com/ray-project/ray/blob/9ac58f4efc83253fe63e280106f959fe317b1104/release/train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py
+.. _`XGBoost Cluster Configuration`: https://github.com/ray-project/ray/tree/9ac58f4efc83253fe63e280106f959fe317b1104/release/train_tests/xgboost_lightgbm

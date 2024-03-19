@@ -45,7 +45,6 @@ def check_http_response(expected_text: str, json: Optional[Dict] = None):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
     # Create absolute file names to YAML config files
@@ -154,7 +153,6 @@ def test_deploy_with_http_options(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_multi_app_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
     # Create absolute file names to YAML config files
@@ -700,6 +698,35 @@ def test_deploy_from_import_path(ray_start_stop):
         expected_text="redeployed!",
         timeout=15,
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_stop_in_specific_directory",
+    [
+        os.path.join(os.path.dirname(__file__), "test_config_files"),
+    ],
+    indirect=True,
+)
+def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_directory):
+    """Test serve deploy using modules in the current directory succeeds.
+
+    There was an issue where dashboard client doesn't add the current directory to
+    the sys.path and failed to deploy a Serve app defined in the directory. This
+    test ensures that files in the current directory can be accessed and deployed.
+
+    See: https://github.com/ray-project/ray/issues/43889
+    """
+    # Deploy Serve application with a config in the current directory.
+    subprocess.check_output(["serve", "deploy", "use_current_working_directory.yaml"])
+
+    # Ensure serve deploy eventually succeeds.
+    def check_deploy_successfully():
+        status_response = subprocess.check_output(["serve", "status"])
+        assert b"RUNNING" in status_response
+        return True
+
+    wait_for_condition(check_deploy_successfully, timeout=5)
 
 
 if __name__ == "__main__":

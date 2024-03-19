@@ -594,4 +594,8 @@ For the best performance, we recommend using ``inference_mode="local"`` when pos
 Advanced Integrations
 ---------------------
 
-For more complex / high-performance environment integrations, you can instead extend the low-level `BaseEnv <https://github.com/ray-project/ray/blob/master/rllib/env/base_env.py>`__ class. This low-level API models multiple agents executing asynchronously in multiple environments. A call to ``BaseEnv:poll()`` returns observations from ready agents keyed by 1) their environment, then 2) agent ids. Actions for those agents are sent back via ``BaseEnv:send_actions()``. BaseEnv is used to implement all the other env types in RLlib, so it offers a superset of their functionality. For example, ``BaseEnv`` is used to implement dynamic batching of observations for inference over `multiple simulator actors <https://github.com/ray-project/ray/blob/master/rllib/env/remote_vector_env.py>`__.
+For more complex / high-performance environment integrations, you can instead extend the low-level
+`BaseEnv <https://github.com/ray-project/ray/blob/master/rllib/env/base_env.py>`__ class.
+This low-level API models multiple agents executing asynchronously in multiple environments.
+A call to ``BaseEnv:poll()`` returns observations from ready agents keyed by 1) their environment, then 2) agent ids.
+Actions for those agents are sent back via ``BaseEnv:send_actions()``. BaseEnv is used to implement all the other env types in RLlib, so it offers a superset of their functionality.

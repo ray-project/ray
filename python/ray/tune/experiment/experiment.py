@@ -22,6 +22,7 @@ from typing import (
 import ray
 from ray.exceptions import RpcError
 from ray.train import CheckpointConfig, SyncConfig
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.train._internal.storage import StorageContext
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
@@ -163,6 +164,7 @@ class Experiment:
         if not name:
             name = StorageContext.get_experiment_dir_name(run)
 
+        storage_path = storage_path or DEFAULT_STORAGE_PATH
         self.storage = self._storage_context_cls(
             storage_path=storage_path,
             storage_filesystem=storage_filesystem,
@@ -365,7 +367,7 @@ class Experiment:
 
     @property
     def local_path(self) -> Optional[str]:
-        return self.storage.experiment_local_path
+        return self.storage.experiment_driver_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")

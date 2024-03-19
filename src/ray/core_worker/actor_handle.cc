@@ -32,7 +32,8 @@ rpc::ActorHandle CreateInnerActorHandle(
     const std::string &name,
     const std::string &ray_namespace,
     int32_t max_pending_calls,
-    bool execute_out_of_order) {
+    bool execute_out_of_order,
+    absl::optional<bool> enable_task_events) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -48,6 +49,7 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_ray_namespace(ray_namespace);
   inner.set_execute_out_of_order(execute_out_of_order);
   inner.set_max_pending_calls(max_pending_calls);
+  inner.set_enable_task_events(enable_task_events.value_or(kDefaultTaskEventEnabled));
   return inner;
 }
 
@@ -67,6 +69,7 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
   inner.set_actor_language(task_spec.language());
   inner.mutable_actor_creation_task_function_descriptor()->CopyFrom(
       actor_table_data.function_descriptor());
+  inner.set_enable_task_events(task_spec.enable_task_events());
   inner.set_actor_cursor(
       ObjectID::FromIndex(
           TaskID::ForActorCreationTask(ActorID::FromBinary(actor_table_data.actor_id())),
@@ -96,7 +99,8 @@ ActorHandle::ActorHandle(
     const std::string &name,
     const std::string &ray_namespace,
     int32_t max_pending_calls,
-    bool execute_out_of_order)
+    bool execute_out_of_order,
+    absl::optional<bool> enable_task_events)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -109,7 +113,8 @@ ActorHandle::ActorHandle(
                                          name,
                                          ray_namespace,
                                          max_pending_calls,
-                                         execute_out_of_order)) {}
+                                         execute_out_of_order,
+                                         enable_task_events)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}

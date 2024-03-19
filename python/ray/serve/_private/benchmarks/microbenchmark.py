@@ -42,9 +42,9 @@ def build_app(
     intermediate_handles: bool,
     num_replicas: int,
     max_batch_size: int,
-    max_concurrent_queries: int,
+    max_ongoing_requests: int,
 ):
-    @serve.deployment(max_concurrent_queries=1000)
+    @serve.deployment(max_ongoing_requests=1000)
     class Upstream:
         def __init__(self, handle: DeploymentHandle):
             self._handle = handle
@@ -57,7 +57,7 @@ def build_app(
 
     @serve.deployment(
         num_replicas=num_replicas,
-        max_concurrent_queries=max_concurrent_queries,
+        max_ongoing_requests=max_ongoing_requests,
     )
     class Downstream:
         def __init__(self):
@@ -84,14 +84,14 @@ async def trial(
     intermediate_handles: bool,
     num_replicas: int,
     max_batch_size: int,
-    max_concurrent_queries: int,
+    max_ongoing_requests: int,
     data_size: str,
 ) -> Dict[str, float]:
     results = {}
 
     trial_key_base = (
         f"replica:{num_replicas}/batch_size:{max_batch_size}/"
-        f"concurrent_queries:{max_concurrent_queries}/"
+        f"concurrent_queries:{max_ongoing_requests}/"
         f"data_size:{data_size}/intermediate_handle:{intermediate_handles}"
     )
 
@@ -99,12 +99,12 @@ async def trial(
         f"intermediate_handles={intermediate_handles},"
         f"num_replicas={num_replicas},"
         f"max_batch_size={max_batch_size},"
-        f"max_concurrent_queries={max_concurrent_queries},"
+        f"max_ongoing_requests={max_ongoing_requests},"
         f"data_size={data_size}"
     )
 
     app = build_app(
-        intermediate_handles, num_replicas, max_batch_size, max_concurrent_queries
+        intermediate_handles, num_replicas, max_batch_size, max_ongoing_requests
     )
     serve.run(app)
 
@@ -154,7 +154,7 @@ async def main():
     results = {}
     for intermediate_handles in [False, True]:
         for num_replicas in [1, 8]:
-            for max_batch_size, max_concurrent_queries in [
+            for max_batch_size, max_ongoing_requests in [
                 (1, 1),
                 (1, 10000),
                 (10000, 10000),
@@ -166,7 +166,7 @@ async def main():
                             intermediate_handles,
                             num_replicas,
                             max_batch_size,
-                            max_concurrent_queries,
+                            max_ongoing_requests,
                             data_size,
                         )
                     )

@@ -42,3 +42,6 @@ stop = {
     "sampler_results/episode_reward_mean": -250,
     "timesteps_total": 20000,
 }
+
+
+print(config.build().train())

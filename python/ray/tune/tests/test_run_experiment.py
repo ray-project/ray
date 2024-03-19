@@ -129,7 +129,11 @@ class RunExperimentTest(unittest.TestCase):
         )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertTrue(os.path.exists(os.path.join(trial.local_path, "exported")))
+            self.assertTrue(
+                os.path.exists(
+                    os.path.join(trial.storage.trial_working_directory, "exported")
+                )
+            )
 
     def testInvalidExportFormats(self):
         class MyTrainable(Trainable):

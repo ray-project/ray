@@ -7,6 +7,24 @@ from typing import Any, List, Optional, Union
 
 
 @DeveloperAPI
+class BatchedNdArray(np.ndarray):
+    """A ndarray-wrapper the usage of which indicates that there a batch dim exists.
+
+    This is such that our `batch()` utility can distinguish between having to
+    stack n individual batch items (each one w/o any batch dim) vs having to
+    concatenate n already batched items (each one possibly with a different batch
+    dim, but definitely with some batch dim).
+
+    TODO (sven): Maybe replace this by a list-override instead.
+    """
+
+    def __new__(cls, input_array):
+        # Use __new__ to create a new instance of our subclass.
+        obj = np.asarray(input_array).view(cls)
+        return obj
+
+
+@DeveloperAPI
 def get_original_space(space: gym.Space) -> gym.Space:
     """Returns the original space of a space, if any.
 
@@ -233,7 +251,8 @@ def flatten_to_single_ndarray(input_):
 @DeveloperAPI
 def batch(
     list_of_structs: List[Any],
-    individual_items_already_have_batch_1: bool = False,
+    *,
+    individual_items_already_have_batch_dim: Union[bool, str] = False,
 ):
     """Converts input from a list of (nested) structs to a (nested) struct of batches.
 
@@ -254,11 +273,12 @@ def batch(
     Args:
         list_of_structs: The list of (possibly nested) structs. Each item
             in this list represents a single batch item.
-        individual_items_already_have_batch_1: True, if the individual items in
-            `list_of_structs` already have a batch dim (of 1). In this case, we will
+        individual_items_already_have_batch_dim: True, if the individual items in
+            `list_of_structs` already have a batch dim. In this case, we will
             concatenate (instead of stack) at the end. In the example above, this would
             look like this: Input: [{"a": [1], "b": ([4], [7.0])}, ...] -> Output: same
             as in above example.
+            If the special value "auto" is used,
 
     Returns:
         The struct of component batches. Each leaf item in this struct represents the
@@ -266,25 +286,22 @@ def batch(
         simple list of primitive items, e.g. a list of floats, a np.array of floats
         will be returned.
     """
-    flat = item = None
-
     if not list_of_structs:
         raise ValueError("Input `list_of_structs` does not contain any items.")
 
-    for item in list_of_structs:
-        flattened_item = tree.flatten(item)
-        # Create the main list, in which each slot represents one leaf in the (nested)
-        # struct. Each slot holds a list of batch values.
-        if flat is None:
-            flat = [[] for _ in range(len(flattened_item))]
-        for i, value in enumerate(flattened_item):
-            flat[i].append(value)
+    # TODO (sven): Maybe replace this by a list-override (usage of which indicated
+    #  this method that concatenate should be used (not stack)).
+    if individual_items_already_have_batch_dim == "auto":
+        flat = tree.flatten(list_of_structs[0])
+        individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
 
-    # Unflatten everything into the
-    out = tree.unflatten_as(item, flat)
-    np_func = np.stack if not individual_items_already_have_batch_1 else np.concatenate
-    out = tree.map_structure_up_to(item, lambda s: np_func(s, axis=0), out)
-    return out
+    np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
+    try:
+        ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
+    except Exception as e:
+        print(e)
+        return None
+    return ret
 
 
 @DeveloperAPI

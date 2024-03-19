@@ -173,10 +173,11 @@ Learn more
         Browse end-to-end code examples for different use cases.
 
         +++
-        .. button-ref:: train-examples
+        .. button-ref:: examples
             :color: primary
             :outline:
             :expand:
+            :ref-type: doc
 
             Learn through examples
 

@@ -7,6 +7,7 @@ public class AutoscalingConfig implements Serializable {
   private int minReplicas = 1;
   private int maxReplicas = 1;
   private int targetNumOngoingRequestsPerReplica = 1;
+  private int targetOngoingRequests = 1;
   /** How often to scrape for metrics */
   private double metricsIntervalS = 10.0;
   /** Time window to average over for metrics. */
@@ -40,6 +41,14 @@ public class AutoscalingConfig implements Serializable {
 
   public void setTargetNumOngoingRequestsPerReplica(int targetNumOngoingRequestsPerReplica) {
     this.targetNumOngoingRequestsPerReplica = targetNumOngoingRequestsPerReplica;
+  }
+
+  public int getTargetOngoingRequests() {
+    return targetOngoingRequests;
+  }
+
+  public void setTargetOngoingRequests(int targetOngoingRequests) {
+    this.targetOngoingRequests = targetOngoingRequests;
   }
 
   public double getMetricsIntervalS() {
@@ -87,6 +96,7 @@ public class AutoscalingConfig implements Serializable {
         .setMinReplicas(minReplicas)
         .setMaxReplicas(maxReplicas)
         .setTargetNumOngoingRequestsPerReplica(targetNumOngoingRequestsPerReplica)
+        .setTargetOngoingRequests(targetOngoingRequests)
         .setMetricsIntervalS(metricsIntervalS)
         .setLookBackPeriodS(lookBackPeriodS)
         .setSmoothingFactor(smoothingFactor)

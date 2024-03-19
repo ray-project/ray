@@ -4,7 +4,6 @@ import sys
 import pytest
 
 from ray._private.test_utils import async_wait_for_condition
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.test_utils import MockAsyncTimer
 
@@ -22,7 +21,7 @@ class TestMetricsPusher:
             nonlocal val
             val += 1
 
-        metrics_pusher = MetricsPusher(get_or_create_event_loop())
+        metrics_pusher = MetricsPusher()
         metrics_pusher.start()
         assert len(metrics_pusher._tasks) == 0
 
@@ -38,7 +37,7 @@ class TestMetricsPusher:
         def task(s):
             s["val"] += 1
 
-        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher = MetricsPusher(async_sleep=timer.sleep)
         metrics_pusher.start()
 
         metrics_pusher.register_or_update_task("basic", lambda: task(state), 0.5)
@@ -61,7 +60,7 @@ class TestMetricsPusher:
         def task(key, s):
             s[key] += 1
 
-        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher = MetricsPusher(async_sleep=timer.sleep)
         metrics_pusher.start()
 
         # Each task interval is different, and they don't divide each other.
@@ -104,7 +103,7 @@ class TestMetricsPusher:
 
         # Start metrics pusher and register task() with interval 1s.
         # After (fake) 10s, the task should have executed 10 times
-        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher = MetricsPusher(async_sleep=timer.sleep)
         metrics_pusher.start()
 
         # Give the metrics pusher thread opportunity to execute task

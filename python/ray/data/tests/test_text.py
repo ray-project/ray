@@ -192,7 +192,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         f.write("goodbye")
 
     ds = ray.data.read_text(
-        path, parallelism=2, ray_remote_args={"resources": {"bar": 1}}
+        path, override_num_blocks=2, ray_remote_args={"resources": {"bar": 1}}
     )
 
     blocks = ds.get_internal_block_refs()

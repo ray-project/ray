@@ -117,6 +117,19 @@ def ExperimentalAPI(obj):
     return obj
 
 
+def OldAPIStack(obj):
+    """Decorator for classes/methods/functions belonging to the old API stack.
+
+    These should be deprecated at some point after Ray 3.0 (RLlib GA).
+    It is recommended for users to start exploring (and coding against) the new API
+    stack instead.
+    """
+    # No effect yet.
+
+    _mark_annotated(obj)
+    return obj
+
+
 def OverrideToImplementCustomLogic(obj):
     """Users should override this in their sub-classes to implement custom logic.
 

@@ -1,6 +1,9 @@
 import numpy as np
 
+from ray.rllib.utils.annotations import OldAPIStack
 
+
+@OldAPIStack
 def compute_value_targets(
     values,
     rewards,

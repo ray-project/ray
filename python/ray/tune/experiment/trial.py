@@ -28,7 +28,7 @@ from ray.train.constants import (
 )
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
 
@@ -206,7 +206,9 @@ def _noop_logger_creator(config: Dict[str, Any], logdir: str):
 def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
 
-    logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
+    logger_creator = partial(
+        _noop_logger_creator, logdir=trial.storage.trial_working_directory
+    )
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)
@@ -536,7 +538,7 @@ class Trial:
 
     @property
     def local_experiment_path(self) -> str:
-        return self.storage.experiment_local_path
+        return self.storage.experiment_driver_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")
@@ -546,7 +548,7 @@ class Trial:
 
     @property
     def local_path(self) -> Optional[str]:
-        return self.storage.trial_local_path
+        return self.storage.trial_driver_staging_path
 
     @property
     def path(self) -> Optional[str]:
@@ -752,6 +754,44 @@ class Trial:
         return Path(
             self.local_path, self.run_metadata.pickled_error_filename
         ).as_posix()
+
+    def get_pickled_error(self) -> Optional[Exception]:
+        """Returns the pickled error object if it exists in storage.
+
+        This is a pickled version of the latest error that the trial encountered.
+        """
+        error_filename = self.run_metadata.pickled_error_filename
+        if error_filename is None:
+            return None
+
+        fs = self.storage.storage_filesystem
+        pickled_error_fs_path = Path(
+            self.storage.trial_fs_path, error_filename
+        ).as_posix()
+
+        if _exists_at_fs_path(fs=fs, fs_path=pickled_error_fs_path):
+            with fs.open_input_stream(pickled_error_fs_path) as f:
+                return cloudpickle.loads(f.readall())
+        return None
+
+    def get_error(self) -> Optional[TuneError]:
+        """Returns the error text file trace as a TuneError object
+        if it exists in storage.
+
+        This is a text trace of the latest error that the trial encountered,
+        which is used in the case that the error is not picklable.
+        """
+        error_filename = self.run_metadata.error_filename
+        if error_filename is None:
+            return None
+
+        fs = self.storage.storage_filesystem
+        txt_error_fs_path = Path(self.storage.trial_fs_path, error_filename).as_posix()
+
+        if _exists_at_fs_path(fs=fs, fs_path=txt_error_fs_path):
+            with fs.open_input_stream(txt_error_fs_path) as f:
+                return f.readall().decode()
+        return None
 
     def _handle_restore_error(self, exc: Exception):
         if self.temporary_state.num_restore_failures >= int(

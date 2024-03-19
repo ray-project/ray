@@ -1,4 +1,5 @@
 autoscaler
+[Bb]ackpressure
 Dask
 Data('s)?
 [Dd]atasource
@@ -7,10 +8,12 @@ dtype
 [Gg]roupby
 [Ii]ndexable
 [Ii]ngest
+[Ii]nqueue(s)?
 [Ll]ookup(s)?
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?
+[Oo]utqueue(s)?
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching

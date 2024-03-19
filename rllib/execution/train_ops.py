@@ -4,7 +4,7 @@ import math
 from typing import Dict
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
@@ -22,7 +22,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     """Function that improves the all policies in `train_batch` on the local worker.
 
@@ -82,7 +82,7 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     return info
 
 
-@DeveloperAPI
+@OldAPIStack
 def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     """Multi-GPU version of train_one_step.
 
