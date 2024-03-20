@@ -6,7 +6,7 @@ flake8-quotes==2.0.0
 flake8-bugbear==21.9.2
 mypy==1.7.0
 types-PyYAML==6.0.12.2
-black==22.10.0
+black==24.3.0
 isort==5.10.1
 semgrep==1.32.0
 shellcheck-py==0.7.1.1
