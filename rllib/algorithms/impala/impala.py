@@ -1,3 +1,4 @@
+import time
 import copy
 from functools import partial
 import logging
@@ -803,9 +804,12 @@ class Impala(Algorithm):
             # Perform asynchronous sampling on all (healthy) remote rollout workers.
             if num_healthy_remote_workers > 0:
                 #num_requests_made =
+                t0 = time.time()
                 self.workers.foreach_worker_async(
                     _remote_sample_get_state_and_metrics, healthy_only=True
                 )
+                t1 = time.time()
+                print(f"foreach_actor_async took {t1 - t0} sec.")
                 #self._counters["_remote_env_runner_calls_dropped"] += (
                 #    num_healthy_remote_workers - num_requests_made
                 #)
