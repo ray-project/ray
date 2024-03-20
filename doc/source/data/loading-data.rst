@@ -856,7 +856,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
                 dataset="bigquery-public-data.ml_datasets.iris",
             )
 
-            # Read from a SQL query of the dataset (do not specify dataset)
+            # Read from a SQL query of the dataset. Do not specify dataset.
             ds = ray.data.read_bigquery(
                 project_id="my_gcloud_project_id",
                 query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
