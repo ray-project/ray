@@ -134,19 +134,18 @@ class IcebergDatasource(Datasource):
             catalog = self._get_catalog()
             tbl = catalog.load_table(table_identifier)
 
-            for task in tasks:
-                # Use the PyIceberg API to read only a single task (specifically, a
-                # FileScanTask) - note that this is not as simple as reading a single
-                # parquet file, as there might be delete files, etc. associated, so we
-                # must use the PyIceberg API for the projection.
-                yield pyi_pa_io.project_table(
-                    tasks=[task],
-                    table=tbl,
-                    row_filter=self._row_filter,
-                    projected_schema=schema,
-                    case_sensitive=self._scan_kwargs.get("case_sensitive", True),
-                    limit=self._scan_kwargs.get("limit"),
-                )
+            # Use the PyIceberg API to read only a single task (specifically, a
+            # FileScanTask) - note that this is not as simple as reading a single
+            # parquet file, as there might be delete files, etc. associated, so we
+            # must use the PyIceberg API for the projection.
+            yield pyi_pa_io.project_table(
+                tasks=tasks,
+                table=tbl,
+                row_filter=self._row_filter,
+                projected_schema=schema,
+                case_sensitive=self._scan_kwargs.get("case_sensitive", True),
+                limit=self._scan_kwargs.get("limit"),
+            )
 
         # Get the PyIceberg scan
         _, data_scan = self._get_table_and_data_scan()
