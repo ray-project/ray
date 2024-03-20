@@ -175,7 +175,7 @@ format from your function, but ``batch_format`` should match the input of your f
                 .map_batches(drop_nas, batch_format="pandas")
             )
 
-The user defined function passed to :meth:`~ray.data.Dataset.map_batches` is more flexible. As batches
+The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
 in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
 ``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
 other words, your function should take as input and output a batch of data which you can represent as a
