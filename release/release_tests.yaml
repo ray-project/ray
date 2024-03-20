@@ -2020,7 +2020,7 @@
       cluster:
         cluster_compute: tpl_cpu_1_c5_gce.yaml
 
-- name: long_running_many_jobs
+- name: you_are_new
   group: Long running tests
   working_dir: long_running_tests
 
