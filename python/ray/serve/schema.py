@@ -498,6 +498,11 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         description="Logging config for configuring serve deployment logs.",
     )
 
+    exporter_import_path: Optional[str] = Field(
+        default=DEFAULT.VALUE,
+        description="Path to tracing exporter function.",
+    )
+
     @root_validator
     def validate_num_replicas_and_autoscaling_config(cls, values):
         num_replicas = values.get("num_replicas", None)

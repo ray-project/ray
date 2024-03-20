@@ -394,6 +394,9 @@ def deployment(
         if option != "_func_or_class" and value is not DEFAULT.VALUE
     ]
 
+    if tracing_config is not DEFAULT.VALUE:
+        user_configured_option_names.append("exporter_import_path")
+
     # Num of replicas should not be 0.
     # TODO(Sihan) seperate num_replicas attribute from internal and api
     if num_replicas == 0:
@@ -437,10 +440,14 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
-    exporter_import_path = None
     if isinstance(tracing_config, Dict):
         tracing_config = TracingConfig(**tracing_config)
-        exporter_import_path = get_exporter_import_path(tracing_config)
+
+    exporter_import_path = (
+        get_exporter_import_path(tracing_config)
+        if tracing_config is not DEFAULT.VALUE
+        else None
+    )
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,

@@ -992,7 +992,6 @@ def build_serve_application(
         deploy_args_list = []
         for deployment in deployments:
             is_ingress = deployment.name == ingress.name
-
             if (
                 deployment._replica_config.exporter_import_path is None
                 and tracing_config

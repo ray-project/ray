@@ -233,9 +233,7 @@ class DeploymentConfig(BaseModel):
                 )
 
             data["logging_config"] = LoggingConfigProto(**data["logging_config"])
-        data["user_configured_option_names"] = list(
-            data["user_configured_option_names"]
-        )
+
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -471,6 +469,7 @@ class ReplicaConfig:
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
+        exporter_import_path: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
 
@@ -525,6 +524,7 @@ class ReplicaConfig:
         config._deployment_def = deployment_def
         config._init_args = init_args
         config._init_kwargs = init_kwargs
+        config.exporter_import_path = exporter_import_path
 
         return config
 

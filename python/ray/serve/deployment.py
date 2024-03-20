@@ -339,6 +339,7 @@ class Deployment:
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
+        exporter_import_path: Default[str] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -493,6 +494,9 @@ class Deployment:
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
+        if exporter_import_path is DEFAULT.VALUE:
+            exporter_import_path = self._replica_config.exporter_import_path
+
         new_replica_config = ReplicaConfig.create(
             func_or_class,
             init_args=_init_args,
@@ -501,6 +505,7 @@ class Deployment:
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
             max_replicas_per_node=max_replicas_per_node,
+            exporter_import_path=exporter_import_path,
         )
 
         return Deployment(
@@ -550,7 +555,6 @@ def deployment_to_schema(
             higher-level object describing an application, and you want to place
             route_prefix at the application level.
     """
-
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
     else:
@@ -575,6 +579,7 @@ def deployment_to_schema(
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
+        "exporter_import_path": d._replica_config.exporter_import_path,
     }
 
     if include_route_prefix:
@@ -627,6 +632,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
+    if s.exporter_import_path is DEFAULT.VALUE:
+        exporter_import_path = None
+    else:
+        exporter_import_path = s.exporter_import_path
+
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -651,6 +661,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
         max_replicas_per_node=max_replicas_per_node,
+        exporter_import_path=exporter_import_path,
     )
 
     return Deployment(
