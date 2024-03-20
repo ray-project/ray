@@ -775,8 +775,12 @@ class Impala(Algorithm):
         # Add already collected metrics to results for later processing.
         # TODO (sven): All algos should behave this way in their `training_step` methods
         #  in the future. Makes things more transparent and explicit for the user.
-        if env_runner_metrics:
-            update_results.update({"_episodes_this_training_step": env_runner_metrics})
+
+        # TEST: skip metrics
+        #if env_runner_metrics:
+        #    update_results.update({"_episodes_this_training_step": env_runner_metrics})
+        update_results.update({"_episodes_this_training_step": []})
+        # END TEST
 
         return update_results
 
@@ -820,7 +824,7 @@ class Impala(Algorithm):
                     episodes, states, metrics = ray.get(ref)
                     episode_refs.append(episodes)
                     env_runner_states.append(states)
-                    env_runner_metrics.append(metrics)
+                    env_runner_metrics.extend(metrics)
             # Sample from the local EnvRunner worker.
             else:
                 episodes = self.workers.local_worker().sample()
@@ -833,11 +837,12 @@ class Impala(Algorithm):
         return (
             episode_refs,
             env_runner_states,
-            # `RolloutMetrics` is a tuple, need to carefully flatten the struct here.
-            tree.flatten_up_to(
-                [[None] * len(e) for e in env_runner_metrics],
-                env_runner_metrics,
-            ),
+            env_runner_metrics,
+            ## `RolloutMetrics` is a tuple, need to carefully flatten the struct here.
+            #tree.flatten_up_to(
+            #    [[None] * len(e) for e in env_runner_metrics],
+            #    env_runner_metrics,
+            #),
         )
 
     @classmethod
