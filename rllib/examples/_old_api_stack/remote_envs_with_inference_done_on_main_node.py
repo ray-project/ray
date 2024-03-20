@@ -1,9 +1,9 @@
 """
-This script demonstrates how one can specify n (vectorized) envs
-as ray remote (actors), such that stepping through these occurs in parallel.
-Also, actions for each env step will be calculated on the "main" node.
+This script demonstrates how to specify n (vectorized) envs
+as Ray remote (actors), such that stepping through these occurs in parallel.
+Also, actions for each env step are calculated on the "main" node.
 
-This can be useful if the "main" node is a GPU machine and we would like to
+This behavior can be useful if the "main" node is a GPU machine and you would like to
 speed up batched action calculations, similar to DeepMind's SEED
 architecture, described here:
 
@@ -78,8 +78,8 @@ def get_cli_args():
     return args
 
 
-# The modified Algorithm class we will use:
-# Subclassing from PPO, our algo will only modity `default_resource_request`,
+# The modified Algorithm class we use:
+# Subclassing from PPO, our algo only modifies `default_resource_request`,
 # telling Ray Tune that it's ok (not mandatory) to place our n remote envs on a
 # different node (each env using 1 CPU).
 class PPORemoteInference(PPO):
@@ -99,7 +99,7 @@ class PPORemoteInference(PPO):
         return PlacementGroupFactory(
             bundles=[
                 {
-                    # Single CPU for the local worker. This CPU will host the
+                    # Single CPU for the local worker. This CPU hosts the
                     # main model in this example (num_workers=0).
                     "CPU": 1,
                     # Possibly add n GPUs to this.
@@ -131,7 +131,7 @@ if __name__ == "__main__":
             num_envs_per_worker=args.num_envs_per_worker,
             # Use a single worker (however, with n parallelized remote envs, maybe
             # even running on another node).
-            # Action computations will occur on the "main" (GPU?) node, while
+            # Action computations occur on the "main" (GPU?) node, while
             # the envs run on one or more CPU node(s).
             num_rollout_workers=0,
         )
@@ -139,7 +139,7 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             # Set the number of CPUs used by the (local) worker, aka "driver"
-            # to match the number of ray remote envs.
+            # to match the number of Ray remote envs.
             num_cpus_for_local_worker=args.num_envs_per_worker + 1,
         )
     )

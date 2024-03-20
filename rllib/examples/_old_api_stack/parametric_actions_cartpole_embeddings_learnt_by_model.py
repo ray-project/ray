@@ -35,8 +35,8 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2"],
     default="tf",
-    help="The DL framework specifier (torch not supported yet "
-    "due to lack of model).",
+    help="The DL framework specifier (Torch not supported "
+    "due to the lack of a model).",
 )
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)

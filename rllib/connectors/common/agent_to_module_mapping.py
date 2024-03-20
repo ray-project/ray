@@ -241,7 +241,7 @@ class AgentToModuleMapping(ConnectorV2):
                         " particular single-agent module AND your agent-to-module-"
                         "mapping function is stochastic (such that for some agent A, "
                         "more than one ModuleID might be returned somewhat randomly). "
-                        f"You can fix this by providing {which}-space information via "
+                        f"Fix this error by providing {which}-space information using "
                         "`config.rl_module(rl_module_spec=MultiAgentRLModuleSpec("
                         f"module_specs={{'{module_id}': SingleAgentRLModuleSpec("
                         "observation_space=..., action_space=...)}}))"

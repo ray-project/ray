@@ -147,9 +147,9 @@ class FlattenObservations(ConnectorV2):
             multi_agent: Whether this connector operates on multi-agent observations,
                 in which case, the top-level of the Dict space (where agent IDs are
                 mapped to individual agents' observation spaces) is left as-is.
-            agent_ids: If multi_agent is True, this defines a collection of AgentIDs for
-                which to flatten. AgentIDs not in this collection will be ignored.
-                If None (default), flatten observations for all AgentIDs.
+            agent_ids: If multi_agent is True, this argument defines a collection of AgentIDs for
+                which to flatten. AgentIDs not in this collection are ignored.
+                If None, flatten observations for all AgentIDs. None is the default.
         """
         self._input_obs_base_struct = None
         self._multi_agent = multi_agent

@@ -1,8 +1,8 @@
 """Example of using a custom training workflow.
 
-Here we create a number of CartPole agents, some of which are trained with
+This example creates a number of CartPole agents, some of which are trained with
 DQN, and some of which are trained with PPO. Both are executed concurrently
-via a custom training workflow.
+with a custom training workflow.
 """
 
 import argparse

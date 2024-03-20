@@ -1,15 +1,15 @@
 """Example of handling variable length and/or parametric action spaces.
 
-This is a toy example of the action-embedding based approach for handling large
-discrete action spaces (potentially infinite in size), similar to this:
+This toy example demonstrates the action-embedding based approach for handling large
+discrete action spaces (potentially infinite in size), similar to this example:
 
     https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/
 
-This currently works with RLlib's policy gradient style algorithms
-(e.g., PG, PPO, IMPALA, A2C) and also DQN.
+This example works with RLlib's policy gradient style algorithms
+(e.g., PG, PPO, IMPALA, A2C) and DQN.
 
 Note that since the model outputs now include "-inf" tf.float32.min
-values, not all algorithm options are supported at the moment. For example,
+values, not all algorithm options are supported. For example,
 algorithms might crash if they don't properly ignore the -inf action scores.
 Working configurations are given below.
 """

@@ -75,7 +75,7 @@ class MyKerasQModel(DistributionalQTFModel):
             obs_space, action_space, num_outputs, model_config, name, **kw
         )
 
-        # Define the core model layers which will be used by the other
+        # Define the core model layers which are used by the other
         # output heads of DistributionalQModel
         self.inputs = tf.keras.layers.Input(shape=obs_space.shape, name="observations")
         layer_1 = tf.keras.layers.Dense(

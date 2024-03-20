@@ -618,15 +618,15 @@ class ConnectorV2(abc.ABC):
     ) -> None:
         """Runs the provided `func` on all items under one or more columns in the batch.
 
-        This method should be used to conveniently loop through all items in a batch
+        Use this method to conveniently loop through all items in a batch
         and transform them in place.
 
-        `func` takes as arguments:
-        - The item itself (if column is a list of column names, this is a tuple of
-        items).
-        - The EpisodeID (might be None).
-        - The AgentID (might be None in the single-agent case).
-        - The ModuleID (might be None in the single-agent case).
+        `func` takes the following as arguments:
+        - The item itself. If column is a list of column names, this argument is a tuple of
+        items.
+        - The EpisodeID. This value might be None.
+        - The AgentID. This value might be None in the single-agent case.
+        - The ModuleID. This value might be None in the single-agent case.
 
         The return value(s) of `func` are used to directly override the values in the
         given `batch`.
@@ -634,10 +634,10 @@ class ConnectorV2(abc.ABC):
         Args:
             batch: The batch to process in-place.
             column: A single column name (str) or a list thereof. If a list is provided,
-                the first argument to `func` will be a tuple of items. If a single
-                str is provided, the first argument to `func` will be an individual
+                the first argument to `func` is a tuple of items. If a single
+                str is provided, the first argument to `func` is an individual
                 item.
-            func: The function to call on each item (or tuple of item(s)).
+            func: The function to call on each item or tuple of item(s).
 
         .. testcode::
 

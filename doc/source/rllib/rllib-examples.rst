@@ -176,12 +176,12 @@ Blog Posts
 ----------
 
 - `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
-   This blog describes RLlib's new "trajectory view API" and how it enables implementations of GTrXL (attention net) architectures.
+   Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL (attention net) architectures.
 - `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
-   A how-to on connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
+   How-To guide about connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
 - `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
-   Discussion on how we ported 12 of RLlib's algorithms from TensorFlow to PyTorch and what we learnt on the way.
+   Discussion on how the Ray Team ported 12 of RLlib's algorithms from TensorFlow to PyTorch and the lessons learned.
 - `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
-   This blog post is a brief tutorial on multi-agent RL and its design in RLlib.
+   Blog post of a brief tutorial on multi-agent RL and its design in RLlib.
 - `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
    Exploration of a functional paradigm for implementing reinforcement learning (RL) algorithms.
