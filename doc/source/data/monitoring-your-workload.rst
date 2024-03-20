@@ -21,7 +21,7 @@ Ray Data emits Prometheus metrics in real-time while a Dataset is executing. The
    Most metrics are only available for physical operators that use the map operation. For example, physical operators created by :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, and :meth:`~ray.data.Dataset.flat_map`.
 
 Jobs: Ray Data overview
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the :ref:`jobs view <dash-jobs-view>`. This table appears once the first dataset starts executing on the cluster, and shows dataset details such as:
 
@@ -157,7 +157,7 @@ Verbose stats
 By default, only the most important high-level stats are logged. If you would like to enable verbose stats outputs, include
 the following snippet in your Ray Data code:
 
-.. code-block:: python
+.. testcode::
 
    from ray.data import DataContext
 
