@@ -818,10 +818,12 @@ class Impala(Algorithm):
                     timeout_seconds=self.config.timeout_s_sampler_manager,
                     return_obj_refs=True,
                 )
-                # Split up results from the n different async calls.
+                # Get results from the n different async calls.
+                async_results = ray.get([res[1] for res in async_results])
+
                 for async_result in async_results:
-                    worker_id, ref = async_result
-                    episodes, states, metrics = ray.get(ref)
+                    episodes, states, metrics = async_result
+                    #_, ref = async_result
                     episode_refs.append(episodes)
                     env_runner_states.append(states)
                     env_runner_metrics.extend(metrics)
