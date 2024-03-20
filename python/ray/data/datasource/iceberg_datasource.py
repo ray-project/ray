@@ -12,7 +12,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import BooleanExpression
-    from pyiceberg.table import DataScan, FileScanTask, Schema, Table
+    from pyiceberg.table import DataScan, FileScanTask, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -66,21 +66,28 @@ class IcebergDatasource(Datasource):
         self._selected_fields = selected_fields
         self._snapshot_id = snapshot_id
 
+        self._plan_files = None
+
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
-        if self._catalog_type == "glue":
-            # Glue catalogs have no name, and no conf options are needed as long as AWS
-            # credentials are set up
-            if "type" not in self._catalog_kwargs:
-                self._catalog_kwargs["type"] = self._catalog_type
-            return catalog.load_catalog(name="default", **self._catalog_kwargs)
-        else:
-            raise NotImplementedError(
-                f"Catalog type {self._catalog_type} not implemented"
-            )
+        if "type" not in self._catalog_kwargs:
+            self._catalog_kwargs["type"] = self._catalog_type
+        return catalog.load_catalog(name="default", **self._catalog_kwargs)
 
-    def _get_table_and_data_scan(self) -> Tuple["Table", "DataScan"]:
+    @property
+    def plan_files(self) -> List["FileScanTask"]:
+        """
+        Return the plan files specified by this query
+        """
+        # Calculate and cache the plan_files if they don't already exist
+        if self._plan_files is None:
+            data_scan = self._get_data_scan()
+            self._plan_files = data_scan.plan_files()
+
+        return self._plan_files
+
+    def _get_data_scan(self) -> "DataScan":
         catalog = self._get_catalog()
         table = catalog.load_table(self.table_identifier)
 
@@ -91,12 +98,12 @@ class IcebergDatasource(Datasource):
             **self._scan_kwargs,
         )
 
-        return table, data_scan
+        return data_scan
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # Get the plan files in this query
-        _, data_scan = self._get_table_and_data_scan()
-        return sum(task.length for task in data_scan.plan_files())
+        # Approximate the size by using the plan files - this will not incorporate the deletes, but that's a reasonable
+        # approximation
+        return sum(task.length for task in self.plan_files)
 
     @staticmethod
     def _distribute_tasks_into_equal_chunks(
@@ -150,7 +157,7 @@ class IcebergDatasource(Datasource):
             )
 
         # Get the PyIceberg scan
-        _, data_scan = self._get_table_and_data_scan()
+        data_scan = self._get_data_scan()
 
         # Get the plan files in this query
         plan_files = data_scan.plan_files()
@@ -163,9 +170,7 @@ class IcebergDatasource(Datasource):
 
         read_tasks = []
         # Chunk the plan files based on the requested parallelism
-        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(
-            plan_files, parallelism
-        ):
+        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(plan_files, parallelism):
             metadata = block.BlockMetadata(
                 num_rows=None,
                 size_bytes=sum(task.length for task in chunk_tasks),
