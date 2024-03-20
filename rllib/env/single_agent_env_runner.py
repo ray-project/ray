@@ -578,6 +578,14 @@ class SingleAgentEnvRunner(EnvRunner):
                     episode_length=episode_length,
                     episode_reward=episode_reward,
                     episode_duration_s=episode_duration_s,
+                    agent_rewards={None: episode_reward},
+                    agent_steps={None: episode_length},
+                    # "custom_metrics",
+                    # "perf_stats",
+                    # "hist_data",
+                    # "media",
+                    # "episode_faulty",
+                    # "connector_metrics",
                 )
             )
 
