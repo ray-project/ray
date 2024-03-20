@@ -859,6 +859,7 @@ class Algorithm(Trainable, AlgorithmBase):
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.uses_new_env_runners:
             if not self.config._dont_auto_sync_env_runner_states:
+                assert False
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
                 # new states back to all workers.
                 with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
