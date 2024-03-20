@@ -16,6 +16,7 @@ show you how achieve several tasks.
     transforming-data
     inspecting-data
     iterating-over-data
+    shuffling-data
     saving-data
     working-with-images
     working-with-text
