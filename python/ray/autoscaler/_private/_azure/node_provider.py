@@ -17,6 +17,11 @@ from ray.autoscaler._private._azure.config import (
     bootstrap_azure,
     get_azure_sdk_function,
 )
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_NODE_START_WAIT_S,
+    AUTOSCALER_NODE_TERMINATE_WAIT_S,
+    MAX_PARALLEL_SHUTDOWN_WORKERS,
+)
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -27,7 +32,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 
-TERMINATION_TIMEOUT = 300
 VM_NAME_MAX_LEN = 64
 UNIQUE_ID_LEN = 4
 
@@ -75,7 +79,7 @@ class AzureNodeProvider(NodeProvider):
 
         # Cache terminating node operations
         self.terminating_nodes: dict[str, Future] = {}
-        self.termination_executor = ThreadPoolExecutor()
+        self.termination_executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL_SHUTDOWN_WORKERS)
 
     @synchronized
     def _get_filtered_nodes(self, tag_filters):
@@ -291,7 +295,7 @@ class AzureNodeProvider(NodeProvider):
             resource_group_name=resource_group,
             deployment_name=vm_name,
             parameters=parameters,
-        ).wait()
+        ).wait(timeout=AUTOSCALER_NODE_START_WAIT_S)
 
     @synchronized
     def set_node_tags(self, node_id, tags):
@@ -386,13 +390,14 @@ class AzureNodeProvider(NodeProvider):
                                     ips.add(ipc.public_ip_address.id.split("/")[-1])
 
         # Delete VM
+        st = time.monotonic()
         delete = get_azure_sdk_function(
             client=self.compute_client.virtual_machines,
             function_name="delete",
         )
         try:
             delete(resource_group_name=resource_group, vm_name=node_id).wait(
-                timeout=TERMINATION_TIMEOUT
+                timeout=AUTOSCALER_NODE_TERMINATE_WAIT_S
             )
         except Exception as e:
             logger.warning("Failed to delete VM: {}".format(e))
@@ -429,10 +434,9 @@ class AzureNodeProvider(NodeProvider):
             except Exception as e:
                 logger.warning("Failed to delete NIC: {}".format(e))
 
-        st = time.monotonic()
         while (
             not all(nlro.done() for nlro in nic_lros)
-            and (time.monotonic() - st) < TERMINATION_TIMEOUT
+            and (time.monotonic() - st) < AUTOSCALER_NODE_TERMINATE_WAIT_S
         ):
             time.sleep(0.1)
 
@@ -453,16 +457,14 @@ class AzureNodeProvider(NodeProvider):
             except Exception as e:
                 logger.warning("Failed to delete public IP: {}".format(e))
 
-        st = time.monotonic()
         while (
             not all(dlro.done() for dlro in disk_lros)
-            and (time.monotonic() - st) < TERMINATION_TIMEOUT
+            and (time.monotonic() - st) < AUTOSCALER_NODE_TERMINATE_WAIT_S
         ):
             time.sleep(0.1)
-        st = time.monotonic()
         while (
             not all(iplro.done() for iplro in ip_lros)
-            and (time.monotonic() - st) < TERMINATION_TIMEOUT
+            and (time.monotonic() - st) < AUTOSCALER_NODE_TERMINATE_WAIT_S
         ):
             time.sleep(0.1)
 
@@ -471,7 +473,7 @@ class AzureNodeProvider(NodeProvider):
         return self.cached_nodes[node_id]
 
     def _get_cached_node(self, node_id):
-        return self.cached_nodes.get(node_id, self._get_node(node_id=node_id))
+        return self.cached_nodes.get(node_id) or self._get_node(node_id=node_id)
 
     @staticmethod
     def bootstrap_config(cluster_config):
