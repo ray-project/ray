@@ -261,7 +261,7 @@ class CompiledDAG:
         # Set of actors present in the DAG.
         self.actor_refs = set()
         # record the mapping from kwarg key -> kwarg index
-        self.kwarg_to_idx = {}
+        self.kwarg_to_idx : Dict[str, int] = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
