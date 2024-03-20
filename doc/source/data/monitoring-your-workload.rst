@@ -116,23 +116,23 @@ To see detailed stats on the execution of a dataset you can use the :meth:`~ray.
 
 Operator stats
 ~~~~~~~~~~~~~~
-For each operator, a summary on the individual operator's execution stats will be included. This summary is calculated
-across many different blocks, so some stats will show the min, max, mean, and sum of the stat aggregated over all the blocks.
+For each operator, a summary on the individual operator's execution stats is included. This summary is calculated
+across many different blocks, so some stats show the min, max, mean, and sum of the stat aggregated over all the blocks.
 The following are descriptions of the various stats included at the operator level:
 
 * **Remote wall time**: The wall time is the start to finish time for an operator. It includes the time where the operator
-  is not processing data, sleeping, waiting for I/O, etc.
-* **Remote cpu time**: The CPU time is the process time for an operator which will exclude time slept. This will include
-  both user and system CPU time.
+  isn't processing data, sleeping, waiting for I/O, etc.
+* **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This includes both
+  user and system CPU time.
 * **UDF time**: The UDF time is time spent in functions defined by the user. This includes functions passed into Ray
   Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`,
   etc. You can use this to track how much time is spent in functions you define and how much time could be gained by optimizing
   those functions.
 * **Memory usage**: The memory usage per block is shown in MiB.
 * **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of
-  output rows per task are also included. All of this together will give you insight into how much data is being output at a per
+  output rows per task are also included. All of this together gives you insight into how much data is being output at a per
   block and per task level.
-* **Task Stats**: The scheduling of tasks to nodes is shown which will allow you to see if you are utilizing all of your nodes
+* **Task Stats**: The scheduling of tasks to nodes is shown which allows you to see if you are utilizing all of your nodes
   as expected.
 * **Throughput**: Throughput for the operator is calculated, and for a point of comparison, an estimate of the throughput of the
   same task on a single node is computed. This estimate assumes the total time of the work remains the same, but with no
@@ -140,21 +140,21 @@ The following are descriptions of the various stats included at the operator lev
 
 Iterator stats
 ~~~~~~~~~~~~~~
-If the data is iterated over, iteration stats are also generated. Even if you are not directly iterating over the data, there
+If the data is iterated over, iteration stats are also generated. Even if you aren't directly iterating over the data, there
 might be iteration stats included (for example, if you call :meth:`~ray.data.Dataset.take_all`). Some of the stats included at the
 iterator level are:
 
 * **Iterator initialization**: The time spent initializing the iterator. This is internal to Ray Data.
 * **Time user thread is blocked**: The time spent producing data in the iterator. This is often the primary execution of a
-  dataset if it has not previously been materialized.
-* **Time in user thread**: The time spent in the user thread that is iterating over the dataset outside of the Ray Data code.
-  If this time is high consider, optimizing the body of the loop that is iterating over the dataset.
+  dataset if it hasn't previously been materialized.
+* **Time in user thread**: The time spent in the user thread that's iterating over the dataset outside of the Ray Data code.
+  If this time is high consider, optimizing the body of the loop that's iterating over the dataset.
 * **Batch iteration stats**: Stats are also included about the prefetching of batches. These times are internal to Ray
   Data code, but by tuning how prefetching is performed, this can be further optimized.
 
 Verbose stats
 ~~~~~~~~~~~~~~
-By default, the verbosity of the stats output is not enabled. If you would like to enable verbose stats outputs, include
+By default, the verbosity of the stats output isn't enabled. If you would like to enable verbose stats outputs, include
 the following snippet in your Ray Data code:
 
 .. code-block:: python
@@ -172,7 +172,7 @@ By enabling verbosity there are a few more outputs added:
   the dataset's execution.
 * **Runtime metrics**: High level breakdown of the runtime of the dataset execution. This is a per operator summary of the
   time each operator took to complete and the fraction of the total execution time that operator took to complete. As there
-  are potentially multiple concurrent operators, these percentages will not necessarily sum to 100%. Instead this is meant
+  are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead this is meant
   to show how long running each of the operators is in the context of the full dataset execution.
 
 Example stats
