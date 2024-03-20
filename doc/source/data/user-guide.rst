@@ -21,7 +21,7 @@ show you how achieve several tasks.
     working-with-text
     working-with-tensors
     working-with-pytorch
+    monitoring-your-workload
     batch_inference
     performance-tips
-    monitoring-your-workload
     custom-datasource-example
