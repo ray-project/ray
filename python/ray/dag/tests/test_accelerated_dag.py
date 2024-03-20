@@ -359,6 +359,49 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
+@pytest.fixture
+def patch_delayed_channel(request):
+    from ray.experimental.channel import Channel
+
+    class DelayedChannel(Channel):
+
+        def begin_read(self):
+            time.sleep(1)
+            return super().begin_read()
+
+
+        def write(self, *args, **kwargs):
+            time.sleep(1)
+            return super().write(*args, **kwargs)
+
+    original_channel_cls = Channel
+
+    from ray.experimental import channel
+    channel.Channel = DelayedChannel
+
+    from ray.dag import compiled_dag_node
+    compiled_dag_node.Channel = DelayedChannel
+
+    yield
+
+    channel.Channel = original_channel_cls
+    compiled_dag_node.Channel = original_channel_cls
+
+
+
+def test_patch(ray_start_regular_shared, patch_delayed_channel):
+    a = Actor.remote(0, fail_after=100)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    dag = dag.experimental_compile()
+    ch = dag.execute(1)
+    print(ch.begin_read())
+    ch.end_read()
+
+    dag.teardown()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
