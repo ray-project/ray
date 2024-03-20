@@ -584,17 +584,17 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
 
     .. tab-item:: HuggingFace
 
-        To convert a 🤗 Dataset to a Ray Datasets, call
+        To convert a HuggingFace Dataset to a Ray Datasets, call
         :func:`~ray.data.from_huggingface`. This function accesses the underlying Arrow
         table and converts it to a Dataset directly.
 
         .. warning::
             :class:`~ray.data.from_huggingface` only supports parallel reads in certain
-            instances, namely for untransformed public 🤗 Datasets. For those datasets,
+            instances, namely for untransformed public HuggingFace Datasets. For those datasets,
             Ray Data uses `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
             to perform a distributed read; otherwise, Ray Data uses a single node read.
-            This behavior shouldn't be an issue with in-memory 🤗 Datasets, but may cause a failure with
-            large memory-mapped 🤗 Datasets. Additionally, 🤗 `DatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.DatasetDict>`_ and 
+            This behavior shouldn't be an issue with in-memory HuggingFace Datasets, but may cause a failure with
+            large memory-mapped HuggingFace Datasets. Additionally, HuggingFace `DatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.DatasetDict>`_ and
             `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
             objects aren't supported.
 
