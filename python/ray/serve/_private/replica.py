@@ -15,7 +15,7 @@ import starlette.responses
 
 import ray
 from ray import cloudpickle
-from ray._private.tracing_utils import setup_tracing
+from python.ray.serve._private.tracing_utils import setup_tracing
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
 from ray.remote_function import RemoteFunction
@@ -246,7 +246,6 @@ class ReplicaActor:
         serialized_init_kwargs: bytes,
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
-        exporter_import_path: str,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -282,8 +281,7 @@ class ReplicaActor:
             self._deployment_config.autoscaling_config,
         )
 
-        if exporter_import_path:
-            setup_tracing(exporter_import_path)
+        setup_tracing(self._deployment_config.tracing_config)
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(

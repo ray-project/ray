@@ -10,7 +10,6 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray._private.tracing_utils import get_exporter_import_path
 from ray.dag import DAGNode
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -75,6 +74,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    tracing_config: Union[Dict, TracingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -119,6 +119,7 @@ def start(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        global_tracing_config=tracing_config
         **kwargs,
     )
 
@@ -394,9 +395,6 @@ def deployment(
         if option != "_func_or_class" and value is not DEFAULT.VALUE
     ]
 
-    if tracing_config is not DEFAULT.VALUE:
-        user_configured_option_names.append("exporter_import_path")
-
     # Num of replicas should not be 0.
     # TODO(Sihan) seperate num_replicas attribute from internal and api
     if num_replicas == 0:
@@ -440,14 +438,9 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
-    if isinstance(tracing_config, Dict):
-        tracing_config = TracingConfig(**tracing_config)
+    if isinstance(tracing_config, TracingConfig):
+        tracing_config = tracing_config.dict()
 
-    exporter_import_path = (
-        get_exporter_import_path(tracing_config)
-        if tracing_config is not DEFAULT.VALUE
-        else None
-    )
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
@@ -460,6 +453,7 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
         logging_config=logging_config,
+        tracing_config=tracing_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
@@ -486,7 +480,6 @@ def deployment(
                 if max_replicas_per_node is not DEFAULT.VALUE
                 else None
             ),
-            exporter_import_path=exporter_import_path,
         )
 
         return Deployment(
@@ -555,13 +548,12 @@ def _run(
                 logging_config = LoggingConfig(**logging_config)
             deployment.set_logging_config(logging_config.dict())
 
-        if deployment._replica_config.exporter_import_path is None and tracing_config:
-            if isinstance(tracing_config, Dict):
+        if deployment.tracing_config is None and tracing_config:
+            if isinstance(tracing_config, dict):
                 tracing_config = TracingConfig(**tracing_config)
-
-            exporter_import_path = get_exporter_import_path(tracing_config)
-            deployment._replica_config.exporter_import_path = exporter_import_path
-
+            
+            deployment.set_tracing_config(tracing_config.dict())
+            
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,

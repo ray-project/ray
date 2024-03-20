@@ -61,6 +61,7 @@ from ray.serve.schema import (
     DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
+    TracingConfig,
     ProxyDetails,
     ServeActorDetails,
     ServeApplicationSchema,
@@ -111,6 +112,7 @@ class ServeController:
         *,
         http_config: HTTPOptions,
         global_logging_config: LoggingConfig,
+        global_tracing_config: TracingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()

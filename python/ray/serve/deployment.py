@@ -15,7 +15,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
-from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
+from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema, TracingConfig
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -232,8 +232,16 @@ class Deployment:
     def logging_config(self) -> Dict:
         return self._deployment_config.logging_config
 
+    @property
+    def tracing_config(self) -> Dict:
+        return self._deployment_config.tracing_config
+
+
     def set_logging_config(self, logging_config: Dict):
         self._deployment_config.logging_config = logging_config
+
+    def set_tracing_config(self, tracing_config: Dict):
+        self._deployment_config.tracing_config = tracing_config
 
     def __call__(self):
         raise RuntimeError(
@@ -339,7 +347,7 @@ class Deployment:
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
-        exporter_import_path: Default[str] = DEFAULT.VALUE,
+        tracing_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -494,8 +502,10 @@ class Deployment:
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
-        if exporter_import_path is DEFAULT.VALUE:
-            exporter_import_path = self._replica_config.exporter_import_path
+        if tracing_config is not DEFAULT.VALUE:
+            if isinstance(tracing_config, TracingConfig):
+                tracing_config = tracing_config.dict()
+            new_deployment_config.tracing_config = tracing_config
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
@@ -505,7 +515,6 @@ class Deployment:
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
             max_replicas_per_node=max_replicas_per_node,
-            exporter_import_path=exporter_import_path,
         )
 
         return Deployment(
@@ -579,7 +588,7 @@ def deployment_to_schema(
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
-        "exporter_import_path": d._replica_config.exporter_import_path,
+        "tracing_config": d._deployment_config.tracing_config,
     }
 
     if include_route_prefix:
@@ -632,11 +641,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
-    if s.exporter_import_path is DEFAULT.VALUE:
-        exporter_import_path = None
-    else:
-        exporter_import_path = s.exporter_import_path
-
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -648,6 +652,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
+        tracing_config=s.tracing_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
@@ -661,7 +666,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
         max_replicas_per_node=max_replicas_per_node,
-        exporter_import_path=exporter_import_path,
     )
 
     return Deployment(

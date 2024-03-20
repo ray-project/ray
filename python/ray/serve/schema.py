@@ -209,11 +209,8 @@ class TracingConfig(BaseModel):
             ]
 
     serve_config.yaml:
-
         tracing_config:
-
             exporter_import_path: my_exporter:tracing_exporter
-
             enable: true
 
     """
@@ -231,7 +228,7 @@ class TracingConfig(BaseModel):
         ),
     )
 
-    enable: bool = Field(
+    enabled: bool = Field(
         default=False,
         description=(
             "Whether to enable tracing. Default to False. "
@@ -498,9 +495,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         description="Logging config for configuring serve deployment logs.",
     )
 
-    exporter_import_path: Optional[str] = Field(
+    tracing_config: TracingConfig = Field(
         default=DEFAULT.VALUE,
-        description="Path to tracing exporter function.",
+        description="Tracing config for configuring serve tracing.",
     )
 
     @root_validator

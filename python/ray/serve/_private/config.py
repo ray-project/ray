@@ -34,6 +34,7 @@ from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigPr
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
 from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
+from ray.serve.generated.serve_pb2 import TracingConfig as TracingConfigProto
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
 from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 
@@ -167,6 +168,11 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 
+    tracing_config: Optional[dict] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
@@ -202,6 +208,22 @@ class DeploymentConfig(BaseModel):
 
         return v
 
+    @validator("tracing_config", always=True)
+    def tracing_config_valid(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise TypeError(
+                f"Got invalid type '{type(v)}' for tracing_config. "
+                "Expected a dictionary."
+            )
+        # Handle default value
+        from ray.serve.schema import TracingConfig
+
+        v = TracingConfig(**v).dict()
+
+        return v
+
     @validator("max_queued_requests", always=True)
     def validate_max_queued_requests(cls, v):
         if not isinstance(v, int):
@@ -233,6 +255,9 @@ class DeploymentConfig(BaseModel):
                 )
 
             data["logging_config"] = LoggingConfigProto(**data["logging_config"])
+
+        if data.get("tracing_config"):
+            data["tracing_config"] = TracingConfigProto(**data["tracing_config"])
 
         return DeploymentConfigProto(**data)
 
@@ -284,6 +309,10 @@ class DeploymentConfig(BaseModel):
                     data["logging_config"]["encoding"]
                 )
 
+        if "tracing_config" in data:
+            if not data["tracing_config"].get("exporter_import_path"):
+                data["tracing_config"]["exporter_import_path"] = None
+        
         return cls(**data)
 
     @classmethod
@@ -398,7 +427,6 @@ class ReplicaConfig:
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
-        exporter_import_path: str = None,
     ):
         """Construct a ReplicaConfig with serialized properties.
 
@@ -434,9 +462,6 @@ class ReplicaConfig:
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
 
-        # Store tracing exporter
-        self.exporter_import_path = exporter_import_path
-
     def update_ray_actor_options(self, ray_actor_options):
         self.ray_actor_options = ray_actor_options
         self._validate_ray_actor_options()
@@ -469,7 +494,6 @@ class ReplicaConfig:
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
-        exporter_import_path: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
 
@@ -524,7 +548,6 @@ class ReplicaConfig:
         config._deployment_def = deployment_def
         config._init_args = init_args
         config._init_kwargs = init_kwargs
-        config.exporter_import_path = exporter_import_path
 
         return config
 
@@ -727,7 +750,6 @@ class ReplicaConfig:
             else None,
             proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
-            exporter_import_path=proto.exporter_import_path,
         )
 
     @classmethod
@@ -749,9 +771,6 @@ class ReplicaConfig:
             max_replicas_per_node=self.max_replicas_per_node
             if self.max_replicas_per_node is not None
             else 0,
-            exporter_import_path=self.exporter_import_path
-            if self.exporter_import_path
-            else "",
         )
 
     def to_proto_bytes(self):
