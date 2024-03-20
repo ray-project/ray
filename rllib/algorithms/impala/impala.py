@@ -730,19 +730,22 @@ class Impala(Algorithm):
                         update_results[key].update(res)
 
         # Merge available EnvRunner states into local worker's EnvRunner state.
-        if env_runner_states:
-            env_to_module_connector_state = local_worker._env_to_module.merge_states(
-                [s["env_to_module_connector"] for s in env_runner_states]
-            )
-            module_to_env_connector_state = local_worker._module_to_env.merge_states(
-                [s["module_to_env_connector"] for s in env_runner_states]
-            )
-            local_worker.set_state(
-                {
-                    "env_to_module_connector": env_to_module_connector_state,
-                    "module_to_env_connector": module_to_env_connector_state,
-                }
-            )
+        # TEST: Skip env runner merge and broadcast
+        #if env_runner_states:
+        #    env_to_module_connector_state = local_worker._env_to_module.merge_states(
+        #        [s["env_to_module_connector"] for s in env_runner_states]
+        #    )
+        #    module_to_env_connector_state = local_worker._module_to_env.merge_states(
+        #        [s["module_to_env_connector"] for s in env_runner_states]
+        #    )
+        #    local_worker.set_state(
+        #        {
+        #            "env_to_module_connector": env_to_module_connector_state,
+        #            "module_to_env_connector": module_to_env_connector_state,
+        #        }
+        #    )
+        # END: TEST
+
         # Only if Learner's state is available: Broadcast together with the already
         # merged local worker's connector states and updated counters back to all
         # EnvRunners, including the local one.
