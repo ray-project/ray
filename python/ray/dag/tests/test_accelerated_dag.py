@@ -142,6 +142,21 @@ def test_multi_kwargs(ray_start_regular):
 
 def test_multi_args_kwargs(ray_start_regular):
     # Test passing multiple args and kwargs to .execute.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_four.bind(i[0], i[1], i.x, i.y)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1, 2, x=3, y=4)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (1, 2, 3, 4)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
     actors = [Actor.remote(0) for _ in range(4)]
     with InputNode() as i:
         dag = MultiOutputNode(
