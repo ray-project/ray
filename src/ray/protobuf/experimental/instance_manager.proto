@@ -201,6 +201,8 @@ message TerminationRequest {
   optional uint32 max_num_nodes_per_type = 7;
   // The global max num nodes if the cause is MAX_NUM_NODES.
   optional uint32 max_num_nodes = 8;
+  // Details of the termination.
+  string details = 9;
 }
 
 message UpdateInstanceManagerStateRequest {

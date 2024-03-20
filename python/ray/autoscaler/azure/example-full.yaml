@@ -47,6 +47,10 @@ provider:
     # set unique id for resources in this cluster
     # if not set a default id will be generated based on the resource group and cluster name
     # unique_id: RAY1
+    # set managed identity name and resource group
+    # if not set, a default user-assigned identity will be generated in the resource group specified above
+    # msi_name: ray-cluster-msi
+    # msi_resource_group: other-rg
 
 # How Ray will authenticate with newly launched nodes.
 auth:

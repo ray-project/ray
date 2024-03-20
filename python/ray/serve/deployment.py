@@ -321,9 +321,9 @@ class Deployment:
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
-        placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
-        placement_group_strategy: Optional[str] = DEFAULT.VALUE,
-        max_replicas_per_node: Optional[int] = DEFAULT.VALUE,
+        placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+        placement_group_strategy: Default[str] = DEFAULT.VALUE,
+        max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -561,7 +561,7 @@ def deployment_to_schema(
         "num_replicas": None
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
-        "max_concurrent_queries": d.max_concurrent_queries,
+        "max_concurrent_queries": d.max_ongoing_requests,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,

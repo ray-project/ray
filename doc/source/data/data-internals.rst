@@ -7,7 +7,7 @@ Ray Data Internals
 This guide describes the implementation of Ray Data. The intended audience is advanced
 users and Ray Data developers.
 
-For a gentler introduction to Ray Data, see :ref:`Key concepts <data_key_concepts>`.
+For a gentler introduction to Ray Data, see :ref:`Quickstart <data_quickstart>`.
 
 .. _dataset_concept:
 
@@ -187,7 +187,7 @@ The following code is a hello world example which invokes the execution with
            return x
 
    for _ in (
-       ray.data.range_tensor(5000, shape=(80, 80, 3), parallelism=200)
+       ray.data.range_tensor(5000, shape=(80, 80, 3), override_num_blocks=200)
        .map_batches(sleep, num_cpus=2)
        .map_batches(SleepClass, concurrency=(2, 4))
        .map_batches(sleep, num_cpus=1)

@@ -934,7 +934,7 @@ class Worker:
 
     def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> List[str]:
+    ) -> Union[List[str], List[int]]:
         """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
@@ -942,7 +942,8 @@ class Worker:
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource.
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
@@ -975,12 +976,12 @@ class Worker:
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
-        return [str(assigned_id) for assigned_id in assigned_ids]
+        return list(assigned_ids)
 
 
 @PublicAPI
 @client_mode_hook
-def get_gpu_ids():
+def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -993,12 +994,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return [
-        int(i)
-        for i in worker.get_accelerator_ids_for_accelerator_resource(
-            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-        )
-    ]
+    return worker.get_accelerator_ids_for_accelerator_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -2350,7 +2348,8 @@ def connect(
         # Formally, the local path(s) should be added when all of these are true:
         # (1) there's no working_dir (or code search path should be in working_dir),
         # (2) it's not interactive mode, (there's no script file in interactive mode),
-        # (3) it's not in dashboard,
+        # (3) it's not in dashboard (should only skip script location but still append
+        #   current directory),
         # (4) it's not client mode, (handled by client code)
         # (5) the driver is at the same node (machine) as the worker.
         #
@@ -2360,8 +2359,6 @@ def connect(
             [
                 job_config._runtime_env_has_working_dir(),
                 interactive_mode,
-                namespace
-                and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE,
                 job_config._client_job,
             ]
         ):
@@ -2372,7 +2369,13 @@ def connect(
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                code_paths.add(script_directory)
+                # If user code contains names like `utils`, it will be conflicting with
+                # the `utils` module in the dashboard module. We should skip adding
+                # script directory for dashboard clients and should have the
+                # current directory available for loading user code.
+                # See: https://github.com/anyscale/product/issues/20746
+                if namespace != ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE:
+                    code_paths.add(script_directory)
             current_directory = os.path.abspath(os.path.curdir)
             code_paths.add(current_directory)
             if len(code_paths) != 0:
@@ -2502,19 +2505,6 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
-
-
-def start_import_thread():
-    """Start the import thread if the worker is connected."""
-    worker = global_worker
-    worker.check_connected()
-
-    assert _mode() not in (
-        RESTORE_WORKER_MODE,
-        SPILL_WORKER_MODE,
-    ), "import thread can not be used in IO workers."
-    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
-        worker.import_thread.start()
 
 
 @contextmanager

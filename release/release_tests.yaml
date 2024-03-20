@@ -351,41 +351,6 @@
   alert: default
 
 
-# AIR benchmarks for XGBoost CUJ
-- name: air_benchmark_xgboost_cpu_10
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_xgboost_aws.yaml
-
-  run:
-    timeout: 36000
-    script: python workloads/xgboost_benchmark.py
-
-    wait_for_nodes:
-      num_nodes: 11
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_xgboost_gce.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
 # Ray AIR distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_cpu_4x1
   group: AIR tests
@@ -1217,38 +1182,6 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_durable_upload
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x8.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
-        wait_for_nodes:
-          num_nodes: 4
-
-  alert: tune_tests
-
 - name: tune_cloud_long_running_cloud_storage
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -1764,12 +1697,14 @@
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_4.yaml
 
   run:
     timeout: 86400
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
+    wait_for_nodes:
+      num_nodes: 4
 
   smoke_test:
     frequency: nightly
@@ -1789,7 +1724,7 @@
         run:
           timeout: 3600
       cluster:
-        cluster_compute: tpl_cpu_1_gce.yaml
+        cluster_compute: tpl_cpu_4_gce.yaml
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -2306,7 +2241,7 @@
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
+  team: core
 
   cluster:
     byod: {}
@@ -2334,7 +2269,7 @@
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
+  team: core
 
   cluster:
     byod: {}
@@ -2364,7 +2299,7 @@
 #   working_dir: runtime_env_tests
 
 #   frequency: nightly
-#   team: serve
+#   team: core
 
 #   cluster:
 #     cluster_compute: rte_minimal.yaml
@@ -2705,7 +2640,7 @@
 
 - name: train_multinode_persistence
   group: Train tests
-  working_dir: train_tests/e2e
+  working_dir: train_tests/multinode_persistence
 
   frequency: nightly
   team: ml
@@ -2749,6 +2684,145 @@
 
     wait_for_nodes:
       num_nodes: 4
+
+  alert: default
+
+
+- name: xgboost_train_batch_inference_benchmark_10G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
+
+  frequency: nightly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_1worker.yaml
+
+  run:
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "xgboost" --size=10G
+
+    wait_for_nodes:
+      num_nodes: 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce_1worker.yaml
+
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
+
+  alert: default
+
+- name: xgboost_train_batch_inference_benchmark_100G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
+
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_10workers.yaml
+
+  run:
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "xgboost" --size=100G
+
+    wait_for_nodes:
+      num_nodes: 11
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce_10workers.yaml
+
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
+
+  alert: default
+
+
+- name: lightgbm_train_batch_inference_benchmark_10G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
+
+  frequency: nightly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_1worker.yaml
+
+  run:
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "lightgbm" --size=10G
+
+    wait_for_nodes:
+      num_nodes: 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce_1worker.yaml
+
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
+
+  alert: default
+
+
+- name: lightgbm_train_batch_inference_benchmark_100G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
+
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_10workers.yaml
+
+  run:
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "lightgbm" --size=100G
+
+    wait_for_nodes:
+      num_nodes: 11
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce_10workers.yaml
+
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
 
   alert: default
 

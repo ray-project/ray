@@ -209,12 +209,6 @@ class ServeController:
         self._proxy_nodes = set()
         self._update_proxy_nodes()
 
-        # Track the number of times the controller has started
-        metrics.Counter(
-            "serve_controller_num_starts",
-            description="The number of times that controller has started.",
-        ).inc()
-
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
             self.global_logging_config
@@ -234,6 +228,11 @@ class ServeController:
             component_name="controller",
             component_id=str(os.getpid()),
             logging_config=global_logging_config,
+        )
+
+        logger.info(
+            f"Controller starting (version='{ray.__version__}').",
+            extra={"log_to_stderr": False},
         )
         logger.debug(
             "Configure the serve controller logger "

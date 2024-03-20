@@ -181,6 +181,8 @@ SERVE_LOG_REPLICA = "replica"
 SERVE_LOG_COMPONENT = "component_name"
 SERVE_LOG_COMPONENT_ID = "component_id"
 SERVE_LOG_MESSAGE = "message"
+SERVE_LOG_ACTOR_ID = "actor_id"
+SERVE_LOG_WORKER_ID = "worker_id"
 # This is a reserved for python logging module attribute, it should not be changed.
 SERVE_LOG_LEVEL_NAME = "levelname"
 SERVE_LOG_TIME = "asctime"
@@ -289,9 +291,13 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
 
 # Feature flag to enable collecting all queued and ongoing request
-# metrics at handles instead of replicas. OFF by default.
+# metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
-    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1") == "1"
+)
+
+RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0)
 )
 
 # Feature flag to always run a proxy on the head node even if it has no replicas.

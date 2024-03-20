@@ -59,7 +59,6 @@ py_test_module_list(
     "test_regression.py",
     "test_request_timeout.py",
     "test_cluster.py",
-    "test_autoscaling_policy.py",
     "test_cancellation.py",
     "test_streaming_response.py",
     "test_controller_recovery.py",
@@ -77,15 +76,15 @@ py_test_module_list(
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
-# Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 1
+# Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 0
 py_test(
-    name = "test_autoscaling_metrics_on_handle",
-    size = "medium",
+    name = "test_autoscaling_policy_with_metr_disab",
+    size = "large",
     main = "test_autoscaling_policy.py",
     srcs = ["test_autoscaling_policy.py"],
     tags = ["exclusive", "team:serve", "autoscaling"],
     deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1"},
+    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
 )
 
 py_test_module_list(
@@ -110,6 +109,7 @@ py_test_module_list(
     "test_standalone.py",
     "test_standalone_3.py",
     "test_deploy_app.py",
+    "test_autoscaling_policy.py",
   ],
   size = "large",
   tags = ["exclusive", "team:serve"],
@@ -185,7 +185,6 @@ py_test_module_list(
   name_suffix="_with_queue_len_cache_disabled",
   env={"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
   files = [
-    "test_autoscaling_policy.py",
     "test_cancellation.py",
     "test_handle.py",
     "test_handle_api.py",
@@ -197,6 +196,17 @@ py_test_module_list(
   tags = ["exclusive", "no_windows", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
   data = glob(["test_config_files/**/*"]),
+)
+
+py_test_module_list(
+  name_suffix="_with_queue_len_cache_disabled",
+  env={"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
+  files = [
+    "test_autoscaling_policy.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
 # Test old stop-fully-then-start behavior.
@@ -223,6 +233,48 @@ py_test_module_list(
     "test_enable_task_events.py",
   ],
   size = "small",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
+)
+
+# Test compact scheduling
+py_test_module_list(
+  name_suffix="_with_comp_sche",
+  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+  files = [
+    "test_standalone.py",
+    "test_standalone_3.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+py_test_module_list(
+  name_suffix="_with_compact_scheduling",
+  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+  files = [
+    "test_standalone_2.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "no_windows", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  data = glob(["test_config_files/**/*"]),
+)
+
+py_test_module_list(
+  name_suffix="_with_compact_scheduling",
+  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+  files = [
+    "test_deployment_scheduler.py",
+    "test_cluster.py",
+    "test_max_replicas_per_node.py",
+    "test_replica_placement_group.py",
+    "test_gcs_failure.py",
+    "test_controller_recovery.py",
+  ],
+  size = "medium",
   tags = ["exclusive", "no_windows", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
   data = glob(["test_config_files/**/*"]),

@@ -433,6 +433,22 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         return values
 
     @root_validator
+    def validate_max_replicas_per_node_and_placement_group_bundles(cls, values):
+        max_replicas_per_node = values.get("max_replicas_per_node", None)
+        placement_group_bundles = values.get("placement_group_bundles", None)
+
+        if max_replicas_per_node not in [
+            DEFAULT.VALUE,
+            None,
+        ] and placement_group_bundles not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            )
+
+        return values
+
+    @root_validator
     def validate_max_queued_requests(cls, values):
         max_queued_requests = values.get("max_queued_requests", None)
         if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
@@ -886,13 +902,7 @@ class ServeActorDetails(BaseModel, frozen=True):
 class ReplicaDetails(ServeActorDetails, frozen=True):
     """Detailed info about a single deployment replica."""
 
-    replica_id: str = Field(
-        description=(
-            "Unique ID for the replica. By default, this will be "
-            '"<deployment name>#<replica suffix>", where the replica suffix is a '
-            "randomly generated unique string."
-        )
-    )
+    replica_id: str = Field(description="Unique ID for the replica.")
     state: ReplicaState = Field(description="Current state of the replica.")
     pid: Optional[int] = Field(description="PID of the replica actor process.")
     start_time_s: float = Field(
