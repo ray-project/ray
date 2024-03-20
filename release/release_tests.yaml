@@ -2841,6 +2841,7 @@
 
   frequency: nightly
   team: rllib
+  stable: False
 
   cluster:
     byod:
