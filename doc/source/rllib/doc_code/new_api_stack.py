@@ -22,8 +22,8 @@ config = (
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
     # `num_gpus_per_learner_worker=1`).
     .resources(
-        num_learner_workers=0,  # <- normally, you'd set this to the number of GPUs
-        num_gpus_per_learner_worker=0,  # <- set this to 1, iff you have at least 1 GPU.
+        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs
+        num_gpus_per_learner_worker=0,  # <- set this to 1, if you have at least 1 GPU
         num_cpus_for_local_worker=1,
     )
     # When using RLlib's default models (RLModules) AND the new EnvRunners, you should
@@ -67,8 +67,8 @@ config = (
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
     # `num_gpus_per_learner_worker=1`).
     .resources(
-        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs.
-        num_gpus_per_learner_worker=0,  # <- set this to 1, iff you have at least 1 GPU.
+        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs
+        num_gpus_per_learner_worker=0,  # <- set this to 1, if you have at least 1 GPU
         num_cpus_for_local_worker=1,
     )
     # When using RLlib's default models (RLModules) AND the new EnvRunners, you should
@@ -77,7 +77,8 @@ config = (
     # predictions for PPO are no longer required to happen on the sampler side (but are
     # now fully located on the learner side, which might have GPUs available).
     .training(model={"uses_new_env_runners": True})
-    # Because you are in a multi-agent env, you have to set up the usual multi-agent parameters:
+    # Because you are in a multi-agent env, you have to set up the usual multi-agent
+    # parameters:
     .multi_agent(
         policies={"p0", "p1"},
         # Map agent 0 to p0 and agent 1 to p1.
@@ -113,8 +114,8 @@ config = (
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
     # `num_gpus_per_learner_worker=1`).
     .resources(
-        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs.
-        num_gpus_per_learner_worker=0,  # <- set this to 1, iff you have at least 1 GPU.
+        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs
+        num_gpus_per_learner_worker=0,  # <- set this to 1, if you have at least 1 GPU
         num_cpus_for_local_worker=1,
     )
     # When using RLlib's default models (RLModules) AND the new EnvRunners, you should
