@@ -776,11 +776,8 @@ class Impala(Algorithm):
         # TODO (sven): All algos should behave this way in their `training_step` methods
         #  in the future. Makes things more transparent and explicit for the user.
 
-        # TEST: skip metrics
-        #if env_runner_metrics:
-        #    update_results.update({"_episodes_this_training_step": env_runner_metrics})
-        update_results.update({"_episodes_this_training_step": []})
-        # END TEST
+        if env_runner_metrics:
+            update_results.update({"_episodes_this_training_step": env_runner_metrics})
 
         return update_results
 
