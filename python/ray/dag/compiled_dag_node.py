@@ -8,7 +8,7 @@ import threading
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
-    ArgsKwargsWrapper,
+    ArgsWrapper,
     Channel,
     ReaderInterface,
     SynchronousReader,
@@ -260,6 +260,8 @@ class CompiledDAG:
         self.worker_task_refs: List["ray.ObjectRef"] = []
         # Set of actors present in the DAG.
         self.actor_refs = set()
+        # record the mapping from kwarg key -> kwarg index
+        self.kwarg_to_idx = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -302,10 +304,14 @@ class CompiledDAG:
             self.idx_to_task.clear()
             self.dag_node_to_idx.clear()
             arg_list = []
+            arg_idx = 0
             # Add attribute nodes first
             for task in tasks:
                 if isinstance(task.dag_node, InputAttributeNode):
                     arg_list.append(task.dag_node._key)
+                    if isinstance(task.dag_node._key, str):
+                        self.kwarg_to_idx[task.dag_node._key] = arg_idx
+                    arg_idx += 1
             multi_input_node = MultiInputNode(*arg_list)
             self._add_node(multi_input_node)
             for task in tasks:
@@ -617,6 +623,22 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
+    def _prepare_args(self, args: List[Any], kwargs: Dict[Any, Any]) -> List[Any]:
+        """Explicitly order kwargs and append them to args
+
+        Args:
+            args: Args.
+            kwargs: Kwargs.
+
+        Returns:
+            A list of Args that can contains both args and ordered kwargs.
+        """
+        kwargs_idxs = [self.kwarg_to_idx[k] for k in kwargs]
+        args = list(args) + ([0] * len(kwargs))
+        for idx, v in zip(kwargs_idxs, kwargs.values()):
+            args[idx] = v
+        return args
+
     def execute(
         self,
         *args,
@@ -635,7 +657,8 @@ class CompiledDAG:
             raise ValueError("Use execute_async if enable_asyncio=True")
 
         self._get_or_compile()
-        self._dag_submitter.write(ArgsKwargsWrapper(args=args, kwargs=kwargs))
+
+        self._dag_submitter.write(ArgsWrapper(args=self._prepare_args(args, kwargs)))
 
         return self._dag_output_fetcher
 
@@ -660,7 +683,9 @@ class CompiledDAG:
 
         self._get_or_compile()
         async with self._dag_submission_lock:
-            await self._dag_submitter.write(ArgsKwargsWrapper(args=args, kwargs=kwargs))
+            await self._dag_submitter.write(
+                ArgsWrapper(args=self._prepare_args(args, kwargs))
+            )
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)

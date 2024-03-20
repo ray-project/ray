@@ -13,21 +13,19 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
-class ArgsKwargsWrapper:
-    """Warpper class for args and kwargs"""
+class ArgsWrapper:
+    """Warpper class for args"""
 
     args: List[Any]
-    kwargs: Dict[str, Any]
 
-    def __init__(self, args: List[Any], kwargs: Dict[str, Any]) -> None:
+    def __init__(self, args: List[Any]) -> None:
         try:
             self.args = list(args)
         except Exception:
             self.args = [args]
-        self.kwargs = kwargs
 
     def get(self):
-        return self.args + list(self.kwargs.values())
+        return self.args
 
 
 def _create_channel_ref(
@@ -184,7 +182,7 @@ class Channel:
         """
         self._ensure_registered_as_reader()
         values = ray.get(self._base_ref)
-        return values.get() if isinstance(values, ArgsKwargsWrapper) else values
+        return values.get() if isinstance(values, ArgsWrapper) else values
 
     def end_read(self):
         """
