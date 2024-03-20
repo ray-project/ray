@@ -1,9 +1,9 @@
+import logging
 import os
-import uuid
-from dataclasses import dataclass
 import re
 import shutil
-import logging
+import uuid
+from dataclasses import dataclass
 
 import ray
 from ray.train._internal.utils import get_address_and_port
@@ -86,8 +86,8 @@ def _set_neuron_parallel_compile_env_vars():
 # Compile previously extracted Neuron graphs
 def _neuron_compile_extracted_graphs():
     try:
-        from libneuronxla.neuron_parallel_compile import parallel_compile
         from libneuronxla.neuron_cc_cache import CacheUrl
+        from libneuronxla.neuron_parallel_compile import parallel_compile
     except ImportError:
         raise ImportError(
             "libneuronxla must be installed to use Neuron parallel compilation."

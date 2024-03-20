@@ -2264,25 +2264,6 @@
       cluster:
         cluster_compute: rte_gce_small.yaml
 
-  alert: default
-
-- name: train_torch_trainium_integration
-  group: Train tests
-  working_dir: train_tests/trainium
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      post_build_script: byod_train_trainium.sh
-    cluster_compute: compute_aws.yaml
-
-  run:
-    timeout: 1000
-    script: python test_trainium.py
-
-  alert: default
 
 - name: runtime_env_wheel_urls
   group: Runtime env tests

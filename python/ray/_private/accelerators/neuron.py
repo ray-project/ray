@@ -108,7 +108,9 @@ class NeuronAcceleratorManager(AcceleratorManager):
         if os.environ.get(NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR):
             return
 
-        if not os.environ.get(NeuronAcceleratorManager.get_visible_accelerator_ids_env_var()):
+        if not os.environ.get(
+            NeuronAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ):
             return
 
         os.environ[
