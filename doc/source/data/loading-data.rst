@@ -983,5 +983,5 @@ utilize the cluster, ranging from ``1...override_num_blocks`` tasks. In other wo
 the higher the ``override_num_blocks``, the smaller the data blocks in the Dataset and
 hence more opportunities for parallel execution.
 
-For more information on how to tune the number of output blocks, see
-:ref:`Tuning output blocks for read <read_output_blocks>`.
+For more information on how to tune the number of output blocks and other suggestions
+for optimizing read performance, see `Optimizing reads <performance-tips.html#optimizing-reads>`__.
