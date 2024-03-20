@@ -598,7 +598,7 @@ def is_actor_dead(error: RayActorError) -> bool:
 
     try:
         # A dead actor's RayActorError contains extra information in the error
-        # message. RayActorErrors due to a slow network only contains the default
+        # message. RayActorErrors due to a slow network only contain the default
         # error message.
         if error.base_error_msg != error.error_msg:
             return True
