@@ -593,7 +593,7 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
             instances, namely for untransformed public 🤗 Datasets. For those datasets,
             Ray Data uses `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
             to perform a distributed read; otherwise, Ray Data uses a single node read.
-            This shouldn't be an issue with in-memory 🤗 Datasets, but may fail with
+            This behavior shouldn't be an issue with in-memory 🤗 Datasets, but may cause a failure with
             large memory-mapped 🤗 Datasets. Additionally, 🤗 `DatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.DatasetDict>`_ and 
             `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
             objects aren't supported.
