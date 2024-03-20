@@ -79,7 +79,9 @@ class AzureNodeProvider(NodeProvider):
 
         # Cache terminating node operations
         self.terminating_nodes: dict[str, Future] = {}
-        self.termination_executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL_SHUTDOWN_WORKERS)
+        self.termination_executor = ThreadPoolExecutor(
+            max_workers=MAX_PARALLEL_SHUTDOWN_WORKERS
+        )
 
     @synchronized
     def _get_filtered_nodes(self, tag_filters):
