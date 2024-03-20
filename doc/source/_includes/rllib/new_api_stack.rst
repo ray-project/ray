@@ -1,7 +1,8 @@
 .. note::
 
     Ray 2.10.0 introduces the alpha stage of RLlib's "new API stack".
-    Throughout the next minor releases - up to Ray 3 - we will move more
+    The Ray Team plans to transition algorithms, example scripts, and documentation to the new code base
+    thereby incrementally replacing the "old API stack" (e.g., ModelV2, Policy, RolloutWorker) throughout the subsequent minor releases leading up to Ray 3.0.
     algorithms, example scripts, and the documentation over and into this new code base
     thereby slowly replacing the "old API stack" (e.g. ModelV2, Policy, RolloutWorker).
 
