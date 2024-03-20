@@ -154,7 +154,7 @@ iterator level are:
 
 Verbose stats
 ~~~~~~~~~~~~~~
-By default, the verbosity of the stats output isn't enabled. If you would like to enable verbose stats outputs, include
+By default, only the most important high-level stats are logged. If you would like to enable verbose stats outputs, include
 the following snippet in your Ray Data code:
 
 .. code-block:: python
