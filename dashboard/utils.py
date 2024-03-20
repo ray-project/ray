@@ -622,14 +622,14 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     return api_server_url
 
 
-def get_address_for_submission_client(address: Optional[str]) -> str:
+def get_address_for_submission_client(address: Optional[str]= None) -> str:
     """Get Ray API server address from Ray bootstrap or Client address.
 
     If None, it will try to auto-detect a running Ray instance, or look
     for local GCS process.
 
-    `address` is always overridden by the RAY_ADDRESS environment
-    variable, just like the `address` argument in `ray.init()`.
+    User-specified `address` precedes the RAY_ADDRESS environment variable, 
+    just as in `ray.init()`
 
     Args:
         address: Ray cluster bootstrap address or Ray Client address.
@@ -638,10 +638,6 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
     Returns:
         API server HTTP URL, e.g. "http://<head-node-ip>:8265".
     """
-    if os.environ.get("RAY_ADDRESS"):
-        logger.debug(f"Using RAY_ADDRESS={os.environ['RAY_ADDRESS']}")
-        address = os.environ["RAY_ADDRESS"]
-
     if address and "://" in address:
         module_string, _ = split_address(address)
         if module_string == "ray":
@@ -649,6 +645,10 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
                 f"Retrieving API server address from Ray Client address {address}..."
             )
             address = ray_client_address_to_api_server_url(address)
+    # check and use RAY_ADDRESS if none is set by the user and it exists
+    elif not address and "RAY_ADDRESS" in os.environ:
+        logger.debug(f"Using RAY_ADDRESS={os.environ['RAY_ADDRESS']}")
+        address = os.environ["RAY_ADDRESS"]
     else:
         # User specified a non-Ray-Client Ray cluster address.
         address = ray_address_to_api_server_url(address)
