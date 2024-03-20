@@ -765,7 +765,7 @@ def test_internal_error_as_instance_of_cause_correct(shutdown_only):
 def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
     @ray.remote(max_calls=1)
     def f():
-        raise Exception("this is a exception")
+        raise Exception("this is an exception")
 
     with pytest.raises(Exception):
         ray.get(f.remote())
@@ -787,18 +787,18 @@ def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
     # ray::f() (pid=70293, ip=127.0.0.1)
     #   File "<YOUR_RAY_DIR>/python/ray/tests/test_exit_observability.py", line 465,
     # in f
-    #     raise Exception("this is a exception")
+    #     raise Exception("this is an exception")
     # Exception: this is a exception
     #
     # System error:
-    # IntentionalSystemExit: Worker exits with an exit code 0. max_call has reached,
-    # max_calls: 1
+    # IntentionalSystemExit: Worker exits with an exit code 0. Exited because worker
+    # reached max_calls=1 for this method.
     error_message = task["error_message"]
     assert error_message.startswith("User exception:\nray::f()"), error_message
     assert error_message.endswith(
-        "Exception: this is a exception\n\nSystem error:\n"
+        "Exception: this is an exception\n\nSystem error:\n"
         "IntentionalSystemExit: Worker exits with an exit "
-        "code 0. max_call has reached, max_calls: 1"
+        "code 0. Exited because worker reached max_calls=1 for this method."
     ), task
 
 
