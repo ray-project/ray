@@ -20,7 +20,7 @@ Ray Data emits Prometheus metrics in real-time while a Dataset is executing. The
 .. note::
    Most metrics are only available for physical operators that use the map operation. For example, physical operators created by :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, and :meth:`~ray.data.Dataset.flat_map`.
 
-Ray Data overview
+Jobs: Ray Data overview
 ~~~~~~~~~~~~~~~~~
 
 For an overview of all datasets that have been running on your cluster, see the Ray Data Overview in the :ref:`jobs view <dash-jobs-view>`. This table appears once the first dataset starts executing on the cluster, and shows dataset details such as:
@@ -71,7 +71,7 @@ The metrics recorded include:
 * Operator internal inqueue size (in blocks/bytes)
 * Operator internal outqueue size (in blocks/bytes)
 * Size of blocks used in pending tasks
-* Freed memory in object store 
+* Freed memory in object store
 * Spilled memory in object store
 * Time spent generating blocks
 * Time spent in task submission backpressure
@@ -116,49 +116,73 @@ To see detailed stats on the execution of a dataset you can use the :meth:`~ray.
 
 Operator stats
 ~~~~~~~~~~~~~~
-For each operator, a summary on the individual operator's execution stats will be included. This operator will operator
-on many different blocks, so some stats will show the min, max, mean, and sum of the stat aggregated over all the blocks. 
+For each operator, a summary on the individual operator's execution stats will be included. This summary is calculated
+across many different blocks, so some stats will show the min, max, mean, and sum of the stat aggregated over all the blocks.
 The following are descriptions of the various stats included at the operator level:
 
-* **Remote wall time**: The wall time is the start to finish time for an operator. It might include time where the operator
+* **Remote wall time**: The wall time is the start to finish time for an operator. It includes the time where the operator
   is not processing data, sleeping, waiting for I/O, etc.
-* **Remote cpu time**: The cpu time is the process time for an operator which will exclude time slept. This will include 
+* **Remote cpu time**: The CPU time is the process time for an operator which will exclude time slept. This will include
   both user and system CPU time.
-* **UDF time**: The UDF time is time spent in functions defined by the user. This will include functions passed into Ray 
-  Data methods including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`,
-  etc. You can use this to track how much time is spent in functions you define and how much time could be gained by optimizing 
+* **UDF time**: The UDF time is time spent in functions defined by the user. This includes functions passed into Ray
+  Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`,
+  etc. You can use this to track how much time is spent in functions you define and how much time could be gained by optimizing
   those functions.
-* **Memory usage**: The memory usage per block is shown in MiB. 
+* **Memory usage**: The memory usage per block is shown in MiB.
 * **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of
   output rows per task are also included. All of this together will give you insight into how much data is being output at a per
   block and per task level.
 * **Task Stats**: The scheduling of tasks to nodes is shown which will allow you to see if you are utilizing all of your nodes
   as expected.
-* **Throughput**: Throughput for the operator is calculated and for a point of comparison an estimate of the throughput of the 
-  same task on a single node is computed. This estimate assumes the total time of the work remains the same, but there is no 
-  concurrency. Throughput is also calculated at the dataset level including a single node estimate.
+* **Throughput**: Throughput for the operator is calculated, and for a point of comparison, an estimate of the throughput of the
+  same task on a single node is computed. This estimate assumes the total time of the work remains the same, but with no
+  concurrency. Throughput is also calculated at the dataset level including, a single node estimate.
 
 Iterator stats
 ~~~~~~~~~~~~~~
-If the data is iterated over, iteration stats are also generated. Even if you are not directly iterating over the data, there might be iteration stats included e.g. if you 
-call :meth:`~ray.data.Dataset.take_all`. Some of the stats included at the iterator level are:
+If the data is iterated over, iteration stats are also generated. Even if you are not directly iterating over the data, there
+might be iteration stats included (for example, if you call :meth:`~ray.data.Dataset.take_all`). Some of the stats included at the
+iterator level are:
 
-* **Iterator initialization**: The time spent initializing the iterator to be used. This is internal to Ray Data.
-* **Time user thread is blocked**: The time spent producing data in the iterator. Often this will be the primary execution of a
-  dataset if it has not previously been materialized. 
+* **Iterator initialization**: The time spent initializing the iterator. This is internal to Ray Data.
+* **Time user thread is blocked**: The time spent producing data in the iterator. This is often the primary execution of a
+  dataset if it has not previously been materialized.
 * **Time in user thread**: The time spent in the user thread that is iterating over the dataset outside of the Ray Data code.
-  If this time is high consider optimizing the body of the loop that is iterating over the dataset.
-* **Batch iteration stats**: Stats are also included about the prefetching of batches. These times should be internal to Ray
-  Data code, but by tuning how prefetching is performed this might be further optimized.
+  If this time is high consider, optimizing the body of the loop that is iterating over the dataset.
+* **Batch iteration stats**: Stats are also included about the prefetching of batches. These times are internal to Ray
+  Data code, but by tuning how prefetching is performed, this can be further optimized.
+
+Verbose stats
+~~~~~~~~~~~~~~
+By default, the verbosity of the stats output is not enabled. If you would like to enable verbose stats outputs, include
+the following snippet in your Ray Data code:
+
+.. code-block:: python
+
+   from ray.data import DataContext
+
+   context = DataContext.get_current()
+   context.verbose_stats_logs = True
+
+
+By enabling verbosity there are a few more outputs added:
+
+* **Extra metrics**: A dictionary of various metrics which is added to by operators, executors, etc. There is
+  some duplication of stats between the default output and this dictionary, but for advanced users provides more insight into
+  the dataset's execution.
+* **Runtime metrics**: High level breakdown of the runtime of the dataset execution. This is a per operator summary of the
+  time each operator took to complete and the fraction of the total execution time that operator took to complete. As there
+  are potentially multiple concurrent operators, these percentages will not necessarily sum to 100%. Instead this is meant
+  to show how long running each of the operators is in the context of the full dataset execution.
 
 Example stats
 ~~~~~~~~~~~~~
-For a concrete example, below is a stats output from :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`:
+As a concrete example, below is a stats output from :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`:
 
 .. code-block:: text
 
-   Operator 1 ReadImage->Map(preprocess_image): 384 tasks executed, 386 blocks produced in 9.21s                         
-   * Remote wall time: 33.55ms min, 2.22s max, 1.03s mean, 395.65s total                                                       
+   Operator 1 ReadImage->Map(preprocess_image): 384 tasks executed, 386 blocks produced in 9.21s
+   * Remote wall time: 33.55ms min, 2.22s max, 1.03s mean, 395.65s total
    * Remote cpu time: 34.93ms min, 3.36s max, 1.64s mean, 632.26s total
    * UDF time: 535.1ms min, 2.16s max, 975.7ms mean, 376.62s total
    * Peak heap memory usage (MiB): 556.32 min, 1126.95 max, 655 mean
@@ -196,3 +220,55 @@ For a concrete example, below is a stats output from :doc:`Image Classification 
    Dataset throughput:
          * Ray Data throughput: 1026.5318925757008 rows/s
          * Estimated single node throughput: 19.611578909587674 rows/s
+
+For the same example with verbosity enabled, the stats output is:
+
+.. code-block:: text
+
+   Operator 1 ReadImage->Map(preprocess_image): 384 tasks executed, 387 blocks produced in 9.49s
+   * Remote wall time: 22.81ms min, 2.5s max, 999.95ms mean, 386.98s total
+   * Remote cpu time: 24.06ms min, 3.36s max, 1.63s mean, 629.93s total
+   * UDF time: 552.79ms min, 2.41s max, 956.84ms mean, 370.3s total
+   * Peak heap memory usage (MiB): 550.95 min, 1186.28 max, 651 mean
+   * Output num rows per block: 4 min, 25 max, 24 mean, 9469 total
+   * Output size bytes per block: 4444092 min, 105223020 max, 31443955 mean, 12168810909 total
+   * Output rows per task: 24 min, 25 max, 24 mean, 384 tasks used
+   * Tasks per node: 39 min, 60 max, 48 mean; 8 nodes used
+   * Operator throughput:
+         * Ray Data throughput: 997.9207015895857 rows/s
+         * Estimated single node throughput: 24.46899945870273 rows/s
+   * Extra metrics: {'num_inputs_received': 384, 'bytes_inputs_received': 1104723940, 'num_task_inputs_processed': 384, 'bytes_task_inputs_processed': 1104723940, 'bytes_inputs_of_submitted_tasks': 1104723940, 'num_task_outputs_generated': 387, 'bytes_task_outputs_generated': 12168810909, 'rows_task_outputs_generated': 9469, 'num_outputs_taken': 387, 'bytes_outputs_taken': 12168810909, 'num_outputs_of_finished_tasks': 387, 'bytes_outputs_of_finished_tasks': 12168810909, 'num_tasks_submitted': 384, 'num_tasks_running': 0, 'num_tasks_have_outputs': 384, 'num_tasks_finished': 384, 'num_tasks_failed': 0, 'block_generation_time': 386.97945193799995, 'task_submission_backpressure_time': 7.263684450000142, 'obj_store_mem_internal_inqueue_blocks': 0, 'obj_store_mem_internal_inqueue': 0, 'obj_store_mem_internal_outqueue_blocks': 0, 'obj_store_mem_internal_outqueue': 0, 'obj_store_mem_pending_task_inputs': 0, 'obj_store_mem_freed': 1104723940, 'obj_store_mem_spilled': 0, 'obj_store_mem_used': 12582535566, 'cpu_usage': 0, 'gpu_usage': 0, 'ray_remote_args': {'num_cpus': 1, 'scheduling_strategy': 'SPREAD'}}
+
+   Operator 2 MapBatches(ResnetModel): 14 tasks executed, 48 blocks produced in 28.81s
+   * Remote wall time: 134.84us min, 7.23s max, 1.82s mean, 87.16s total
+   * Remote cpu time: 133.78us min, 6.28s max, 1.75s mean, 83.98s total
+   * UDF time: 4.56s min, 17.78s max, 10.28s mean, 493.48s total
+   * Peak heap memory usage (MiB): 3925.88 min, 7713.01 max, 5688 mean
+   * Output num rows per block: 125 min, 259 max, 197 mean, 9469 total
+   * Output size bytes per block: 75531617 min, 187889580 max, 134739694 mean, 6467505318 total
+   * Output rows per task: 325 min, 719 max, 676 mean, 14 tasks used
+   * Tasks per node: 3 min, 4 max, 3 mean; 4 nodes used
+   * Operator throughput:
+         * Ray Data throughput: 328.71474145609153 rows/s
+         * Estimated single node throughput: 108.6352856660782 rows/s
+   * Extra metrics: {'num_inputs_received': 387, 'bytes_inputs_received': 12168810909, 'num_task_inputs_processed': 0, 'bytes_task_inputs_processed': 0, 'bytes_inputs_of_submitted_tasks': 12168810909, 'num_task_outputs_generated': 1, 'bytes_task_outputs_generated': 135681874, 'rows_task_outputs_generated': 252, 'num_outputs_taken': 1, 'bytes_outputs_taken': 135681874, 'num_outputs_of_finished_tasks': 0, 'bytes_outputs_of_finished_tasks': 0, 'num_tasks_submitted': 14, 'num_tasks_running': 14, 'num_tasks_have_outputs': 1, 'num_tasks_finished': 0, 'num_tasks_failed': 0, 'block_generation_time': 7.229860895999991, 'task_submission_backpressure_time': 0, 'obj_store_mem_internal_inqueue_blocks': 13, 'obj_store_mem_internal_inqueue': 413724657, 'obj_store_mem_internal_outqueue_blocks': 0, 'obj_store_mem_internal_outqueue': 0, 'obj_store_mem_pending_task_inputs': 12168810909, 'obj_store_mem_freed': 0, 'obj_store_mem_spilled': 0, 'obj_store_mem_used': 1221136866.0, 'cpu_usage': 0, 'gpu_usage': 4}
+
+   Dataset iterator time breakdown:
+   * Total time overall: 42.29s
+      * Total time in Ray Data iterator initialization code: 20.24s
+      * Total time user thread is blocked by Ray Data iter_batches: 19.96s
+      * Total execution time for user thread: 2.08s
+   * Batch iteration time breakdown (summed across prefetch threads):
+      * In ray.get(): 73.0ms min, 2.15s max, 246.3ms avg, 11.82s total
+      * In batch creation: 3.62us min, 6.6us max, 4.39us avg, 210.7us total
+      * In batch formatting: 4.75us min, 8.67us max, 5.52us avg, 264.98us total
+
+   Dataset throughput:
+         * Ray Data throughput: 468.11051989434594 rows/s
+         * Estimated single node throughput: 972.8197093015862 rows/s
+
+   Runtime Metrics:
+   * ReadImage->Map(preprocess_image): 9.49s (46.909%)
+   * MapBatches(ResnetModel): 28.81s (142.406%)
+   * Scheduling: 6.16s (30.448%)
+   * Total: 20.23s (100.000%)
