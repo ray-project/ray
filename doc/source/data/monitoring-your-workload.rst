@@ -172,8 +172,8 @@ By enabling verbosity there are a few more outputs added:
   the dataset's execution.
 * **Runtime metrics**: High level breakdown of the runtime of the dataset execution. This is a per operator summary of the
   time each operator took to complete and the fraction of the total execution time that operator took to complete. As there
-  are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead this is meant
-  to show how long running each of the operators is in the context of the full dataset execution.
+  are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
+  they show how long running each of the operators is in the context of the full dataset execution.
 
 Example stats
 ~~~~~~~~~~~~~
