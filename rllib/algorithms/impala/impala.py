@@ -128,7 +128,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
-        self.max_requests_in_flight_per_sampler_worker = 1
+        self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
@@ -819,11 +819,9 @@ class Impala(Algorithm):
                     return_obj_refs=True,
                 )
                 # Get results from the n different async calls.
-                async_results = ray.get([res[1] for res in async_results])
+                results = ray.get([res[1] for res in async_results])
 
-                for async_result in async_results:
-                    episodes, states, metrics = async_result
-                    #_, ref = async_result
+                for (episodes, states, metrics) in results:
                     episode_refs.append(episodes)
                     env_runner_states.append(states)
                     env_runner_metrics.extend(metrics)
