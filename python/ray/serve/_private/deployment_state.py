@@ -827,7 +827,7 @@ class ActorReplicaWrapper:
             if self._consecutive_health_check_failures > 0:
                 logger.info(
                     f"{self._replica_id} passed the health check after "
-                    f"{self._consecutive_health_check_failures} failures in a row."
+                    f"{self._consecutive_health_check_failures} consecutive failures."
                 )
             self._consecutive_health_check_failures = 0
             self._healthy = True
