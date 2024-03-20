@@ -579,14 +579,13 @@ class FakeObjectRefGen(FakeObjectRefOrGen):
 
 
 def is_actor_dead(error: RayActorError) -> bool:
-    """Checks if an actor is dead based on a RayActorError.
+    """Checks if an actor is definitely dead based on a RayActorError.
 
     Typically, a RayActorError is returned from a Ray actor call only if the
     Ray actor is dead. However, due to
     https://github.com/ray-project/ray/issues/29656, a RayActorError can also
     be returned if the network is slow. This method checks the RayActorError's
-    error message to check if the actor is definitely dead or if it may still
-    be alive.
+    error message to see if the actor is definitely dead or may still be alive.
 
     See also https://github.com/ray-project/ray/issues/44185.
 
@@ -594,9 +593,12 @@ def is_actor_dead(error: RayActorError) -> bool:
         False otherwise.
     """
 
+    if not issubclass(type(error), RayActorError):
+        return False
+
     try:
-        # Dead actors's RayActorErrors contain extra information in their error
-        # message. RayActorErrors due to a slow network only contain the base
+        # A dead actor's RayActorError contains extra information in the error
+        # message. RayActorErrors due to a slow network only contains the default
         # error message.
         if error.base_error_msg != error.error_msg:
             return True
