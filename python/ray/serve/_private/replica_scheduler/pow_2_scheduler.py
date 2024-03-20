@@ -515,7 +515,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     "Failed to fetch queue length for "
                     f"{replica.replica_id}: '{t.exception()}'"
                 )
-                # Calls to dead replicas return RayActorError. Dead replicas
+                # Calls to dead replicas return RayActorErrors. Dead replicas
                 # don't recover, so we should stop considering them for requests.
                 if isinstance(t.exception(), RayActorError) and is_actor_dead(
                     t.exception()
