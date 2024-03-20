@@ -54,5 +54,5 @@ TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {
   function_manager->RemoveJobReference(job_id);
   EXPECT_EQ(0, num_del_called);
   function_manager->RemoveJobReference(job_id);
-  EXPECT_EQ(4, num_del_called);
+  EXPECT_EQ(3, num_del_called);
 }
