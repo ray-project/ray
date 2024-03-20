@@ -4,7 +4,6 @@
     The Ray Team plans to transition algorithms, example scripts, and documentation to the new code base
     thereby incrementally replacing the "old API stack" (e.g., ModelV2, Policy, RolloutWorker) throughout the subsequent minor releases leading up to Ray 3.0.
     algorithms, example scripts, and the documentation over and into this new code base
-    thereby slowly replacing the "old API stack" (e.g. ModelV2, Policy, RolloutWorker).
 
     Note, however, that so far only PPO (single- and multi-agent) and SAC (single-agent only)
     support the "new API stack" (and continue to run by default with the old APIs)
