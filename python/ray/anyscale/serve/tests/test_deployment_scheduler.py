@@ -1,6 +1,7 @@
 import os
 import random
 import sys
+import time
 from typing import List, Set
 
 import pytest
@@ -42,6 +43,12 @@ class Replica:
 
     def get_placement_group(self):
         return ray.util.get_current_placement_group()
+
+
+def check_node_dead(node_id: str):
+    target_node = [node for node in ray.nodes() if node["NodeID"] == node_id][0]
+    assert not target_node["Alive"]
+    return True
 
 
 @pytest.mark.skipif(
@@ -618,7 +625,7 @@ app_B = BlockInit.bind()
 
 
 @pytest.fixture
-def setup_compact_scheduling(request):
+def setup_compact_scheduling(request, monkeypatch):
     """Setup fixture for compact scheduling e2e tests.
 
     1. Starts an empty autoscaling cluster with 0 worker nodes.
@@ -629,6 +636,10 @@ def setup_compact_scheduling(request):
     4. Removes application B. This should leave node 1 with just one 1-CPU replica.
     5. Node 1 should be compacted (the 1-CPU replica can be moved to node 3).
     """
+
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "1")
+    monkeypatch.setenv("RAY_health_check_timeout_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
 
     params = getattr(request, "param") if hasattr(request, "param") else None
     cluster = AutoscalingCluster(
@@ -697,7 +708,7 @@ def setup_compact_scheduling(request):
     client._wait_for_application_running("A")
     client._wait_for_application_running("B")
     # Node1: (B, A1)
-    check_num_alive_nodes(2)  # 1 head + 1 worker node
+    wait_for_condition(check_num_alive_nodes, target=2)  # 1 head + 1 worker node
 
     config["applications"][0]["deployments"][0]["num_replicas"] = 6
     client.deploy_apps(ServeDeploySchema(**config))
@@ -889,26 +900,31 @@ class TestCompactScheduling:
         _, _, signal = setup_compact_scheduling
 
         # One of the worker nodes crashes
-        kill_raylet(
-            random.choice(
-                [
-                    node
-                    for node in ray.nodes()
-                    if not node["Resources"].get("node:__internal_head__")
-                ]
-            )
+        node_to_kill = random.choice(
+            [
+                node
+                for node in ray.nodes()
+                if not node["Resources"].get("node:__internal_head__")
+            ]
         )
+        print("killing worker node", node_to_kill, time.time())
+        kill_raylet(node_to_kill)
 
         # At least 1 RUNNING/PENDING_MIGRATION replica was on the worker
         # node that crashed, since compaction was in-progress/blocked:
         # -> health checks should fail
         # -> deployment should transition to UNHEALTHY
+        # This should happen quickly since health check period is 1s.
         wait_for_condition(
             check_deployment_status,
             name="BlockInit",
             app_name="A",
             expected_status=DeploymentStatus.UNHEALTHY,
         )
+
+        # This should also happen quickly, health check period/timeout
+        # for nodes has been dropped to 1s.
+        wait_for_condition(check_node_dead, node_id=node_to_kill["NodeID"])
 
         # Unblock all new starting replica initializations
         signal.send.remote()
@@ -917,7 +933,6 @@ class TestCompactScheduling:
             name="BlockInit",
             app_name="A",
             expected_status=DeploymentStatus.HEALTHY,
-            timeout=20,
         )
         wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker node
 
