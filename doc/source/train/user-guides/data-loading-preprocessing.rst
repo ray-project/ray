@@ -521,7 +521,6 @@ To perform a global shuffle, call :meth:`Dataset.random_shuffle <ray.data.Datase
     ds = ds.random_shuffle()
 
 For more information on how to optimize shuffling, and which approach to choose, see the :ref:`Optimize shuffling guide <optimizing_shuffles>`.
-TODO
 
 
 Enabling reproducibility
