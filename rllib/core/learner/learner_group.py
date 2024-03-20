@@ -405,8 +405,8 @@ class LearnerGroup:
                         results = self._worker_manager.fetch_ready_async_reqs(
                             tags=[str(tag)], timeout_seconds=0.0
                         )
-                        #if tag+1 not in self._update_request_tags and len(results.result_or_errors) < len(self._workers):
-                        if len(results.result_or_errors) > 0:
+                        # Still not done with this `tag`, force-fetch the rest.
+                        if self._update_request_tags[tag] > len(results.result_or_errors) > 0:
                             more_results = self._worker_manager.fetch_ready_async_reqs(
                                 tags=[str(tag)], timeout_seconds=None
                             )
