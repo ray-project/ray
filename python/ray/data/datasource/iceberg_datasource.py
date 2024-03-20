@@ -72,7 +72,9 @@ class IcebergDatasource(Datasource):
         if self._catalog_type == "glue":
             # Glue catalogs have no name, and no conf options are needed as long as AWS
             # credentials are set up
-            return catalog.load_glue(name="", conf=self._catalog_kwargs)
+            if "type" not in self._catalog_kwargs:
+                self._catalog_kwargs["type"] = self._catalog_type
+            return catalog.load_catalog(name="default", **self._catalog_kwargs)
         else:
             raise NotImplementedError(
                 f"Catalog type {self._catalog_type} not implemented"
