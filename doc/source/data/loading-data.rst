@@ -850,7 +850,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             import ray
 
-            # Read the entire dataset (do not specify query)
+            # Read the entire dataset. Do not specify query.
             ds = ray.data.read_bigquery(
                 project_id="my_gcloud_project_id",
                 dataset="bigquery-public-data.ml_datasets.iris",
