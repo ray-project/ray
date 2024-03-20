@@ -622,13 +622,13 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     return api_server_url
 
 
-def get_address_for_submission_client(address: Optional[str]= None) -> str:
+def get_address_for_submission_client(address: Optional[str] = None) -> str:
     """Get Ray API server address from Ray bootstrap or Client address.
 
     If None, it will try to auto-detect a running Ray instance, or look
     for local GCS process.
 
-    User-specified `address` precedes the RAY_ADDRESS environment variable, 
+    User-specified `address` precedes the RAY_ADDRESS environment variable,
     just as in `ray.init()`
 
     Args:
