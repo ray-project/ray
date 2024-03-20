@@ -208,6 +208,10 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
+
+        if "//python/ray/tests:test_plasma_unlimited" in test_targets:
+            test_targets = ["//python/ray/tests:test_plasma_unlimited"]
+            test_cmd += f"--runs_per_test=30 --flaky_test_attempts=1 "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(

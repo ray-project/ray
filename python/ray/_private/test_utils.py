@@ -582,6 +582,7 @@ def wait_for_condition(
     """
     start = time.time()
     last_ex = None
+    logger.info("Start waiting for condition at {}".format(datetime.now()))
     while time.time() - start <= timeout:
         try:
             if condition_predictor(**kwargs):
