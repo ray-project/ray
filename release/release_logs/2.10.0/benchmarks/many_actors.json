@@ -1,32 +1,32 @@
 {
-    "_dashboard_memory_usage_mb": 567.578624,
+    "_dashboard_memory_usage_mb": 532.226048,
     "_dashboard_test_success": true,
-    "_peak_memory": 3.63,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n151\t1.76GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n1234\t0.95GiB\tpython distributed/test_many_actors.py\n266\t0.23GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n428\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n1054\t0.07GiB\tray::JobSupervisor\n584\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-\n426\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n1357\t0.06GiB\tray::MemoryMonitorActor.run\n1429\t0.05GiB\tray::DashboardTester.run\n363\t0.04GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/log_m",
-    "actors_per_second": 622.1522632663798,
+    "_peak_memory": 3.72,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n151\t1.68GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n1248\t0.93GiB\tpython distributed/test_many_actors.py\n266\t0.4GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n1068\t0.07GiB\tray::JobSupervisor\n428\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n585\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-\n426\t0.06GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n1308\t0.06GiB\tray::MemoryMonitorActor.run\n1397\t0.05GiB\tray::DashboardTester.run\n366\t0.04GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/log_m",
+    "actors_per_second": 650.6160331939662,
     "num_actors": 10000,
     "perf_metrics": [
         {
             "perf_metric_name": "actors_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 622.1522632663798
+            "perf_metric_value": 650.6160331939662
         },
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 175.516
+            "perf_metric_value": 197.973
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 3876.216
+            "perf_metric_value": 4110.189
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 3876.216
+            "perf_metric_value": 4110.189
         }
     ],
     "success": "1",
-    "time": 16.073235750198364
+    "time": 15.370048522949219
 }
