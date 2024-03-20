@@ -434,9 +434,9 @@ Shuffling the order of the input files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is the most light-weight option, and suffices for most cases.
-When your input contains multiple files, this option allows shuffling the file order at the begining of each epoch. Once the execution starts, there are no runtime overheads.
+When your input contains multiple files, this option allows shuffling the file order at the beginning of each epoch. Once the execution starts, there are no runtime overheads.
 
-To perform file order shuffling, specify ``shuffle="files"`` in the data loading APIs.
+To perform file order shuffling, specify ``shuffle="files"`` in the data loading APIs, such as :meth:`read_images <ray.data.read_images>`.
 
 .. testcode::
    import ray
@@ -450,7 +450,7 @@ To perform file order shuffling, specify ``shuffle="files"`` in the data loading
 Shuffling within a local buffer on each training worker
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This options buffers data locally on each training worker. Data within the buffer will be shuffled on the fly before feeding the data to the model.
+This options buffers data locally on each training worker. Data within the buffer will be shuffled on the fly before being fed the model.
 
 To perform local shuffling, specify the ``local_shuffle_buffer_size`` parameter to :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>`.
 
@@ -486,7 +486,7 @@ To perform local shuffling, specify the ``local_shuffle_buffer_size`` parameter 
 Shuffling block order
 ~~~~~~~~~~~~~~~~~~~~~
 
-This options allows randomize the order of blocks in a dataset. Blocks are the the basic unit of data chunk stored in the object store. Applying this operation doesn't invovles heavy computaton and communicaton. But since this is not a streaming operation, all blocks need to be buffered in memory before applying this operation. So only use this when your dataset is small enough to fit into the object store memory.
+This options allows randomize the order of blocks in a dataset. Blocks are the the basic unit of data chunk stored in the object store. Applying this operation alone doesn't invovles heavy computaton and communicaton. However, it requires all blocks to be buffered in memory before applying this operation. So only use this when your dataset is small enough to fit into the object store memory.
 
 To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`.
 
@@ -499,9 +499,6 @@ To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dat
 
     # Randomize the block orders of this dataset.
     ds = ds.randomize_block_order()
-
-
-First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`. Then, when iterating over your dataset during training, enable local shuffling by specifying a ``local_shuffle_buffer_size`` to :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>`.
 
 Full global shuffle
 ~~~~~~~~~~~~~~~~~~~
@@ -547,7 +544,6 @@ When developing or hyperparameter tuning models, reproducibility is important du
 
 **Step 2:** Set a seed for any shuffling operations:
 
-* TODO
 * `seed` argument to :meth:`random_shuffle <ray.data.Dataset.random_shuffle>`
 * `seed` argument to :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`
 * `local_shuffle_seed` argument to :meth:`iter_batches <ray.data.DataIterator.iter_batches>`
@@ -705,8 +701,8 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, since Ray supports heterogeneous clusters, you can simply add more CPU-only nodes to your cluster, and Ray Data will automatically scale out CPU-only preprocessing tasks to CPU-only nodes, so GPUs will be more saturated.
+If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, thanks to Ray's native support for heterogeneous resources, you can simply add more CPU-only nodes to your cluster, and Ray Data will automatically scale out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
 
 In general, adding CPU-only nodes can help in 2 ways:
 * Adding more CPU cores helps further parallelize preprocessing. This is helpful when CPU compute time is the bottleneck.
-* Increasing object store memory, which 1) allows more data to be buffered in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`.
+* Increasing object store memory, which 1) allows more data to be buffered in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This is helpful when memory is the bottleneck.
