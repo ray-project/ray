@@ -659,9 +659,14 @@ class Impala(Algorithm):
 
         # "Batch" episode refs into groups (such that batching would result in
         # `train_batch_size`) to be sent to LearnerGroup.
-        episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
-            episode_refs
-        )
+
+        # TEST: sample only
+        #episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
+        #    episode_refs
+        #)
+        episode_refs_for_learner_group = []
+        # END TEST!
+
         # Call the LearnerGroup's `update_from_episodes` method.
         update_results = {}
         learner_state = None
@@ -725,7 +730,6 @@ class Impala(Algorithm):
                         update_results[key].update(res)
 
         # Merge available EnvRunner states into local worker's EnvRunner state.
-        env_to_module_connector_state = module_to_env_connector_state = None
         if env_runner_states:
             env_to_module_connector_state = local_worker._env_to_module.merge_states(
                 [s["env_to_module_connector"] for s in env_runner_states]
@@ -739,9 +743,9 @@ class Impala(Algorithm):
                     "module_to_env_connector": module_to_env_connector_state,
                 }
             )
-        # Only if Learner's state is available: Broadcast together with (already merged)
-        # local worker's connector state and updated counter back to all EnvRunners
-        # (including the local one).
+        # Only if Learner's state is available: Broadcast together with the already
+        # merged local worker's connector states and updated counters back to all
+        # EnvRunners, including the local one.
         if learner_state is not None:
             _kwargs = (
                 {
