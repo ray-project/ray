@@ -510,7 +510,7 @@ Preprocessing structured data
     This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
     Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
 
-For tabular data, we recommend using Ray Data :ref:`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations.
+For tabular data, use Ray Data :ref:`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 .. testcode::
