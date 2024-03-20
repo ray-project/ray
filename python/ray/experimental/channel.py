@@ -2,7 +2,7 @@ import asyncio
 import concurrent
 import io
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import ray
 from ray.util.annotations import DeveloperAPI, PublicAPI
