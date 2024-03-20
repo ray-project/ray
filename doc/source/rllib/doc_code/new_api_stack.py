@@ -48,7 +48,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole  # noqa
 
 
 # A typical multi-agent setup (otherwise using the exact same parameters as before)
-# would look like this.
+# looks like this.
 config = (
     PPOConfig().environment(MultiAgentCartPole, env_config={"num_agents": 2})
     # Switch the new API stack flag to True (False by default).
@@ -67,7 +67,7 @@ config = (
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
     # `num_gpus_per_learner_worker=1`).
     .resources(
-        num_learner_workers=0,  # <- normally, you'd set this to the number of GPUs
+        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs.
         num_gpus_per_learner_worker=0,  # <- set this to 1, iff you have at least 1 GPU.
         num_cpus_for_local_worker=1,
     )
@@ -77,7 +77,7 @@ config = (
     # predictions for PPO are no longer required to happen on the sampler side (but are
     # now fully located on the learner side, which might have GPUs available).
     .training(model={"uses_new_env_runners": True})
-    # B/c we are in a multi-agent env, we have to setup the usual multi-agent stuff:
+    # Because you are in a multi-agent env, you have to set up the usual multi-agent parameters:
     .multi_agent(
         policies={"p0", "p1"},
         # Map agent 0 to p0 and agent 1 to p1.
@@ -113,7 +113,7 @@ config = (
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
     # `num_gpus_per_learner_worker=1`).
     .resources(
-        num_learner_workers=0,  # <- normally, you'd set this to the number of GPUs
+        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs.
         num_gpus_per_learner_worker=0,  # <- set this to 1, iff you have at least 1 GPU.
         num_cpus_for_local_worker=1,
     )
