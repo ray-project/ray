@@ -788,7 +788,7 @@ def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
     #   File "<YOUR_RAY_DIR>/python/ray/tests/test_exit_observability.py", line 465,
     # in f
     #     raise Exception("this is an exception")
-    # Exception: this is a exception
+    # Exception: this is an exception
     #
     # System error:
     # IntentionalSystemExit: Worker exits with an exit code 0. Exited because worker
