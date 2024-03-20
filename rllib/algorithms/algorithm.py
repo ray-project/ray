@@ -877,6 +877,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         episodes_this_iter = train_results.pop("_episodes_this_iter", None)
         if episodes_this_iter is None:
+            assert False
             episodes_this_iter = collect_episodes(
                 self.workers,
                 self._remote_worker_ids_for_metrics(),
@@ -3062,7 +3063,7 @@ class Algorithm(Trainable, AlgorithmBase):
                         #  iterations.
                         training_step_results = self.training_step()
 
-                    # Collect returned episode metrics from each `trainin_step` call,
+                    # Collect returned episode metrics from each `training_step` call,
                     # so nothing gets lost (in this mode, we do NOT call get_metrics()
                     # here automatically, it has already been done by the
                     # `training_step` method).
