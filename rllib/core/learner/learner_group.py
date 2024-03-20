@@ -403,22 +403,22 @@ class LearnerGroup:
                     assert len(self._update_request_tags) == 1  # only 1 in-flight right now possible
                     for tag in self._update_request_tags:
                         results = self._worker_manager.fetch_ready_async_reqs(
-                            tags=[str(tag)], timeout_seconds=None
+                            tags=[str(tag)], timeout_seconds=0.0
                         )
                         #if tag+1 not in self._update_request_tags and len(results.result_or_errors) < len(self._workers):
-                        #if len(results.result_or_errors) < len(self._workers):
-                        #    more_results = self._worker_manager.fetch_ready_async_reqs(
-                        #        tags=[str(tag)], timeout_seconds=None
-                        #    )
-                        #    results.add_result()
+                        if len(results.result_or_errors) > 0:
+                            more_results = self._worker_manager.fetch_ready_async_reqs(
+                                tags=[str(tag)], timeout_seconds=None
+                            )
+                            for result in more_results.result_or_errors:
+                                results.add_result(result.actor_id, result.result_or_error, tag)
 
+                # Send out new request(s), if there is still capacity on the actors.
                 update_tag = self._update_request_tag
                 self._update_request_tag += 1
-
                 num_sent_requests = self._worker_manager.foreach_actor_async(
                     partials, tag=str(update_tag)
                 )
-
                 if num_sent_requests:
                     self._update_request_tags[update_tag] = num_sent_requests
 

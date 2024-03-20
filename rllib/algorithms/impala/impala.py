@@ -662,10 +662,10 @@ class Impala(Algorithm):
         # `train_batch_size`) to be sent to LearnerGroup.
 
         # TEST: sample only
-        #episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
-        #    episode_refs
-        #)
-        episode_refs_for_learner_group = []
+        episode_refs_for_learner_group = self._training_step_pre_queue_episode_refs(
+            episode_refs
+        )
+        #episode_refs_for_learner_group = []
         # END TEST!
 
         # Call the LearnerGroup's `update_from_episodes` method.
@@ -770,14 +770,13 @@ class Impala(Algorithm):
             self.workers.foreach_worker(
                 func=lambda worker: worker.set_state(new_state),
                 timeout_seconds=0.0,  # fire-and-forget
+                healthy_only=True,
                 local_worker=True,
             )
 
         # Add already collected metrics to results for later processing.
         # TODO (sven): All algos should behave this way in their `training_step` methods
         #  in the future. Makes things more transparent and explicit for the user.
-
-        #if env_runner_metrics:
         update_results.update({"_episodes_this_training_step": env_runner_metrics})
 
         return update_results
