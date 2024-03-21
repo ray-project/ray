@@ -19,7 +19,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorType, ModelWeights
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -92,7 +92,9 @@ class SingleAgentEnvRunner(EnvRunner):
         self._shared_data = None
 
         self._done_episodes_for_metrics: List[SingleAgentEpisode] = []
-        self._ongoing_episodes_for_metrics: DefaultDict[List] = defaultdict(list)
+        self._ongoing_episodes_for_metrics: DefaultDict[
+            EpisodeID, List[SingleAgentEpisode]
+        ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
     @override(EnvRunner)
@@ -103,6 +105,7 @@ class SingleAgentEnvRunner(EnvRunner):
         num_episodes: int = None,
         explore: bool = None,
         random_actions: bool = False,
+        force_reset: bool = False,
         with_render_data: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
@@ -121,6 +124,10 @@ class SingleAgentEnvRunner(EnvRunner):
             random_actions: If True, actions will be sampled randomly (from the action
                 space of the environment). If False (default), actions or action
                 distribution parameters are computed by the RLModule.
+            force_reset: Whether to force-reset all (vector) environments before
+                sampling. Useful if you would like to collect a clean slate of new
+                episodes via this call. Note that when sampling n episodes
+                (`num_episodes != None`), this is fixed to True.
             with_render_data: If True, will call `render()` on the environment and
                 collect returned images.
 
@@ -129,11 +136,10 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # If no execution details are provided, use the config to try to infer the
+        # desired timesteps/episodes to sample and exploration behavior.
         if explore is None:
             explore = self.config.explore
-
-        # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample.
         if (
             num_timesteps is None
             and num_episodes is None
@@ -150,7 +156,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 num_timesteps=num_timesteps,
                 explore=explore,
                 random_actions=random_actions,
-                force_reset=False,
+                force_reset=force_reset,
             )
         # Sample m episodes.
         elif num_episodes is not None:
@@ -199,6 +205,11 @@ class SingleAgentEnvRunner(EnvRunner):
                 self._episodes.append(self._new_episode())
                 self._make_on_episode_callback("on_episode_created", env_index)
             self._shared_data = {}
+
+            # Erase all cached ongoing episodes (these will never be completed and
+            # would thus never be returned/cleaned by `get_metrics` and cause a memory
+            # leak).
+            self._ongoing_episodes_for_metrics.clear()
 
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.

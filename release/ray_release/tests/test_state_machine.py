@@ -125,6 +125,14 @@ TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
 
 
+def test_ci_empty_results():
+    test = Test(name="w00t", team="ci", state=TestState.FLAKY)
+    test.test_results = []
+    CITestStateMachine(test).move()
+    # do not change the state
+    assert test.get_state() == TestState.FLAKY
+
+
 def test_ci_move_from_passing_to_flaky():
     """
     Test the entire lifecycle of a CI test when it moves from passing to flaky.

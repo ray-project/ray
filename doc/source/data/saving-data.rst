@@ -83,7 +83,7 @@ the appropriate scheme. URI can point to buckets or folders.
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
 
-    .. tab-item:: ABL
+    .. tab-item:: ABS
 
         To save data to Azure Blob Storage, install the
         `Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage <https://pypi.org/project/adlfs/>`_
