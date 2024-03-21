@@ -129,7 +129,7 @@ The following are descriptions of the various stats included at the operator lev
   etc. You can use this stat to track the time spent in functions you define and how much time optimizing those functions could save.
 * **Memory usage**: The output displays memory usage per block in MiB.
 * **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of
-  output rows per task are also included. All of this together gives you insight into how much data is being output at a per
+  output rows per task are also included. All of this together gives you insight into how much data Ray Data is outputting at a per
   block and per task level.
 * **Task Stats**: The output shows the scheduling of tasks to nodes, which allows you to see if you are utilizing all of your nodes
   as expected.
