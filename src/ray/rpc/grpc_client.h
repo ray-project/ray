@@ -128,7 +128,7 @@ inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
   grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);
 
   arguments.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
-                  ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
+                   ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
   arguments.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
   arguments.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
@@ -161,7 +161,6 @@ class GrpcClient {
              int num_threads,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
 

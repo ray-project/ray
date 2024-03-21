@@ -150,7 +150,8 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
-inline grpc::ChannelArguments CreateDefaultChannelArguments(const std::string& service_config_json) {
+inline grpc::ChannelArguments CreateDefaultChannelArguments(
+    const std::string &service_config_json) {
   grpc::ChannelArguments arguments;
 
   RAY_CHECK(service_config_json.size() > 0);
