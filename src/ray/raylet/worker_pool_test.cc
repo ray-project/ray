@@ -160,10 +160,11 @@ class WorkerPoolMock : public WorkerPool {
   using WorkerPool::PopWorkerCallbackInternal;
 
   // Mock `PopWorkerCallbackAsync` to synchronized function.
-  void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+  void PopWorkerCallbackAsync(const TaskSpecification &task_spec,
+                              const PopWorkerCallback &callback,
                               std::shared_ptr<WorkerInterface> worker,
                               PopWorkerStatus status = PopWorkerStatus::OK) override {
-    PopWorkerCallbackInternal(callback, worker, status);
+    PopWorkerCallbackInternal(task_spec, callback, worker, status);
   }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
