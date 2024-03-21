@@ -1,5 +1,6 @@
 import inspect
 import logging
+import threading
 import weakref
 from typing import Any, Dict, List, Optional, Union
 
@@ -538,7 +539,9 @@ class _ActorClassMetadata:
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
+        # Guarded by self.export_lock
         self.last_export_session_and_job = None
+        self.export_lock = threading.Lock()
         self.method_meta = _ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor
         )
@@ -1030,7 +1033,7 @@ class ActorClass:
             # If this actor class was not exported in this session and job,
             # we need to export this function again, because current GCS
             # doesn't have it.
-            with worker.function_actor_manager.export_actor_lock:
+            with meta.export_lock:
                 # With the lock held, check meta.last_export_session_and_job one more time
                 # before exporting the actor class as it might have been exported by another thread.
                 if meta.last_export_session_and_job != worker.current_session_and_job:
