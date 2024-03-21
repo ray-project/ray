@@ -970,7 +970,9 @@ class DeploymentReplica(VersionedReplica):
         self.update_actor_details(start_time_s=self._start_time)
         return True
 
-    def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
+    def check_started(
+        self,
+    ) -> Tuple[ReplicaStartupStatus, Optional[str], Optional[float]]:
         """Check if the replica has started. If so, transition to RUNNING.
 
         Should handle the case where the replica has already stopped.
@@ -988,6 +990,13 @@ class DeploymentReplica(VersionedReplica):
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
         )
+
+        if is_ready == ReplicaStartupStatus.SUCCEEDED:
+            logger.info(
+                f"{self._replica_id} successfully started after "
+                f"{time.time() - self._start_time}s."
+            )
+
         return is_ready
 
     def stop(self, graceful: bool = True) -> None:
