@@ -153,7 +153,7 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
 inline grpc::ChannelArguments CreateDefaultChannelArguments(const std::string& service_config_json) {
   grpc::ChannelArguments arguments;
 
-  RAY_CHECK(service_config_json.size() > 0, "Provided service config JSON could not be empty");
+  RAY_CHECK(service_config_json.size() > 0);
 
   arguments.SetServiceConfigJSON(service_config_json);
 
