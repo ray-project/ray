@@ -363,7 +363,12 @@ class WorkerSet:
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI
-    def sync_connectors(self, from_worker: Optional[EnvRunner] = None) -> None:
+    def sync_env_runner_states(
+        self,
+        from_worker: Optional[EnvRunner] = None,
+        env_steps_sampled: Optional[int] = None,
+        timeout_s: Optional[float] = None,
+    ) -> None:
         """Synchronizes the connectors of this WorkerSet's EnvRunners.
 
         The exact procedure works as follows:
@@ -384,27 +389,50 @@ class WorkerSet:
 
         from_worker = from_worker or self.local_worker()
 
+        env_runner_states = {}
         connector_states = self.foreach_worker(
             lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
             healthy_only=True,
             local_worker=False,
+            timeout_seconds=timeout_s,
         )
         env_to_module_states = [s[0] for s in connector_states]
         module_to_env_states = [s[1] for s in connector_states]
 
-        ref_env_to_module_state = ray.put(
-            from_worker._env_to_module.merge_states(env_to_module_states)
-        )
-        ref_module_to_env_state = ray.put(
-            from_worker._module_to_env.merge_states(module_to_env_states)
-        )
+        env_runner_states["connector_states"] = {
+            "env_to_module_states": from_worker._env_to_module.merge_states(
+                env_to_module_states
+            ),
+            "module_to_env_states": from_worker._module_to_env.merge_states(
+                module_to_env_states
+            ),
+        }
+        # Update the global number of environment steps, if necessary.
+        if env_steps_sampled:
+            env_runner_states["env_steps_sampled"] = env_steps_sampled
+
+        # Put the state dicitonary into Ray's object store.
+        ref_env_runner_states = ray.put(env_runner_states)
 
         def _update(w):
-            w._env_to_module.set_state(ray.get(ref_env_to_module_state))
-            w._module_to_env.set_state(ray.get(ref_module_to_env_state))
+            env_runner_states = ray.get(ref_env_runner_states)
+            w._env_to_module.set_state(
+                env_runner_states["connector_states"]["env_to_module_states"]
+            )
+            w._module_to_env.set_state(
+                env_runner_states["connector_states"]["module_to_env_states"]
+            )
+            # Update the global number of environment steps for each worker.
+            if "env_steps_sampled" in env_runner_states:
+                w.global_num_env_steps_sampled = env_runner_states["env_steps_sampled"]
 
-        # Broadcast updated states back to all workers.
-        self.foreach_worker(_update, local_worker=True, healthy_only=True)
+        # Broadcast updated states back to all workers (including the local one).
+        self.foreach_worker(
+            _update,
+            local_worker=True,
+            healthy_only=True,
+            timeout_seconds=timeout_s,
+        )
 
     @DeveloperAPI
     def sync_weights(
@@ -711,7 +739,7 @@ class WorkerSet:
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
     ) -> List[T]:
-        """Calls the given function with each worker instance as the argument.
+        """Calls the given function with each EnvRunner as its argument.
 
         Args:
             func: The function to call for each worker (as only arg).
@@ -765,7 +793,7 @@ class WorkerSet:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
     ) -> List[T]:
-        """Similar to foreach_worker(), but calls the function with id of the worker too.
+        """Calls the given function with each EnvRunner and its ID as its arguments.
 
         Args:
             func: The function to call for each worker (as only arg).
@@ -963,7 +991,8 @@ class WorkerSet:
             List of IDs of the workers that were restored.
         """
         return self.__worker_manager.probe_unhealthy_actors(
-            timeout_seconds=self._remote_config.worker_health_probe_timeout_s
+            timeout_seconds=self._remote_config.worker_health_probe_timeout_s,
+            mark_healthy=True,
         )
 
     # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.

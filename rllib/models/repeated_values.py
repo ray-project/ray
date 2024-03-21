@@ -1,10 +1,10 @@
 from typing import List
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import TensorType, TensorStructType
 
 
-@PublicAPI
+@OldAPIStack
 class RepeatedValues:
     """Represents a variable-length list of items from spaces.Repeated.
 

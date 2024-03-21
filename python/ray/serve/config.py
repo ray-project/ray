@@ -6,6 +6,7 @@ from typing import Any, Callable, List, Optional, Union
 from ray import cloudpickle
 from ray._private.pydantic_compat import (
     BaseModel,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -38,23 +39,35 @@ class AutoscalingConfig(BaseModel):
     min_replicas: NonNegativeInt = 1
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
-    target_num_ongoing_requests_per_replica: PositiveFloat = 1.0
 
-    # Private options below.
-
-    # Metrics scraping options
+    # DEPRECATED: replaced by target_ongoing_requests
+    target_num_ongoing_requests_per_replica: PositiveFloat = Field(
+        default=1.0,
+        description="[DEPRECATED] Please use `target_ongoing_requests` instead.",
+    )
+    # Will default to 1.0 in the future.
+    target_ongoing_requests: Optional[PositiveFloat] = None
 
     # How often to scrape for metrics
     metrics_interval_s: PositiveFloat = 10.0
     # Time window to average over for metrics.
     look_back_period_s: PositiveFloat = 30.0
 
-    # Internal autoscaling configuration options
+    # DEPRECATED
+    smoothing_factor: PositiveFloat = 1.0
+    # DEPRECATED: replaced by `downscaling_factor`
+    upscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
+    )
+    # DEPRECATED: replaced by `upscaling_factor`
+    downscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description="[DEPRECATED] Please use `downscaling_factor` instead.",
+    )
 
     # Multiplicative "gain" factor to limit scaling decisions
-    smoothing_factor: PositiveFloat = 1.0
-    upscale_smoothing_factor: Optional[PositiveFloat] = None
-    downscale_smoothing_factor: Optional[PositiveFloat] = None
+    upscaling_factor: Optional[PositiveFloat] = None
+    downscaling_factor: Optional[PositiveFloat] = None
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
@@ -121,25 +134,32 @@ class AutoscalingConfig(BaseModel):
     @classmethod
     def default(cls):
         return cls(
-            min_replicas=1, max_replicas=100, target_num_ongoing_requests_per_replica=2
+            min_replicas=1,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=2,
+            target_ongoing_requests=2,
         )
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
         return cloudpickle.loads(self._serialized_policy_def)
 
-    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+    def get_upscaling_factor(self) -> PositiveFloat:
+        if self.upscaling_factor:
+            return self.upscaling_factor
+
         return self.upscale_smoothing_factor or self.smoothing_factor
 
-    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+    def get_downscaling_factor(self) -> PositiveFloat:
+        if self.downscaling_factor:
+            return self.downscaling_factor
+
         return self.downscale_smoothing_factor or self.smoothing_factor
 
-    # TODO(architkulkarni): implement below
-    # The num_ongoing_requests_per_replica error ratio (desired / current)
-    # threshold for overriding `upscale_delay_s`
-    # panic_mode_threshold: float = 2.0
-
-    # TODO(architkulkarni): Add reasonable defaults
+    def get_target_ongoing_requests(self) -> PositiveFloat:
+        return (
+            self.target_ongoing_requests or self.target_num_ongoing_requests_per_replica
+        )
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts

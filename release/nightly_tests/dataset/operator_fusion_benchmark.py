@@ -84,7 +84,7 @@ def make_ds(
         block_size=block_size,
         data_format=data_format,
         num_columns=num_columns,
-        parallelism=num_tasks,
+        override_num_blocks=num_tasks,
     )
     for op_spec in ops_spec:
         op = op_spec.pop("op")

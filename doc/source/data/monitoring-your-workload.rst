@@ -1,7 +1,7 @@
 .. _monitoring-your-workload:
 
-Monitoring Your Workload
-========================
+Monitoring Your Workload with the Ray Data Dashboard
+====================================================
 
 This section helps you debug and monitor the execution of your :class:`~ray.data.Dataset` by viewing the:
 
@@ -48,7 +48,7 @@ Ray dashboard metrics
 
 For a time-series view of these metrics, see the Ray Data section in the :ref:`Metrics view <dash-metrics-view>`. This section contains time-series graphs of all metrics emitted by Ray Data. Execution metrics are grouped by dataset and operator, and iteration metrics are grouped by dataset.
 
-The metrics recorded are:
+The metrics recorded include:
 
 * Bytes spilled by objects from object store to disk
 * Bytes of objects allocated in object store
@@ -58,7 +58,25 @@ The metrics recorded are:
 * Logical GPUs allocated to dataset operators
 * Bytes outputted by dataset operators
 * Rows outputted by dataset operators
+* Input blocks received by data operators
+* Input blocks/bytes processed in tasks by data operators
+* Input bytes submitted to tasks by data operators
+* Output blocks/bytes/rows generated in tasks by data operators
+* Output blocks/bytes taken by downstream operators
+* Output blocks/bytes from finished tasks
+* Submitted tasks
+* Running tasks
+* Tasks with at least one output block
+* Finished tasks
+* Failed tasks
+* Operator internal inqueue size (in blocks/bytes)
+* Operator internal outqueue size (in blocks/bytes)
+* Size of blocks used in pending tasks
+* Freed memory in object store 
+* Spilled memory in object store
 * Time spent generating blocks
+* Time spent in task submission backpressure
+* Time spent to initialize iteration.
 * Time user code is blocked during iteration.
 * Time spent in user code during iteration.
 

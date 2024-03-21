@@ -153,7 +153,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         output_split_idx
                     )
                     if self._outer._global_info:
-                        self._outer._global_info.update(1, dag._estimated_output_blocks)
+                        self._outer._global_info.update(1, dag.num_outputs_total())
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -274,11 +274,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if DEBUG_TRACE_SCHEDULING:
             logger.get_logger().info("Scheduling loop step...")
 
+        self._resource_manager.update_usages()
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         num_errored_blocks = process_completed_tasks(
-            topology, self._backpressure_policies, self._max_errored_blocks
+            topology,
+            self._resource_manager,
+            self._max_errored_blocks,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
@@ -295,6 +298,7 @@ class StreamingExecutor(Executor, threading.Thread):
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
         )
+
         i = 0
         while op is not None:
             i += 1
@@ -420,29 +424,17 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
             "The current cluster doesn't have the required resources to execute your "
             "Dataset pipeline:\n"
         )
-        if (
-            base_usage.cpu is not None
-            and limits.cpu is not None
-            and base_usage.cpu > limits.cpu
-        ):
+        if base_usage.cpu > limits.cpu:
             error_message += (
                 f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
                 f"only has {limits.cpu}.\n"
             )
-        if (
-            base_usage.gpu is not None
-            and limits.gpu is not None
-            and base_usage.gpu > limits.gpu
-        ):
+        if base_usage.gpu > limits.gpu:
             error_message += (
                 f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
                 f"only has {limits.gpu}.\n"
             )
-        if (
-            base_usage.object_store_memory is not None
-            and base_usage.object_store_memory is not None
-            and base_usage.object_store_memory > limits.object_store_memory
-        ):
+        if base_usage.object_store_memory > limits.object_store_memory:
             error_message += (
                 f"- Your application needs {base_usage.object_store_memory}B object "
                 f"store memory, but your cluster only has "

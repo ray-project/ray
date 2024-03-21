@@ -14,7 +14,6 @@ from ray_release.aws import get_secret_token
 RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
-DEFAULT_ISSUE_OWNER = "can-anyscale"
 WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
 NO_TEAM = "none"
 TEAM = [
@@ -91,6 +90,9 @@ class TestStateMachine(abc.ABC):
         """
         Move the test to the next state.
         """
+        if not self.test_results:
+            # No result to move the state
+            return
         from_state = self.test.get_state()
         to_state = self._next_state(from_state)
         self.test.set_state(to_state)
@@ -234,7 +236,6 @@ class TestStateMachine(abc.ABC):
         issue = self.ray_repo.get_issue(github_issue_number)
         issue.create_comment(f"Test passed on latest run: {self.test_results[0].url}")
         issue.edit(state="closed")
-        self.test.pop(Test.KEY_GITHUB_ISSUE_NUMBER, None)
 
     def _keep_github_issue_open(self) -> None:
         github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
