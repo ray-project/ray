@@ -72,7 +72,7 @@ Data ingestion can be set up with four basic steps:
                 # Step 4: Access the dataset shard for the training worker via
                 # ``get_dataset_shard``.
                 train_data_shard = train.get_dataset_shard("train")
-                # `iter_torch_batches` returns an iterable object that will
+                # `iter_torch_batches` returns an iterable object that
                 # yield tensor batches. The tensor batches will be automatically moved
                 # to GPU if GPU training is enabled.
                 train_dataloader = train_data_shard.iter_torch_batches(
