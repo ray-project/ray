@@ -455,7 +455,7 @@ This options buffers data locally on each training worker. Ray Data shuffles dat
 To perform local shuffling, specify the ``local_shuffle_buffer_size`` parameter to :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>`.
 
 .. note::
-   Avoid specifying too large local_shuffle_buffer_size, as this may become the bottleneck if model training is faster.
+   Avoid specifying too large of a local_shuffle_buffer_size, because it may become the bottleneck if model training is faster.
 
 .. testcode::
     import ray
