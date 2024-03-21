@@ -32,7 +32,7 @@ class DQNRainbowCatalog(Catalog):
             of atoms (`num_atoms`) in case of distributional Q-learning.
         - Vf Head (optional): The head of the value function in case a
             dueling architecture is chosen. This is a single node head.
-            If no dueling aarchitecture is used, this head does not exist.
+            If no dueling architecture is used, this head does not exist.
 
     All networks can include noisy layers, if `noisy` is `True`.
 
@@ -224,7 +224,7 @@ class DQNRainbowCatalog(Catalog):
                     output_layer_bias_initializer_config=model_config_dict[
                         "post_fcnet_bias_initializer_config"
                     ],
-                    std_init=model_config_dict["sigma0"],
+                    std_init=0.2,#model_config_dict.get("sigma0", 0.02),
                 )
         # Otherwise return the base encoder config chosen by the parent.
         # This will choose a CNN for 3D Box and LSTM for 'use_lstm=True'.<

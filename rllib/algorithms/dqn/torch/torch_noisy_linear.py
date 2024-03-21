@@ -108,12 +108,13 @@ class NoisyLinear(nn.Linear):
             self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
 
     def reset_noise(self) -> None:
-        # Use factorized noise for better performance.
-        epsilon_in = self._scale_noise(self.in_features)
-        epsilon_out = self._scale_noise(self.out_features)
-        self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
-        if self.bias_mu is not None:
-            self.bias_epsilon.copy_(epsilon_out)
+        with torch.no_grad():
+            # Use factorized noise for better performance.
+            epsilon_in = self._scale_noise(self.in_features)
+            epsilon_out = self._scale_noise(self.out_features)
+            self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
+            if self.bias_mu is not None:
+                self.bias_epsilon.copy_(epsilon_out)
 
     def _scale_noise(self, size: Union[int, torch.Size, Sequence]) -> torch.Tensor:
         if isinstance(size, int):
@@ -122,8 +123,14 @@ class NoisyLinear(nn.Linear):
         return x.sign().mul_(x.abs().sqrt_())
 
     def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+        # Following Algorithm 1 from the Noisy Networks paper, the noise
+        # is resampled before each time step in the environment and then
+        # before training once! That is, sample and then run N_T training
+        # steps. Sample the noise for online and target network once. 
+        # It appears as if in the dueling setting only the noise of the 
+        # advantage stream is resampled.
         # If in training reset the noise for each call to produce variation.
-        if self.training:
+        if self.training:    
             self.reset_noise()
         # Then call the super's forward method.
         return super().forward(tensor)
