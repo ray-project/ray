@@ -699,14 +699,7 @@ class MultiAgentEnvWrapper(BaseEnv):
 
             if isinstance(obs, Exception):
                 if self.restart_failed_sub_environments:
-                    # Re-init env_state.
-                    self._init_env_state(idx=idx)
-                    # Try recreating the sub-env.
-                    logger.warning(f"Trying to restart sub-environment at index {idx}.")
                     self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
-                    logger.warning(
-                        f"Sub-environment at index {idx} restarted successfully."
-                    )
                 else:
                     raise obs
             else:
@@ -736,8 +729,6 @@ class MultiAgentEnvWrapper(BaseEnv):
                         "Trying to close old and replaced sub-environment (at vector "
                         f"index={idx}), but closing resulted in error:\n{e}"
                     )
-            # Re-init env_state.
-            self._init_env_state(idx=idx)
             # Try recreating the sub-env.
             logger.warning(f"Trying to restart sub-environment at index {idx}.")
             self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
