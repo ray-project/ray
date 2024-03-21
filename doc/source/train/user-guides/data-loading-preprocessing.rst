@@ -450,7 +450,7 @@ To perform file order shuffling, specify ``shuffle="files"`` in the data loading
 Shuffling within a local buffer on each training worker
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This options buffers data locally on each training worker. Data within the buffer will be shuffled on the fly before being fed the model.
+This options buffers data locally on each training worker. Ray Data shuffles data within the buffer on the fly before it feeds the model.
 
 To perform local shuffling, specify the ``local_shuffle_buffer_size`` parameter to :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>`.
 
