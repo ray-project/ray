@@ -991,12 +991,6 @@ class DeploymentReplica(VersionedReplica):
             log_file_path=self._actor.log_file_path,
         )
 
-        if is_ready == ReplicaStartupStatus.SUCCEEDED:
-            logger.info(
-                f"{self._replica_id} successfully started after "
-                f"{time.time() - self._start_time}s."
-            )
-
         return is_ready
 
     def stop(self, graceful: bool = True) -> None:
@@ -2056,7 +2050,8 @@ class DeploymentState:
                 )
                 logger.info(
                     f"{replica.replica_id} started successfully "
-                    f"on node '{replica.actor_node_id}'.",
+                    f"on node '{replica.actor_node_id}' after "
+                    f"{time.time() - self._start_time}s.",
                     extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
