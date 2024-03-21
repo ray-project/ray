@@ -317,6 +317,7 @@ class DAGInputData:
             )
 
 
+@DeveloperAPI
 class MultiInputNode(DAGNode):
     """InputNode with multiple args/kwargs packed inside"""
 
