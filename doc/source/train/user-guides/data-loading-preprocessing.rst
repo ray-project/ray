@@ -86,7 +86,7 @@ Data ingestion can be set up with four basic steps:
                         assert type(labels) == torch.Tensor
                         assert inputs.shape[0] == batch_size
                         assert labels.shape[0] == batch_size
-                        # Only check one batch for demo purpose.
+                        # Only check one batch for demo purposes.
                         # Replace the above with your actual model training code.
                         break
 
