@@ -33,7 +33,7 @@ Data ingestion can be set up with four basic steps:
 
 1. Create a Ray Dataset from your input data.
 2. Apply preprocessing operations to your Ray Dataset.
-3. Input the preprocessed Dataset into the Ray Train Trainer, which internally will split the dataset equally in a streaming way across the distributed training workers.
+3. Input the preprocessed Dataset into the Ray Train Trainer, which internally splits the dataset equally in a streaming way across the distributed training workers.
 4. Consume the Ray Dataset in your training function.
 
 .. tab-set::
