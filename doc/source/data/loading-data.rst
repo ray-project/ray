@@ -209,6 +209,10 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
+        Ray Data relies on PyArrow for authenticaion with Amazon S3. For more on how to configure
+        your credentials to be compatible with PyArrow, see their
+        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+
     .. tab-item:: GCS
 
         To read files from Google Cloud Storage, install the
@@ -227,7 +231,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
+                "gcs://anonymous@ray-example-data/iris.parquet",
                 filesystem=filesystem
             )
 
@@ -242,6 +246,10 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.length  double
             petal.width   double
             variety       string
+
+        Ray Data relies on PyArrow for authenticaion with Google Cloud Storage. For more on how
+        to configure your credentials to be compatible with PyArrow, see their
+        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
     .. tab-item:: ABS
 
@@ -276,6 +284,10 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.length  double
             petal.width   double
             variety       string
+
+        Ray Data relies on PyArrow for authenticaion with Azure Blob Storage. For more on how
+        to configure your credentials to be compatible with PyArrow, see their
+        `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
 Reading files from NFS
 ~~~~~~~~~~~~~~~~~~~~~~
