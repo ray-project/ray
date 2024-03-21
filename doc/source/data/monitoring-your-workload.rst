@@ -144,7 +144,7 @@ might be iteration stats included (for example, if you call :meth:`~ray.data.Dat
 iterator level are:
 
 * **Iterator initialization**: The time Ray Data spent initializing the iterator. This time is internal to Ray Data.
-* **Time user thread is blocked**: The time spent producing data in the iterator. This is often the primary execution of a
+* **Time user thread is blocked**: The time Ray Data spent producing data in the iterator. This time is often the primary execution of a
   dataset if you haven't previously materialized it.
 * **Time in user thread**: The time spent in the user thread that's iterating over the dataset outside of the Ray Data code.
   If this time is high consider, optimizing the body of the loop that's iterating over the dataset.
