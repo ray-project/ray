@@ -124,7 +124,7 @@ The following are descriptions of the various stats included at the operator lev
   isn't processing data, sleeping, waiting for I/O, etc.
 * **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
   user and system CPU time.
-* **UDF time**: The UDF time is time spent in functions defined by the user. This includes functions passed into Ray
+* **UDF time**: The UDF time is time spent in functions defined by the user. This time includes functions you pass into Ray
   Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`,
   etc. You can use this to track the time spent in functions you define and how much time optimizing those functions could save.
 * **Memory usage**: The output displays memory usage per block in MiB.
