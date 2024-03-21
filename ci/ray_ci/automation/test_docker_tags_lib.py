@@ -7,10 +7,13 @@ from ci.ray_ci.automation.docker_tags_lib import (
     _get_docker_auth_token,
     _get_docker_hub_auth_token,
     _get_image_creation_time,
+    backup_release_tags,
+    copy_tag_to_aws_ecr,
     delete_tag,
     _list_recent_commit_short_shas,
     query_tags_from_docker_hub,
     query_tags_from_docker_with_oci,
+    _is_release_tag,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -214,6 +217,56 @@ def test_delete_tag_failure_rate_limit_exceeded(mock_requests):
     }
 
 
+@pytest.mark.parametrize(
+    ("tag", "release_versions", "expected_value"),
+    [
+        ("2.0.0", ["2.0.0"], True),
+        ("2.0.0rc0", ["2.0.0rc0"], True),
+        ("2.0.0-py38", ["2.0.0"], True),
+        ("2.0.0-py38-cu123", ["2.0.0"], True),
+        ("2.0.0.post1", ["2.0.0.post1"], True),
+        ("2.0.0.1", ["2.0.0"], False),
+        ("2.0.0.1r", ["2.0.0"], False),
+        ("a.1.c", ["2.0.0"], False),
+        ("1.a.b", ["2.0.0"], False),
+        ("2.0.0rc0", ["2.0.0"], False),
+        ("2.0.0", ["2.0.0rc0"], False),
+        ("2.0.0.a1s2d3", ["2.0.0"], False),
+        ("2.0.0.a1s2d3-py38-cu123", ["2.0.0"], False),
+        ("2.0.0", None, True),
+    ],
+)
+def test_is_release_tag(tag, release_versions, expected_value):
+    assert _is_release_tag(tag, release_versions) == expected_value
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
+def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
+    tag = "test_namespace/test_repository:test_tag"
+    mock_call_crane_cp.return_value = (
+        0,
+        "aws-ecr/name/repo:test_tag: digest: sha256:sample-sha256 size: 1788",
+    )
+
+    is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
+    mock_call_crane_cp.assert_called_once_with(
+        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
+    )
+    assert is_copied is True
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._call_crane_cp")
+def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
+    tag = "test_namespace/test_repository:test_tag"
+    mock_call_crane_cp.return_value = (1, "Error: Failed to copy tag.")
+
+    is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
+    mock_call_crane_cp.assert_called_once_with(
+        tag="test_tag", source=tag, aws_ecr_repo="aws-ecr/name/repo"
+    )
+    assert is_copied is False
+
+
 def _make_docker_hub_response(
     tag: str, page_count: int, namespace: str, repository: str, page_limit: int
 ):
@@ -339,6 +392,41 @@ def test_query_tags_from_docker_with_oci_failure(mock_requests, mock_get_token):
 
     with pytest.raises(Exception, match="Failed to query tags"):
         query_tags_from_docker_with_oci("test_namespace", "test_repo")
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._get_docker_hub_auth_token")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.query_tags_from_docker_hub")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib._write_to_file")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.copy_tag_to_aws_ecr")
+def test_backup_release_tags(
+    mock_copy_tag, mock_write, mock_query_tags, mock_get_token
+):
+    namespace = "test_namespace"
+    repository = "test_repository"
+    aws_ecr_repo = "test_aws_ecr_repo"
+
+    mock_get_token.return_value = "test_token"
+    mock_query_tags.return_value = [
+        f"{namespace}/{repository}:2.0.{i}" for i in range(10)
+    ]
+
+    backup_release_tags(
+        namespace=namespace,
+        repository=repository,
+        aws_ecr_repo=aws_ecr_repo,
+        docker_username="test_username",
+        docker_password="test_password",
+    )
+
+    assert mock_query_tags.call_count == 1
+    assert mock_query_tags.call_args.kwargs["namespace"] == namespace
+    assert mock_query_tags.call_args.kwargs["repository"] == repository
+    assert mock_query_tags.call_args.kwargs["docker_hub_token"] == "test_token"
+    assert mock_write.call_count == 1
+    assert mock_copy_tag.call_count == 10
+    for i, call_arg in enumerate(mock_copy_tag.call_args_list):
+        assert call_arg.kwargs["aws_ecr_repo"] == aws_ecr_repo
+        assert call_arg.kwargs["tag"] == f"{namespace}/{repository}:2.0.{i}"
 
 
 if __name__ == "__main__":

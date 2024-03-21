@@ -116,7 +116,6 @@ I/O and Conversion
    Dataset.to_pandas_refs
    Dataset.to_numpy_refs
    Dataset.to_arrow_refs
-   Dataset.to_random_access_dataset
 
 Inspecting Metadata
 -------------------
@@ -142,17 +141,6 @@ Execution
     :toctree: doc/
 
     Dataset.materialize
-
-Serialization
--------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.has_serializable_lineage
-   Dataset.serialize_lineage
-   Dataset.deserialize_lineage
 
 .. _block-api:
 

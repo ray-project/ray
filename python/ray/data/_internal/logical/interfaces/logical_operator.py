@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 from .operator import Operator
 
@@ -38,3 +38,16 @@ class LogicalOperator(Operator):
         elif len(self._input_dependencies) == 1:
             return self._input_dependencies[0].estimated_num_outputs()
         return None
+
+    # Override the following 3 methods to correct type hints.
+
+    @property
+    def input_dependencies(self) -> List["LogicalOperator"]:
+        return super().input_dependencies  # type: ignore
+
+    @property
+    def output_dependencies(self) -> List["LogicalOperator"]:
+        return super().output_dependencies  # type: ignore
+
+    def post_order_iter(self) -> Iterator["LogicalOperator"]:
+        return super().post_order_iter()  # type: ignore

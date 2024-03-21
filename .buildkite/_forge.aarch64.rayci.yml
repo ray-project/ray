@@ -18,7 +18,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.8"
           - "3.9"
           - "3.10"
           - "3.11"
@@ -41,7 +40,6 @@ steps:
       - core_cpp
     wanda: ci/docker/ray.cpu.base.aarch64.wanda.yaml
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
