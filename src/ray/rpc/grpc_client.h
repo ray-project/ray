@@ -89,16 +89,16 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
 }
 
 inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
+  // Please refer to explanation of gRPC returned statuses for more details:
+  // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
   std::string service_config_json = R"(
   {
     "methodConfig": [{
       "name": [
-        // Mutating, but idempotent
         {"service": "ray.rpc.CoreWorkerService", "method": "ReportGeneratorItemReturns"},
         {"service": "ray.rpc.CoreWorkerService", "method": "DeleteObjects"},
         {"service": "ray.rpc.CoreWorkerService", "method": "CancelTask"},
 
-        // Read-only
         {"service": "ray.rpc.CoreWorkerService", "method": "GetCoreWorkerStats"},
         {"service": "ray.rpc.CoreWorkerService", "method": "NumPendingTasks"},
         {"service": "ray.rpc.CoreWorkerService", "method": "PlasmaObjectReady"},
@@ -111,8 +111,6 @@ inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
         "maxBackoff": "1s",
         "backoffMultiplier": 1.5,
         "retryableStatusCodes": [
-          // Please refer to explanation of gRPC returned statuses for more details:
-          // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
           "retryableStatusCodes": [
               "UNAVAILABLE",
               "DEADLINE_EXCEEDED",

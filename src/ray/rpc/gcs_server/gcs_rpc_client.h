@@ -176,14 +176,12 @@ class GcsRpcClient {
  public:
   static std::shared_ptr<grpc::Channel> CreateGcsChannel(const std::string &address,
                                                          int port) {
+    // Please refer to explanation of gRPC returned statuses for more details:
+    // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
     std::string service_config_json = R"(
     {
       "methodConfig": [{
         "name": [
-          ////////////////////////////////////////////////////////////////
-          // Mutating, but idempotent
-          ////////////////////////////////////////////////////////////////
-
           {"service": "ray.rpc.NodeInfoGcsService", "method": "DrainNode"},
 
           {"service": "ray.rpc.JobInfoGcsService", "method": "MarkJobFinished"},
@@ -196,10 +194,6 @@ class GcsRpcClient {
 
           {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVPut"},
           {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVDel"},
-
-          ////////////////////////////////////////////////////////////////
-          // Read-only
-          ////////////////////////////////////////////////////////////////
 
           {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllAvailableResources"},
           {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllResourceUsage"},
@@ -235,8 +229,6 @@ class GcsRpcClient {
           "maxBackoff": "2s",
           "backoffMultiplier": 2,
           "retryableStatusCodes": [
-            // Please refer to explanation of gRPC returned statuses for more details:
-            // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
             "retryableStatusCodes": [
                 "UNAVAILABLE",
                 "DEADLINE_EXCEEDED",
