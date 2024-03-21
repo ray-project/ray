@@ -10,13 +10,13 @@ config = (
     .environment("CartPole-v1")
     .rollouts(
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=10,
+        num_rollout_workers=2,
         #env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .resources(
         num_learner_workers=2,
         num_gpus=0,
-        num_cpus_for_local_worker=0,
+        num_cpus_for_local_worker=1,
     )
     .training(
         train_batch_size_per_learner=500,
@@ -36,4 +36,4 @@ stop = {
     "timesteps_total": 2000000,
 }
 
-config.build().train()
+#config.build().train()
