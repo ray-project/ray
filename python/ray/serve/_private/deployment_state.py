@@ -1251,6 +1251,12 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
+        self.replica_constructor_histogram = metrics.Histogram(
+            "serve_deployment_replica_constructor_runtime_s",
+            description=("Tracks how long replicas take to run their constructor."),
+            tag_keys=("application", "deployment"),
+        ).set_default_tags({"application": id.app_name, "deployment": id.name})
+
         # Whether the multiplexed model ids have been updated since the last
         # time we checked.
         self._multiplexed_model_ids_updated = False
