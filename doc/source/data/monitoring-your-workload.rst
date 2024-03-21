@@ -164,7 +164,7 @@ the following snippet in your Ray Data code:
    context.verbose_stats_logs = True
 
 
-By enabling verbosity there are a few more outputs added:
+By enabling verbosity Ray Data adds a few more outputs:
 
 * **Extra metrics**: Operators, executors, etc. can add to this dictionary of various metrics. There is
   some duplication of stats between the default output and this dictionary, but for advanced users provides more insight into
