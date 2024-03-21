@@ -503,7 +503,7 @@ To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dat
 Full global shuffle
 ~~~~~~~~~~~~~~~~~~~
 
-This options is the most expensive. It will fully decorrelate row iteration order from the original dataset order, at the cost of significantly more computation, I/O, and communication.
+This option is the most expensive. It fully de-correlates row iteration order from the original dataset order, at the cost of significantly more computation, I/O, and communication.
 
 To perform a global shuffle, call :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`.
 
