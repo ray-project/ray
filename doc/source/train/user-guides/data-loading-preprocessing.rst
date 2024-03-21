@@ -706,7 +706,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, thanks to Ray's native support for heterogeneous resources, you can simply add more CPU-only nodes to your cluster, and Ray Data will automatically scale out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
+If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, Ray's native support for heterogeneous resources enables you to simply add more CPU-only nodes to your cluster, and Ray Data automatically scales out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
 
 In general, adding CPU-only nodes can help in two ways:
 * Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
