@@ -603,7 +603,16 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
     if (!worker->IsDetachedActor() && (worker->GetAssignedJobId() == job_id)) {
       RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                     << " is killed because the job " << job_id << " finished.";
-      KillWorker(worker, /* force */ true);
+      rpc::ExitRequest request;
+      request.set_force_exit(true);
+      worker->rpc_client()->Exit(
+          request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+              // Just kill-9 as a last resort.
+              KillWorker(worker, /* force */ true);
+            }
+          });
     }
   }
   worker_pool_.HandleJobFinished(job_id);
