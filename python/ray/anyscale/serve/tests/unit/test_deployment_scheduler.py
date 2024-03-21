@@ -386,6 +386,51 @@ class TestActiveCompaction:
         opp = scheduler.get_node_to_compact(allow_new_compaction=True)
         assert opp[0] == "node2"
 
+    def test_migrate_to_multiple_nodes(self):
+        """Test when the compaction target node has replicas whose
+        migration needs to be spread across multiple other nodes in the
+        cluster.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 6})
+        cluster_node_info_cache.add_node("node2", {"CPU": 6})
+        cluster_node_info_cache.add_node("node3", {"CPU": 3})
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        # 5 replicas on node1
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica4", d_id), "node1")
+        # 4 replicas on node2
+        scheduler.on_replica_running(ReplicaID("replica5", d_id), "node2")
+        scheduler.on_replica_running(ReplicaID("replica6", d_id), "node2")
+        scheduler.on_replica_running(ReplicaID("replica7", d_id), "node2")
+        scheduler.on_replica_running(ReplicaID("replica8", d_id), "node2")
+        # 3 replicas on node3
+        scheduler.on_replica_running(ReplicaID("replica9", d_id), "node3")
+        scheduler.on_replica_running(ReplicaID("replica10", d_id), "node3")
+        scheduler.on_replica_running(ReplicaID("replica11", d_id), "node3")
+
+        opp = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert opp[0] == "node3"
+        # Again, should return the same thing
+        opp = scheduler.get_node_to_compact(allow_new_compaction=False)
+        assert opp[0] == "node3"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

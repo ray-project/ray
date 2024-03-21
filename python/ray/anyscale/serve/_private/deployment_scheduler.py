@@ -536,8 +536,16 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
                     optimal_assignment = assigned_replicas
 
         if node_with_min_replicas:
+            node_to_assigned_replicas = defaultdict(list)
+            for replica_id, node_id in optimal_assignment.items():
+                node_to_assigned_replicas[node_id].append(replica_id)
+
+            assignment_strs = [
+                f"{assigned_replicas} -> {node_id}"
+                for node_id, assigned_replicas in node_to_assigned_replicas.items()
+            ]
             logger.info(
                 f"Found compactable node '{node_with_min_replicas}' with migration "
-                f"plan: {optimal_assignment}."
+                f"plan: {{{', '.join(assignment_strs)}}}."
             )
             return node_with_min_replicas
