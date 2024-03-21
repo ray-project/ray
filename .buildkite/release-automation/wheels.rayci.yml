@@ -18,7 +18,7 @@ steps:
     depends_on: 
       - forge
       - forge_arm64
-      - upload-wheels-testpypi
+      # - upload-wheels-testpypi
 
   - label: "Linux x86_64 Python {{matrix}}"
     key: validate-linux-x86_64-wheels
