@@ -84,7 +84,6 @@ steps:
       - oss
     job_env: MACOS
     instance_type: macos
-    soft_fail: true
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_core_dashboard_test
 
