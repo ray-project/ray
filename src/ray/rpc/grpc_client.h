@@ -88,6 +88,53 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
   return channel;
 }
 
+inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
+  std::string service_config_json = R"(
+  {
+    "methodConfig": [{
+      "name": [
+        // Mutating, but idempotent
+        {"service": "ray.rpc.CoreWorkerService", "method": "ReportGeneratorItemReturns"},
+        {"service": "ray.rpc.CoreWorkerService", "method": "DeleteObjects"},
+        {"service": "ray.rpc.CoreWorkerService", "method": "CancelTask"},
+
+        // Read-only
+        {"service": "ray.rpc.CoreWorkerService", "method": "GetCoreWorkerStats"},
+        {"service": "ray.rpc.CoreWorkerService", "method": "NumPendingTasks"},
+        {"service": "ray.rpc.CoreWorkerService", "method": "PlasmaObjectReady"},
+        {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectLocationsOwner"},
+        {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectStatus"},
+      ],
+      "retryPolicy": {
+        "maxAttempts": 5,
+        "initialBackoff": "0.1s",
+        "maxBackoff": "1s",
+        "backoffMultiplier": 1.5,
+        "retryableStatusCodes": [
+          // Please refer to explanation of gRPC returned statuses for more details:
+          // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+          "retryableStatusCodes": [
+              "UNAVAILABLE",
+              "DEADLINE_EXCEEDED",
+              "INTERNAL",
+              "UNKNOWN",
+              "ABORTED",
+          ],
+        ]
+      }
+    }]}
+  )";
+
+  grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);
+
+  arguments.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
+                  ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
+  arguments.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+  arguments.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
+
+  return arguments;
+}
+
 template <class GrpcService>
 class GrpcClient {
  public:
@@ -114,10 +161,14 @@ class GrpcClient {
              int num_threads,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
+
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
 
-    channel_ = BuildChannel(address, port, CreateClientDefaultChannelArguments());
+    grpc::ChannelArguments arguments = CreateClientDefaultChannelArguments();
+    arguments.SetResourceQuota(quota);
+
+    channel_ = BuildChannel(address, port, arguments);
     stub_ = GrpcService::NewStub(channel_);
   }
 
@@ -175,54 +226,6 @@ class GrpcClient {
   /// Whether CallMethod is invoked.
   bool call_method_invoked_ = false;
 };
-
-inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
-  std::string service_config_json = R"(
-  {
-    "methodConfig": [{
-      "name": [
-        // Mutating, but idempotent
-        {"service": "ray.rpc.CoreWorkerService", "method": "ReportGeneratorItemReturns"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "DeleteObjects"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "CancelTask"},
-
-        // Read-only
-        {"service": "ray.rpc.CoreWorkerService", "method": "GetCoreWorkerStats"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "NumPendingTasks"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "PlasmaObjectReady"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectLocationsOwner"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectStatus"},
-      ],
-      "retryPolicy": {
-        "maxAttempts": 5,
-        "initialBackoff": "0.1s",
-        "maxBackoff": "1s",
-        "backoffMultiplier": 1.5,
-        "retryableStatusCodes": [
-          // Please refer to explanation of gRPC returned statuses for more details:
-          // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-          "retryableStatusCodes": [
-              "UNAVAILABLE",
-              "DEADLINE_EXCEEDED",
-              "INTERNAL",
-              "UNKNOWN",
-              "ABORTED",
-          ],
-        ]
-      }
-    }]}
-  )";
-
-  grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);
-
-  arguments.SetResourceQuota(quota);
-  arguments.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
-                  ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
-  arguments.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-  arguments.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-
-  return arguments;
-}
 
 }  // namespace rpc
 }  // namespace ray
