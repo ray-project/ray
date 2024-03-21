@@ -2163,19 +2163,15 @@ def get_ray_default_worker_file_path():
 
 class Cgroup2NetworkBlocker:
     """
-    Context manager to block a pid's all network in and out. Used in testing.
+    Context manager to block a pid's all network output. Used in testing.
 
     The procedure:
 
     (on enter)
     0. record the original cgroup
-        cat /proc/$PID/cgroup | <process code>
     1. create a cgroup v2
-        sudo mkdir -p /sys/fs/cgroup/unified/$NAME
     2. use iptables to set all-block to the cgroup
-        sudo iptables -A OUTPUT -m cgroup --path /sys/fs/cgroup/unified/$NAME -j REJECT
     3. add the pid to the cgroup.
-        echo $PID | sudo tee /sys/fs/cgroup/unified/$NAME/cgroup.procs > /dev/null
 
     (on exit)
     4. remove the pid from the cgroup, by adding it back to the original cgroupv2
@@ -2183,7 +2179,10 @@ class Cgroup2NetworkBlocker:
     """
 
     def __init__(self, pid):
-        assert os.name == "posix", "This script can only be run on Linux."
+        assert os.name == "posix", "This blocker can only be run on Linux."
+        assert os.geteuid() == 0, "This blocker needs sudo permission."
+        assert os.path.exists("/sys/fs/cgroup/unified"), "This blocker needs cgroup v2"
+
         self.pid = pid
         self.cgroupv2_name = "".join(random.choices(string.ascii_letters, k=10))
         self.original_cgroup = None
@@ -2215,7 +2214,8 @@ class Cgroup2NetworkBlocker:
             check=True,
         )
         subprocess.run(
-            f"echo {self.pid} | sudo tee /sys/fs/cgroup/unified/{self.cgroupv2_name}/cgroup.procs",
+            f"echo {self.pid} | sudo tee"
+            f" /sys/fs/cgroup/unified/{self.cgroupv2_name}/cgroup.procs",
             shell=True,
             check=True,
         )
@@ -2225,8 +2225,9 @@ class Cgroup2NetworkBlocker:
     def __exit__(self, exc_type, exc_value, traceback):
         if self.original_cgroup:
             print(f"moving pid back to {self.original_cgroup}")
-            r = subprocess.run(
-                f"echo {self.pid} | sudo tee /sys/fs/cgroup/unified/{self.original_cgroup}/cgroup.procs",
+            subprocess.run(
+                f"echo {self.pid} | sudo tee"
+                f" /sys/fs/cgroup/unified/{self.original_cgroup}/cgroup.procs",
                 shell=True,
                 check=True,
             )

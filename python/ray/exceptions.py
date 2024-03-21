@@ -749,7 +749,7 @@ class ObjectRefStreamEndOfStreamError(RayError):
 
 @DeveloperAPI
 class ActorUnavailableError(RayError):
-    """Raised when the actor is temporarily unavailable but may be available again later."""
+    """Raised when the actor is temporarily unavailable but may be available later."""
 
     pass
 

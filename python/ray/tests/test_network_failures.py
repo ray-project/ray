@@ -40,7 +40,7 @@ def test_actor_unavailable(ray_start_cluster):
     assert ray.get(a.sum.remote(1, 2)) == 3
     pid = ray.get(a.getpid.remote())
 
-    with Cgroup2NetworkBlocker(os.getpid()):
+    with Cgroup2NetworkBlocker(pid):
         with pytest.raises(ActorUnavailableError):
             ray.get(a.sum.remote(1, 2))
 
