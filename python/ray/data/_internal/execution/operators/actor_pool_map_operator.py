@@ -28,7 +28,7 @@ DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
 # The default time to wait for minimum requested actors
 # to start before raising a timeout, in seconds.
-DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
+DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 30
 
 
 class ActorPoolMapOperator(MapOperator):

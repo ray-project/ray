@@ -230,6 +230,20 @@ class Queue:
 
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
 
+    async def get_nowait_batch_async(self, num_items: int) -> List[Any]:
+        """Gets items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        if not isinstance(num_items, int):
+            raise TypeError("Argument 'num_items' must be an int")
+        if num_items < 0:
+            raise ValueError("'num_items' must be nonnegative")
+
+        return await self.actor.get_nowait_batch.remote(num_items)
+
     def shutdown(self, force: bool = False, grace_period_s: int = 5) -> None:
         """Terminates the underlying QueueActor.
 
