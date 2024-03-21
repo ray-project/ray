@@ -21,8 +21,13 @@ class WindowsBuilderContainer(WindowsContainer):
     def run(self) -> None:
         cmds = [
             "powershell ci/pipeline/fix-windows-container-networking.ps1",
+            "git config --global core.symlinks true",
+            "git config --global core.autocrlf false",
+            "git clone . ray",
+            "cd ray",
+            "git checkout -f 09abba26b5bf2707639bb637c208d062a47b46f6",
             f"export BUILD_ONE_PYTHON_ONLY={self.python_version}",
-            "./python/build-wheel-windows.sh",
+            "BUILDKITE_COMMIT=09abba26b5bf2707639bb637c208d062a47b46f6 ./python/build-wheel-windows.sh",
         ]
         if self.upload:
             cmds += ["./ci/build/copy_build_artifacts.sh"]
