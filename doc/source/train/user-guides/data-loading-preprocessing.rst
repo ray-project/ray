@@ -3,7 +3,7 @@
 Data Loading and Preprocessing
 ==============================
 
-Ray Train integrates with :ref:`Ray Data <data>` to offer an performant and scalable streaming solution for loading and preprocessing large datasets.
+Ray Train integrates with :ref:`Ray Data <data>` to offer a performant and scalable streaming solution for loading and preprocessing large datasets.
 Key advantages include:
 
 - Streaming data loading and preprocessing, scalable to petabyte-scale data.
