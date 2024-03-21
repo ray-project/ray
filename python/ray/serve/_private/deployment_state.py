@@ -249,6 +249,7 @@ class ActorReplicaWrapper:
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
+        self._initialization_duration_s = -1
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -669,7 +670,9 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
-                    _, self._version = ray.get(self._ready_obj_ref)
+                    _, self._version, self._initialization_duration_s = ray.get(
+                        self._ready_obj_ref
+                    )
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in {self._replica_id}, the replica will be stopped."
@@ -1254,9 +1257,11 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
-        self.replica_constructor_histogram = metrics.Histogram(
-            "serve_deployment_replica_constructor_runtime_s",
-            description=("Tracks how long replicas take to run their constructor."),
+        self.replica_initialization_histogram = metrics.Histogram(
+            "serve_deployment_replica_initialization_duration_s",
+            description=(
+                "Tracks how long replicas take to start after being scheduled."
+            ),
             tag_keys=("application", "deployment"),
         ).set_default_tags({"application": id.app_name, "deployment": id.name})
 
@@ -2051,8 +2056,11 @@ class DeploymentState:
                 logger.info(
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
-                    f"{time.time() - self._start_time}s.",
+                    f"{(time.time() - replica._start_time):.1f}s.",
                     extra={"log_to_stderr": False},
+                )
+                self.replica_initialization_histogram.observe(
+                    replica._initialization_duration_s
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
