@@ -18,6 +18,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -33,6 +34,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_episode_replay_buffer,
     update_priorities_in_replay_buffer,
+    validate_buffer_config,
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
@@ -404,7 +406,10 @@ class DQNConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        if self.exploration_config["type"] == "ParameterNoise":
+        if (
+            not self._enable_new_api_stack
+            and self.exploration_config["type"] == "ParameterNoise"
+        ):
             if self.batch_mode != "complete_episodes":
                 raise ValueError(
                     "ParameterNoise Exploration requires `batch_mode` to be "
@@ -412,7 +417,7 @@ class DQNConfig(AlgorithmConfig):
                     "batch_mode='complete_episodes')`."
                 )
 
-        if not self.in_evaluation:
+        if not self.uses_new_env_runners and not self.in_evaluation:
             validate_buffer_config(self)
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
@@ -455,8 +460,10 @@ class DQNConfig(AlgorithmConfig):
             EpisodeReplayBuffer,
         )
 
-        if self.uses_new_env_runners and not issubclass(
-            self.replay_buffer_config["type"], EpisodeReplayBuffer
+        if (
+            self.uses_new_env_runners
+            and not isinstance(self.replay_buffer_config["type"], str)
+            and not issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "

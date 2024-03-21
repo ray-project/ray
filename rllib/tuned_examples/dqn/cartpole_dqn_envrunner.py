@@ -66,7 +66,7 @@ stop = {
     "timesteps_total": 100000,
 }
 
-# ray.init(local_mode=True)
+ray.init(local_mode=True)
 tuner = tune.Tuner(
     "DQN",
     param_space=config,
