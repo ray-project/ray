@@ -149,7 +149,7 @@ iterator level are:
 * **Time in user thread**: The time spent in the user thread that's iterating over the dataset outside of the Ray Data code.
   If this time is high, consider optimizing the body of the loop that's iterating over the dataset.
 * **Batch iteration stats**: Ray Data also includes stats about the prefetching of batches. These times are internal to Ray
-  Data code, but you can further optimize this by tuning the prefetching process.
+  Data code, but you can further optimize this time by tuning the prefetching process.
 
 Verbose stats
 ~~~~~~~~~~~~~~
