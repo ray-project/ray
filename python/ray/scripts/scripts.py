@@ -1002,8 +1002,32 @@ def start(
             )
             cli_logger.flush()
 
+        is_tini_cluster_mode = os.getppid() == 1
+        my_pid = os.getpid()
+        try:
+            process = psutil.Process(1)
+            process_cmd = " ".join(process.cmdline())
+            if process_cmd.find("tini --") == -1:
+                is_tini_cluster_mode = False
+        except Exception as e:
+            is_tini_cluster_mode = False
+
         while True:
             time.sleep(1)
+
+            if is_tini_cluster_mode:
+                children = process.children()
+                for child in children:
+                    try:
+                        cmdline = child.cmdline()
+                        if child.pid != my_pid:
+                            child.kill()
+                    except Exception as e:
+                        logger.info(
+                            f"failed to kill child process, error {e}, cmd {cmdline}"
+                        )
+                        continue
+
             deceased = node.dead_processes()
 
             # Report unexpected exits of subprocesses with unexpected return codes.
