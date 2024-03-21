@@ -672,7 +672,7 @@ class ActorReplicaWrapper:
                     _, self._version = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                 # here because the full details of the error is not displayed properly
@@ -680,7 +680,7 @@ class ActorReplicaWrapper:
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except Exception as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, repr(e)
 
