@@ -163,7 +163,7 @@ class LearnerGroup:
             self._update_request_tags = Counter()
             self._update_request_tag = 0
             self._additional_update_request_tags = Counter()
-            self._additional_update_request_tags = 0
+            self._additional_update_request_tag = 0
 
     def get_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
@@ -507,12 +507,12 @@ class LearnerGroup:
         for result in results:
             result_or_error = result.get()
             if result.ok:
-                tag = result.tag
-                if not tag:
+                if result.tag is None:
                     raise RuntimeError(
                         "Cannot call `LearnerGroup._get_async_results()` on untagged "
                         "async requests!"
                     )
+                tag = int(result.tag)
                 unprocessed_results[tag].append(result_or_error)
 
                 if tag in self._update_request_tags:
@@ -573,7 +573,8 @@ class LearnerGroup:
                     results = self._worker_manager.fetch_ready_async_reqs(
                         tags=list(self._additional_update_request_tags)
                     )
-                update_tag = str(uuid.uuid4())
+                update_tag = self._additional_update_request_tag
+                self._additional_update_request_tag += 1
                 num_sent_requests = self._worker_manager.foreach_actor_async(
                     [lambda w: w.additional_update(**kwargs) for _ in self._workers],
                     tag=update_tag,

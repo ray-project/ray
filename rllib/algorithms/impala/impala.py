@@ -745,34 +745,34 @@ class Impala(Algorithm):
         #            "module_to_env_connector": module_to_env_connector_state,
         #        }
         #    )
-        # END: TEST
 
         # Only if Learner's state is available: Broadcast together with the already
         # merged local worker's connector states and updated counters back to all
         # EnvRunners, including the local one.
-        if learner_state is not None:
-            _kwargs = (
-                {
-                    "env_to_module_connector": local_worker._env_to_module.get_state(),
-                    "module_to_env_connector": local_worker._module_to_env.get_state(),
-                }
-                if env_runner_states
-                else {}
-            )
-            new_state = {
-                # TODO (sven): Make these keys unified constants across RLlib.
-                "rl_module": learner_state["module_state"],
-                NUM_ENV_STEPS_SAMPLED: self._counters[NUM_ENV_STEPS_SAMPLED],
-                **_kwargs,
-            }
-            # Broadcast updated weights and (merged) EnvRunner states back to all
-            # EnvRunner workers.
-            self.workers.foreach_worker(
-                func=lambda worker: worker.set_state(new_state),
-                timeout_seconds=0.0,  # fire-and-forget
-                healthy_only=True,
-                local_worker=True,
-            )
+        # if learner_state is not None:
+        #    _kwargs = (
+        #        {
+        #            "env_to_module_connector": local_worker._env_to_module.get_state(),
+        #            "module_to_env_connector": local_worker._module_to_env.get_state(),
+        #        }
+        #        if env_runner_states
+        #        else {}
+        #    )
+        #    new_state = {
+        #        # TODO (sven): Make these keys unified constants across RLlib.
+        #        "rl_module": learner_state["module_state"],
+        #        NUM_ENV_STEPS_SAMPLED: self._counters[NUM_ENV_STEPS_SAMPLED],
+        #        **_kwargs,
+        #    }
+        #    # Broadcast updated weights and (merged) EnvRunner states back to all
+        #    # EnvRunner workers.
+        #    self.workers.foreach_worker(
+        #        func=lambda worker: worker.set_state(new_state),
+        #        timeout_seconds=0.0,  # fire-and-forget
+        #        healthy_only=True,
+        #        local_worker=True,
+        #    )
+        # END: TEST
 
         # Add already collected metrics to results for later processing.
         # TODO (sven): All algos should behave this way in their `training_step` methods
@@ -803,12 +803,12 @@ class Impala(Algorithm):
             # Perform asynchronous sampling on all (healthy) remote rollout workers.
             if num_healthy_remote_workers > 0:
                 #num_requests_made =
-                t0 = time.time()
+                #t0 = time.time()
                 self.workers.foreach_worker_async(
                     _remote_sample_get_state_and_metrics, healthy_only=True
                 )
-                t1 = time.time()
-                print(f"foreach_actor_async took {t1 - t0} sec.")
+                #t1 = time.time()
+                #print(f"foreach_actor_async took {t1 - t0} sec.")
                 #self._counters["_remote_env_runner_calls_dropped"] += (
                 #    num_healthy_remote_workers - num_requests_made
                 #)

@@ -392,7 +392,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._episodes = ongoing_episodes_continuations
 
         # Return collected episode data.
-        return []#done_episodes_to_return + ongoing_episodes_to_return
+        return done_episodes_to_return + ongoing_episodes_to_return
 
     def _sample_episodes(
         self,
