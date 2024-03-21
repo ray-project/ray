@@ -249,6 +249,10 @@ enum ErrorType {
   // ray.ObjectRefGenerator. It should never be returned directly to
   // application code (instead raise StopIteration).
   END_OF_STREAMING_GENERATOR = 24;
+  // Actor is unavailable. Maybe there is a temporary network failure. Difference from
+  // ACTOR_DIED is that the actor may still be alive and may become available again
+  // after some retries.
+  ACTOR_UNAVAILABLE = 25;
 }
 
 /// The information per ray error type.

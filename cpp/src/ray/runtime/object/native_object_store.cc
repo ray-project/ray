@@ -84,6 +84,8 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
     throw UnreconstructableException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
     throw RayTaskException(std::move(data_str));
+  } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_UNAVAILABLE)) {
+    throw ActorUnavailableException(std::move(data_str));
   }
 }
 

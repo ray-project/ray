@@ -3,6 +3,7 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.api.exception.ActorUnavailableException;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayTaskException;
 import io.ray.api.exception.RayWorkerException;
@@ -162,7 +163,8 @@ public class FailureTest extends BaseTest {
     // Wait for a while so that now the driver knows the actor is in RESTARTING state.
     Thread.sleep(1000);
     // An actor task should fail quickly until the actor is restarted.
-    Assert.expectThrows(RayActorException.class, () -> actor.task(SlowActor::ping).remote().get());
+    Assert.expectThrows(
+        ActorUnavailableException.class, () -> actor.task(SlowActor::ping).remote().get());
 
     signalActor.task(SignalActor::sendSignal).remote().get();
     // Wait for a while so that now the driver knows the actor is in ALIVE state.

@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.api.exception.ActorUnavailableException;
 import io.ray.api.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
@@ -61,8 +62,12 @@ public class KillActorTest extends BaseTest {
 
     // Kill the actor
     kill.accept(actor, noRestart);
-    // The get operation will fail with RayActorException
-    Assert.expectThrows(RayActorException.class, result::get);
+    if (noRestart) {
+      // The get operation will fail with RayActorException
+      Assert.expectThrows(RayActorException.class, result::get);
+    } else {
+      Assert.expectThrows(ActorUnavailableException.class, result::get);
+    }
 
     try {
       // Sleep 1s here to make sure the driver has received the actor notification
