@@ -176,7 +176,8 @@ class GcsRpcClient {
  public:
   static std::shared_ptr<grpc::Channel> CreateGcsChannel(const std::string &address,
                                                          int port) {
-    std::string service_config_json = R"{
+    std::string service_config_json = R"(
+    {
       "methodConfig": [{
         "name": [
           ////////////////////////////////////////////////////////////////
@@ -246,7 +247,8 @@ class GcsRpcClient {
           ]
         }
       }]
-    }";
+    }
+    )";
 
     grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);
 

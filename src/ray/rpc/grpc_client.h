@@ -177,7 +177,8 @@ class GrpcClient {
 };
 
 inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
-  std::string service_config_json = R"{
+  std::string service_config_json = R"(
+  {
     "methodConfig": [{
       "name": [
         // Mutating, but idempotent
@@ -209,8 +210,8 @@ inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
           ],
         ]
       }
-    }]
-  }";
+    }]}
+  )";
 
   grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);
 
