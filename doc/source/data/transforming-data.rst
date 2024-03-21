@@ -16,16 +16,15 @@ This guide shows you how to:
 * :ref:`Transform batches <transforming_batches>`
 * :ref:`Stateful transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
+* :ref:`Repartition data <repartitioning_data>`
 
 .. _transforming_rows:
 
 Transforming rows
 =================
 
-.. tip::
-
-    If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
-    better performance. To learn more, see :ref:`Transforming batches <transforming_batches>`.
+To transform rows, call :meth:`~ray.data.Dataset.map` or
+:meth:`~ray.data.Dataset.flat_map`.
 
 Transforming rows with map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -48,21 +47,10 @@ If your transformation returns exactly one row for each input row, call
         .map(parse_filename)
     )
 
-The user defined function passed to :meth:`~ray.data.Dataset.map` should be of type
-`Callable[[Dict[str, Any]], Dict[str, Any]]`. In other words, your function should
-input and output a dictionary with keys of strings and values of any type. For example:
+.. tip::
 
-.. testcode::
-
-    def fn(row: Dict[str, Any]) -> Dict[str, Any]:
-        # access row data
-        value = row["col1"]
-
-        # add data to row
-        row["col2"] = ...
-
-        # return row
-        return row
+    If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
+    better performance. To learn more, see `Transforming batches <#transforming-batches>`_.
 
 Transforming rows with flat map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -87,26 +75,6 @@ If your transformation returns multiple rows for each input row, call
 .. testoutput::
 
     [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
-
-The user defined function passed to :meth:`~ray.data.Dataset.flat_map` should be of type
-`Callable[[Dict[str, Any]], List[Dict[str, Any]]]`. In other words your function should
-input a dictionary with keys of strings and values of any type and output a list of
-dictionaries that have the same type as the input, for example:
-
-.. testcode::
-
-    def fn(row: Dict[str, Any]) -> List[Dict[str, Any]]:
-        # access row data
-        value = row["col1"]
-
-        # add data to row
-        row["col2"] = ...
-
-        # construct output list
-        output = [row, row]
-
-        # return list of output rows
-        return output
 
 .. _transforming_batches:
 
@@ -137,9 +105,10 @@ Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
-default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
-specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
-format from your function, but ``batch_format`` should match the input of your function.
+default, Ray Data represents batches as dicts of NumPy ndarrays.
+
+To configure the batch type, specify ``batch_format`` in
+:meth:`~ray.data.Dataset.map_batches`. You can return either format from your function.
 
 .. tab-set::
 
@@ -175,32 +144,6 @@ format from your function, but ``batch_format`` should match the input of your f
                 .map_batches(drop_nas, batch_format="pandas")
             )
 
-The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
-in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
-``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
-other words, your function should take as input and output a batch of data which you can represent as a
-pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
-
-.. testcode::
-
-    def fn(batch: pandas.DataFrame) -> pandas.DataFrame:
-        # modify batch
-        batch = ...
-
-        # return batch
-        return output
-
-The user defined function can also be a Python generator that yields batches, so the function can also
-be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
-In this case, your function would look like:
-
-.. testcode::
-
-    def fn(batch: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
-        # yield the same batch multiple times
-        for _ in range(10):
-            yield batch
-
 Configuring batch size
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -208,6 +151,12 @@ Increasing ``batch_size`` improves the performance of vectorized transformations
 NumPy functions and model inference. However, if your batch size is too large, your
 program might run out of memory. If you encounter an out-of-memory error, decrease your
 ``batch_size``.
+
+.. note::
+
+    The default batch size depends on your resource type. If you're using CPUs,
+    the default batch size is 4096. If you're using GPUs, you must specify an explicit
+    batch size.
 
 .. _stateful_transforms:
 
@@ -354,3 +303,29 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
                 .groupby("target")
                 .map_groups(normalize_features)
             )
+
+.. _repartitioning_data:
+
+Repartitioning data
+===================
+
+A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
+:term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
+increase the number of blocks by setting a higher ``override_num_blocks`` at read time.
+
+To change the number of blocks for an existing Dataset, call
+:meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10000, override_num_blocks=1000)
+
+    # Repartition the data into 100 blocks. Since shuffle=False, Ray Data will minimize
+    # data movement during this operation by merging adjacent blocks.
+    ds = ds.repartition(100, shuffle=False).materialize()
+
+    # Repartition the data into 200 blocks, and force a full data shuffle.
+    # This operation will be more expensive
+    ds = ds.repartition(200, shuffle=True).materialize()

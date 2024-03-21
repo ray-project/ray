@@ -1,5 +1,3 @@
-.. _custom_datasource:
-
 Advanced: Read and Write Custom File Types 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
