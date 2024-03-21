@@ -158,7 +158,7 @@ class FaultInjectEnv(gym.Env):
 
 
 class ForwardHealthCheckToEnvWorker(SingleAgentEnvRunner):
-    """Configure RolloutWorker to error in specific condition is hard.
+    """Configuring EnvRunner to error in specific condition is hard.
 
     So we take a short-cut, and simply forward ping() to env.sample().
     """

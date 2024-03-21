@@ -3918,6 +3918,15 @@ class AlgorithmConfig(_Config):
                     f"but have the new API stack disabled. You need to enable it via "
                     "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
                 )
+            # User is using the new EnvRunners, but forgot to switch on
+            # `_enable_new_api_stack`.
+            if self.uses_new_env_runners:
+                raise ValueError(
+                    "You are using the new API stack EnvRunners (SingleAgentEnvRunner "
+                    "or MultiAgentEnvRunner), but have forgotten to switch on the new "
+                    "API stack! Try setting "
+                    "`config.experimental(_enable_new_api_stack=True)`."
+                )
             # Early out. The rest of this method is only for _enable_new_api_stack=True.
             return
 

@@ -12,6 +12,7 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
 from ray.util.scheduling_strategies import (
+    LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
     NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -494,9 +495,20 @@ class DeploymentScheduler(ABC):
         scheduling_request: ReplicaSchedulingRequest,
         default_scheduling_strategy: str,
         target_node_id: Optional[str] = None,
-        target_labels: Optional[Dict[str, Any]] = None,
+        target_labels: Optional[LabelMatchExpressionsT] = None,
     ):
         """Schedule a replica from a scheduling request.
+
+        The following special scheduling strategies will be used, in
+        order of highest to lowest priority.
+        1. If a replica requires placement groups, we will choose to use
+           a `PlacementGroupSchedulingStrategy`. This can also take a
+           target node into consideration (soft target), if provided.
+           However it cannot take into account target labels.
+        2. If a `target_node_id` is provided, we will choose to use a
+           `NodeAffinitySchedulingStrategy`.
+        3. If `target_labels` is provided, we will choose to use a
+           `NodeLabelSchedulingStrategy`.
 
         Args:
             scheduling_request: A request to schedule a replica.
@@ -530,14 +542,17 @@ class DeploymentScheduler(ABC):
                 placement_group=pg,
                 placement_group_capture_child_tasks=True,
             )
+            target_labels = None
         elif target_node_id is not None:
             scheduling_strategy = NodeAffinitySchedulingStrategy(
                 node_id=target_node_id, soft=True, _spill_on_unavailable=True
             )
+            target_labels = None
         elif target_labels is not None:
             scheduling_strategy = NodeLabelSchedulingStrategy(
                 hard={}, soft=target_labels
             )
+            target_node_id = None
 
         actor_options = copy.copy(scheduling_request.actor_options)
         if scheduling_request.max_replicas_per_node is not None:
@@ -557,7 +572,9 @@ class DeploymentScheduler(ABC):
         ).remote(*scheduling_request.actor_init_args)
 
         del self._pending_replicas[deployment_id][replica_id]
-        self._on_replica_launching(replica_id, target_node_id=target_node_id)
+        self._on_replica_launching(
+            replica_id, target_node_id=target_node_id, target_labels=target_labels
+        )
 
         if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
             placement_group = scheduling_strategy.placement_group

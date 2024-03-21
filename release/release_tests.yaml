@@ -5091,6 +5091,7 @@
 
   frequency: nightly
   team: data
+  stable: False
 
   cluster:
     byod:
@@ -5151,6 +5152,7 @@
 
   frequency: nightly
   team: data
+  stable: False
 
   cluster:
     byod:

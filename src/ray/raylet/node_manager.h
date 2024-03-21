@@ -571,11 +571,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `RequestObjectSpillage` request.
-  void HandleRequestObjectSpillage(rpc::RequestObjectSpillageRequest request,
-                                   rpc::RequestObjectSpillageReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
                                   rpc::ReleaseUnusedBundlesReply *reply,

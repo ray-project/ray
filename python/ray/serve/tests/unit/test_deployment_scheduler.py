@@ -25,13 +25,19 @@ from ray.serve._private.test_utils import (
 )
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import (
+    In,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 
 
 def dummy():
     pass
+
+
+def rconfig(**config_opts):
+    return ReplicaConfig.create(dummy, **config_opts)
 
 
 def get_random_resources(n: int) -> List[Resources]:
@@ -271,7 +277,43 @@ def test_get_available_resources_per_node():
     )
 
 
+def test_get_node_to_running_replicas():
+    """Test DeploymentScheduler._get_node_to_running_replicas()."""
+
+    d_id = DeploymentID("a", "b")
+    scheduler = default_impl.create_deployment_scheduler(
+        MockClusterNodeInfoCache(),
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig())
+
+    # Test simple fixed case
+    scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+    scheduler.on_replica_running(ReplicaID("r2", d_id), "node1")
+    scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+    assert scheduler._get_node_to_running_replicas() == {
+        "node1": {ReplicaID("r1", d_id), ReplicaID("r2", d_id)},
+        "node2": {ReplicaID("r3", d_id)},
+    }
+    scheduler.on_replica_stopping(ReplicaID("r1", d_id))
+    scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+    scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+
+    # Test random case
+    node_to_running_replicas = defaultdict(set)
+    for i in range(40):
+        node_id = f"node{random.randint(0,5)}"
+        r_id = ReplicaID(f"r{i}", d_id)
+        node_to_running_replicas[node_id].add(r_id)
+        scheduler.on_replica_running(r_id, node_id)
+    assert scheduler._get_node_to_running_replicas() == node_to_running_replicas
+
+
 def test_get_available_resources_per_node_pg():
+    """Test DeploymentScheduler._get_available_resources_per_node()."""
+
     d_id = DeploymentID("a", "b")
 
     cluster_node_info_cache = MockClusterNodeInfoCache()
@@ -339,6 +381,176 @@ def test_get_available_resources_per_node_pg():
             "customx": 0.8,
         }
     )
+
+
+def test_best_fit_node():
+    """Test DeploymentScheduler._best_fit_node()."""
+
+    scheduler = default_impl.create_deployment_scheduler(
+        MockClusterNodeInfoCache(),
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+
+    # None of the nodes can schedule the replica
+    assert (
+        scheduler._best_fit_node(
+            required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+            available_resources={
+                "node1": Resources(GPU=3, CPU=3),
+                "node2": Resources(CPU=3, customx=1),
+            },
+        )
+        is None
+    )
+
+    # Only node2 can fit the replica
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        available_resources={
+            "node1": Resources(CPU=3),
+            "node2": Resources(GPU=1, CPU=3, customx=1),
+            "node3": Resources(CPU=3, customx=1),
+        },
+    )
+
+    # We should prioritize minimizing fragementation of GPUs over CPUs
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        available_resources={
+            "node1": Resources(GPU=2, CPU=10, customx=1),
+            "node2": Resources(GPU=10, CPU=2, customx=1),
+        },
+    )
+
+    # When GPU is the same, should prioritize minimizing fragmentation
+    # of CPUs over customer resources
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        available_resources={
+            "node1": Resources(GPU=10, CPU=5, customx=0.1),
+            "node2": Resources(GPU=10, CPU=2, customx=10),
+        },
+    )
+
+
+def test_schedule_replica():
+    """Test DeploymentScheduler._schedule_replica()"""
+
+    d_id = DeploymentID("deployment1", "app1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(
+            *args, **kwargs
+        ),
+    )
+
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+
+    scheduling_strategy = None
+
+    def set_scheduling_strategy(actor_handle, placement_group):
+        nonlocal scheduling_strategy
+        scheduling_strategy = actor_handle._options["scheduling_strategy"]
+
+    # Placement group without target node id
+    r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+        placement_group_strategy="STRICT_PACK",
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+    )
+    scheduler._pending_replicas[d_id][r0_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels={"abc": In("xyz")},
+    )
+    assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
+    assert len(scheduler._launching_replicas[d_id]) == 1
+    assert not scheduler._launching_replicas[d_id][r0_id].target_labels
+    assert not scheduler._launching_replicas[d_id][r0_id].target_node_id
+
+    # Placement group with target node id
+    r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r1_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+        placement_group_strategy="STRICT_PACK",
+        actor_options={"name": "r1"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+    )
+    scheduler._pending_replicas[d_id][r1_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id="node1",
+        target_labels={"abc": In("xyz")},  # this should get ignored
+    )
+    assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
+    assert len(scheduler._launching_replicas[d_id]) == 2
+    assert not scheduler._launching_replicas[d_id][r1_id].target_labels
+    assert scheduler._launching_replicas[d_id][r1_id].target_node_id == "node1"
+
+    # Target node id without placement group
+    r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r2_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r2"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+    )
+    scheduler._pending_replicas[d_id][r2_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id="node1",
+        target_labels={"abc": In("xyz")},  # this should get ignored
+    )
+    assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+    assert scheduling_strategy.node_id == "node1"
+    assert len(scheduler._launching_replicas[d_id]) == 3
+    assert not scheduler._launching_replicas[d_id][r2_id].target_labels
+    assert scheduler._launching_replicas[d_id][r2_id].target_node_id == "node1"
+
+    # Target labels
+    r3_id = ReplicaID(unique_id="r3", deployment_id=d_id)
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r3_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r3"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+    )
+    scheduler._pending_replicas[d_id][r3_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels={"abc": In("xyz")},
+    )
+    assert isinstance(scheduling_strategy, NodeLabelSchedulingStrategy)
+    assert scheduling_strategy.soft
+    assert len(scheduler._launching_replicas[d_id]) == 4
+    assert not scheduler._launching_replicas[d_id][r3_id].target_node_id
+    assert len(scheduler._launching_replicas[d_id][r3_id].target_labels.keys()) == 1
+    operator = scheduler._launching_replicas[d_id][r3_id].target_labels["abc"]
+    assert isinstance(operator, In) and operator.values == ["xyz"]
 
 
 def test_downscale_multiple_deployments():

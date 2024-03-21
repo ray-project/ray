@@ -1,4 +1,6 @@
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _rllib-advanced-api-doc:
 
 Advanced Python APIs
