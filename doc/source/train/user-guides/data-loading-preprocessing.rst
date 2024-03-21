@@ -7,7 +7,7 @@ Ray Train integrates with :ref:`Ray Data <data>` to offer a performant and scala
 Key advantages include:
 
 - Streaming data loading and preprocessing, scalable to petabyte-scale data.
-- Scaling out heavy data preprocessing to CPU nodes and avoid GPU training being bottlenecked.
+- Scaling out heavy data preprocessing to CPU nodes, to avoid bottlenecking GPU training.
 - Automatic and fast failure recovery.
 - Automatic on-the-fly data splitting across distributed training workers.
 
@@ -55,7 +55,7 @@ Data ingestion can be set up with four basic steps:
 
             # Step 1: Create a Ray Dataset from in-memory Python lists.
             # You can also create a Ray Dataset from many other sources and file
-            # formats, see https://docs.ray.io/en/latest/data/loading-data.html.
+            # formats.
             train_dataset = ray.data.from_items([{"x": [x], "y": [2 * x]} for x in range(200)])
 
             # Step 2: Preprocess your Ray Dataset.
@@ -113,7 +113,7 @@ Data ingestion can be set up with four basic steps:
 
             def train_func_per_worker():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.
-                # All datasets get sharded across workers by default.
+                # Ray Data shards all datasets across workers by default.
                 train_ds = train.get_dataset_shard("train")
                 val_ds = train.get_dataset_shard("validation")
 
@@ -158,7 +158,7 @@ Data ingestion can be set up with four basic steps:
 
             def train_func():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.
-                # All datasets gets sharded across workers by default.
+                # Ray Data shards all datasets across workers by default.
                 train_ds = ray.train.get_dataset_shard("train")
                 eval_ds = ray.train.get_dataset_shard("evaluation")
 
@@ -221,13 +221,13 @@ Your preprocessed datasets can be passed into a Ray Train Trainer (e.g. :class:`
 
 The datasets passed into the Trainer's ``datasets`` can be accessed inside of the ``train_loop_per_worker`` run on each distributed training worker by calling :meth:`ray.train.get_dataset_shard`.
 
-All datasets are split (i.e. sharded) across the training workers by default. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
+Ray Data splits all datasets across the training workers by default. :meth:`~ray.train.get_dataset_shard` returns ``1/n`` of the dataset, where ``n`` is the number of training workers.
 
-Data splitting is done in a streaming fashion on the fly.
+Ray Data does data splitting in a streaming fashion on the fly.
 
 .. note::
 
-    Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers.
+    Be aware that because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers.
     You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:doc:`example <../examples/deepspeed/deepspeed_example>`) or
     utilities available in other frameworks that you can explore.
 
@@ -428,7 +428,7 @@ Random shuffling
 ----------------
 Randomly shuffling data for each epoch can be important for model quality depending on what model you are training.
 
-Ray Data provides following options to random shuffling, sorted by compute overheads and randomness in acceding order. These options can be used in combination.
+Ray Data provides the following options for random shuffling, sorted by compute overheads and randomness in acceding order. You can combine these options.
 
 Shuffling the order of the input files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -486,7 +486,7 @@ To perform local shuffling, specify the ``local_shuffle_buffer_size`` parameter 
 Shuffling block order
 ~~~~~~~~~~~~~~~~~~~~~
 
-This options allows randomize the order of blocks in a dataset. Blocks are the the basic unit of data chunk stored in the object store. Applying this operation alone doesn't invovles heavy computaton and communicaton. However, it requires all blocks to be buffered in memory before applying this operation. So only use this when your dataset is small enough to fit into the object store memory.
+This option randomizes the order of blocks in a dataset. Blocks are the the basic unit of data chunk that Ray Data stores in the object store. Applying this operation alone doesn't involve heavy computation and communication. However, it requires Ray Data to buffer all blocks in memory before applying the operation. Only use this option when your dataset is small enough to fit into the object store memory.
 
 To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`.
 
@@ -497,7 +497,7 @@ To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dat
         "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
     )
 
-    # Randomize the block orders of this dataset.
+    # Randomize the block order of this dataset.
     ds = ds.randomize_block_order()
 
 Full global shuffle
@@ -616,14 +616,14 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     print(StandardScaler.deserialize(metadata["preprocessor_pkl"]))
 
 
-In this example, we persist the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that will be available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints saved from the Trainer. This enables recreation of the fitted preprocessor for use for inference.
+This example persists the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that is available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints that the Trainer saves. This design enables the recreation of the fitted preprocessor for inference.
 
 Performance tips
 ----------------
 
 Prefetching batches
 ~~~~~~~~~~~~~~~~~~~
-While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches background threads to fetch and process the next ``N`` batches.
+While iterating over a dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this approach launches background threads to fetch and process the next ``N`` batches.
 
 This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
 
@@ -710,4 +710,4 @@ If the GPU training is bottlenecked on expensive CPU preprocessing and the prepr
 
 In general, adding CPU-only nodes can help in two ways:
 * Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
-* Increasing object store memory, which 1) allows more data to be buffered in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This is helpful when memory is the bottleneck.
+* Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
