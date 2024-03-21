@@ -176,13 +176,87 @@ class GcsRpcClient {
  public:
   static std::shared_ptr<grpc::Channel> CreateGcsChannel(const std::string &address,
                                                          int port) {
-    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
+    std::string service_config_json = R"{
+      "methodConfig": [{
+        "name": [
+          ////////////////////////////////////////////////////////////////
+          // Mutating, but idempotent
+          ////////////////////////////////////////////////////////////////
+
+          {"service": "ray.rpc.NodeInfoGcsService", "method": "DrainNode"},
+
+          {"service": "ray.rpc.JobInfoGcsService", "method": "MarkJobFinished"},
+          {"service": "ray.rpc.JobInfoGcsService", "method": "ReportJobError"},
+
+          {"service": "ray.rpc.ActorInfoGcsService", "method": "RegisterActor"},
+
+          {"service": "ray.rpc.WorkerInfoGcsService", "method": "ReportWorkerFailure"},
+          {"service": "ray.rpc.WorkerInfoGcsService", "method": "UpdateWorkerDebuggerPort"},
+
+          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVPut"},
+          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVDel"},
+
+          ////////////////////////////////////////////////////////////////
+          // Read-only
+          ////////////////////////////////////////////////////////////////
+
+          {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllAvailableResources"},
+          {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllResourceUsage"},
+          {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetDrainingNodesRequest"},
+
+          {"service": "ray.rpc.NodeInfoGcsService", "method": "GetClusterId"},
+          {"service": "ray.rpc.NodeInfoGcsService", "method": "GetAllNodeInfo"},
+          {"service": "ray.rpc.NodeInfoGcsService", "method": "GetInternalConfig"},
+          {"service": "ray.rpc.NodeInfoGcsService", "method": "CheckAlive"},
+
+          {"service": "ray.rpc.JobInfoGcsService", "method": "GetAllJobInfo"},
+
+          {"service": "ray.rpc.ActorInfoGcsService", "method": "GetActorInfo"},
+          {"service": "ray.rpc.ActorInfoGcsService", "method": "GetNamedActorInfo"},
+          {"service": "ray.rpc.ActorInfoGcsService", "method": "ListNamedActors"},
+          {"service": "ray.rpc.ActorInfoGcsService", "method": "GetAllActorInfo"},
+
+          {"service": "ray.rpc.WorkerInfoGcsService", "method": "GetWorkerInfo"},
+          {"service": "ray.rpc.WorkerInfoGcsService", "method": "GetAllWorkerInfo"},
+
+          {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetPlacementGroup"},
+          {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetNamedPlacementGroup"},
+          {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetAllPlacementGroup"},
+
+          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVGet"},
+          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVMultiGet"},
+          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVExists"},
+          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVKeys"},
+        ],
+        "retryPolicy": {
+          "maxAttempts": 3,
+          "initialBackoff": "0.5s",
+          "maxBackoff": "2s",
+          "backoffMultiplier": 2,
+          "retryableStatusCodes": [
+            // Please refer to explanation of gRPC returned statuses for more details:
+            // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+            "retryableStatusCodes": [
+                "UNAVAILABLE",
+                "DEADLINE_EXCEEDED",
+                "INTERNAL",
+                "UNKNOWN",
+                "ABORTED",
+            ],
+          ]
+        }
+      }]
+    }";
+
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);
+
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
+
     return BuildChannel(address, port, arguments);
   }
 
