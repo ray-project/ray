@@ -150,16 +150,23 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
-inline grpc::ChannelArguments CreateDefaultChannelArguments() {
+inline grpc::ChannelArguments CreateDefaultChannelArguments(const std::string& service_config_json) {
   grpc::ChannelArguments arguments;
+
+  RAY_CHECK(service_config_json.size() > 0, "Provided service config JSON could not be empty");
+
+  arguments.SetServiceConfigJSON(service_config_json);
+
   if (::RayConfig::instance().grpc_client_keepalive_time_ms() > 0) {
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS,
                      ::RayConfig::instance().grpc_client_keepalive_time_ms());
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                      ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
   }
+
   arguments.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS,
                    ::RayConfig::instance().grpc_client_idle_timeout_ms());
+
   return arguments;
 }
 
