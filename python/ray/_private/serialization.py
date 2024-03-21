@@ -46,6 +46,7 @@ from ray.exceptions import (
     WorkerCrashedError,
     OutOfMemoryError,
     ObjectRefStreamEndOfStreamError,
+    ActorUnavailableError,
 )
 from ray.util import serialization_addons
 from ray.util import inspect_serializability
@@ -379,6 +380,8 @@ class SerializationContext:
                 return ActorUnschedulableError(error_info.error_message)
             elif error_type == ErrorType.Value("END_OF_STREAMING_GENERATOR"):
                 return ObjectRefStreamEndOfStreamError()
+            elif error_type == ErrorType.Value("ACTOR_UNAVAILABLE"):
+                return ActorUnavailableError(error_info.error_message)
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:

@@ -146,7 +146,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    bool fail_immediatedly =
+    bool fail_immediately =
         error_info.has_actor_died_error() &&
         error_info.actor_died_error().has_oom_context() &&
         error_info.actor_died_error().oom_context().fail_immediately();
@@ -155,7 +155,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
                                                       &status,
                                                       &error_info,
                                                       /*mark_task_object_failed*/ true,
-                                                      fail_immediatedly);
+                                                      fail_immediately);
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -315,7 +315,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
       resolver_.CancelDependencyResolution(task_id);
-      bool fail_immediatedly =
+      bool fail_immediately =
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
           error_info.actor_died_error().oom_context().fail_immediately();
@@ -324,7 +324,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
                                                         &status,
                                                         &error_info,
                                                         /*mark_task_object_failed*/ true,
-                                                        fail_immediatedly);
+                                                        fail_immediately);
     }
     if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
@@ -561,7 +561,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
                                                &error_info);
   } else {
     bool is_actor_dead = false;
-    bool fail_immediatedly = false;
+    bool fail_immediately = false;
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     if (status.ok()) {
@@ -580,12 +580,21 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       // If the actor is already dead, immediately mark the task object as failed.
       // Otherwise, start the grace period before marking the object as dead.
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
-      const auto &death_cause = queue.death_cause;
-      error_info = GetErrorInfoFromActorDeathCause(death_cause);
-      error_type = error_info.error_type();
-      fail_immediatedly = error_info.has_actor_died_error() &&
-                          error_info.actor_died_error().has_oom_context() &&
-                          error_info.actor_died_error().oom_context().fail_immediately();
+      if (is_actor_dead) {
+        const auto &death_cause = queue.death_cause;
+        error_info = GetErrorInfoFromActorDeathCause(death_cause);
+        error_type = error_info.error_type();
+        fail_immediately = error_info.has_actor_died_error() &&
+                           error_info.actor_died_error().has_oom_context() &&
+                           error_info.actor_died_error().oom_context().fail_immediately();
+      } else {
+        // actor is not dead, but the request failed. Consider it as a temporal one.
+        // May recognize retry, so fail_immediately = false.
+        error_info.set_error_message("The actor is temporarily unavailable: " +
+                                     status.ToString());
+        error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
+        error_type = rpc::ErrorType::ACTOR_UNAVAILABLE;
+      }
     }
 
     // This task may have been waiting for dependency resolution, so cancel
@@ -598,7 +607,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         &status,
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
-        fail_immediatedly);
+        fail_immediately);
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
       if (status.ok()) {

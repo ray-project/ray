@@ -10,6 +10,7 @@ import math
 import os
 import pathlib
 import random
+import string
 import socket
 import subprocess
 import sys
@@ -2158,3 +2159,106 @@ def get_ray_default_worker_file_path():
         f"/home/ray/anaconda3/lib/python{py_version}/"
         "site-packages/ray/_private/workers/default_worker.py"
     )
+
+
+class Cgroup2NetworkBlocker:
+    """
+    Context manager to block a pid's all network in and out. Used in testing.
+
+    The procedure:
+
+    (on enter)
+    0. record the original cgroup
+        cat /proc/$PID/cgroup | <process code>
+    1. create a cgroup v2
+        sudo mkdir -p /sys/fs/cgroup/unified/$NAME
+    2. use iptables to set all-block to the cgroup
+        sudo iptables -A OUTPUT -m cgroup --path /sys/fs/cgroup/unified/$NAME -j REJECT
+    3. add the pid to the cgroup.
+        echo $PID | sudo tee /sys/fs/cgroup/unified/$NAME/cgroup.procs > /dev/null
+
+    (on exit)
+    4. remove the pid from the cgroup, by adding it back to the original cgroupv2
+    5. delete the cgroup
+    """
+
+    def __init__(self, pid):
+        assert os.name == "posix", "This script can only be run on Linux."
+        self.pid = pid
+        self.cgroupv2_name = "".join(random.choices(string.ascii_letters, k=10))
+        self.original_cgroup = None
+
+    def __enter__(self):
+        result = subprocess.run(
+            ["cat", f"/proc/{self.pid}/cgroup"], capture_output=True, text=True
+        )
+        self.original_cgroup = self.find_cgroup_v2_name(result.stdout)
+        print(f"pid {self.pid} was in cgroup v2 {self.original_cgroup}")
+
+        subprocess.run(
+            ["sudo", "mkdir", "-p", f"/sys/fs/cgroup/unified/{self.cgroupv2_name}"],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "sudo",
+                "iptables",
+                "-A",
+                "OUTPUT",
+                "-m",
+                "cgroup",
+                "--path",
+                f"{self.cgroupv2_name}",
+                "-j",
+                "REJECT",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            f"echo {self.pid} | sudo tee /sys/fs/cgroup/unified/{self.cgroupv2_name}/cgroup.procs",
+            shell=True,
+            check=True,
+        )
+
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.original_cgroup:
+            print(f"moving pid back to {self.original_cgroup}")
+            r = subprocess.run(
+                f"echo {self.pid} | sudo tee /sys/fs/cgroup/unified/{self.original_cgroup}/cgroup.procs",
+                shell=True,
+                check=True,
+            )
+
+        subprocess.run(
+            [
+                "sudo",
+                "iptables",
+                "-D",
+                "OUTPUT",
+                "-m",
+                "cgroup",
+                "--path",
+                f"{self.cgroupv2_name}",
+                "-j",
+                "REJECT",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            ["sudo", "rmdir", f"/sys/fs/cgroup/unified/{self.cgroupv2_name}"],
+            check=True,
+        )
+
+    def find_cgroup_v2_name(self, cgroup_data):
+        """
+        If a pid is in cgroupv2 named ABC, it looks like this:
+
+            0::/ABC
+        """
+        lines = cgroup_data.strip().split("\n")
+        for line in lines:
+            if line.startswith("0::/"):
+                return line[4:]
+        return None

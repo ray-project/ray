@@ -434,6 +434,7 @@ py_test_module_list(
     "test_multi_node.py",
     "test_threaded_actor.py",
     "test_generators.py",
+    "test_network_failures.py",
     "test_stress_failure.py",
     "test_state_api.py",
     "test_state_api_2.py",
