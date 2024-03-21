@@ -1175,13 +1175,19 @@ def test_get_actor_race_condition(shutdown_only):
 def test_create_actor_race_condition():
     ACTOR_NAME = "TestActor"
     ACTOR_NAMESPACE = "TestNamespace"
+
     @ray.remote
     class Actor:
         pass
 
     def create():
         time.sleep(random.random())
-        Actor.options(name=ACTOR_NAME, namespace=ACTOR_NAMESPACE, get_if_exists=True, lifetime="detached").remote()
+        Actor.options(
+            name=ACTOR_NAME,
+            namespace=ACTOR_NAMESPACE,
+            get_if_exists=True,
+            lifetime="detached",
+        ).remote()
 
     threads = []
     for _ in range(1000):
@@ -1193,7 +1199,10 @@ def test_create_actor_race_condition():
     for thread in threads:
         thread.join()
 
-    ray.get_actor(ACTOR_NAME, namespace=ACTOR_NAMESPACE) # Creation and get should be successful
+    ray.get_actor(
+        ACTOR_NAME, namespace=ACTOR_NAMESPACE
+    )  # Creation and get should be successful
+
 
 def test_get_actor_in_remote_workers(ray_start_cluster):
     """Make sure we can get and create actors without
