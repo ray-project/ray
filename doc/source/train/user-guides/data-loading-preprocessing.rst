@@ -74,7 +74,7 @@ Data ingestion can be set up with four basic steps:
                 train_data_shard = train.get_dataset_shard("train")
                 # `iter_torch_batches` returns an iterable object that
                 # yield tensor batches. Ray Data automatically moves the Tensor batches
-                # to GPU if GPU training is enabled.
+                # to GPU if you enable GPU training.
                 train_dataloader = train_data_shard.iter_torch_batches(
                     batch_size=batch_size, dtypes=torch.float32
                 )
