@@ -129,7 +129,7 @@ The following are descriptions of the various stats included at the operator lev
   etc. You can use this stat to track the time spent in functions you define and how much time optimizing those functions could save.
 * **Memory usage**: The output displays memory usage per block in MiB.
 * **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of
-  output rows per task are also included. All of this together gives you insight into how much data Ray Data is outputting at a per
+  output rows per task is also included. All of this together gives you insight into how much data Ray Data is outputting at a per
   block and per task level.
 * **Task Stats**: The output shows the scheduling of tasks to nodes, which allows you to see if you are utilizing all of your nodes
   as expected.
@@ -139,9 +139,9 @@ The following are descriptions of the various stats included at the operator lev
 
 Iterator stats
 ~~~~~~~~~~~~~~
-If you iterate over the data, iteration stats are also generated. Even if you aren't directly iterating over the data, there
-might be iteration stats included (for example, if you call :meth:`~ray.data.Dataset.take_all`). Some of the stats included at the
-iterator level are:
+If you iterate over the data, Ray Data also generates iteration stats. Even if you aren't directly iterating over the data, you
+might see iteration stats, for example, if you call :meth:`~ray.data.Dataset.take_all`. Some of the stats that Ray Data includes
+at the iterator level are:
 
 * **Iterator initialization**: The time Ray Data spent initializing the iterator. This time is internal to Ray Data.
 * **Time user thread is blocked**: The time Ray Data spent producing data in the iterator. This time is often the primary execution of a
@@ -167,11 +167,11 @@ the following snippet in your Ray Data code:
 By enabling verbosity Ray Data adds a few more outputs:
 
 * **Extra metrics**: Operators, executors, etc. can add to this dictionary of various metrics. There is
-  some duplication of stats between the default output and this dictionary, but for advanced users provides more insight into
-  the dataset's execution.
-* **Runtime metrics**: High level breakdown of the runtime of the dataset execution. This is a per operator summary of the
-  time each operator took to complete and the fraction of the total execution time that operator took to complete. As there
-  are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
+  some duplication of stats between the default output and this dictionary, but for advanced users this stat provides more
+  insight into the dataset's execution.
+* **Runtime metrics**: These metrics are a high-level breakdown of the runtime of the dataset execution. These stats are a per
+  operator summary of the time each operator took to complete and the fraction of the total execution time that the operator took
+  to complete. As there are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
   they show how long running each of the operators is in the context of the full dataset execution.
 
 Example stats
