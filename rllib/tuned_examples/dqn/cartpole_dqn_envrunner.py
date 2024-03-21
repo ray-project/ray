@@ -12,7 +12,7 @@ config = (
     .experimental(_enable_new_api_stack=True)
     .rollouts(
         # SB3
-        #rollout_fragment_length=256,
+        # rollout_fragment_length=256,
         env_runner_cls=SingleAgentEnvRunner,
         num_rollout_workers=0,
     )
@@ -66,7 +66,7 @@ stop = {
     "timesteps_total": 100000,
 }
 
-#ray.init(local_mode=True)
+# ray.init(local_mode=True)
 tuner = tune.Tuner(
     "DQN",
     param_space=config,
