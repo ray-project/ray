@@ -269,7 +269,7 @@ class AzureNodeProvider(NodeProvider):
 
         template_params = node_config["azure_arm_parameters"].copy()
         template_params["vmName"] = vm_name
-        # Provision public IP if not using internal IPs or if this is the 
+        # Provision public IP if not using internal IPs or if this is the
         # head node and use_external_head_ip is True
         template_params["provisionPublicIp"] = not self.provider_config.get(
             "use_internal_ips", False

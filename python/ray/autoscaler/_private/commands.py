@@ -1358,7 +1358,9 @@ def get_head_node_ip(
     provider_cfg = config.get("provider", {})
     # Get internal IP if using internal IPs and
     # use_external_head_ip is not specified
-    if provider_cfg.get("use_internal_ips", False) and not provider_cfg.get("use_external_head_ip", False):
+    if provider_cfg.get("use_internal_ips", False) and not provider_cfg.get(
+        "use_external_head_ip", False
+    ):
         head_node_ip = provider.internal_ip(head_node)
     else:
         head_node_ip = provider.external_ip(head_node)
