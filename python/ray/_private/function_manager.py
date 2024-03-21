@@ -91,6 +91,9 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
+        # This is to ensure the export_actor_class() method is called only once
+        # when multiple threads call it at the same time
+        self.export_actor_lock = threading.Lock()
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
