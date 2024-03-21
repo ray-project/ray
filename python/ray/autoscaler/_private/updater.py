@@ -92,7 +92,7 @@ class NodeUpdater:
         # Three cases:
         # 1) use_internal_ip arg is True -> use_internal_ip is True
         # 2) worker node -> use value of provider_config["use_internal_ips"]
-        # 3) head node -> use value of provider_config["use_internal_ips"] unless 
+        # 3) head node -> use value of provider_config["use_internal_ips"] unless
         #                 overriden by provider_config["use_external_head_ip"]
         use_internal_ip = use_internal_ip or (
             provider_config.get("use_internal_ips", False)
