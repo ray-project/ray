@@ -709,5 +709,5 @@ Adding CPU-only nodes to your cluster
 If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, thanks to Ray's native support for heterogeneous resources, you can simply add more CPU-only nodes to your cluster, and Ray Data will automatically scale out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
 
 In general, adding CPU-only nodes can help in 2 ways:
-* Adding more CPU cores helps further parallelize preprocessing. This is helpful when CPU compute time is the bottleneck.
+* Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
 * Increasing object store memory, which 1) allows more data to be buffered in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This is helpful when memory is the bottleneck.
