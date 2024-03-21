@@ -183,7 +183,9 @@ pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For
 
 .. testcode::
 
-    def fn(batch: pandas.DataFrame) -> pandas.DataFrame:
+    import pandas as pd
+
+    def fn(batch: pd.DataFrame) -> pd.DataFrame:
         # modify batch
         batch = ...
 
@@ -195,6 +197,8 @@ be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Un
 In this case, your function would look like:
 
 .. testcode::
+
+    import numpy as np
 
     def fn(batch: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
         # yield the same batch multiple times
