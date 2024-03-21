@@ -19,6 +19,12 @@ select_flaky_tests() {
   bazel run ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
 }
 
+run_my_tests() {
+  (bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
+      --test_env=CONDA_PROMPT_MODIFIER --test_env=CI --runs_per_test=30 --flaky_test_attempts=1 //python/ray/tests:test_plasma_unlimite) || exit 42
+}
+
 run_small_and_large_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
