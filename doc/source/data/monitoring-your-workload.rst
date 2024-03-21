@@ -126,7 +126,7 @@ The following are descriptions of the various stats included at the operator lev
   user and system CPU time.
 * **UDF time**: The UDF time is time spent in functions defined by the user. This time includes functions you pass into Ray
   Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`,
-  etc. You can use this to track the time spent in functions you define and how much time optimizing those functions could save.
+  etc. You can use this stat to track the time spent in functions you define and how much time optimizing those functions could save.
 * **Memory usage**: The output displays memory usage per block in MiB.
 * **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of
   output rows per task are also included. All of this together gives you insight into how much data is being output at a per
