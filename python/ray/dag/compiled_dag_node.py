@@ -260,8 +260,10 @@ class CompiledDAG:
         self.worker_task_refs: List["ray.ObjectRef"] = []
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        # record the mapping from kwarg key -> kwarg index
-        self.kwarg_to_idx : Dict[str, int] = {}
+        # record the mapping from arg key -> arg index
+        self.arg_to_idx: Dict[Any, int] = {}
+        # node index to the read keys of its arguments
+        self.node_read_keys: Dict[int, List[str]] = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -304,14 +306,13 @@ class CompiledDAG:
             self.idx_to_task.clear()
             self.dag_node_to_idx.clear()
             arg_list = []
-            arg_idx = 0
             # Add attribute nodes first
             for task in tasks:
                 if isinstance(task.dag_node, InputAttributeNode):
                     arg_list.append(task.dag_node._key)
-                    if isinstance(task.dag_node._key, str):
-                        self.kwarg_to_idx[task.dag_node._key] = arg_idx
-                    arg_idx += 1
+            # Order independent to the input order
+            for i, k in enumerate(sorted(arg_list, key=lambda x: str(x))):
+                self.arg_to_idx[k] = i
             multi_input_node = MultiInputNode(*arg_list)
             self._add_node(multi_input_node)
             for task in tasks:
@@ -321,6 +322,10 @@ class CompiledDAG:
                 elif not isinstance(task.dag_node, InputNode):
                     self._add_node(task.dag_node)
             for idx, task in self.idx_to_task.items():
+                self.node_read_keys[idx] = [
+                    arg._key if isinstance(arg, InputAttributeNode) else -1
+                    for arg in task.args
+                ]
                 task.dag_node.set_args(
                     tuple(
                         [
@@ -485,16 +490,17 @@ class CompiledDAG:
             # f and g both read (x, y) from the same channel, but pick different indices
             read_idxs = []
             has_at_least_one_channel_input = False
-            for arg in task.args:
+            for arg_idx, arg in enumerate(task.args):
                 if isinstance(arg, DAGNode):
-                    node_idx = self.dag_node_to_idx[arg]
-                    arg_channel = self.idx_to_task[node_idx].output_channel
+                    arg_node_idx = self.dag_node_to_idx[arg]
+                    arg_channel = self.idx_to_task[arg_node_idx].output_channel
                     assert arg_channel is not None
                     if isinstance(arg, MultiInputNode):
                         # Each MultiInputNode reference is responsible for
                         # a single argument, corresponding to a non-negative
                         # index in read_idx
-                        read_idx = len([i for i in read_idxs if i >= 0])
+                        read_key = self.node_read_keys[node_idx][arg_idx]
+                        read_idx = self.arg_to_idx[read_key]
                         read_idxs.append(read_idx)
                         resolved_args.append(arg_channel)
                     elif isinstance(arg, InputNode):
@@ -633,7 +639,7 @@ class CompiledDAG:
         Returns:
             A list of Args that can contains both args and ordered kwargs.
         """
-        kwargs_idxs = [self.kwarg_to_idx[k] for k in kwargs]
+        kwargs_idxs = [self.arg_to_idx[k] for k in kwargs]
         args = list(args) + ([0] * len(kwargs))
         for idx, v in zip(kwargs_idxs, kwargs.values()):
             args[idx] = v
