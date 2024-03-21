@@ -14,6 +14,8 @@
 
 #include "ray/util/logging.h"
 
+#include <string.h>
+
 #include <cstdlib>
 #ifdef _WIN32
 #include <process.h>
@@ -34,8 +36,10 @@
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
+#include "absl/strings/str_format.h"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -415,7 +419,20 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
       is_fatal_(severity == RayLogLevel::FATAL) {
   if (is_fatal_) {
     expose_osstream_ = std::make_shared<std::ostringstream>();
-    *expose_osstream_ << file_name << ":" << line_number << ":";
+
+#ifdef _WIN32
+    int pid = _getpid();
+#else
+    pid_t pid = getpid();
+#endif
+    *expose_osstream_ << absl::StrFormat(
+        "%s:%d (PID: %d, TID: ", file_name, line_number, pid);
+    // Different OS's have different types for the TID. Thus, we pass the TID to the
+    // std::ostringstream by itself so that the compiler can handle the type. This is
+    // better than manually choosing a format specific for the type in absl::StrFormat()
+    // above.
+    *expose_osstream_ << GetTid();
+    *expose_osstream_ << absl::StrFormat(", errno: %d (%s)):", errno, strerror(errno));
   }
   if (is_enabled_) {
     logging_provider_ = new LoggingProvider(
