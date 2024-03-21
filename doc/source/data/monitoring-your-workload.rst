@@ -147,7 +147,7 @@ iterator level are:
 * **Time user thread is blocked**: The time Ray Data spent producing data in the iterator. This time is often the primary execution of a
   dataset if you haven't previously materialized it.
 * **Time in user thread**: The time spent in the user thread that's iterating over the dataset outside of the Ray Data code.
-  If this time is high consider, optimizing the body of the loop that's iterating over the dataset.
+  If this time is high, consider optimizing the body of the loop that's iterating over the dataset.
 * **Batch iteration stats**: Stats are also included about the prefetching of batches. These times are internal to Ray
   Data code, but you can further optimize this by tuning the prefetching process.
 
