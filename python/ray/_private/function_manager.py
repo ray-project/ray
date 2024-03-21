@@ -54,11 +54,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode(), key])
 
 
-def make_export_key(pos: int, job_id: JobID) -> bytes:
-    # big-endian for ordering in binary
-    return make_function_table_key(b"IsolatedExports", job_id, pos.to_bytes(8, "big"))
-
-
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
     Attributes:
@@ -148,29 +143,6 @@ class FunctionActorManager:
             return object
         except Exception:
             return None
-
-    def export_key(self, key):
-        """Export a key so it can be imported by other workers"""
-
-        # It's going to check all the keys until if reserve one key not
-        # existing in the cluster.
-        # One optimization is that we can use importer counter since
-        # it's sure keys before this counter has been allocated.
-        with self._export_lock:
-            while True:
-                self._num_exported += 1
-                holder = make_export_key(
-                    self._num_exported, self._worker.current_job_id
-                )
-                # This step is atomic since internal kv is a single thread
-                # atomic db.
-                if (
-                    self._worker.gcs_client.internal_kv_put(
-                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE
-                    )
-                    > 0
-                ):
-                    break
 
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None
