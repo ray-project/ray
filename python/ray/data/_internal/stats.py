@@ -1001,13 +1001,13 @@ class DatasetStatsSummary:
         The wall time is the difference of these two times.
         """
 
-        def find_start_end(self) -> tuple[float, float]:
+        def find_start_end(summary) -> tuple[float, float]:
             curr_earliest_start = min(
-                ss.earliest_start_time for ss in self.operators_stats
+                ss.earliest_start_time for ss in summary.operators_stats
             )
-            curr_latest_end = max(ss.latest_end_time for ss in self.operators_stats)
+            curr_latest_end = max(ss.latest_end_time for ss in summary.operators_stats)
             parent_start_ends = [
-                p.get_wall_time_helper() for p in self.parents if p.operators_stats
+                find_start_end(p) for p in summary.parents if p.operators_stats
             ]
             parent_earliest_start = (
                 min(p[0] for p in parent_start_ends)
@@ -1023,7 +1023,7 @@ class DatasetStatsSummary:
                 parent_latest_end, curr_latest_end
             )
 
-        earliest_start, latest_end = find_start_end()
+        earliest_start, latest_end = find_start_end(self)
         wall_time = latest_end - earliest_start
         return wall_time if abs(wall_time) != float("inf") else 0
 
@@ -1103,6 +1103,7 @@ class OperatorStatsSummary:
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
         rounded_total = 0
         time_total_s = 0
+        earliest_start_time, latest_end_time = 0, 0
 
         if exec_stats:
             # Calculate the total execution time of operator as
