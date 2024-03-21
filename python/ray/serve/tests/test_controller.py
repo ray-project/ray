@@ -171,6 +171,8 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "smoothing_factor": 1.0,
                                     "upscale_smoothing_factor": None,
                                     "downscale_smoothing_factor": None,
+                                    "upscaling_factor": None,
+                                    "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
                                 },

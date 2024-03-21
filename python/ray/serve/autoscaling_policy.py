@@ -51,12 +51,12 @@ def _calculate_desired_num_replicas(
     # make a downscale decision, so we apply the downscale smoothing
     # factor.
     if error_ratio >= 1:
-        smoothing_factor = autoscaling_config.get_upscale_smoothing_factor()
+        scaling_factor = autoscaling_config.get_upscaling_factor()
     else:
-        smoothing_factor = autoscaling_config.get_downscale_smoothing_factor()
+        scaling_factor = autoscaling_config.get_downscaling_factor()
 
     # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
-    smoothed_error_ratio = 1 + ((error_ratio - 1) * smoothing_factor)
+    smoothed_error_ratio = 1 + ((error_ratio - 1) * scaling_factor)
     desired_num_replicas = math.ceil(num_running_replicas * smoothed_error_ratio)
 
     # If desired num replicas is "stuck" because of the smoothing factor
@@ -105,7 +105,7 @@ def replica_queue_length_autoscaling_policy(
         # When 0 replicas and queries are queued, scale up the replicas
         if total_num_requests > 0:
             return max(
-                math.ceil(1 * config.get_upscale_smoothing_factor()),
+                math.ceil(1 * config.get_upscaling_factor()),
                 curr_target_num_replicas,
             )
         return curr_target_num_replicas

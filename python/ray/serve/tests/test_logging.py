@@ -29,6 +29,7 @@ from ray.serve._private.logging_utils import (
     get_component_log_file_name,
     get_serve_logs_dir,
 )
+from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
 
 
@@ -748,6 +749,49 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     assert direct_from_stdout
     assert direct_from_stderr
     assert multiline_log
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to look for temp dir.")
+def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
+    """Test to ensure the log file names are correct."""
+    logs_dir = Path("/tmp/ray/session_latest/logs/serve")
+    logging_config = LoggingConfig(encoding="JSON")
+
+    @serve.deployment
+    def app():
+        return "foo"
+
+    app = app.bind()
+    serve.run(app, logging_config=logging_config)
+    requests.get("http://127.0.0.1:8000")
+
+    # Construct serve log file names.
+    client = _get_global_client()
+    controller_id = ray.get(client._controller.get_pid.remote())
+    proxy_id = ray.util.get_node_ip_address()
+    replicas = ray.get(
+        client._controller.get_deployment_details.remote("default", "app")
+    ).replicas
+    replica_id = replicas[0].replica_id
+    controller_log_file_name = f"controller_{controller_id}.log"
+    proxy_log_file_name = f"proxy_{proxy_id}.log"
+    replica_log_file_name = f"replica_default_app_{replica_id}.log"
+
+    # Check if each of the log files exist.
+    controller_log_file_name_correct = False
+    proxy_log_file_name_correct = False
+    replica_log_file_name_correct = False
+    for log_file in os.listdir(logs_dir):
+        if log_file == controller_log_file_name:
+            controller_log_file_name_correct = True
+        elif log_file == proxy_log_file_name:
+            proxy_log_file_name_correct = True
+        elif log_file == replica_log_file_name:
+            replica_log_file_name_correct = True
+
+    assert controller_log_file_name_correct
+    assert proxy_log_file_name_correct
+    assert replica_log_file_name_correct
 
 
 def test_stream_to_logger():

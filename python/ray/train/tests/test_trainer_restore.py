@@ -145,7 +145,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     - Picks up at the right iteration. 2 before crash. 3 after. 5 total trees.
     - Results are being logged to the same directory as before.
     """
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {
         "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(100)])

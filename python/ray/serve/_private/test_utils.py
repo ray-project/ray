@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from copy import deepcopy
+from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -107,6 +107,7 @@ class MockClusterNodeInfoCache:
         self.total_resources_per_node = dict()
         self.available_resources_per_node = dict()
         self.draining_nodes = dict()
+        self.node_labels = dict()
 
     def get_alive_node_ids(self):
         return self.alive_node_ids
@@ -126,13 +127,71 @@ class MockClusterNodeInfoCache:
     def get_total_resources_per_node(self):
         return self.total_resources_per_node
 
-    def add_node(self, node_id: str, resources: Dict = None):
+    def add_node(self, node_id: str, resources: Dict = None, labels: Dict = None):
         self.alive_node_ids.add(node_id)
         self.total_resources_per_node[node_id] = deepcopy(resources) or {}
         self.available_resources_per_node[node_id] = deepcopy(resources) or {}
+        self.node_labels[node_id] = labels or {}
 
     def set_available_resources_per_node(self, node_id: str, resources: Dict):
         self.available_resources_per_node[node_id] = deepcopy(resources)
+
+
+class FakeRemoteFunction:
+    def remote(self):
+        pass
+
+
+class MockActorHandle:
+    def __init__(self, **kwargs):
+        self._options = kwargs
+        self._actor_id = "fake_id"
+        self.initialize_and_get_metadata_called = False
+        self.is_allocated_called = False
+
+    @property
+    def initialize_and_get_metadata(self):
+        self.initialize_and_get_metadata_called = True
+        # return a mock object so that we can call `remote()` on it.
+        return FakeRemoteFunction()
+
+    @property
+    def is_allocated(self):
+        self.is_allocated_called = True
+        return FakeRemoteFunction()
+
+
+class MockActorClass:
+    def __init__(self):
+        self._init_args = ()
+        self._options = dict()
+
+    def options(self, **kwargs):
+        res = copy(self)
+
+        for k, v in kwargs.items():
+            res._options[k] = v
+
+        return res
+
+    def remote(self, *args) -> MockActorHandle:
+        return MockActorHandle(init_args=args, **self._options)
+
+
+class MockPlacementGroup:
+    def __init__(
+        self,
+        bundles: List[Dict[str, float]],
+        strategy: str = "PACK",
+        name: str = "",
+        lifetime: Optional[str] = None,
+        _soft_target_node_id: Optional[str] = None,
+    ):
+        self._bundles = bundles
+        self._strategy = strategy
+        self._name = name
+        self._lifetime = lifetime
+        self._soft_target_node_id = _soft_target_node_id
 
 
 def check_ray_stopped():
@@ -163,8 +222,10 @@ def check_telemetry_not_recorded(storage_handle, key):
     )
 
 
-def check_deployment_status(name, expected_status) -> DeploymentStatus:
-    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+def check_deployment_status(
+    name: str, expected_status: DeploymentStatus, app_name=SERVE_DEFAULT_APP_NAME
+) -> bool:
+    app_status = serve.status().applications[app_name]
     assert app_status.deployments[name].status == expected_status
     return True
 

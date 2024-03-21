@@ -32,7 +32,7 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaScheduler,
 )
-from ray.serve._private.utils import inside_ray_client_context
+from ray.serve._private.utils import FakeObjectRef, inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -283,6 +283,10 @@ class Router:
         self._event_loop = event_loop
         self.deployment_id = deployment_id
 
+        logger.info(
+            f"Created DeploymentHandle '{handle_id}' for {deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
         if inside_ray_client_context():
             # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
             # to override the behavior.
@@ -481,7 +485,7 @@ class Router:
                     callback = partial(
                         self._metrics_manager.process_finished_request, replica_id
                     )
-                    if isinstance(ref, ray.ObjectRef):
+                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
                         ref._on_completed(callback)
                     else:
                         ref.completed()._on_completed(callback)

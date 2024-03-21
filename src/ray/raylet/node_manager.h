@@ -571,11 +571,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `RequestObjectSpillage` request.
-  void HandleRequestObjectSpillage(rpc::RequestObjectSpillageRequest request,
-                                   rpc::RequestObjectSpillageReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
@@ -694,6 +689,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
+
+  /// If Node Manager already knows this (worker, node) is dead, return true.
+  /// Otherwise returns false.
+  bool IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const;
 
   /// ID of this node.
   NodeID self_node_id_;

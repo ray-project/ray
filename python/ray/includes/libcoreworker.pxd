@@ -88,7 +88,10 @@ cdef extern from "ray/core_worker/context.h" nogil:
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
-        CGeneratorBackpressureWaiter(int64_t generator_backpressure_num_objects) # noqa
+        CGeneratorBackpressureWaiter(
+                int64_t generator_backpressure_num_objects,
+                (CRayStatus() nogil) check_signals)
+        CRayStatus WaitAllObjectsReported()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
@@ -163,11 +166,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
             const CObjectID& generator_id)
-        void DelObjectRefStream(const CObjectID &generator_id)
+        void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        c_bool IsFinished(const CObjectID &generator_id) const
+        c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(

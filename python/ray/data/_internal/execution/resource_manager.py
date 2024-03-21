@@ -143,6 +143,10 @@ class ResourceManager:
                 op
             ] = self._global_usage.object_store_memory
 
+            # Update operator's object store usage, which is used by
+            # DatasetStats and updated on the Ray Data dashboard.
+            op._metrics.obj_store_mem_used = op_usage.object_store_memory
+
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_usages()
 

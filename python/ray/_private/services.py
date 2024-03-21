@@ -1356,7 +1356,7 @@ def start_api_server(
                     "Error should be written to 'dashboard.log' or "
                     "'dashboard.err'. We are printing the last "
                     f"{lines_to_read} lines for you. See "
-                    "'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' "  # noqa
+                    "'https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure' "  # noqa
                     "to find where the log file is."
                 )
                 try:
@@ -1975,7 +1975,7 @@ def determine_plasma_store_config(
             shm_avail = ray._private.utils.get_shared_memory_bytes()
             # Compare the requested memory size to the memory available in
             # /dev/shm.
-            if shm_avail > object_store_memory:
+            if shm_avail >= object_store_memory:
                 plasma_directory = "/dev/shm"
             elif (
                 not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
