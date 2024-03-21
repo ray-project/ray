@@ -205,7 +205,7 @@ Ray Datasets can be created from many different data sources and formats. For mo
 Preprocessing data
 ~~~~~~~~~~~~~~~~~~
 
-Ray Data supports a wide range of preprocessing operations that can be used to transform your data prior to training.
+Ray Data supports a wide range of preprocessing operations that you can use to transform data prior to training.
 
 - For general preprocessing, see :ref:`Transforming Data <transforming_data>`.
 - For tabular data, see :ref:`Preprocessing Structured Data <preprocessing_structured_data>`.
