@@ -335,7 +335,7 @@ Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platfor
    * - latest
      - The most recent Ray release.
    * - x.y.z
-     - A specific Ray release, e.g. 2.9.3
+     - A specific Ray release, e.g. 2.10.0
    * - nightly
      - The most recent Ray development build (a recent commit from Github ``master``)
 
@@ -444,14 +444,14 @@ Docker images for Python 3.9.
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`3ad5adb <https://github.com/ray-project/ray/commit/3ad5adb428bf4ce5db820d966928b8f6fbfc4d8e>`_)
+        Ray version: nightly (`09abba2 <https://github.com/ray-project/ray/commit/09abba26b5bf2707639bb637c208d062a47b46f6>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. tab-item:: ray-ml (Python 3.9)
         :sync: ray-ml (Python 3.9)
 
-        Ray version: nightly (`3ad5adb <https://github.com/ray-project/ray/commit/3ad5adb428bf4ce5db820d966928b8f6fbfc4d8e>`_)
+        Ray version: nightly (`09abba2 <https://github.com/ray-project/ray/commit/09abba26b5bf2707639bb637c208d062a47b46f6>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt
 
