@@ -658,7 +658,7 @@ For example, the following code prefetches 10 batches at a time for each trainin
 Avoid heavy transformation in collate_fn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows transforming your data before feeding it to the model. This operation happens locally in the training workers. Avoid adding heavy transformation in this function as it may become the bottleneck. :ref:`Apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer instead.
+The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer.
 
 
 .. _dataset_cache_performance:
