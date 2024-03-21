@@ -122,7 +122,7 @@ The following are descriptions of the various stats included at the operator lev
 
 * **Remote wall time**: The wall time is the start to finish time for an operator. It includes the time where the operator
   isn't processing data, sleeping, waiting for I/O, etc.
-* **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This includes both
+* **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
   user and system CPU time.
 * **UDF time**: The UDF time is time spent in functions defined by the user. This includes functions passed into Ray
   Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`,
