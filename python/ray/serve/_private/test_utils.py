@@ -107,7 +107,6 @@ class MockClusterNodeInfoCache:
         self.total_resources_per_node = dict()
         self.available_resources_per_node = dict()
         self.draining_nodes = dict()
-        self.node_labels = dict()
 
     def get_alive_node_ids(self):
         return self.alive_node_ids
@@ -127,11 +126,10 @@ class MockClusterNodeInfoCache:
     def get_total_resources_per_node(self):
         return self.total_resources_per_node
 
-    def add_node(self, node_id: str, resources: Dict = None, labels: Dict = None):
+    def add_node(self, node_id: str, resources: Dict = None):
         self.alive_node_ids.add(node_id)
         self.total_resources_per_node[node_id] = deepcopy(resources) or {}
         self.available_resources_per_node[node_id] = deepcopy(resources) or {}
-        self.node_labels[node_id] = labels or {}
 
     def set_available_resources_per_node(self, node_id: str, resources: Dict):
         self.available_resources_per_node[node_id] = deepcopy(resources)
