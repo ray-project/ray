@@ -117,7 +117,7 @@ To see detailed stats on the execution of a dataset you can use the :meth:`~ray.
 Operator stats
 ~~~~~~~~~~~~~~
 The stats output includes a summary on the individual operator's execution stats for each operator. Ray Data calculates this
-summary across many different blocks, so some stats show the min, max, mean, and sum of the stat aggregated over all the blocks.
+summary across many different blocks, so some stats show the min, max, mean, and sum of the stats aggregated over all the blocks.
 The following are descriptions of the various stats included at the operator level:
 
 * **Remote wall time**: The wall time is the start to finish time for an operator. It includes the time where the operator
