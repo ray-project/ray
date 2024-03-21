@@ -4186,26 +4186,33 @@ void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest req
 void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
-  bool own_objects = reference_counter_->OwnObjects();
-  int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
+  const bool own_objects = reference_counter_->OwnObjects();
+  const size_t num_pending_tasks = task_manager_->NumPendingTasks();
+  const int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
-  // any object pinning RPCs in flight.
-  bool is_idle = !own_objects && pins_in_flight == 0;
+  // any object pinning RPCs in flight and it doesn't have pending tasks.
+  bool is_idle = !own_objects && (pins_in_flight == 0) && (num_pending_tasks == 0);
   bool force_exit = request.force_exit();
   RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle && force_exit) {
     RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
                      "workers that depends on the object to lose it. "
                   << "Own objects: " << own_objects
-                  << " # Pins in flight: " << pins_in_flight;
+                  << " # Pins in flight: " << pins_in_flight
+                  << " # pending tasks: " << num_pending_tasks;
   }
   bool will_exit = is_idle || force_exit;
   reply->set_success(will_exit);
   send_reply_callback(
       Status::OK(),
-      [this, will_exit]() {
+      [this, will_exit, force_exit]() {
         // If the worker is idle, we exit.
-        if (will_exit) {
+        if (force_exit) {
+          ForceExit(
+              rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+              "Worker exits because it was idle (it doesn't have objects it owns while "
+              "no task or actor has been scheduled) for a long time.");
+        } else if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
                "no task or actor has been scheduled) for a long time.");

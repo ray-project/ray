@@ -183,7 +183,8 @@ void WorkerPool::SetRuntimeEnvAgentClient(
   runtime_env_agent_client_ = runtime_env_agent_client;
 }
 
-void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+void WorkerPool::PopWorkerCallbackAsync(const TaskSpecification &task_spec,
+                                        const PopWorkerCallback &callback,
                                         std::shared_ptr<WorkerInterface> worker,
                                         PopWorkerStatus status) {
   // This method shouldn't be invoked when runtime env creation has failed because
@@ -192,17 +193,25 @@ void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
   RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post(
-      [this, callback, worker, status]() {
-        PopWorkerCallbackInternal(callback, worker, status);
+      [this, task_spec, callback, worker, status]() {
+        PopWorkerCallbackInternal(task_spec, callback, worker, status);
       },
       "WorkerPool.PopWorkerCallback");
 }
 
-void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
+void WorkerPool::PopWorkerCallbackInternal(const TaskSpecification &task_spec,
+                                           const PopWorkerCallback &callback,
                                            std::shared_ptr<WorkerInterface> worker,
                                            PopWorkerStatus status) {
   RAY_CHECK(callback);
-  auto used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
+  auto used = false;
+  if (worker && finished_jobs_.contains(task_spec.JobId()) &&
+      !task_spec.IsDetachedActor()) {
+    RAY_CHECK(status == PopWorkerStatus::OK);
+    callback(nullptr, PopWorkerStatus::JobFinished, "");
+  } else {
+    used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
+  }
   if (worker && !used) {
     // The invalid worker not used, restore it to worker pool.
     PushWorker(worker);
@@ -560,14 +569,12 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       process_failed_pending_registration_++;
       bool found;
       bool used;
-      TaskID task_id;
       InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                         proc_startup_token,
                                         nullptr,
                                         status,
                                         &found,
-                                        &used,
-                                        &task_id);
+                                        &used);
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, proc_startup_token);
       if (IsIOWorkerType(worker_type)) {
@@ -971,21 +978,25 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status,
     bool *found,
-    bool *worker_used,
-    TaskID *task_id) {
+    bool *worker_used) {
   *found = false;
   *worker_used = false;
   auto it = starting_workers_to_tasks.find(startup_token);
   if (it != starting_workers_to_tasks.end()) {
     *found = true;
-    *task_id = it->second.task_id;
     const auto &callback = it->second.callback;
     RAY_CHECK(callback);
     // This method shouldn't be invoked when runtime env creation has failed because
     // when runtime env is failed to be created, they are all
     // invoking the callback immediately.
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
-    *worker_used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
+    if (worker && finished_jobs_.contains(it->second.task_spec.JobId()) &&
+        !it->second.task_spec.IsDetachedActor()) {
+      RAY_CHECK(status == PopWorkerStatus::OK);
+      callback(nullptr, PopWorkerStatus::JobFinished, "");
+    } else {
+      *worker_used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
+    }
     starting_workers_to_tasks.erase(it);
   }
 }
@@ -997,14 +1008,12 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   bool found;
   bool used;
-  TaskID task_id;
   InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                     worker->GetStartupToken(),
                                     worker,
                                     PopWorkerStatus::OK,
                                     &found,
-                                    &used,
-                                    &task_id);
+                                    &used);
   RAY_LOG(DEBUG) << "PushWorker " << worker->WorkerId() << " used: " << used;
   if (!used) {
     // Put the worker to the idle pool.
@@ -1169,7 +1178,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
-      auto task_info = TaskWaitingForWorkerInfo{task_spec.TaskId(), callback};
+      auto task_info = TaskWaitingForWorkerInfo{task_spec, callback};
       state.starting_workers_to_tasks[startup_token] = std::move(task_info);
     } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
       // TODO(jjyao) As an optimization, we don't need to delete the runtime env
@@ -1179,7 +1188,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
           PopWorkerRequest{task_spec, callback, allocated_instances_serialized_json});
     } else {
       DeleteRuntimeEnvIfPossible(task_spec.SerializedRuntimeEnv());
-      PopWorkerCallbackAsync(callback, nullptr, status);
+      PopWorkerCallbackAsync(task_spec, callback, nullptr, status);
     }
   };
 
@@ -1296,7 +1305,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     RAY_LOG(DEBUG) << "Re-using worker " << worker->WorkerId() << " for task "
                    << task_spec.DebugString();
     stats::NumWorkersStartedFromCache.Record(1);
-    PopWorkerCallbackAsync(callback, worker);
+    PopWorkerCallbackAsync(task_spec, callback, worker);
   }
 }
 

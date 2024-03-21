@@ -597,6 +597,15 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
+  for (const auto &pair : leased_workers_) {
+    auto &worker = pair.second;
+    RAY_CHECK(!worker->GetAssignedJobId().IsNil());
+    if (!worker->IsDetachedActor() && (worker->GetAssignedJobId() == job_id)) {
+      RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
+                    << " is killed because the job " << job_id << " finished.";
+      KillWorker(worker, /* force */ true);
+    }
+  }
   worker_pool_.HandleJobFinished(job_id);
 }
 
@@ -1034,8 +1043,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
-      // TODO (Alex): Cancel all pending child tasks of the tasks whose owners have failed
-      // because the owner could've submitted lease requests before failing.
       if (!worker_id.IsNil()) {
         // If the failed worker was a leased worker's owner, then kill the leased worker.
         if (owner_worker_id == worker_id) {
