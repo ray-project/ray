@@ -16,8 +16,8 @@ kind load docker-image ray-ci:kuberay-test
 echo "--- Installing KubeRay operator from official Helm repo."
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm install kuberay-operator kuberay/kuberay-operator
-kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator \
-    --for=condition=Ready=True  --timeout=5m
+# kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator \
+#     --for=condition=Ready=True  --timeout=5m
 
 sleep 7200
 echo "--- Installing KubeRay cluster and port forward."
