@@ -25,7 +25,7 @@ import ray.dashboard.consts as dashboard_consts
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
-MAX_ACTORS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", 1000))
+MAX_ACTORS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", 50000))
 ACTOR_CLEANUP_FREQUENCY = 1  # seconds
 
 
