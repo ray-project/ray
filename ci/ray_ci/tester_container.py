@@ -16,6 +16,7 @@ from ray_release.test import TestResult, Test
 
 PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
 PIPELINE_MACOS_POSTMERGE = "018e0f94-ccb6-45c2-b072-1e624fe9a404"
+RUN_PER_FLAKY_TEST = 10
 
 
 class TesterContainer(Container):
@@ -74,6 +75,7 @@ class TesterContainer(Container):
         team: str,
         test_targets: List[str],
         test_arg: Optional[str] = None,
+        run_flaky_tests: bool = False,
     ) -> bool:
         """
         Run tests parallelly in docker.  Return whether all tests pass.
@@ -97,7 +99,12 @@ class TesterContainer(Container):
         bazel_log_dir_host, bazel_log_dir_container = self._create_bazel_log_mount()
         runs = [
             self._run_tests_in_docker(
-                chunks[i], gpu_ids[i], bazel_log_dir_host, self.test_envs, test_arg
+                chunks[i],
+                gpu_ids[i],
+                bazel_log_dir_host,
+                self.test_envs,
+                test_arg,
+                run_flaky_tests=run_flaky_tests,
             )
             for i in range(len(chunks))
         ]
@@ -174,6 +181,7 @@ class TesterContainer(Container):
         bazel_log_dir_host: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
+        run_flaky_tests: bool = False,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
         commands = [
@@ -204,6 +212,8 @@ class TesterContainer(Container):
             test_cmd += "--config=ubsan "
         if self.build_type == "tsan-clang":
             test_cmd += "--config=tsan-clang "
+        if run_flaky_tests:
+            test_cmd += f"--runs_per_test={RUN_PER_FLAKY_TEST} "
         for env in test_envs:
             test_cmd += f"--test_env {env} "
         if test_arg:
