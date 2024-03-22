@@ -219,3 +219,19 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             the atoms ("atoms"), the Q-value predictions ("qf_preds"), the Q-logits
             ("qf_logits") and the probabilities for the support atoms ("qf_probs").
         """
+
+    @abstractmethod
+    @OverrideToImplementCustomLogic
+    def _reset_noise(self, target: bool = False):
+        """Resets the noise for the noisy layers.
+
+        In case of `uses_noisy=True` the noise of the noisy layers needs to be reset
+        at each exploration step and before each training loop. This method is used
+        to reset the noise at specific points in the `Algorithm.training_step()` or
+        'RLModule.forward()` methods. For customization of noise resetting this
+        function can be overridden (e.g. for resetting the noise at the beginning of
+        each episode or at the beginning of each rollout).
+
+        Args:
+            target: If `True` the target network is reset.
+        """

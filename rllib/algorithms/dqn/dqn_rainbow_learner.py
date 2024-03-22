@@ -67,3 +67,11 @@ class DQNRainbowLearner(Learner):
             module_id: The module ID whose target Q network(s) should be updated.
             config: The `AlgorithmConfig` specific in the given `module_id`.
         """
+
+    @abc.abstractmethod
+    def _reset_noise(self) -> None:
+        """Resets the noise in the `Algorithm.training_step()`
+
+        Note, this can be overridden by the user to reset the noise at different
+        points in the training loop.
+        """

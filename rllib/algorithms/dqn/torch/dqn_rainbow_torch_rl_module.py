@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Mapping, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
@@ -375,6 +375,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         return output
 
+    @override(DQNRainbowRLModule)
     def _reset_noise(self, target: bool = False) -> None:
         """Reset the noise of all noisy layers.
 
@@ -396,7 +397,3 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # of the value stream, too.
                 if self.uses_dueling:
                     self.vf_target._reset_noise()
-
-    @override(TorchRLModule)
-    def get_state(self) -> Mapping[str, Any]:
-        return super().get_state()
