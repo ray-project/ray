@@ -938,21 +938,23 @@ class DatasetStatsSummary:
         return out
 
     @staticmethod
-    def _collect_parent_summaries(
+    def _collect_dataset_stats_summaries(
         curr: "DatasetStatsSummary",
     ) -> List["DatasetStatsSummary"]:
         summs = []
         # TODO: Do operators ever have multiple parents? Do we need to deduplicate?
         for p in curr.parents:
             if p and p.parents:
-                summs.extend(DatasetStatsSummary._collect_parent_summaries(p))
+                summs.extend(DatasetStatsSummary._collect_dataset_stats_summaries(p))
         return summs + [curr]
 
     def runtime_metrics(self) -> str:
-        def fmt_line(name: str, time: float) -> str:
-            return f"* {name}: {fmt(time)} ({time / self.time_total_s * 100:.3f}%)\n"
+        total_wall_time = self.get_total_wall_time()
 
-        summaries = DatasetStatsSummary._collect_parent_summaries(self)
+        def fmt_line(name: str, time: float) -> str:
+            return f"* {name}: {fmt(time)} ({time / total_wall_time * 100:.3f}%)\n"
+
+        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"
         for summ in summaries:
             op_total_time = sum(
@@ -960,7 +962,7 @@ class DatasetStatsSummary:
             )
             out += fmt_line(summ.base_name, op_total_time)
         out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
-        out += fmt_line("Total", self.time_total_s)
+        out += fmt_line("Total", total_wall_time)
         return out
 
     def __repr__(self, level=0) -> str:
@@ -1000,40 +1002,35 @@ class DatasetStatsSummary:
         the earliest start time and latest end time for any block in any operator.
         The wall time is the difference of these two times.
         """
-
-        def find_start_end(summary) -> tuple[float, float]:
+        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
+        earliest_start, latest_end = None, None
+        for summ in summaries:
             curr_earliest_start = min(
-                ss.earliest_start_time for ss in summary.operators_stats
+                ops.earliest_start_time for ops in summ.operators_stats
             )
-            curr_latest_end = max(ss.latest_end_time for ss in summary.operators_stats)
-            parent_start_ends = [
-                find_start_end(p) for p in summary.parents if p.operators_stats
-            ]
-            parent_earliest_start = (
-                min(p[0] for p in parent_start_ends)
-                if parent_start_ends
-                else float("inf")
+            curr_latest_end = max(ops.latest_end_time for ops in summ.operators_stats)
+            earliest_start = (
+                min(curr_earliest_start, earliest_start)
+                if earliest_start
+                else curr_earliest_start
             )
-            parent_latest_end = (
-                max(p[1] for p in parent_start_ends)
-                if parent_start_ends
-                else float("-inf")
-            )
-            return min(parent_earliest_start, curr_earliest_start), max(
-                parent_latest_end, curr_latest_end
+            latest_end = (
+                min(curr_latest_end, latest_end) if latest_end else curr_latest_end
             )
 
-        earliest_start, latest_end = find_start_end(self)
-        wall_time = latest_end - earliest_start
-        return wall_time if abs(wall_time) != float("inf") else 0
+        return latest_end - earliest_start if earliest_start and latest_end else 0
 
     def get_total_time_all_blocks(self) -> float:
         """Calculate the sum of the wall times across all blocks of all operators."""
-        parent_total_times = [p.get_total_time_all_blocks() for p in self.parents]
-        parent_time_total = sum(parent_total_times) if parent_total_times else 0
-        return parent_time_total + sum(
-            ss.wall_time.get("sum", 0) if ss.wall_time else 0
-            for ss in self.operators_stats
+        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
+        return sum(
+            (
+                sum(
+                    ops.wall_time.get("sum", 0) if ops.wall_time else 0
+                    for ops in summ.operators_stats
+                )
+            )
+            for summ in summaries
         )
 
     def get_total_cpu_time(self) -> float:
