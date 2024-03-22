@@ -18,7 +18,7 @@ def test_network_blocker_works():
     print(requests.get("http://example.com", timeout=5))
 
 
-@pytest.skipif(sys.platform == "linux", "Cgroup2NetworkBlocker only works on Linux.")
+@pytest.mark.skipif(sys.platform == "linux", "Cgroup2NetworkBlocker only works on Linux.")
 def test_actor_unavailable(ray_start_cluster):
     """
     An actor raises ActorUnavailableError when there's a network isolation.
