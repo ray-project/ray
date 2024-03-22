@@ -56,7 +56,7 @@ def update_priorities_in_episode_replay_buffer(
                         "this policy is being skipped."
                     )
                 continue
-            # TODO (simon): Implement multi-agent version.
+            # TODO (simon): Implement multi-agent version. Remove, happens in buffer.
             assert len(td_error) == len(replay_buffer._last_sampled_indices)
             # TODO (simon): Implement for stateful modules.
 
