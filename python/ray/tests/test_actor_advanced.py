@@ -3,6 +3,7 @@ import random
 import sys
 import threading
 import time
+import traceback
 
 import numpy as np
 import pytest
@@ -1173,35 +1174,58 @@ def test_get_actor_race_condition(shutdown_only):
 
 
 def test_create_actor_race_condition():
-    ACTOR_NAME = "TestActor"
-    ACTOR_NAMESPACE = "TestNamespace"
+    """Make sure we can create actors in multiple threads without
+    race conditions.
+
+    Check https://github.com/ray-project/ray/issues/41324
+    """
 
     @ray.remote
     class Actor:
         pass
 
-    def create():
+    def create(name, namespace, results, i):
         time.sleep(random.random())
-        Actor.options(
-            name=ACTOR_NAME,
-            namespace=ACTOR_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-        ).remote()
+        try:
+            Actor.options(
+                name=name,
+                namespace=namespace,
+                get_if_exists=True,
+                lifetime="detached",
+            ).remote()
+            results[i] = "ok"
+        except Exception:
+            e = traceback.format_exc()
+            results[i] = e
 
-    threads = []
-    for _ in range(1000):
-        threads.append(threading.Thread(target=create))
+    CONCURRENCY = 1000
+    ACTOR_NAME = "TestActor"
+    ACTOR_NAMESPACE = "TestNamespace"
 
-    for thread in threads:
-        thread.start()
+    def run_and_check():
+        results = [None] * CONCURRENCY
+        threads = [None] * CONCURRENCY
+        for i in range(CONCURRENCY):
+            threads[i] = threading.Thread(
+                target=create, args=(ACTOR_NAME, ACTOR_NAMESPACE, results, i)
+            )
 
-    for thread in threads:
-        thread.join()
+        for thread in threads:
+            thread.start()
 
-    ray.get_actor(
-        ACTOR_NAME, namespace=ACTOR_NAMESPACE
-    )  # Creation and get should be successful
+        for thread in threads:
+            thread.join()
+
+        for result in results:
+            assert result == "ok"
+
+        actor = ray.get_actor(
+            ACTOR_NAME, namespace=ACTOR_NAMESPACE
+        )  # Creation and get should be successful
+        ray.kill(actor)  # Cleanup
+
+    for _ in range(50):
+        run_and_check()
 
 
 def test_get_actor_in_remote_workers(ray_start_cluster):
