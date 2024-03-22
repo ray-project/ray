@@ -2841,6 +2841,7 @@
 
   frequency: nightly
   team: rllib
+  stable: False
 
   cluster:
     byod:
@@ -3371,7 +3372,7 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: true
+  stable: False
 
   frequency: nightly
   team: rllib
