@@ -8,7 +8,7 @@ from ray.exceptions import ActorUnavailableError
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux", "Cgroup2NetworkBlocker only works on Linux."
+    sys.platform != "linux", reason="Cgroup2NetworkBlocker only works on Linux."
 )
 def test_network_blocker_works():
     import requests
@@ -20,7 +20,7 @@ def test_network_blocker_works():
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux", "Cgroup2NetworkBlocker only works on Linux."
+    sys.platform != "linux", reason="Cgroup2NetworkBlocker only works on Linux."
 )
 def test_actor_unavailable(ray_start_cluster):
     """
@@ -51,8 +51,6 @@ def test_actor_unavailable(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
