@@ -26,10 +26,13 @@ def is_valid_udf_return(udf_return_col: Any) -> bool:
 
 def is_scalar_list(udf_return_col: Any) -> bool:
     """Check whether a UDF column is is a scalar list."""
-
-    return isinstance(udf_return_col, list) and (
-        not udf_return_col or np.isscalar(udf_return_col[0])
-    )
+    if not (isinstance(udf_return_col, (list, np.ndarray))):
+        return False
+    if len(udf_return_col) == 0:
+        return True
+    if np.isscalar(udf_return_col[0]):
+        return True
+    return is_scalar_list(udf_return_col[0])
 
 
 def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
