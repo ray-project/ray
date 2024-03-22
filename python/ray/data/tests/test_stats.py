@@ -1022,7 +1022,7 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
 def test_get_total_stats(ray_start_regular_shared, op_two_block):
     """Tests a set of similar getter methods which pull aggregated
     statistics values after calculating operator-level stats:
-    `DatasetStats.get_max_wall_time()`,
+    `DatasetStats.get_total_wall_time()`,
     `DatasetStats.get_total_cpu_time()`,
     `DatasetStats.get_max_heap_memory()`."""
     block_params, block_meta_list = op_two_block
@@ -1033,8 +1033,13 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
 
     dataset_stats_summary = stats.to_summary()
     op_stats = dataset_stats_summary.operators_stats[0]
-    wall_time_stats = op_stats.wall_time
-    assert dataset_stats_summary.get_total_wall_time() == wall_time_stats.get("max")
+
+    # simple case with only one block / summary, result should match difference between
+    # the start and end time
+    assert (
+        dataset_stats_summary.get_total_wall_time()
+        == op_stats.latest_end_time - op_stats.earliest_start_time
+    )
 
     cpu_time_stats = op_stats.cpu_time
     assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.get("sum")
