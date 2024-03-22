@@ -105,7 +105,7 @@ const searchBtn = document.getElementById('searchBtn')
 
 function rayAssistant(event) {
     const resultDiv = document.getElementById('result');
-    
+
     const searchTerm = searchBar.value;
     // handle empty input
     if (!searchTerm) {
@@ -123,9 +123,9 @@ function rayAssistant(event) {
 
 	// Add query to the list of messages
 	chatPopupDiv.messages.push({"role": "user", "content": searchTerm})
-        
+
         let msgBlock = document.createElement('div');
-        
+
         resultDiv.insertBefore(msgBlock, anchorDiv);
 
         let divider = document.createElement('hr')
@@ -139,7 +139,7 @@ function rayAssistant(event) {
 
         async function readStream() {
             try {
-                const response = await fetch('https://ray-assistant-public-bxauk.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/chat', {
+                const response = await fetch('https://ray-assistant-public-98zsh.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
