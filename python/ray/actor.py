@@ -1034,8 +1034,9 @@ class ActorClass:
             # we need to export this function again, because current GCS
             # doesn't have it.
             with meta.export_lock:
-                # With the lock held, check meta.last_export_session_and_job one more time
-                # before exporting the actor class as it might have been exported by another thread.
+                # With the lock held, check meta.last_export_session_and_job
+                # one more time before exporting the actor class as it might
+                # have been exported by another thread.
                 if meta.last_export_session_and_job != worker.current_session_and_job:
                     # After serialize / deserialize modified class, the __module__
                     # of modified class will be ray.cloudpickle.cloudpickle.
