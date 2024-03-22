@@ -768,19 +768,19 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
 /// grpc keepalive timeout.
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 
-/// NOTE: we set a loose client keep alive because
+/// NOTE: We set a loose client keep alive because
 /// they have a failure model that considers network failures as component failures
 /// and this configuration break that assumption. We should apply to every other component
 /// after we change this failure assumption from code.
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
-
-/// grpc keepalive timeout for client.
+/// gRPC keep-alive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
+/// Timeout after the last RPC finishes on the client channel at which the channel goes back into IDLE state
 RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
 
-/// grpc streaming buffer size
+/// gRPC streaming buffer size
 /// Set it to 512kb
 RAY_CONFIG(int64_t, grpc_stream_buffer_size, 512 * 1024);
 
