@@ -2180,7 +2180,6 @@ class Cgroup2NetworkBlocker:
 
     def __init__(self, pid):
         assert os.name == "posix", "This blocker can only be run on Linux."
-        assert os.geteuid() == 0, "This blocker needs sudo permission."
         assert os.path.exists("/sys/fs/cgroup/unified"), "This blocker needs cgroup v2"
 
         self.pid = pid
@@ -2213,7 +2212,7 @@ class Cgroup2NetworkBlocker:
             ],
             check=True,
         )
-        print(f"moving pid to {self.cgroupv2_name}")
+        print(f"moving pid {self.pid} to {self.cgroupv2_name}")
         subprocess.run(
             f"echo {self.pid} | sudo tee"
             f" /sys/fs/cgroup/unified/{self.cgroupv2_name}/cgroup.procs",
@@ -2225,7 +2224,7 @@ class Cgroup2NetworkBlocker:
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.original_cgroup:
-            print(f"moving pid back to {self.original_cgroup}")
+            print(f"moving pid {self.pid} back to {self.original_cgroup}")
             subprocess.run(
                 f"echo {self.pid} | sudo tee"
                 f" /sys/fs/cgroup/unified/{self.original_cgroup}/cgroup.procs",
