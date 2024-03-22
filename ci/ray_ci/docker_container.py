@@ -6,7 +6,7 @@ from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 
 
-PLATFORM = [
+PLATFORMS_RAY = [
     "cpu",
     "cu11.5.2",
     "cu11.6.2",
@@ -14,7 +14,16 @@ PLATFORM = [
     "cu11.8.0",
     "cu12.1.1",
 ]
+PLATFORMS_RAY_ML = [
+    "cpu",
+    "cu11.8.0",
+]
 GPU_PLATFORM = "cu11.8.0"
+
+PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11"]
+PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10"]
+ARCHITECTURES_RAY = ["x86_64", "aarch64"]
+ARCHITECTURES_RAY_ML = ["x86_64"]
 
 
 class DockerContainer(LinuxContainer):

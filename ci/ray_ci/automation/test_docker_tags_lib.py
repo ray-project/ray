@@ -14,7 +14,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     query_tags_from_docker_hub,
     query_tags_from_docker_with_oci,
     _is_release_tag,
-    list_docker_image_versions,
+    list_image_tags,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -431,109 +431,111 @@ def test_backup_release_tags(
 
 
 @pytest.mark.parametrize(
-    ("prefix", "ray_type", "expected_tags"),
+    (
+        "prefix",
+        "ray_type",
+        "python_versions",
+        "platforms",
+        "architectures",
+        "expected_tags",
+    ),
     [
         (
-            "nightly",
+            "test",
             "ray",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64", "aarch64"],
             [
-                "nightly",
-                "nightly-cpu",
-                "nightly-cpu-aarch64",
-                "nightly-cu115",
-                "nightly-cu115-aarch64",
-                "nightly-cu116",
-                "nightly-cu116-aarch64",
-                "nightly-cu117",
-                "nightly-cu117-aarch64",
-                "nightly-cu118",
-                "nightly-cu118-aarch64",
-                "nightly-cu121",
-                "nightly-cu121-aarch64",
-                "nightly-gpu",
-                "nightly-gpu-aarch64",
-                "nightly-aarch64",
-                "nightly-py39",
-                "nightly-py39-cpu",
-                "nightly-py39-cpu-aarch64",
-                "nightly-py39-cu115",
-                "nightly-py39-cu115-aarch64",
-                "nightly-py39-cu116",
-                "nightly-py39-cu116-aarch64",
-                "nightly-py39-cu117",
-                "nightly-py39-cu117-aarch64",
-                "nightly-py39-cu118",
-                "nightly-py39-cu118-aarch64",
-                "nightly-py39-cu121",
-                "nightly-py39-cu121-aarch64",
-                "nightly-py39-gpu",
-                "nightly-py39-gpu-aarch64",
-                "nightly-py39-aarch64",
-                "nightly-py310",
-                "nightly-py310-cpu",
-                "nightly-py310-cpu-aarch64",
-                "nightly-py310-cu115",
-                "nightly-py310-cu115-aarch64",
-                "nightly-py310-cu116",
-                "nightly-py310-cu116-aarch64",
-                "nightly-py310-cu117",
-                "nightly-py310-cu117-aarch64",
-                "nightly-py310-cu118",
-                "nightly-py310-cu118-aarch64",
-                "nightly-py310-cu121",
-                "nightly-py310-cu121-aarch64",
-                "nightly-py310-gpu",
-                "nightly-py310-gpu-aarch64",
-                "nightly-py310-aarch64",
-                "nightly-py311-cpu",
-                "nightly-py311-cpu-aarch64",
-                "nightly-py311-cu115",
-                "nightly-py311-cu115-aarch64",
-                "nightly-py311-cu116",
-                "nightly-py311-cu116-aarch64",
-                "nightly-py311-cu117",
-                "nightly-py311-cu117-aarch64",
-                "nightly-py311-cu118",
-                "nightly-py311-cu118-aarch64",
-                "nightly-py311-cu121",
-                "nightly-py311-cu121-aarch64",
-                "nightly-py311-gpu",
-                "nightly-py311-gpu-aarch64",
-                "nightly-py311",
-                "nightly-py311-aarch64",
+                "test",
+                "test-aarch64",
+                "test-cpu",
+                "test-cpu-aarch64",
+                "test-cu118",
+                "test-cu118-aarch64",
+                "test-gpu",
+                "test-gpu-aarch64",
+                "test-py39",
+                "test-py39-aarch64",
+                "test-py39-cpu",
+                "test-py39-cpu-aarch64",
+                "test-py39-cu118",
+                "test-py39-cu118-aarch64",
+                "test-py39-gpu",
+                "test-py39-gpu-aarch64",
             ],
         ),
         (
-            "nightly",
+            "test",
             "ray-ml",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64"],
             [
-                "nightly",
-                "nightly-cpu",
-                "nightly-gpu",
-                "nightly-cu118",
-                "nightly-py39",
-                "nightly-py39-cpu",
-                "nightly-py39-gpu",
-                "nightly-py39-cu118",
-                "nightly-py310",
-                "nightly-py310-cpu",
-                "nightly-py310-gpu",
-                "nightly-py310-cu118",
+                "test",
+                "test-cpu",
+                "test-cu118",
+                "test-gpu",
+                "test-py39",
+                "test-py39-cpu",
+                "test-py39-cu118",
+                "test-py39-gpu",
             ],
         ),
     ],
 )
-def test_list_docker_image_versions(prefix, ray_type, expected_tags):
-    tags = list_docker_image_versions(prefix, ray_type)
-    assert len(tags) == len(expected_tags)
-    expected_tags = set(expected_tags)
-    for tag in tags:
-        assert tag in expected_tags
+def test_list_image_tags(
+    prefix, ray_type, python_versions, platforms, architectures, expected_tags
+):
+    tags = list_image_tags(prefix, ray_type, python_versions, platforms, architectures)
+    assert tags == sorted(expected_tags)
 
 
-def test_list_docker_image_versions_failure():
+@pytest.mark.parametrize(
+    ("prefix", "ray_type", "python_versions", "platforms", "architectures"),
+    [
+        (
+            "test",
+            "ray",
+            ["3.8"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64", "aarch64"],
+        ),  # python version not supported
+        (
+            "test",
+            "ray",
+            ["3.9"],
+            ["cpu", "cu14.0.0"],
+            ["x86_64"],
+        ),  # platform not supported
+        (
+            "test",
+            "ray",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["aarch32"],
+        ),  # architecture not supported
+        (
+            "test",
+            "ray-ml",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["aarch64"],
+        ),  # architecture not supported
+        (
+            "test",
+            "ray-ml",
+            ["3.9"],
+            ["cpu", "cu11.5.2"],
+            ["x86_64"],
+        ),  # platform not supported
+    ],
+)
+def test_list_images_tags_failure(
+    prefix, ray_type, python_versions, platforms, architectures
+):
     with pytest.raises(ValueError):
-        list_docker_image_versions("nightly", "not-ray")
+        list_image_tags(prefix, ray_type, python_versions, platforms, architectures)
 
 
 if __name__ == "__main__":
