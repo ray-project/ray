@@ -431,6 +431,44 @@ class TestActiveCompaction:
         opp = scheduler.get_node_to_compact(allow_new_compaction=False)
         assert opp[0] == "node3"
 
+    def test_prioritize_larger_nodes_to_compact(self):
+        """We should always prefer compacting larger nodes (aka more
+        resources) since it's assumed that those are more expensive.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Randomize
+        if random.randint(0, 1) == 1:
+            expected_node = "node2"
+            cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 8})
+            cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        else:
+            expected_node = "node1"
+            cluster_node_info_cache.add_node("node1", {"GPU": 10, "CPU": 2})
+            cluster_node_info_cache.add_node("node2", {"GPU": 4, "CPU": 8})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_gpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("r1", d_id), node_id="node1")
+        scheduler.on_replica_running(ReplicaID("r2", d_id), node_id="node2")
+
+        node, _ = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert node == expected_node
+        # Again, should return the same thing
+        node, _ = scheduler.get_node_to_compact(allow_new_compaction=False)
+        assert node == expected_node
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

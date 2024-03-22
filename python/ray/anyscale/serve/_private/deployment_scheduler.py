@@ -476,11 +476,16 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         """
 
         node_to_running_replicas = self._get_node_to_running_replicas()
-        min_replicas_to_move = float("inf")
         node_with_min_replicas = None
         optimal_assignment = None
 
         available_resources_per_node = self._get_available_resources_per_node()
+        total_resources_per_node = {
+            node_id: Resources(resources_dict)
+            for node_id, resources_dict in (
+                self._cluster_node_info_cache.get_total_resources_per_node().items()
+            )
+        }
 
         # For each node, check if it can become idle by moving the
         # replicas off of that node - this essentially run best fit
@@ -528,12 +533,24 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
             #    from target_node_id onto other non-idle nodes, then
             #    this node is compactable.
             if assigned_replicas:
-                # 4. Choose the compactable node that has the least
-                #    number of replicas that require migrating.
-                if len(assigned_replicas) < min_replicas_to_move:
-                    min_replicas_to_move = len(replicas_on_curr_node)
+                # 4. Choose the largest compactable node (most resources)
+                #    since we assume they are more expensive. Upon a tie
+                #    choose the one that has the least number of
+                #    replicas that require migrating.
+                if not node_with_min_replicas or total_resources_per_node.get(
+                    target_node_id, Resources()
+                ) > total_resources_per_node.get(node_with_min_replicas, Resources()):
                     node_with_min_replicas = target_node_id
                     optimal_assignment = assigned_replicas
+
+                elif not node_with_min_replicas or total_resources_per_node.get(
+                    target_node_id, Resources()
+                ) == total_resources_per_node.get(node_with_min_replicas, Resources()):
+                    if len(assigned_replicas) < len(
+                        self._running_replicas_on_node_id(node_with_min_replicas)
+                    ):
+                        node_with_min_replicas = target_node_id
+                        optimal_assignment = assigned_replicas
 
         if node_with_min_replicas:
             node_to_assigned_replicas = defaultdict(list)

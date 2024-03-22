@@ -1052,6 +1052,87 @@ class TestCompactScheduling:
         with pytest.raises(RuntimeError):
             wait_for_condition(any_starting_or_pending_migration_replicas)
 
+    @pytest.mark.parametrize(
+        "ray_autoscaling_cluster",
+        [
+            {
+                "head_resources": {"CPU": 0},
+                "worker_node_types": {
+                    "cpu_node1": {
+                        "resources": {"CPU": 4},
+                        "node_config": {},
+                        "min_workers": 0,
+                        "max_workers": 1,
+                    },
+                    "cpu_node2": {
+                        "resources": {"CPU": 5},
+                        "node_config": {},
+                        "min_workers": 0,
+                        "max_workers": 1,
+                    },
+                },
+                "idle_timeout_minutes": 0.05,
+            },
+        ],
+        indirect=True,
+    )
+    def test_prefer_larger_nodes(self, ray_autoscaling_cluster: AutoscalingCluster):
+        ray.init()
+        serve.start()
+        client = _get_global_client()
+        signal = SignalActor.options(name="signal123").remote()
+        signal.send.remote()
+
+        import_path = "ray.anyscale.serve.tests.test_deployment_scheduler.app_B"
+        config = {
+            "applications": [
+                {
+                    "name": "A",
+                    "import_path": import_path,
+                    "route_prefix": "/a",
+                    "deployments": [
+                        {"name": "BlockInit", "ray_actor_options": {"num_cpus": 1.5}}
+                    ],
+                },
+                {
+                    "name": "B",
+                    "import_path": import_path,
+                    "route_prefix": "/b",
+                    "deployments": [
+                        {"name": "BlockInit", "ray_actor_options": {"num_cpus": 2.5}}
+                    ],
+                },
+            ]
+        }
+
+        # Make sure A(1CPU) + B(2CPU) is scheduled on worker node #1
+        client.deploy_apps(ServeDeploySchema(**config))
+        wait_for_condition(check_num_alive_nodes, target=2)  # 1 head + 1 worker node
+
+        # THen second A(1CPU) is scheduled by itself on worker node #2
+        config["applications"][0]["deployments"][0]["num_replicas"] = 2
+        client.deploy_apps(ServeDeploySchema(**config))
+        wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker nodes
+
+        client._wait_for_application_running("A")
+        h = serve.get_app_handle("A")
+        node_ids = {h.remote().result() for _ in range(20)}
+        assert len(set(node_ids)) == 2
+
+        # Deleting B should allow cluster to compact down to 1 worker node
+        del config["applications"][1]
+        client.deploy_apps(ServeDeploySchema(**config))
+        wait_for_condition(check_num_alive_nodes, target=2)  # 1 head + 1 worker nodes
+
+        # The node that was compacted should have been of type cpu_node2 (5CPUs)
+        # So the remaining node should be of type cpu_node1 (4CPUs)
+        worker_node = [
+            node
+            for node in ray.nodes()
+            if not node["Resources"].get("node:__internal_head__")
+        ][0]
+        assert worker_node["Resources"]["CPU"] == 4.0
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
