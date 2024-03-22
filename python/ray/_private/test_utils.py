@@ -2163,7 +2163,7 @@ def get_ray_default_worker_file_path():
 
 class Cgroup2NetworkBlocker:
     """
-    Context manager to block a pid's all network output. Used in testing.
+    Context manager to block all network output for a process. Used in testing.
 
     The procedure:
 
