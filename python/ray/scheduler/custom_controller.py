@@ -20,6 +20,10 @@ import random
 import os
 import subprocess
 
+def get_task_status(id):
+    time.sleep(0.1)
+    return get_task(id)
+
 class Controller():
     def __init__(self):
        self.indicator = 0
@@ -47,7 +51,7 @@ class Controller():
 
         print("[RECONCILE TASK] user task:", user_task)
         # if user_task.status[BIND_TASK_STATUS] is not None:
-        #     task_status = get_task(user_task.status[BIND_TASK_ID])
+        #     task_status = get_task_status(user_task.status[BIND_TASK_ID])
         #     if task_status == None:
         #         return
         #     print("checking ray task status: ", task_status)
@@ -73,7 +77,7 @@ class Controller():
         # Check if data is sent and label is binded
 
         elif user_task.status[BIND_TASK_STATUS] == RUNNING:
-            task_status = get_task(user_task.status[BIND_TASK_ID])
+            task_status = get_task_status(user_task.status[BIND_TASK_ID])
             if task_status == None:
                 return
             print("[BIND TASK RUNNING] user task status: ", user_task)
@@ -91,7 +95,7 @@ class Controller():
         
         # Check if user_task is finished
         elif user_task.status[BIND_TASK_STATUS] == FINISHED:
-            task_status = get_task(user_task.spec[USER_TASK_ID])
+            task_status = get_task_status(user_task.spec[USER_TASK_ID])
             if task_status == None:
                 return
             print("[BIND TASK FINISHED] user task status: ", user_task)
@@ -114,7 +118,7 @@ class Controller():
     def bind_label_and_send_data(self, node_id, label,s3,bucket_name,object_key):
         
 
-        @ray.remote(num_cpus=0.3)
+        @ray.remote(num_cpus=0.3, resources={'binding':1})
         def bind_label():
             # print("s3:",s3,"  bucket name:",str(bucket_name),"  object_key:",object_key,"  working_dir:",label,"node_type:",os.getenv('LOCAL_NODE_TYPE'))
 
@@ -197,11 +201,11 @@ class Controller():
                         else:
                             print(f"rsync failed after {max_attempts} attempts")
                     # write the final attempt to log in /tmp/rsync_log.txt, append to it
-                    is_failed = attempts == max_attempts
-                    status_log = "failed" if is_failed else "succeeded"
-                    log_file_path = "/tmp/rsync_log.txt"
-                    with open(log_file_path, "a") as f:
-                        f.write(f"rsync {label} to {DATA_IP} {status_log} after {attempts} attempts\n")
+                    # is_failed = attempts == max_attempts
+                    # status_log = "failed" if is_failed else "succeeded"
+                    # log_file_path = "/tmp/rsync_log.txt"
+                    # with open(log_file_path, "a") as f:
+                    #     f.write(f"rsync {label} to {DATA_IP} {status_log} after {attempts} attempts\n")
             return FINISHED
 
         task_id = bind_label.options(
@@ -284,11 +288,15 @@ class Controller():
                     available_memory += task.spec[MEMORY] if MEMORY in task.spec else 0
                     
                     if available_cpu >= required_cpu and available_gpu >= required_gpu and available_memory >= required_memory:
-                        if estimated_finish_time < earliest_time and estimated_finish_time > current_time:
+                        if estimated_finish_time < earliest_time:  #and estimated_finish_time > current_time:
                             earliest_time = estimated_finish_time
                             best_node = node_id
         
-        if best_node == None or (node_info[best_node][PENDING_TASKS_COUNT] + 1) > MAX_PENDING_TASK:
+        num_finished_task = 0
+        for node_id, _ in node_info.items():
+            num_finished_task = num_finished_task + len(node_info[node_id][FINISHED_TASKS])
+        max_pending_task = MAX_PENDING_TASK # + int(num_finished_task/2)
+        if best_node == None or (node_info[best_node][PENDING_TASKS_COUNT] + 1) > max_pending_task:
             if best_node is None:
                 print("[FIND BEST NODE] No available node found")
                 # print all node's available resources for debugging

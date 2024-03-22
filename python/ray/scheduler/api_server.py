@@ -48,7 +48,7 @@ class Apiserver:
 
                 self.node_info[node[NODE_ID]][PENDING_TASKS_COUNT] = 0
                 
-                
+ 
     @app.get("/render")
     def render(self):
         node_htmls = ""
@@ -72,15 +72,21 @@ class Apiserver:
                     header_labels =["Name", "Start Time(s)", "Finish Time(s)"],
                     table_width=1400
                 )
-                node_htmls = gantt_chart_html + table_html
+                node_htmls =  gantt_chart_html + table_html
+                with open(f"/home/ec2-user/share/Ray-Workloads/basics/image_tr/timeline_{node_id}.html", "w") as f:
+                    f.write(node_htmls)
                 
             else:
-                return "No finished task"
-            
-        with open(f"{os.path.dirname(os.path.abspath(__file__))}/time_line_web_page/timeline.html", "w") as f:
-            f.write(node_htmls)
+                continue
         
-        return "See the timeline.html under time_line_web_page folder"
+        # we shoudl not use abs path
+        # path = f"{os.path.dirname(os.path.abspath(__file__))}"
+        # if not os.path.exists(path):
+        #     os.mkdir(path) 
+        # with open(f"/home/ec2-user/share/Ray-Workloads/basics/image_tr/timeline.html", "w") as f:
+        #     f.write(node_htmls)
+            
+        return f"See the timeline.html under /home/ec2-user/share/Ray-Workloads/basics/image_tr/"
 
 
     @app.post("/apply")
@@ -158,10 +164,13 @@ class Apiserver:
     def _update_node_speed_info(self, user_task):
         assign_node = user_task.status[ASSIGN_NODE]
         complexity_score = user_task.spec[COMPLEXITY_SCORE]
-        duration = user_task.status[USER_TASK_DURATION] + user_task.status[BIND_TASK_DURATION]
+        # duration = user_task.status[USER_TASK_DURATION] + user_task.status[BIND_TASK_DURATION]
+        duration = user_task.status[USER_TASK_DURATION]
 
-        self.node_info[assign_node][TOTAL_DURATION] += duration
-        self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] += complexity_score
+        self.node_info[assign_node][TOTAL_DURATION] =  self.node_info[assign_node][TOTAL_DURATION] * 0.2 + duration
+        # self.node_info[assign_node][TOTAL_DURATION] = duration
+        self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] = self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] * 0.2 + complexity_score
+        # self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] = complexity_score
         self.node_info[assign_node][SPEED] = self.node_info[assign_node][TOTAL_COMPLEXITY_SCORE] / self.node_info[assign_node][TOTAL_DURATION]
 
         # print all node speed
