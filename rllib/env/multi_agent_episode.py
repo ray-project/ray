@@ -885,9 +885,9 @@ class MultiAgentEpisode:
             The ModuleID mapped to from the given `agent_id`.
         """
         if agent_id not in self._agent_to_module_mapping:
-            module_id = self._agent_to_module_mapping[agent_id] = (
-                self.agent_to_module_mapping_fn(agent_id, self)
-            )
+            module_id = self._agent_to_module_mapping[
+                agent_id
+            ] = self.agent_to_module_mapping_fn(agent_id, self)
             return module_id
         else:
             return self._agent_to_module_mapping[agent_id]
