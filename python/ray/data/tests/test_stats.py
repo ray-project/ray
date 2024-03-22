@@ -1041,6 +1041,9 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
         == op_stats.latest_end_time - op_stats.earliest_start_time
     )
 
+    # total time across all blocks is sum of wall times of blocks
+    assert dataset_stats_summary.get_total_time_all_blocks() == sum(block_params["wall_time"])
+
     cpu_time_stats = op_stats.cpu_time
     assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.get("sum")
 
