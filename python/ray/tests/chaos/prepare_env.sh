@@ -19,6 +19,7 @@ helm install kuberay-operator kuberay/kuberay-operator
 kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator \
     --for=condition=Ready=True  --timeout=5m
 
+sleep 7200
 echo "--- Installing KubeRay cluster and port forward."
 
 helm install raycluster kuberay/ray-cluster \
