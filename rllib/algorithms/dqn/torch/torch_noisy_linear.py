@@ -11,7 +11,8 @@ class NoisyLinear(nn.Linear):
     """Noisy Linear Layer.
 
     Presented in "Noisy Networks for Exploration",
-    https://arxiv.org/abs/1706.10295v3 and copied from `torchrl`.
+    https://arxiv.org/abs/1706.10295v3, implemented in relation to
+    `torchrl`'s `NoisyLinear` layer.
 
     A Noisy Linear Layer is a linear layer with parametric noise added to
     the weights. This induced stochasticity can be used in RL networks for
@@ -95,7 +96,9 @@ class NoisyLinear(nn.Linear):
             self.bias_mu = None
         self.reset_parameters()
         self.reset_noise()
+        self.training = True
 
+    @torch.no_grad()
     def reset_parameters(self) -> None:
         # Use initialization for factorized noisy linear layers.
         mu_range = 1 / math.sqrt(self.in_features)
@@ -107,6 +110,7 @@ class NoisyLinear(nn.Linear):
             self.bias_mu.data.zero_()  # (-mu_range, mu_range)
             self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
 
+    @torch.no_grad()
     def reset_noise(self) -> None:
         with torch.no_grad():
             # Use factorized noise for better performance.
@@ -116,28 +120,17 @@ class NoisyLinear(nn.Linear):
             if self.bias_mu is not None:
                 self.bias_epsilon.copy_(epsilon_out)
 
+    @torch.no_grad()
     def _scale_noise(self, size: Union[int, torch.Size, Sequence]) -> torch.Tensor:
         if isinstance(size, int):
             size = (size,)
         x = torch.randn(*size, device=self.weight_mu.device)
         return x.sign().mul_(x.abs().sqrt_())
 
-    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
-        # Following Algorithm 1 from the Noisy Networks paper, the noise
-        # is resampled before each time step in the environment and then
-        # before training once! That is, sample and then run N_T training
-        # steps. Sample the noise for online and target network once.
-        # It appears as if in the dueling setting only the noise of the
-        # advantage stream is resampled.
-        # If in training reset the noise for each call to produce variation.
-        if self.training:
-            self.reset_noise()
-        # Then call the super's forward method.
-        return super().forward(tensor)
-
     @property
     def weight(self) -> torch.Tensor:
         if self.training:
+            # If in training mode, sample the noise.
             return self.weight_mu + self.weight_sigma * self.weight_epsilon
         else:
             return self.weight_mu
@@ -146,6 +139,7 @@ class NoisyLinear(nn.Linear):
     def bias(self) -> Optional[torch.Tensor]:
         if self.bias_mu is not None:
             if self.training:
+                # If in training mode, sample the noise.
                 return self.bias_mu + self.bias_sigma * self.bias_epsilon
             else:
                 return self.bias_mu

@@ -34,7 +34,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         catalog: DQNRainbowCatalog = self.config.get_catalog()
 
         # If a dueling architecture is used.
-        self.is_dueling: bool = self.config.model_config_dict.get("dueling")
+        self.uses_dueling: bool = self.config.model_config_dict.get("dueling")
         # If double Q learning is used.
         self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
         # If we use noisy layers.
@@ -64,11 +64,13 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
         # Build heads.
         self.af = catalog.build_af_head(framework=self.framework)
-        if self.is_dueling:
+        if self.uses_dueling:
+            # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
         # Implement the same heads for the target network(s).
         self.af_target = catalog.build_af_head(framework=self.framework)
-        if self.is_dueling:
+        if self.uses_dueling:
+            # If in a dueling setting setup the target value function head.
             self.vf_target = catalog.build_vf_head(framework=self.framework)
 
         # Define the action distribution for sampling the exploit action
@@ -118,7 +120,9 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         return [
             QF_PREDS,
             QF_TARGET_NEXT_PREDS,
+            # Add keys for double-Q setup.
             *([QF_NEXT_PREDS] if self.uses_double_q else []),
+            # Add keys for distributional Q-learning.
             *(
                 [
                     ATOMS,

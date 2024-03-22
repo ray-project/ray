@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Mapping, Tuple, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
@@ -39,7 +39,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         self.af_target.requires_grad_(False)
         self.af_target.load_state_dict(self.af.state_dict())
 
-        if self.is_dueling:
+        if self.uses_dueling:
             self.vf_target.requires_grad_(False)
             self.vf_target.load_state_dict(self.vf.state_dict())
 
@@ -47,11 +47,13 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         output = {}
 
-        # Encoder forward pass.
-        encoder_outs = self.encoder(batch)
+        # Set the module into evaluation mode, if needed.
+        if self.uses_noisy and self.training:
+            # This sets the weigths and bias to their constant version.
+            self.eval()
 
-        # Q-head.
-        qf_outs = self._qf(encoder_outs[ENCODER_OUT])
+        # Q-network forward pass.
+        qf_outs = self._qf(batch)
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
@@ -65,13 +67,20 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         return output
 
-    # TODO (simon): Implement the timestep for more complex exploration
-    # schedules with epsilon greedy.
     @override(RLModule)
     def _forward_exploration(
         self, batch: Dict[str, TensorType], t: int
     ) -> Dict[str, TensorType]:
         output = {}
+
+        # Resample the noise for the noisy layers, if needed.
+        if self.uses_noisy:
+            # We want to resample the noise everytime we step.
+            self.reset_noise(target=False)
+            if not self.training:
+                # Set the module into training mode. This sets
+                # the weigths and bias to their noisy version.
+                self.train(True)
 
         # Q-network forward pass.
         qf_outs = self._qf(batch)
@@ -117,6 +126,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         self, batch: Dict[str, TensorType]
     ) -> Dict[str, TensorStructType]:
         output = {}
+
+        # Set module into training mode.
+        if self.uses_noisy and not self.training:
+            # This sets the weigths and bias to their noisy version.
+            self.train(True)
 
         # If we use a double-Q setup.
         if self.uses_double_q:
@@ -177,7 +191,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         return self._qf_forward_helper(
             batch,
             self.encoder,
-            {"af": self.af, "vf": self.vf} if self.is_dueling else self.af,
+            {"af": self.af, "vf": self.vf} if self.uses_dueling else self.af,
         )
 
     @override(DQNRainbowRLModule)
@@ -201,7 +215,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             batch,
             self.target_encoder,
             {"af": self.af_target, "vf": self.vf_target}
-            if self.is_dueling
+            if self.uses_dueling
             else self.af_target,
         )
 
@@ -259,7 +273,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             [
                 (self.vf_target, self.vf),
             ]
-            if self.is_dueling
+            if self.uses_dueling
             else []
         )
 
@@ -298,7 +312,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         encoder_outs = encoder(batch)
 
         # Do we have a dueling architecture.
-        if self.is_dueling:
+        if self.uses_dueling:
             # Head forward passes for advantage and value stream.
             qf_outs = head["af"](encoder_outs[ENCODER_OUT])
             vf_outs = head["vf"](encoder_outs[ENCODER_OUT])
@@ -328,14 +342,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # b/c we backpropagate through these values. See for a discussion
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
+                # Has to be a mean for each batch element.
                 af_outs_mean = torch.unsqueeze(
                     torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
                 )
                 qf_outs = qf_outs - af_outs_mean
-                # Has to be a mean for each batch element.
-                # af_outs_mean = reduce_mean_ignore_inf(qf_outs, 1)
-                # qf_outs = qf_outs - torch.unsqueeze(af_outs_mean, 1)
-                # TODO (simon): Check if unsqueeze is necessary.
                 # Add advantage and value stream. Note, we broadcast here.
                 output[QF_PREDS] = qf_outs + vf_outs
         # No dueling architecture.
@@ -363,3 +374,29 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 output[QF_PREDS] = qf_outs
 
         return output
+
+    def _reset_noise(self, target: bool = False) -> None:
+        """Reset the noise of all noisy layers.
+
+        Args:
+            target: Whether to reset the noise of the target networks.
+        """
+        if self.uses_noisy:
+            self.encoder._reset_noise()
+            self.af._reset_noise()
+            # If we have a dueling architecture we need to reset the noise
+            # of the value stream, too.
+            if self.uses_dueling:
+                self.vf._reset_noise()
+            # Reset the noise of the target networks, if requested.
+            if target:
+                self.target_encoder._reset_noise()
+                self.af_target._reset_noise()
+                # If we have a dueling architecture we need to reset the noise
+                # of the value stream, too.
+                if self.uses_dueling:
+                    self.vf_target._reset_noise()
+
+    @override(TorchRLModule)
+    def get_state(self) -> Mapping[str, Any]:
+        return super().get_state()

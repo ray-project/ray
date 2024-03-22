@@ -103,7 +103,6 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                 .long(),
             ).squeeze(dim=1)
             # Get the probabilies for the maximum Q-value(s).
-            # print(f"next probs: {fwd_out[QF_TARGET_NEXT_PROBS]}")
             q_probs_next_best = torch.gather(
                 fwd_out[QF_TARGET_NEXT_PROBS],
                 dim=1,
@@ -120,8 +119,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             # Extract the support grid for the Q distribution.
             z = fwd_out[ATOMS]
             # TODO (simon): Enable computing on GPU.
-            # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-            # TODO (simon): Check, if we need to unsqueeze here.
+            # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)s
             r_tau = torch.clamp(
                 batch[Columns.REWARDS].unsqueeze(dim=-1)
                 + (
@@ -266,3 +264,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             }
             # Apply the new parameters to the target Q network.
             target_network.load_state_dict(new_state_dict)
+
+    def _reset_noise(self) -> None:
+        # Reset the noise for all noisy modules, if necessary.
+        self.module.foreach_module(lambda mid, module: module._reset_noise(target=True))

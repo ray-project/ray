@@ -590,7 +590,7 @@ class DQN(Algorithm):
                 episodes: EpisodeType = synchronous_parallel_sample(
                     worker_set=self.workers,
                     concat=True,
-                    uses_new_env_runners=True,
+                    _uses_new_env_runners=True,
                 )
 
             # TODO (sven): single- vs multi-agent.
@@ -604,10 +604,6 @@ class DQN(Algorithm):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
 
-            # self.workers.sync_env_runner_states(
-            #     env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
-            # )
-
         # Update the target network each `target_network_update_freq` steps.
         current_ts = self._counters[
             NUM_AGENT_STEPS_SAMPLED
@@ -615,15 +611,17 @@ class DQN(Algorithm):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        # TODO (simon): Check, if this can be managed differently or even needs to be
-        # put into the sampling loop above.
-        # self.workers.sync_env_runner_states(env_steps_sampled=current_ts)
-
         # If enough experiences have been sampled start training.
         if current_ts > self.config.num_steps_sampled_before_learning_starts:
+            # Resample noise for noisy networks, if necessary. Note, this
+            # is proposed in the "Noisy Networks for Exploration" paper
+            # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
+            # gets sampled once for each training loop.
+            self.learner_group.foreach_learner(lambda l: l._reset_noise())
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
+                # TODO (simon): Use sample_with_keys() here.
                 train_dict = self.local_replay_buffer.sample(
                     num_items=self.config.train_batch_size,
                     n_step=self.config.n_step,
@@ -633,40 +631,17 @@ class DQN(Algorithm):
                 train_batch = SampleBatch(train_dict)
 
                 # Convert to multi-agent batch as `LearnerGroup` depends on it.
+                # TODO (sven, simon): Remove this conversion once the `LearnerGroup`
+                # supports dict.
                 train_batch = train_batch.as_multi_agent()
-
-                # TODO (sven, simon): Streamline the custom metrics reduction
-                # functions via the `Learner`'s `register_metrics()` API.
-                def reduce_fn(results: List[ResultDict]) -> ResultDict:
-                    """Reduces all metrics, but the TD-errors."""
-                    # First get the single modules' results.
-                    module_results = [
-                        v for res in results for k, v in res.items() if k != "__all__"
-                    ]
-                    # Extract the TD-errors as we want to keep them as arrays.
-                    td_errors = tree.map_structure_up_to(
-                        {"td_error": True}, lambda x: x, *module_results
-                    )
-                    # Now reduce all other results.
-                    reduced_results = tree.map_structure(
-                        lambda *x: np.mean(x), *results
-                    )
-                    # Add the TD-error arrays to the results and return.
-                    return {
-                        k: v if k == "__all__" else {**v, "td_error": td_error}
-                        for k, v, td_error in zip(
-                            reduced_results.keys(),
-                            reduced_results.values(),
-                            [None] + list(td_errors.values()),
-                        )
-                    }
 
                 # Perform an update on the buffer-sampled train batch.
                 train_results = self.learner_group.update_from_batch(
                     train_batch,
-                    reduce_fn=reduce_fn,
+                    reduce_fn=self._reduce_fn,
                 )
 
+                # Update the counters.
                 self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
                 self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
 
@@ -685,7 +660,7 @@ class DQN(Algorithm):
                     timestep=current_ts,
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
-                # Add the additional results to the training results.
+                # Add the additional results to the training results, if any.
                 for pid, res in additional_results.items():
                     if LAST_TARGET_UPDATE_TS in res:
                         self._counters[LAST_TARGET_UPDATE_TS] = res[
@@ -697,6 +672,8 @@ class DQN(Algorithm):
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
+            # TODO (simon): For better performance, synch only the online network
+            # weights and not the target network weights.
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 if self.workers.num_remote_workers() > 0:
                     # NOTE: the new API stack does not use global vars.
@@ -760,10 +737,6 @@ class DQN(Algorithm):
                 post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
                 train_batch = post_fn(train_batch, self.workers, self.config)
 
-                # for policy_id, sample_batch in train_batch.policy_batches.items():
-                #     print(len(sample_batch["obs"]))
-                #     print(sample_batch.count)
-
                 # Learn on training batch.
                 # Use simple optimizer (only for multi-agent or tf-eager; all other
                 # cases should use the multi-GPU optimizer, even if only using 1 GPU)
@@ -796,3 +769,27 @@ class DQN(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
+
+    # TODO (sven, simon): Streamline the custom metrics reduction
+    # functions via the `Learner`'s `register_metrics()` API.
+    def _reduce_fn(self, results: List[ResultDict]) -> ResultDict:
+        """Reduces all metrics, but the TD-errors."""
+        # First get the single modules' results.
+        module_results = [
+            v for res in results for k, v in res.items() if k != "__all__"
+        ]
+        # Extract the TD-errors as we want to keep them as arrays.
+        td_errors = tree.map_structure_up_to(
+            {"td_error": True}, lambda x: x, *module_results
+        )
+        # Now reduce all other results.
+        reduced_results = tree.map_structure(lambda *x: np.mean(x), *results)
+        # Add the TD-error arrays to the results and return.
+        return {
+            k: v if k == "__all__" else {**v, "td_error": td_error}
+            for k, v, td_error in zip(
+                reduced_results.keys(),
+                reduced_results.values(),
+                [None] + list(td_errors.values()),
+            )
+        }

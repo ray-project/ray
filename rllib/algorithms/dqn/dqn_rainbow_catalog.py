@@ -34,7 +34,8 @@ class DQNRainbowCatalog(Catalog):
             dueling architecture is chosen. This is a single node head.
             If no dueling architecture is used, this head does not exist.
 
-    All networks can include noisy layers, if `noisy` is `True`.
+    All networks can include noisy layers, if `noisy` is `True`. In this
+    case, no epsilon greedy exploration is used.
 
     Any custom head can be built by overridng the `build_af_head()` and
     `build_vf_head()`. Alternatively, the `AfHeadConfig` or `VfHeadConfig`
@@ -182,8 +183,7 @@ class DQNRainbowCatalog(Catalog):
                 return NoisyMLPEncoderConfig(
                     input_dims=observation_space.shape,
                     hidden_layer_dims=af_and_vf_encoder_hiddens,
-                    hidden_layer_activation="relu",
-                    # model_config_dict["fcnet_activation"],
+                    hidden_layer_activation=model_config_dict["fcnet_activation"],
                     # TODO (simon): Not yet available.
                     # hidden_layer_use_layernorm=self._model_config_dict[
                     #     "hidden_layer_use_layernorm"
@@ -224,7 +224,9 @@ class DQNRainbowCatalog(Catalog):
                     output_layer_bias_initializer_config=model_config_dict[
                         "post_fcnet_bias_initializer_config"
                     ],
-                    std_init=0.2,  # model_config_dict.get("sigma0", 0.02),
+                    # TODO (simon): Set parameters via config dict when we have fixed
+                    # the `model_config_dict` in `AlgorithmConfig`.
+                    std_init=0.1,  # model_config_dict.get("sigma0", 0.02),
                 )
         # Otherwise return the base encoder config chosen by the parent.
         # This will choose a CNN for 3D Box and LSTM for 'use_lstm=True'.<
