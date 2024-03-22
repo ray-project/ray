@@ -19,7 +19,7 @@ Iterating over Torch tensors for training
 -----------------------------------------
 To iterate over batches of data in Torch format, call :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Each batch is represented as `Dict[str, torch.Tensor]`, with one tensor per column in the dataset.
 
-This is useful for training Torch models with batches from your dataset. For configuration details such as providing a ``collate_fn`` for customizing the conversion, see `the API reference <ray.data.Dataset.iter_torch_batches>`.
+This is useful for training Torch models with batches from your dataset. For configuration details such as providing a ``collate_fn`` for customizing the conversion, see the API reference for :meth:`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
 .. testcode::
 
@@ -84,7 +84,7 @@ For more details, see the :ref:`Ray Train user guide <data-ingest-torch>`.
 
 Transformations with Torch tensors
 ----------------------------------
-Transformations applied with `map` or ``map_batches`` can return Torch tensors.
+Transformations applied with `map` or `map_batches` can return Torch tensors.
 
 .. caution::
 
@@ -159,7 +159,7 @@ For more information on transforming data, see :ref:`Transforming data <transfor
 Built-in PyTorch transforms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and ``torchaudio`` Ray Data transformations.
+You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and ``torchaudio``.
 
 .. tab-set::
 
@@ -273,11 +273,11 @@ With Ray Datasets, you can do scalable offline batch inference with Torch models
                 # Get the predictions from the input batch.
                 return {"output": self.model(tensor).numpy()}
 
-    # Step 2: Map the Predictor over the Dataset to get predictions.
+    # Step 3: Map the Predictor over the Dataset to get predictions.
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
     predictions = ds.map_batches(TorchPredictor, concurrency=2)
-    # Step 3: Show one prediction output.
+    # Step 4: Show one prediction output.
     predictions.show(limit=1)
 
 .. testoutput::
@@ -469,7 +469,7 @@ PyTorch DataLoader
 
 The PyTorch DataLoader can be replaced by calling :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to iterate over batches of the dataset.
 
-The following table describes how the arguments for PyTorch DataLoader map to Ray Data. Note the behavior may not necessarily be identical. For exact semantics and usage, :meth:`see the API reference <ray.data.Dataset.iter_torch_batches>`.
+The following table describes how the arguments for PyTorch DataLoader map to Ray Data. Note the behavior may not necessarily be identical. For exact semantics and usage, see the API reference for :meth:`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
 .. list-table::
    :header-rows: 1

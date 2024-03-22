@@ -2507,19 +2507,6 @@ def disconnect(exiting_interpreter=False):
         ray_actor._ActorClassMethodMetadata.reset_cache()
 
 
-def start_import_thread():
-    """Start the import thread if the worker is connected."""
-    worker = global_worker
-    worker.check_connected()
-
-    assert _mode() not in (
-        RESTORE_WORKER_MODE,
-        SPILL_WORKER_MODE,
-    ), "import thread can not be used in IO workers."
-    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
-        worker.import_thread.start()
-
-
 @contextmanager
 def _changeproctitle(title, next_title):
     if _mode() is not LOCAL_MODE:
