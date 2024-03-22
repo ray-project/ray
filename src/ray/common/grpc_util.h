@@ -166,9 +166,9 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments(
   }
 
   arguments.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA,
-                    ::RayConfig::instance().grpc_http2_max_pings_without_data());
+                   ::RayConfig::instance().grpc_http2_max_pings_without_data());
   arguments.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS,
-                      ::RayConfig::instance().grpc_keepalive_permit_without_calls());
+                   ::RayConfig::instance().grpc_keepalive_permit_without_calls());
 
   arguments.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS,
                    ::RayConfig::instance().grpc_client_idle_timeout_ms());

@@ -777,12 +777,15 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 /// gRPC keep-alive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 /// Number of keep-alive pings client can send before needing to send a data/header frame
-/// (0 indicates that an infinite number of pings can be sent without sending a data frame or header frame)
+/// (0 indicates that an infinite number of pings can be sent without sending a data frame
+/// or header frame)
 RAY_CONFIG(int64_t, grpc_http2_max_pings_without_data, 0)
-/// Is it permissible to send keepalive pings from the client without any outstanding streams
+/// Is it permissible to send keepalive pings from the client without any outstanding
+/// streams
 RAY_CONFIG(int64_t, grpc_keepalive_permit_without_calls, 1)
 
-/// Timeout after the last RPC finishes on the client channel at which the channel goes back into IDLE state
+/// Timeout after the last RPC finishes on the client channel at which the channel goes
+/// back into IDLE state
 RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
 
 /// gRPC streaming buffer size
