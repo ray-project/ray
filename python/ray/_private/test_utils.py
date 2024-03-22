@@ -2213,6 +2213,7 @@ class Cgroup2NetworkBlocker:
             ],
             check=True,
         )
+        print(f"moving pid to {self.cgroupv2_name}")
         subprocess.run(
             f"echo {self.pid} | sudo tee"
             f" /sys/fs/cgroup/unified/{self.cgroupv2_name}/cgroup.procs",
