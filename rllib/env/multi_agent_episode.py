@@ -668,7 +668,7 @@ class MultiAgentEpisode:
 
         Note that Columns.INFOS are NEVER numpy'ized and will remain a list
         (normally, a list of the original, env-returned dicts). This is due to the
-        herterogenous nature of INFOS returned by envs, which would make it unwieldy to
+        heterogeneous nature of INFOS returned by envs, which would make it unwieldy to
         convert this information to numpy arrays.
 
         After calling this method, no further data may be added to this episode via
@@ -871,16 +871,18 @@ class MultiAgentEpisode:
         }
 
     def module_for(self, agent_id: AgentID) -> Optional[ModuleID]:
-        """Returns the ModuleID of a given AgentID.
+        """Returns the ModuleID for a given AgentID.
 
-        Forces the mapping to be performed via `self.agent_to_module_mapping_fn`
-        if it has not happened yet.
+        Forces the agent-to-module mapping to be performed (via
+        `self.agent_to_module_mapping_fn`), if this has not been done yet.
+        Note that all such mappings are stored in the `self._agent_to_module_mapping`
+        property.
 
         Args:
-            agent_id: The AgentID to get the mapped ModuleID for.
+            agent_id: The AgentID to get a mapped ModuleID for.
 
         Returns:
-            The ModuleID mapped to by the given `agent_id`.
+            The ModuleID mapped to from the given `agent_id`.
         """
         if agent_id not in self._agent_to_module_mapping:
             module_id = self._agent_to_module_mapping[agent_id] = (
