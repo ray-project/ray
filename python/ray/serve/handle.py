@@ -540,15 +540,17 @@ class DeploymentResponse(_DeploymentResponseBase):
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        obj_ref = await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
-        obj_ref_hex = obj_ref.hex()
-        print("in _to_object_ref!!!, ref in memory? before get", obj_ref_hex in ray._private.internal_api.memory_summary())
-        result = ray.get(obj_ref)
-        print("in _to_object_ref!!!, ref in memory? after get", obj_ref_hex in ray._private.internal_api.memory_summary())
-        del obj_ref
-        print("in _to_object_ref!!!, ref in memory? after del", obj_ref_hex in ray._private.internal_api.memory_summary(), result)
+        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
-        return result
+        # obj_ref = await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+        # obj_ref_hex = obj_ref.hex()
+        # print("in _to_object_ref!!!, ref in memory? before get", obj_ref_hex in ray._private.internal_api.memory_summary())
+        # result = ray.get(obj_ref)
+        # print("in _to_object_ref!!!, ref in memory? after get", obj_ref_hex in ray._private.internal_api.memory_summary())
+        # del obj_ref
+        # print("in _to_object_ref!!!, ref in memory? after del", obj_ref_hex in ray._private.internal_api.memory_summary(), result)
+        #
+        # return result
 
     @DeveloperAPI
     def _to_object_ref_sync(

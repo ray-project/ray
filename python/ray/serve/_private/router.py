@@ -368,6 +368,7 @@ class Router:
         Uses the `_PyObjScanner` to find and replace the objects. This
         enables composition without explicitly calling `_to_object_ref`.
         """
+        print("in _resolve_deployment_responses!!!", request_args, request_kwargs)
         from ray.serve.handle import (
             DeploymentResponse,
             DeploymentResponseGenerator,
