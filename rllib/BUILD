@@ -286,7 +286,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/cartpole_dqn_envrunner.py"],
+    data = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
     args = ["--dir=tuned_examples/dqn"]
 )
 
