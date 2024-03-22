@@ -249,3 +249,11 @@ html[data-theme='light'] {
 .example-other-keywords {
   display: none;
 }
+
+.community-text {
+  color: var(--pst-color-text-muted);
+}
+
+.community-emojis {
+  padding-left: 0.5em;
+}
