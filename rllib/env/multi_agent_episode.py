@@ -177,6 +177,11 @@ class MultiAgentEpisode:
                 AlgorithmConfig.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
             )
         self.agent_to_module_mapping_fn = agent_to_module_mapping_fn
+        # In case a user - e.g. via callbacks - already forces a mapping to happen
+        # via the `module_for()` API even before the agent has entered the episode
+        # (and has its SingleAgentEpisode created), we store all aldeary done mappings
+        # in this dict here.
+        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = {}
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
@@ -305,7 +310,7 @@ class MultiAgentEpisode:
             if agent_id not in self.agent_episodes:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
-                    module_id=self.agent_to_module_mapping_fn(agent_id, self),
+                    module_id=self.module_for(agent_id),
                     multi_agent_episode_id=self.id_,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
@@ -408,7 +413,7 @@ class MultiAgentEpisode:
             if agent_id not in self.agent_episodes:
                 self.agent_episodes[agent_id] = SingleAgentEpisode(
                     agent_id=agent_id,
-                    module_id=self.agent_to_module_mapping_fn(agent_id, self),
+                    module_id=self.module_for(agent_id),
                     multi_agent_episode_id=self.id_,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
@@ -864,6 +869,26 @@ class MultiAgentEpisode:
             agent_id: agent_eps.id_
             for agent_id, agent_eps in self.agent_episodes.items()
         }
+
+    def module_for(self, agent_id: AgentID) -> Optional[ModuleID]:
+        """Returns the ModuleID of a given AgentID.
+
+        Forces the mapping to be performed via `self.agent_to_module_mapping_fn`
+        if it has not happened yet.
+
+        Args:
+            agent_id: The AgentID to get the mapped ModuleID for.
+
+        Returns:
+            The ModuleID mapped to by the given `agent_id`.
+        """
+        if agent_id not in self._agent_to_module_mapping:
+            module_id = self._agent_to_module_mapping[agent_id] = (
+                self.agent_to_module_mapping_fn(agent_id, self)
+            )
+            return module_id
+        else:
+            return self._agent_to_module_mapping[agent_id]
 
     def get_observations(
         self,
@@ -1595,7 +1620,8 @@ class MultiAgentEpisode:
                 )
             )
             # Try to figure out the module ID for this agent.
-            # If not provided explicitly, try the mapping function (if provided).
+            # If not provided explicitly by the user that initializes this episode
+            # object, try our mapping function.
             module_id = agent_module_ids.get(
                 agent_id, self.agent_to_module_mapping_fn(agent_id, self)
             )
