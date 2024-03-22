@@ -588,8 +588,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
                            error_info.actor_died_error().has_oom_context() &&
                            error_info.actor_died_error().oom_context().fail_immediately();
       } else {
-        // actor may or may not be dead, but the request failed. Consider the failure temporary.
-        // May recognize retry, so fail_immediately = false.
+        // actor may or may not be dead, but the request failed. Consider the failure
+        // temporary. May recognize retry, so fail_immediately = false.
         error_info.set_error_message("The actor is temporarily unavailable: " +
                                      status.ToString());
         error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
