@@ -370,6 +370,7 @@ class SACConfig(AlgorithmConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
+        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
         if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
@@ -458,7 +459,7 @@ class SAC(DQN):
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
         train_results = {}
 
-        # Run multiple sampling iterations.
+        # Run multiple sampling + storing to buffer iterations.
         for _ in range(store_weight):
             # Time sampling.
             with self._timers[SAMPLE_TIMER]:
@@ -484,7 +485,7 @@ class SAC(DQN):
 
         # If enough experiences have been sampled start training.
         if current_ts >= self.config.num_steps_sampled_before_learning_starts:
-            # Run multiple training iterations.
+            # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample training batch from replay_buffer.
                 train_dict = self.local_replay_buffer.sample(
@@ -523,7 +524,7 @@ class SAC(DQN):
                         )
                     }
 
-                # Training on batch.
+                # Perform an update on the buffer-sampled train batch.
                 train_results = self.learner_group.update_from_batch(
                     train_batch,
                     reduce_fn=reduce_fn,
@@ -548,10 +549,12 @@ class SAC(DQN):
                     last_update=self._counters[LAST_TARGET_UPDATE_TS],
                 )
                 for pid, res in additional_results.items():
+                    if LAST_TARGET_UPDATE_TS in res:
+                        self._counters[LAST_TARGET_UPDATE_TS] = res[
+                            LAST_TARGET_UPDATE_TS
+                        ]
                     train_results[pid].update(res)
 
-            # TODO (simon): Check, if this is better - as we are not sampling at the
-            # same time, updating weights after all training iteration should be faster.
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
