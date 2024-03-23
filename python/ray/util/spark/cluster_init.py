@@ -17,6 +17,7 @@ import ray
 import ray._private.services
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private import net
 from ray._private.storage import _load_class
 
 from .utils import (
@@ -136,7 +137,7 @@ class RayClusterOnSpark:
             ray.init(address=self.address)
 
             if self.ray_dashboard_port is not None and _wait_service_up(
-                self.address.split(":")[0],
+                net._parse_ip_port(self.address)[0],
                 self.ray_dashboard_port,
                 _RAY_DASHBOARD_STARTUP_TIMEOUT,
             ):
@@ -1292,7 +1293,7 @@ def _setup_ray_cluster_internal(
         # started cluster.
         _active_ray_cluster = cluster
 
-    head_ip = cluster.address.split(":")[0]
+    head_ip = net._parse_ip_port(cluster.address)[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
     return cluster.address, remote_connection_address
 

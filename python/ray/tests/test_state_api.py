@@ -12,6 +12,7 @@ from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
+from ray._private import net
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -351,7 +352,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # explicit head node gcs address
     assert api_server_url == ray_address_to_api_server_url(gcs_address)
     # localhost string
-    gcs_port = gcs_address.split(":")[1]
+    gcs_port = net._parse_ip_port(gcs_address)[1]
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 

@@ -19,6 +19,7 @@ from starlette.types import Receive
 
 import ray
 from ray import serve
+from ray._private import net
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
@@ -1327,7 +1328,7 @@ class ProxyActor:
             raise proxy_error
 
     async def run_http_server(self):
-        sock = socket.socket()
+        sock = net._get_socket_dualstack_fallback_single_stack_laddr()
         if SOCKET_REUSE_PORT_ENABLED:
             set_socket_reuse_port(sock)
         try:

@@ -13,6 +13,7 @@ from packaging.version import Version
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._private import net
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import GcsClient
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
@@ -68,7 +69,7 @@ class HttpServerDashboardHead:
         self.http_port = http_port
         self.http_port_retries = http_port_retries
         self.gcs_client = gcs_client
-        self.head_node_ip = gcs_address.split(":")[0]
+        self.head_node_ip = net._parse_ip_port(gcs_address)[0]
         self.metrics = metrics
         self._session_name = session_name
 

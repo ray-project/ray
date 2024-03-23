@@ -20,6 +20,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private import net
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
@@ -997,7 +998,7 @@ def set_runtime_env_retry_times(request):
 def listen_port(request):
     port = getattr(request, "param", 0)
     try:
-        sock = socket.socket()
+        sock = net._get_socket_dualstack_fallback_single_stack_laddr()
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
 
@@ -1005,7 +1006,8 @@ def listen_port(request):
         MAX_RETRY = 10
         for i in range(MAX_RETRY):
             try:
-                sock.bind(("127.0.0.1", port))
+                # Binds to all loopback interfaces (IPv4, or IPv6, or both if dualstack support)
+                sock.bind(("localhost", port))
                 break
             except OSError as e:
                 if i == MAX_RETRY - 1:

@@ -14,6 +14,7 @@ import requests
 import ray
 import ray._private.gcs_utils as gcs_utils
 from ray import serve
+from ray._private import net
 from ray._private.services import new_port
 from ray._private.test_utils import (
     convert_actor_state,
@@ -262,7 +263,7 @@ def test_connect(ray_shutdown):
 
 
 def test_set_socket_reuse_port():
-    sock = socket.socket()
+    sock = net._get_socket_dualstack_fallback_single_stack_laddr()
     if hasattr(socket, "SO_REUSEPORT"):
         # If the flag exists, we should be able to to use it
         assert set_socket_reuse_port(sock)
@@ -276,7 +277,7 @@ def test_set_socket_reuse_port():
 
 
 def _reuse_port_is_available():
-    sock = socket.socket()
+    sock = net._get_socket_dualstack_fallback_single_stack_laddr()
     return set_socket_reuse_port(sock)
 
 

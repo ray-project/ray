@@ -22,7 +22,7 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-from ray._private import storage
+from ray._private import net, storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import serialize_config, get_address
@@ -365,7 +365,7 @@ class Node:
     @staticmethod
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
-        _, _, port = ip_port.rpartition(":")
+        _, port = net._parse_ip_port(ip_port)
         if port == ip_port:
             raise ValueError(f"Port is not specified for address {ip_port}")
         try:
@@ -875,8 +875,7 @@ class Node:
     def _get_unused_port(self, allocated_ports=None):
         if allocated_ports is None:
             allocated_ports = set()
-
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = _get_sock_stream_from_host(self._localhost)
         s.bind(("", 0))
         port = s.getsockname()[1]
 
@@ -889,7 +888,7 @@ class Node:
                 # This port is allocated for other usage already,
                 # so we shouldn't use it even if it's not in use right now.
                 continue
-            new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_s = _get_sock_stream_from_host(self._localhost)
             try:
                 new_s.bind(("", new_port))
             except OSError:

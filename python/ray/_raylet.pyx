@@ -181,6 +181,7 @@ from ray.exceptions import (
     ObjectRefStreamEndOfStreamError,
 )
 from ray._private import external_storage
+from ray._private import net
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
@@ -3072,7 +3073,7 @@ cdef class _GcsSubscriber:
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        gcs_address, gcs_port = address.split(":")
+        gcs_address, gcs_port = net._parse_ip_port(address)
         self.inner.reset(new CPythonGcsSubscriber(
             gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))
 
@@ -3252,7 +3253,7 @@ def check_health(address: str, timeout=2, skip_version_check=False):
         Raises an exception otherwise.
     """
 
-    tokens = address.rsplit(":", 1)
+    tokens = net._parse_ip_port(address)
     if len(tokens) != 2:
         raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
     gcs_address, gcs_port = tokens

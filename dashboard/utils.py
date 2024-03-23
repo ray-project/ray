@@ -16,6 +16,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._raylet import GcsClient
+from ray._private import net
 from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
@@ -153,7 +154,7 @@ def to_posix_time(dt):
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
-    ip, port = address.split(":")
+    ip, port = net._parse_ip_port(address)
     return ip, int(port)
 
 

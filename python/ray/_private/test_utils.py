@@ -28,6 +28,7 @@ from ray._raylet import Config
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
+    net,
     ray_constants,
 )
 from ray._private.worker import RayContext
@@ -916,13 +917,13 @@ def put_object(obj, use_ray_put):
 
 
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
-    ip_port = address.split(":")
+    ip_port = net._parse_ip_port(address)
     ip = ip_port[0]
     port = int(ip_port[1])
     time_elapsed = 0
     start = time.time()
     while time_elapsed <= timeout_ms:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = net._get_sock_stream_from_host(ip)
         s.settimeout(1)
         try:
             s.connect((ip, port))
@@ -1838,7 +1839,7 @@ def job_hook(**kwargs):
 
 
 def find_free_port():
-    sock = socket.socket()
+    sock = net._get_socket_dualstack_fallback_single_stack_laddr()
     sock.bind(("", 0))
     port = sock.getsockname()[1]
     sock.close()
@@ -2058,7 +2059,7 @@ def get_current_unused_port():
         A port number that is not currently in use. (Note that this port
         might become used by the time you try to bind to it.)
     """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock = net._get_socket_dualstack_fallback_single_stack_laddr()
 
     # Bind the socket to a local address with a random port number
     sock.bind(("localhost", 0))
@@ -2102,7 +2103,7 @@ def find_available_port(start, end, port_num=1):
     ports = []
     for _ in range(port_num):
         random_port = 0
-        with socket.socket() as s:
+        with net._get_socket_dualstack_fallback_single_stack_laddr() as s:
             s.bind(("", 0))
             random_port = s.getsockname()[1]
         if random_port >= start and random_port <= end and random_port not in ports:
@@ -2113,7 +2114,7 @@ def find_available_port(start, end, port_num=1):
             if port in ports:
                 continue
             try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                with net._get_socket_dualstack_fallback_single_stack_laddr() as s:
                     s.bind(("", port))
                 ports.append(port)
                 break

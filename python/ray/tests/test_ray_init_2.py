@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 import ray
+from ray._private import net
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
 from ray.air.util.node import _get_node_id_from_node_ip
 import ray._private.services
@@ -302,7 +303,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     node2 = cluster.add_node(node_ip_address="127.0.0.3")
     address = cluster.address
     password = cluster.redis_password
-    assert address.split(":")[0] == "127.0.0.2"
+    assert net._parse_ip_port(address)[0] == "127.0.0.2"
     assert node1.node_manager_port != node2.node_manager_port
     info = ray.init(address, _redis_password=password, _node_ip_address="127.0.0.3")
     assert info["node_ip_address"] == "127.0.0.3"

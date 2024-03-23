@@ -3,6 +3,8 @@ import sys
 
 import ray
 
+from ray._private import net
+
 try:
     import pyspark  # noqa
 except ImportError:
@@ -29,7 +31,7 @@ def test_client_data_get(call_ray_start):
     to inconpatibilities with the Ray client and Ray Data. This test
     makes sure that our fix in the ClientPickler works."""
     address = call_ray_start
-    ip = address.split(":")[0]
+    ip = net._parse_ip_port(address)[0]
 
     ray.util.connect(f"{ip}:10002")
 

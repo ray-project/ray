@@ -26,6 +26,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
+from ray._private import net
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 
 resource = None
@@ -583,7 +584,7 @@ def extract_ip_port(bootstrap_address: str):
         raise ValueError(
             f"Malformed address {bootstrap_address}. " f"Expected '<host>:<port>'."
         )
-    ip, _, port = bootstrap_address.rpartition(":")
+    ip, port = net._parse_ip_port(bootstrap_address)
     try:
         port = int(port)
     except ValueError:
@@ -610,8 +611,13 @@ def resolve_ip_for_localhost(address: str):
     """
     if not address:
         raise ValueError(f"Malformed address: {address}")
-    address_parts = address.split(":")
-    if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
+    if address == "::1":
+        # edge-case of localhost IPv6 loopback not handled by
+        # net._parse_ip_port()
+        address_parts = [address]
+    else:
+        address_parts = net._parse_ip_port(address)
+    if address_parts[0] in ["127.0.0.1", "::1", "localhost"]:
         # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         return ":".join([ip_address] + address_parts[1:])
@@ -629,8 +635,8 @@ def node_ip_address_from_perspective(address: str):
     Returns:
         The IP address by which the local node can be reached from the address.
     """
-    ip_address, port = address.split(":")
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    ip_address, port = net._parse_ip_port(address)
+    s = net._get_sock_dgram_from_host(ip_address)
     try:
         # This command will raise an exception if there is no internet
         # connection.
@@ -643,7 +649,7 @@ def node_ip_address_from_perspective(address: str):
             try:
                 # try get node ip address from host name
                 host_name = socket.getfqdn(socket.gethostname())
-                node_ip_address = socket.gethostbyname(host_name)
+                node_ip_address = net._get_addrinfo_from_sock_kind(host_name, socket.SOCK_DGRAM)[0][1]
             except Exception:
                 pass
     finally:
@@ -1206,7 +1212,7 @@ def start_api_server(
             port = ray_constants.DEFAULT_DASHBOARD_PORT
         else:
             port_retries = 0
-            port_test_socket = socket.socket()
+            port_test_socket = net._get_socket_dualstack_fallback_single_stack_laddr()
             port_test_socket.setsockopt(
                 socket.SOL_SOCKET,
                 socket.SO_REUSEADDR,
@@ -1403,9 +1409,8 @@ def start_api_server(
 def get_address(redis_address):
     parts = redis_address.split("://", 1)
     enable_redis_ssl = False
-    if len(parts) == 1:
-        redis_ip_address, redis_port = parts[0].rsplit(":", 1)
-    else:
+    redis_ip_address, redis_port = net._parse_ip_port(redis_address)
+    if len(parts) > 1:
         # rediss for SSL
         if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
             raise ValueError(
@@ -1413,7 +1418,6 @@ def get_address(redis_address):
                 "Expected format is ip:port or redis://ip:port, "
                 "or rediss://ip:port for SSL."
             )
-        redis_ip_address, redis_port = parts[1].rsplit(":", 1)
         if parts[0] == "rediss":
             enable_redis_ssl = True
     return redis_ip_address, redis_port, enable_redis_ssl
