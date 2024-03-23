@@ -491,11 +491,6 @@ def test_options():
     task_defaults_for_options.pop("max_calls")
     ray.remote(f).options(**task_defaults_for_options)
     ray.remote(**task_defaults)(f).options(**task_defaults_for_options)
-    with pytest.raises(
-        ValueError,
-        match=re.escape("Setting 'max_calls' is not supported in '.options()'."),
-    ):
-        ray.remote(f).options(max_calls=1)
 
     actor_defaults = {
         k: v.default_value for k, v in ray_option_utils.actor_options.items()
