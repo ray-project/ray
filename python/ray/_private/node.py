@@ -875,7 +875,7 @@ class Node:
     def _get_unused_port(self, allocated_ports=None):
         if allocated_ports is None:
             allocated_ports = set()
-        s = _get_sock_stream_from_host(self._localhost)
+        s = net._get_socket_dualstack_fallback_single_stack_laddr()
         s.bind(("", 0))
         port = s.getsockname()[1]
 
@@ -888,7 +888,7 @@ class Node:
                 # This port is allocated for other usage already,
                 # so we shouldn't use it even if it's not in use right now.
                 continue
-            new_s = _get_sock_stream_from_host(self._localhost)
+            new_s = net._get_socket_dualstack_fallback_single_stack_laddr()
             try:
                 new_s.bind(("", new_port))
             except OSError:

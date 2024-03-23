@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def find_free_port():
-    with closing(net._get_sock_stream_from_host("localhost")) as s:
+    with closing(net._get_socket_dualstack_fallback_single_stack_laddr()) as s:
         s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]

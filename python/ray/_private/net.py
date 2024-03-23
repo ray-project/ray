@@ -26,7 +26,7 @@ def _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(address, kind):
     """Same as _get_sock_kind_from_addrinfo() but favors IPv4 if it is available.
 
     If IPv4 is not available it will fall back to searching for IPv6."""
-    def inet_addresses = []
+    inet_addresses = []
     try:
         inet_addresses = _get_addrinfo_from_sock_kind(host, kind, socket.AF_INET)
     except:
@@ -44,7 +44,7 @@ def _get_sock_from_host(address, kind):
     Favor IPv4 but expand to IPv6 if IPv4 not available."""
     # obtain the first valid address for use
     # inet_address is a tuple with (socket.AF_INET or socket.AF_INET6, ip_address)
-    def inet_address = _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(host, kind)[0]
+    inet_address = _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(host, kind)[0]
     return socket.socket(inet_address[0], kind)
 
 @staticmethod
@@ -99,7 +99,7 @@ def _get_socket_dualstack_fallback_single_stack_laddr(kind=socket.SOCK_STREAM):
         return _get_sock_from_host("localhost", kind)
 
 @staticmethod
-def _parse_ip_port(address: str) -> List[str]:
+def _parse_ip_port(address: str) -> list[str]:
     """Parses a str of ip:port and returns a List with (ip, port).
 
     This uses str.rsplit(":", 1) to support DNS, IPv6, and IPv4 parsing."""

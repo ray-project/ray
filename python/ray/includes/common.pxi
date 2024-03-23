@@ -24,7 +24,7 @@ cdef class GcsClientOptions:
     def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
         try:
-            // TODO: use ray._private.net._parse_ip_port(gcs_address); I'm not familiar with pxi
+            # TODO: use ray._private.net._parse_ip_port(gcs_address); I'm not familiar with pxi
             ip, port = gcs_address.rsplit(":", 1)
             port = int(port)
             self.inner.reset(

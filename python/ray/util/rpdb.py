@@ -103,7 +103,7 @@ class _RemotePdb(Pdb):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
-        self._listen_socket = net._get_sock_stream_from_host(host)
+        self._listen_socket = net._get_socket_dualstack_fallback_single_stack_laddr()
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self._listen_socket.bind((host, port))
         self._ip_address = ip_address
@@ -337,9 +337,10 @@ def _post_mortem():
     )
     rdb.post_mortem()
 
+
 def _connect_pdb_client(host, port):
     s = net._get_sock_stream_from_host(host)
-    s.connect((address, port))
+    s.connect((host, port))
 
     while True:
         # Get the list of sockets which are readable.

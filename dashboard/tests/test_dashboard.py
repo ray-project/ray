@@ -1059,7 +1059,7 @@ def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
     # ocuppy the port with a socket.
-    s = net._get_sock_stream_from_host("localhost")
+    s = net._get_socket_dualstack_fallback_single_stack_laddr()
 
     wait_for_condition(
         lambda: s.connect_ex(

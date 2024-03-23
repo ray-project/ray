@@ -36,7 +36,7 @@ def generate_self_signed_tls_certs():
     private_dns_addresses = []
     # connect to the internet to determine private IP addresses
     for private_ip in net._get_private_ip_addresses():
-        private_dns_addresses.append(x509.DNSName(private_ip)
+        private_dns_addresses.append(x509.DNSName(private_ip))
     try:
         # The following sometimes fails due to non-routable hostnames
         private_dns_addresses.append(
