@@ -1258,15 +1258,15 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
-        self.replica_scheduling_duration_histogram = metrics.Histogram(
-            "serve_deployment_replica_scheduling_duration_s",
+        self.replica_scheduling_latency_histogram = metrics.Histogram(
+            "serve_replica_scheduling_latency_s",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             description="Tracks how long replicas take to be scheduled.",
             tag_keys=("application", "deployment"),
         ).set_default_tags({"application": id.app_name, "deployment": id.name})
 
-        self.replica_initialization_duration_histogram = metrics.Histogram(
-            "serve_deployment_replica_initialization_duration_s",
+        self.replica_initialization_latency_histogram = metrics.Histogram(
+            "serve_replica_initialization_latency_s",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             description=(
                 "Tracks how long replicas take to start after being scheduled."
@@ -2075,10 +2075,10 @@ class DeploymentState:
                     f"{replica._initialization_duration_s:.1f}s.",
                     extra={"log_to_stderr": False},
                 )
-                self.replica_scheduling_duration_histogram.observe(
+                self.replica_scheduling_latency_histogram.observe(
                     scheduling_duration_s
                 )
-                self.replica_initialization_duration_histogram.observe(
+                self.replica_initialization_latency_histogram.observe(
                     replica._initialization_duration_s
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
