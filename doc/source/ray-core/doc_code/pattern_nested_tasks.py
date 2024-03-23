@@ -3,6 +3,8 @@ import ray
 import time
 from numpy import random
 
+# Initialize Ray
+ray.init()
 
 def partition(collection):
     # Use the last element as the pivot
@@ -34,13 +36,19 @@ def quick_sort_distributed(collection):
     # when the sorting should be done in place. The rule
     # of thumb is that the duration of an individual task
     # should be at least 1 second.
-    if len(collection) <= 200000:  # magic number
+    threshold = 200000
+
+    if len(collection) <= threshold:
         return sorted(collection)
     else:
         lesser, pivot, greater = partition(collection)
-        lesser = quick_sort_distributed.remote(lesser)
-        greater = quick_sort_distributed.remote(greater)
-        return ray.get(lesser) + [pivot] + ray.get(greater)
+
+        # Recursive calls
+        lesser_ref = quick_sort_distributed.remote(lesser)
+        greater_ref = quick_sort_distributed.remote(greater)
+
+        # Efficiently pass ObjectRefs instead of data
+        return ray.get(lesser_ref), pivot, ray.get(greater_ref)
 
 
 for size in [200000, 4000000, 8000000]:
@@ -49,10 +57,17 @@ for size in [200000, 4000000, 8000000]:
     s = time.time()
     quick_sort(unsorted)
     print(f"Sequential execution: {(time.time() - s):.3f}")
+
     s = time.time()
-    ray.get(quick_sort_distributed.remote(unsorted))
+    # Adjust resources dynamically based on workload and available cores
+    with ray.dynamic_resources(cpu=0):
+        result = ray.get(quick_sort_distributed.remote(unsorted))
     print(f"Distributed execution: {(time.time() - s):.3f}")
     print("--" * 10)
+
+# Shutdown Ray
+ray.shutdown()
+
 
 # Outputs:
 
