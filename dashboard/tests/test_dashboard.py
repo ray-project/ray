@@ -745,9 +745,7 @@ def test_get_nodes_summary(call_ray_start):
         print(response)
 
         assert response["data"]["nodeLogicalResources"]
-        assert "0.0/1.0 CPU" in "".join(
-            response["data"]["nodeLogicalResources"].values()
-        )
+        assert "0/1 CPU" in "".join(response["data"]["nodeLogicalResources"].values())
 
     assert wait_until_succeeded_without_exception(
         get_nodes_summary,

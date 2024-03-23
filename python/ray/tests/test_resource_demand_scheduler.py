@@ -3137,7 +3137,7 @@ Resources
 --------------------------------------------------------
 Usage:
  0/2 AcceleratorType:V100
- 530.0/544.0 CPU
+ 530/544 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
@@ -3159,7 +3159,7 @@ Demands:
 def test_info_string_verbose():
     lm_summary = LoadMetricsSummary(
         usage={
-            "CPU": (530.0, 544.0),
+            "CPU": (530, 544),
             "GPU": (2, 2),
             "accelerator_type:V100": (1, 2),
             "memory": (2 * 2**30, 2**33),
@@ -3171,14 +3171,14 @@ def test_info_string_verbose():
         node_types=[],
         usage_by_node={
             "192.168.1.1": {
-                "CPU": (5.0, 20.0),
+                "CPU": (5, 20),
                 "GPU": (0.7, 1),
                 "accelerator_type:V100": (0.1, 1),
                 "memory": (2**30, 2**32),
                 "object_store_memory": (3.14 * 2**30, 2**32),
             },
             "192.168.1.2": {
-                "CPU": (15.0, 20.0),
+                "CPU": (15, 20),
                 "GPU": (0.3, 1),
                 "accelerator_type:V100": (0.9, 1),
                 "memory": (2**30, 1.5 * 2**33),
@@ -3226,7 +3226,7 @@ Recent failures:
 Resources
 --------------------------------------------------------
 Total Usage:
- 530.0/544.0 CPU
+ 530/544 CPU
  2/2 GPU
  1/2 accelerator_type:V100
  2.00GiB/8.00GiB memory
@@ -3239,9 +3239,9 @@ Total Demands:
 
 Node: 192.168.1.1
  Usage:
-  5.0/20.0 CPU
-  0.7/1 GPU
-  0.1/1 accelerator_type:V100
+  5/20 CPU
+  0.70/1 GPU
+  0.10/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
  Activity:
@@ -3251,9 +3251,9 @@ Node: 192.168.1.1
 
 Node: 192.168.1.2
  Usage:
-  15.0/20.0 CPU
-  0.3/1 GPU
-  0.9/1 accelerator_type:V100
+  15/20 CPU
+  0.30/1 GPU
+  0.90/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
  Activity:
@@ -3340,7 +3340,7 @@ Recent failures:
 Resources
 --------------------------------------------------------
 Total Usage:
- 530.0/544.0 CPU
+ 530/544 CPU
  2/2 GPU
  1/2 accelerator_type:V100
  2.00GiB/8.00GiB memory
@@ -3353,17 +3353,17 @@ Total Demands:
 
 Node: 192.168.1.1 (head-node)
  Usage:
-  5.0/20.0 CPU
-  0.7/1 GPU
-  0.1/1 accelerator_type:V100
+  5/20 CPU
+  0.70/1 GPU
+  0.10/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
 
 Node: 192.168.1.2 (gpu-worker)
  Usage:
-  15.0/20.0 CPU
-  0.3/1 GPU
-  0.9/1 accelerator_type:V100
+  15/20 CPU
+  0.30/1 GPU
+  0.90/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
 """.strip()
@@ -3432,7 +3432,7 @@ Resources
 --------------------------------------------------------
 Total Usage:
  1/2 AcceleratorType:V100
- 530.0/544.0 CPU
+ 530/544 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
@@ -3526,7 +3526,7 @@ Resources
 --------------------------------------------------------
 Usage:
  0/2 AcceleratorType:V100
- 530.0/544.0 CPU
+ 530/544 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
@@ -3618,7 +3618,7 @@ Resources
 --------------------------------------------------------
 Total Usage:
  0/2 AcceleratorType:V100
- 530.0/544.0 CPU
+ 530/544 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
@@ -3706,7 +3706,7 @@ Resources
 --------------------------------------------------------
 Usage:
  0/2 AcceleratorType:V100
- 530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
+ 530/544 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
