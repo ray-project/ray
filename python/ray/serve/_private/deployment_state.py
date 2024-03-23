@@ -33,6 +33,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
@@ -1259,12 +1260,14 @@ class DeploymentState:
 
         self.replica_scheduling_duration_histogram = metrics.Histogram(
             "serve_deployment_replica_scheduling_duration_s",
-            description=("Tracks how long replicas take to be scheduled."),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            description="Tracks how long replicas take to be scheduled.",
             tag_keys=("application", "deployment"),
         ).set_default_tags({"application": id.app_name, "deployment": id.name})
 
         self.replica_initialization_duration_histogram = metrics.Histogram(
             "serve_deployment_replica_initialization_duration_s",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
             description=(
                 "Tracks how long replicas take to start after being scheduled."
             ),
