@@ -24,7 +24,7 @@ from ray._private.utils import import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
@@ -576,3 +576,36 @@ class FakeObjectRefGen(FakeObjectRefOrGen):
 
     def completed(self):
         return FakeObjectRef(self._replica_id)
+
+
+def is_actor_dead(error: RayActorError) -> bool:
+    """Checks if an actor is definitely dead based on a RayActorError.
+
+    Typically, a RayActorError is returned from a Ray actor call only if the
+    Ray actor is dead. However, due to
+    https://github.com/ray-project/ray/issues/29656, a RayActorError can also
+    be returned if the network is slow. This method checks the RayActorError's
+    error message to see if the actor is definitely dead or may still be alive.
+
+    See also https://github.com/ray-project/ray/issues/44185.
+
+    Returns: True if the actor that returned the error is definitely dead.
+        False otherwise.
+    """
+
+    if not issubclass(type(error), RayActorError):
+        return False
+
+    try:
+        # A dead actor's RayActorError contains extra information in the error
+        # message. RayActorErrors due to a slow network only contain the default
+        # error message.
+        if error.base_error_msg != error.error_msg:
+            return True
+    except Exception:
+        logger.exception(
+            "Failed to parse RayActorError when checking if actor died. "
+            f"RayActorError: {error}"
+        )
+
+    return False

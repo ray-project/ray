@@ -36,6 +36,7 @@ from ray.serve._private.replica_scheduler.common import (
     ReplicaScheduler,
     ReplicaWrapper,
 )
+from ray.serve._private.utils import is_actor_dead
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -514,10 +515,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     "Failed to fetch queue length for "
                     f"{replica.replica_id}: '{t.exception()}'"
                 )
-                # If we get a RayActorError, it means the replica actor has died. This
-                # is not recoverable (the controller will start a new replica in its
-                # place), so we should no longer consider it for requests.
-                if isinstance(t.exception(), RayActorError):
+                # Calls to dead replicas return RayActorErrors. Dead replicas
+                # don't recover, so we should stop considering them for requests.
+                if isinstance(t.exception(), RayActorError) and is_actor_dead(
+                    t.exception()
+                ):
                     self._replicas.pop(replica.replica_id, None)
                     self._replica_id_set.discard(replica.replica_id)
                     for id_set in self._colocated_replica_ids.values():
