@@ -339,6 +339,139 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
     "worker_results",
     [
         (1, [[0]]),
+        (2, [[0, 1]] * 2),
+        (3, [[0]] + [[0, 1]] * 2),
+        (4, [[0, 1]] * 4),
+    ],
+)
+def test_amd_visible_devices(ray_2_node_2_gpu, worker_results):
+    config = TestConfig()
+
+    def get_resources():
+        cuda_visible_devices = os.environ["ROCR_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+
+        gpu_ids = ray.get_gpu_ids()
+        for gpu_id in gpu_ids:
+            assert gpu_id in sorted_devices
+
+        return sorted_devices
+
+    num_workers, expected_results = worker_results
+
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
+    e = BackendExecutor(
+        config, num_workers=num_workers, resources_per_worker={"GPU": 1}
+    )
+    e.start()
+    _start_training(e, get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
+
+
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, [[0]]),
+        (
+            2,
+            [[0]] * 2,
+        ),
+        (3, [[0, 1]] * 3),
+        (4, [[0, 1]] * 4),
+        (5, [[0]] + [[0, 1]] * 4),
+        (6, [[0]] * 2 + [[0, 1]] * 4),
+        (7, [[0, 1]] * 7),
+        (8, [[0, 1]] * 8),
+    ],
+)
+def test_amd_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
+    config = TestConfig()
+
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
+
+    def get_resources():
+        cuda_visible_devices = os.environ["ROCR_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+
+        gpu_ids = ray.get_gpu_ids()
+        for gpu_id in gpu_ids:
+            assert gpu_id in sorted_devices
+
+        return sorted_devices
+
+    num_workers, expected_results = worker_results
+
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
+    e = BackendExecutor(
+        config, num_workers=num_workers, resources_per_worker={"GPU": 0.5}
+    )
+    e.start()
+    _start_training(e, get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
+
+
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, [[0, 1]]),
+        (2, [[0, 1, 2, 3]] * 2),
+        (3, [[0, 1]] + [[0, 1, 2, 3]] * 2),
+        (4, [[0, 1, 2, 3]] * 4),
+    ],
+)
+def test_amd_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
+    config = TestConfig()
+
+    def get_resources():
+        cuda_visible_devices = os.environ["ROCR_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+
+        gpu_ids = ray.get_gpu_ids()
+        for gpu_id in gpu_ids:
+            assert gpu_id in sorted_devices
+
+        return sorted_devices
+
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
+
+    num_workers, expected_results = worker_results
+
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
+    e = BackendExecutor(
+        config, num_workers=num_workers, resources_per_worker={"GPU": 2}
+    )
+    e.start()
+    _start_training(e, get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
+
+
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, [[0]]),
         (
             2,
             [[0]] * 2,

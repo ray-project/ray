@@ -270,8 +270,12 @@ class BackendExecutor:
             - Worker2: "0,1"
 
         """
+        accelerator_manager = (
+            ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
+        )
+        accelerator_env_var = accelerator_manager.get_visible_accelerator_ids_env_var()
         self._share_resource_ids(
-            ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
+            accelerator_manager.get_resource_name(), accelerator_env_var
         )
 
     def _share_resource_ids(self, resource: str, env_var: str):
