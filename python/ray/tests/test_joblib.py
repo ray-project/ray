@@ -192,6 +192,27 @@ def test_ray_remote_args(shutdown_only):
         joblib.Parallel()(joblib.delayed(check_resource)() for i in range(8))
 
 
+def get_large_object(arg):
+    result = np.ones(int(5 * 1e5), dtype=bool)
+    result[0] = False
+    return result
+
+
+@pytest.mark.parametrize("return_as", ["generator", "generator_unordered"])
+@pytest.mark.parametrize("n_jobs", [1, 2, -1])
+def test_deadlock_with_generator(return_as, n_jobs):
+    register_ray()
+    # Non-regression test for a race condition in the backends when the pickler
+    # is delayed by a large object.
+    with joblib.parallel_backend("ray", n_jobs=n_jobs), joblib.Parallel(
+        return_as=return_as
+    ) as parallel:
+        result = parallel(joblib.delayed(get_large_object)(i) for i in range(10))
+        next(result)
+        next(result)
+        del result
+
+
 if __name__ == "__main__":
     import pytest
 
