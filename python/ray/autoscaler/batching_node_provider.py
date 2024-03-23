@@ -15,6 +15,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_MULTIHOST_REPLICA,
 )
 
 provider_exists = False
@@ -43,6 +44,9 @@ class NodeData:
     Attributes:
         kind: Whether the node is the head or a worker.
         type: The user-defined type of the node.
+        multihost_replica: An identifier for nodes belonging to a replica of a multi-host worker group.
+            * This value is set as a label by a webhook when NumOfHosts > 1 in a worker group
+            * This var is empty for pods belonging to single-host worker groups 
         ip: Cluster-internal ip of the node. ip can be None if the ip
             has not yet been assigned.
         status: The status of the node. You must adhere to the following semantics
@@ -56,6 +60,7 @@ class NodeData:
 
     kind: NodeKind
     type: NodeType
+    multihost_replica: string
     ip: Optional[NodeIP]
     status: NodeStatus
 
@@ -160,6 +165,11 @@ class BatchingNodeProvider(NodeProvider):
             workers_to_delete=set(),  # No workers to delete yet
         )
         all_nodes = list(self.node_data_dict.keys())
+        # Initialize multi-host replica to workers map
+        self.multi_host_replicas_to_workers = defaultdict(list)
+        for node_id in all_nodes:
+            multi_host_replica = self.node_data_dict[node_id].multihost_replica
+            self.multi_host_replicas_to_workers[multi_host_replica].append(node_id)
         # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
         # TAG_RAY_USER_NODE_TYPE.
         # The autoscaler only uses tag_filters={},
@@ -191,6 +201,7 @@ class BatchingNodeProvider(NodeProvider):
             TAG_RAY_NODE_KIND: node_data.kind,
             TAG_RAY_NODE_STATUS: node_data.status,
             TAG_RAY_USER_NODE_TYPE: node_data.type,
+            TAG_RAY_MULTIHOST_REPLICA: node_data.multihost_replica,
         }
 
     def internal_ip(self, node_id: str) -> str:
@@ -229,7 +240,17 @@ class BatchingNodeProvider(NodeProvider):
                 "NodeProvider attempted to request less than 0 workers of type "
                 f"{node_type}. Skipping termination request."
             )
-
-        self.scale_request.desired_num_workers[node_type] -= 1
-        self.scale_request.workers_to_delete.add(node_id)
+        
+        # Scale down entire replica if part of a multi-host group
+        node_multihost_replica = self.node_data_dict[node_id].multihost_replica
+        if node_multihost_replica != "":
+            for worker in self.multi_host_replicas_to_workers[node_multihost_replica]:
+                # Check if worker has already been scheduled to delete
+                if node_id not in self.scale_request.workers_to_delete:
+                    # Assume all workers in a group are of the same type
+                    self.scale_request.desired_num_workers[node_type] -= 1
+                    self.scale_request.workers_to_delete.add(node_id)
+        else:
+            self.scale_request.desired_num_workers[node_type] -= 1
+            self.scale_request.workers_to_delete.add(node_id)
         self.scale_change_needed = True
