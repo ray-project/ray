@@ -315,3 +315,15 @@ class DAGInputData:
                 "Please only use int index or str as first-level key to "
                 "access fields of dag input."
             )
+
+
+@DeveloperAPI
+class MultiInputNode(DAGNode):
+    """InputNode with multiple args/kwargs packed inside"""
+
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        super().__init__([], {}, {}, other_args_to_resolve=None)

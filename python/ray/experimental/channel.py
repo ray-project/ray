@@ -13,6 +13,21 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
+class ArgsWrapper:
+    """Warpper class for args"""
+
+    args: List[Any]
+
+    def __init__(self, args: List[Any]) -> None:
+        try:
+            self.args = list(args)
+        except Exception:
+            self.args = [args]
+
+    def get(self):
+        return self.args
+
+
 def _create_channel_ref(
     buffer_size_bytes: int,
 ) -> "ray.ObjectRef":
@@ -166,7 +181,8 @@ class Channel:
             Any: The deserialized value.
         """
         self._ensure_registered_as_reader()
-        return ray.get(self._base_ref)
+        values = ray.get(self._base_ref)
+        return values.get() if isinstance(values, ArgsWrapper) else values
 
     def end_read(self):
         """

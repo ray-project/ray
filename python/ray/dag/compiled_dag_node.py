@@ -8,6 +8,7 @@ import threading
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
+    ArgsWrapper,
     Channel,
     ReaderInterface,
     SynchronousReader,
@@ -42,7 +43,7 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
 @DeveloperAPI
 def do_exec_compiled_task(
     self,
-    inputs: List[Union[Any, Channel]],
+    inputs: Tuple[List[Union[Any, Channel]], List[int]],
     actor_method_name: str,
 ) -> None:
     """Generic actor method to begin executing a compiled DAG. This runs an
@@ -54,35 +55,45 @@ def do_exec_compiled_task(
         inputs: The arguments to the task. Arguments that are not Channels will
             get passed through to the actor method. If the argument is a channel,
             it will be replaced by the value read from the channel before the
-            method execute.
+            method execute. Note that if there are multiple arguments, they will
+            still be passed through a single input channel, with different read
+            index marking which part of read result corresponds to that argument.
         actor_method_name: The name of the actual actor method to execute in
             the loop.
     """
     try:
+        self._input_channels = {
+            input for input in inputs[0] if isinstance(input, Channel)
+        }
+        assert (
+            len(self._input_channels) <= 1
+        ), f"Got {len(self._input_channels)} input channels, expecting no more than 1"
         method = getattr(self, actor_method_name)
 
         resolved_inputs = []
         input_channels = []
         input_channel_idxs = []
+        input_read_idxs = []
         # Add placeholders for input channels.
-        for idx, inp in enumerate(inputs):
+        for idx, inp in enumerate(inputs[0]):
             if isinstance(inp, Channel):
                 input_channels.append(inp)
                 input_channel_idxs.append(idx)
+                input_read_idxs.append(inputs[1][idx])
                 resolved_inputs.append(None)
             else:
                 resolved_inputs.append(inp)
 
-        self._input_reader: ReaderInterface = SynchronousReader(input_channels)
+        self._input_reader: ReaderInterface = SynchronousReader([input_channels[0]])
         self._output_writer: WriterInterface = SynchronousWriter(self._output_channel)
         self._input_reader.start()
         self._output_writer.start()
 
         while True:
-            res = self._input_reader.begin_read()
+            res = self._input_reader.begin_read() * len(input_channels)
 
-            for idx, output in zip(input_channel_idxs, res):
-                resolved_inputs[idx] = output
+            for idx, output, read_idx in zip(input_channel_idxs, res, input_read_idxs):
+                resolved_inputs[idx] = output[read_idx] if read_idx >= 0 else output
 
             try:
                 output_val = method(*resolved_inputs)
@@ -233,7 +244,7 @@ class CompiledDAG:
 
         # Attributes that are set during preprocessing.
         # Preprocessing identifies the input node and output node.
-        self.input_task_idx: Optional[int] = None
+        self.input_task_idxs: Optional[List[int]] = None
         self.output_task_idx: Optional[int] = None
         self.has_single_output: bool = False
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
@@ -249,6 +260,10 @@ class CompiledDAG:
         self.worker_task_refs: List["ray.ObjectRef"] = []
         # Set of actors present in the DAG.
         self.actor_refs = set()
+        # record the mapping from arg key -> arg index
+        self.arg_to_idx: Dict[Any, int] = {}
+        # node index to the read keys of its arguments
+        self.node_read_keys: Dict[int, List[str]] = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -269,27 +284,69 @@ class CompiledDAG:
             FunctionNode,
             InputAttributeNode,
             InputNode,
+            MultiInputNode,
             MultiOutputNode,
         )
 
-        self.input_task_idx, self.output_task_idx = None, None
+        self.input_task_idxs, self.output_task_idx = [], None
         self.actor_task_count.clear()
+
+        # If InputAttributeNodes are used, remove the InputNode and
+        # InputAttributeNodes and pack their info into a MultiInputNode,
+        # then reorder nodes
+        has_attr_node = any(
+            [
+                isinstance(task.dag_node, InputAttributeNode)
+                for _, task in self.idx_to_task.items()
+            ]
+        )
+        if has_attr_node:
+            self.counter = 0
+            tasks = [task for _, task in self.idx_to_task.items()]
+            self.idx_to_task.clear()
+            self.dag_node_to_idx.clear()
+            arg_list = []
+            # Add attribute nodes first
+            for task in tasks:
+                if isinstance(task.dag_node, InputAttributeNode):
+                    arg_list.append(task.dag_node._key)
+            # Order independent to the input order
+            for i, k in enumerate(sorted(arg_list, key=lambda x: str(x))):
+                self.arg_to_idx[k] = i
+            multi_input_node = MultiInputNode(*arg_list)
+            self._add_node(multi_input_node)
+            for task in tasks:
+                if isinstance(task.dag_node, InputAttributeNode):
+                    for down_stream_idx in task.downstream_node_idxs:
+                        tasks[down_stream_idx].args = (multi_input_node,)
+                elif not isinstance(task.dag_node, InputNode):
+                    self._add_node(task.dag_node)
+            for idx, task in self.idx_to_task.items():
+                self.node_read_keys[idx] = [
+                    arg._key if isinstance(arg, InputAttributeNode) else -1
+                    for arg in task.args
+                ]
+                task.dag_node.set_args(
+                    tuple(
+                        [
+                            multi_input_node
+                            if isinstance(arg, InputAttributeNode)
+                            else arg
+                            for arg in task.args
+                        ]
+                    )
+                )
 
         # For each task node, set its upstream and downstream task nodes.
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
+                or isinstance(dag_node, MultiInputNode)
                 or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
             ):
-                if isinstance(dag_node, InputAttributeNode):
-                    # TODO(swang): Support multi args.
-                    raise NotImplementedError(
-                        "Compiled DAGs currently do not support kwargs or "
-                        "multiple args for InputNode"
-                    )
-                elif isinstance(dag_node, FunctionNode):
+                if isinstance(dag_node, FunctionNode):
                     # TODO(swang): Support non-actor tasks.
                     raise NotImplementedError(
                         "Compiled DAGs currently only support actor method nodes"
@@ -322,11 +379,12 @@ class CompiledDAG:
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
-            if isinstance(task.dag_node, InputNode):
-                assert self.input_task_idx is None, "more than one InputNode found"
-                self.input_task_idx = idx
+            if isinstance(task.dag_node, InputNode) or isinstance(
+                task.dag_node, MultiInputNode
+            ):
+                self.input_task_idxs.append(idx)
         # TODO: Support no-input DAGs (use an empty object to signal).
-        if self.input_task_idx is None:
+        if len(self.input_task_idxs) != 1:
             raise NotImplementedError(
                 "Compiled DAGs currently require exactly one InputNode"
             )
@@ -362,16 +420,23 @@ class CompiledDAG:
         _dag_output_fetcher will be set and can be used to invoke and fetch
         outputs for the DAG.
         """
-        from ray.dag import DAGNode, InputNode, MultiOutputNode, ClassMethodNode
+        from ray.dag import (
+            DAGNode,
+            InputNode,
+            InputAttributeNode,
+            MultiInputNode,
+            MultiOutputNode,
+            ClassMethodNode,
+        )
 
-        if self.input_task_idx is None:
+        if not self.input_task_idxs:
             self._preprocess()
 
         if self._dag_submitter is not None:
             assert self._dag_output_fetcher is not None
             return
 
-        frontier = [self.input_task_idx]
+        frontier = self.input_task_idxs.copy()
         visited = set()
         # Create output buffers
         while frontier:
@@ -393,7 +458,9 @@ class CompiledDAG:
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
-            elif isinstance(task.dag_node, InputNode):
+            elif isinstance(task.dag_node, InputNode) or isinstance(
+                task.dag_node, MultiInputNode
+            ):
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
                     num_readers=task.num_readers,
@@ -405,24 +472,46 @@ class CompiledDAG:
                 frontier.append(idx)
 
         for node_idx, task in self.idx_to_task.items():
-            if node_idx == self.input_task_idx:
-                # We don't need to assign an actual task for the input node.
+            if node_idx in self.input_task_idxs:
+                # We don't need to assign an actual task for the input node(s).
                 continue
 
             if node_idx == self.output_task_idx:
-                # We don't need to assign an actual task for the input node.
+                # We don't need to assign an actual task for the output node.
                 continue
 
             resolved_args = []
+            # for single arg, read_idx is -1, meaning taking the whole input,
+            # for multiple args, read_idx means the index of element to take,
+            # Example:
+            # inp = InputNode()
+            # f.remote(inp.x)
+            # g.remote(inp.y)
+            # f and g both read (x, y) from the same channel, but pick different indices
+            read_idxs = []
             has_at_least_one_channel_input = False
-            for arg in task.args:
+            for arg_idx, arg in enumerate(task.args):
                 if isinstance(arg, DAGNode):
-                    arg_idx = self.dag_node_to_idx[arg]
-                    arg_channel = self.idx_to_task[arg_idx].output_channel
+                    arg_node_idx = self.dag_node_to_idx[arg]
+                    arg_channel = self.idx_to_task[arg_node_idx].output_channel
                     assert arg_channel is not None
-                    resolved_args.append(arg_channel)
+                    if isinstance(arg, MultiInputNode):
+                        # Each MultiInputNode reference is responsible for
+                        # a single argument, corresponding to a non-negative
+                        # index in read_idx
+                        read_key = self.node_read_keys[node_idx][arg_idx]
+                        read_idx = self.arg_to_idx[read_key]
+                        read_idxs.append(read_idx)
+                        resolved_args.append(arg_channel)
+                    elif isinstance(arg, InputNode):
+                        read_idxs.append(0)
+                        resolved_args.append(arg_channel)
+                    elif isinstance(arg, ClassMethodNode):
+                        read_idxs.append(-1)
+                        resolved_args.append(arg_channel)
                     has_at_least_one_channel_input = True
                 else:
+                    read_idxs.append(-1)
                     resolved_args.append(arg)
             # TODO: Support no-input DAGs (use an empty object to signal).
             if not has_at_least_one_channel_input:
@@ -437,12 +526,25 @@ class CompiledDAG:
             self.worker_task_refs.append(
                 worker_fn.options(concurrency_group="_ray_system").remote(
                     do_exec_compiled_task,
-                    resolved_args,
+                    (resolved_args, read_idxs),
                     task.dag_node.get_method_name(),
                 )
             )
 
-        self.dag_input_channel = self.idx_to_task[self.input_task_idx].output_channel
+        if len(self.input_task_idxs) > 1:
+            # for multi-arg scenario, find the input node for input channel
+            for input_task_idx in self.input_task_idxs:
+                if isinstance(
+                    self.idx_to_task[input_task_idx].dag_node, InputAttributeNode
+                ):
+                    self.dag_input_channel = self.idx_to_task[
+                        input_task_idx
+                    ].output_channel
+                    break
+        else:
+            self.dag_input_channel = self.idx_to_task[
+                self.input_task_idxs[0]
+            ].output_channel
 
         self.dag_output_channels = []
         for output in self.idx_to_task[self.output_task_idx].args:
@@ -527,6 +629,22 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
+    def _prepare_args(self, args: List[Any], kwargs: Dict[Any, Any]) -> List[Any]:
+        """Explicitly order kwargs and append them to args
+
+        Args:
+            args: Args.
+            kwargs: Kwargs.
+
+        Returns:
+            A list of Args that can contains both args and ordered kwargs.
+        """
+        kwargs_idxs = [self.arg_to_idx[k] for k in kwargs]
+        args = list(args) + ([0] * len(kwargs))
+        for idx, v in zip(kwargs_idxs, kwargs.values()):
+            args[idx] = v
+        return args
+
     def execute(
         self,
         *args,
@@ -536,23 +654,17 @@ class CompiledDAG:
 
         Args:
             args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode. Not supported yet.
+            kwargs: Kwargs to the InputNode.
 
         Returns:
             A list of Channels that can be used to read the DAG result.
         """
-        # These errors should already be caught during compilation, but just in
-        # case.
-        if len(args) != 1:
-            raise NotImplementedError("Compiled DAGs support exactly one InputNode arg")
-        if len(kwargs) != 0:
-            raise NotImplementedError("Compiled DAGs do not support kwargs")
-
         if self._enable_asyncio:
             raise ValueError("Use execute_async if enable_asyncio=True")
 
         self._get_or_compile()
-        self._dag_submitter.write(args[0])
+
+        self._dag_submitter.write(ArgsWrapper(args=self._prepare_args(args, kwargs)))
 
         return self._dag_output_fetcher
 
@@ -572,19 +684,14 @@ class CompiledDAG:
         Returns:
             A list of Channels that can be used to read the DAG result.
         """
-        # These errors should already be caught during compilation, but just in
-        # case.
-        if len(args) != 1:
-            raise NotImplementedError("Compiled DAGs support exactly one InputNode arg")
-        if len(kwargs) != 0:
-            raise NotImplementedError("Compiled DAGs do not support kwargs")
-
         if not self._enable_asyncio:
             raise ValueError("Use execute if enable_asyncio=False")
 
         self._get_or_compile()
         async with self._dag_submission_lock:
-            await self._dag_submitter.write(args[0])
+            await self._dag_submitter.write(
+                ArgsWrapper(args=self._prepare_args(args, kwargs))
+            )
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)

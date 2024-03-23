@@ -53,7 +53,14 @@ class Actor:
     def inc_two(self, x, y):
         self.i += x
         self.i += y
-        return self.i
+        return x, y, self.i
+
+    def inc_four(self, a, b, x, y):
+        self.i += a
+        self.i += b
+        self.i += x
+        self.i += y
+        return a, b, x, y
 
     def sleep(self, x):
         time.sleep(x)
@@ -91,7 +98,103 @@ def test_regular_args(ray_start_regular):
         output_channel = compiled_dag.execute(1)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        assert result == (i + 1) * 3
+        assert result == (2, 1, (i + 1) * 3)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args(ray_start_regular):
+    # Test passing multiple args to .execute.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_two.bind(i[0], i[1])
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1, 2)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (1, 2, (i + 1) * 3)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_kwargs(ray_start_regular):
+    # Test passing multiple kwargs to .execute.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_two.bind(i.x, i.y)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(x=1, y=2)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (1, 2, (i + 1) * 3)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args_kwargs(ray_start_regular):
+    # Test passing multiple args and kwargs to .execute.
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc_four.bind(i[0], i[1], i.x, i.y)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1, 2, x=3, y=4)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (1, 2, 3, 4)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+    actors = [Actor.remote(0) for _ in range(4)]
+    with InputNode() as i:
+        dag = MultiOutputNode(
+            [
+                actors[0].echo.bind(i[1]),
+                actors[1].echo.bind(i[0]),
+                actors[2].echo.bind(i.y),
+                actors[3].echo.bind(i.x),
+            ]
+        )
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(2, 1, x=4, y=3)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == [1, 2, 3, 4]
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args_intermediate_node(ray_start_regular):
+    # Test passing multiple args and kwargs to .execute.
+    actors = [Actor.remote(0) for _ in range(4)]
+    sink = Actor.remote(0)
+    with InputNode() as inp:
+        dag = [actor.echo.bind(inp[i]) for i, actor in enumerate(actors)]
+        dag = sink.inc_four.bind(*dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1, 2, 3, 4)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (1, 2, 3, 4)
         output_channel.end_read()
 
     compiled_dag.teardown()
@@ -192,24 +295,6 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         NotImplementedError,
         match="Compiled DAGs can contain at most one task per actor handle.",
-    ):
-        dag.experimental_compile()
-
-    with InputNode() as inp:
-        dag = a.inc_two.bind(inp[0], inp[1])
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs currently do not support kwargs or multiple args "
-        "for InputNode",
-    ):
-        dag.experimental_compile()
-
-    with InputNode() as inp:
-        dag = a.inc_two.bind(inp.x, inp.y)
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs currently do not support kwargs or multiple args "
-        "for InputNode",
     ):
         dag.experimental_compile()
 
