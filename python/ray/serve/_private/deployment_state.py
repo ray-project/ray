@@ -2075,9 +2075,7 @@ class DeploymentState:
                     f"{replica._initialization_duration_s:.1f}s.",
                     extra={"log_to_stderr": False},
                 )
-                self.replica_scheduling_latency_histogram.observe(
-                    scheduling_duration_s
-                )
+                self.replica_scheduling_latency_histogram.observe(scheduling_duration_s)
                 self.replica_initialization_latency_histogram.observe(
                     replica._initialization_duration_s
                 )
