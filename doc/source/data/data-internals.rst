@@ -7,7 +7,7 @@ Ray Data Internals
 This guide describes the implementation of Ray Data. The intended audience is advanced
 users and Ray Data developers.
 
-For a gentler introduction to Ray Data, see :ref:`Key concepts <data_key_concepts>`.
+For a gentler introduction to Ray Data, see :ref:`Quickstart <data_quickstart>`.
 
 .. _dataset_concept:
 

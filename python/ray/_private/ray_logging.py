@@ -342,7 +342,8 @@ def _warn_once() -> str:
         return (
             " (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to "
             "disable log deduplication, or see https://docs.ray.io/en/master/"
-            "ray-observability/ray-logging.html#log-deduplication for more options.)"
+            "ray-observability/user-guides/configure-logging.html#log-deduplication "
+            "for more options.)"
         )
     else:
         return ""

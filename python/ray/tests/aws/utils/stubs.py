@@ -12,6 +12,7 @@ from ray.tests.aws.utils.constants import (
     A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS,
     DEFAULT_LT,
     TWENTY_SUBNETS_IN_DIFFERENT_AZS,
+    DEFAULT_CLUSTER_NAME,
 )
 from ray.autoscaler._private.aws.config import key_pair
 from ray.tests.aws.utils.helpers import (
@@ -140,6 +141,18 @@ def create_sg_echo(ec2_client_stub, security_group):
             "Description": security_group["Description"],
             "GroupName": security_group["GroupName"],
             "VpcId": security_group["VpcId"],
+            "TagSpecifications": [
+                {
+                    "ResourceType": "security-group",
+                    "Tags": [
+                        {
+                            "Key": ray.autoscaler._private.aws.config.RAY,
+                            "Value": "true",
+                        },
+                        {"Key": "ray-cluster-name", "Value": DEFAULT_CLUSTER_NAME},
+                    ],
+                },
+            ],
         },
         service_response={"GroupId": security_group["GroupId"]},
     )

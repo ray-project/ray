@@ -12,6 +12,7 @@ import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
@@ -37,6 +38,7 @@ class ReplicaContext:
 
     replica_id: ReplicaID
     servable_object: Callable
+    _deployment_config: DeploymentConfig
 
     @property
     def app_name(self) -> str:
@@ -98,11 +100,13 @@ def _set_internal_replica_context(
     *,
     replica_id: ReplicaID,
     servable_object: Callable,
+    _deployment_config: DeploymentConfig,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
         replica_id=replica_id,
         servable_object=servable_object,
+        _deployment_config=_deployment_config,
     )
 
 

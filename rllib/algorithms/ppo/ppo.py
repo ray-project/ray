@@ -412,17 +412,30 @@ class PPO(Algorithm):
     def _training_step_new_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-
             # Sample in parallel from the workers.
-            # TODO (simon): Implement multi-agent.
-            episodes = synchronous_parallel_sample(
-                worker_set=self.workers,
-                uses_new_env_runners=self.config.uses_new_env_runners,
+            if self.config.count_steps_by == "agent_steps":
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                )
+            else:
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_env_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                )
+            # Return early if all our workers failed.
+            if not episodes:
+                return {}
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                e.agent_steps() for e in episodes
             )
-
-            # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                e.env_steps() for e in episodes
+            )
 
         # Perform a train step on the collected batch.
         train_results = self.learner_group.update_from_episodes(

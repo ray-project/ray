@@ -84,7 +84,7 @@ py_test(
 py_test(
     name = "test_metrics_integration",
     size = "medium",
-    srcs = ["tests/test_metrics_integration.py"],
+    srcs = ["modules/tests/test_metrics_integration.py"],
     deps = [":conftest"],
     tags = ["exclusive", "team:clusters"],
 )

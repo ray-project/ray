@@ -11,7 +11,6 @@ steps:
     label: "wanda: servebuild-py{{matrix}}"
     wanda: ci/docker/serve.build.wanda.yaml
     matrix:
-      - "3.8"
       - "3.11"
     env:
       PYTHON: "{{matrix}}"
@@ -73,7 +72,7 @@ steps:
     depends_on: servebuild-multipy
     matrix:
       setup:
-        python: ["3.8", "3.11"]
+        python: ["3.11"]
         worker_id: ["0", "1"]
 
   - label: ":ray-serve: serve: release tests"

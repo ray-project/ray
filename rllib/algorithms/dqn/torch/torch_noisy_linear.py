@@ -11,7 +11,8 @@ class NoisyLinear(nn.Linear):
     """Noisy Linear Layer.
 
     Presented in "Noisy Networks for Exploration",
-    https://arxiv.org/abs/1706.10295v3 and copied from `torchrl`.
+    https://arxiv.org/abs/1706.10295v3, implemented in relation to
+    `torchrl`'s `NoisyLinear` layer.
 
     A Noisy Linear Layer is a linear layer with parametric noise added to
     the weights. This induced stochasticity can be used in RL networks for
@@ -95,22 +96,31 @@ class NoisyLinear(nn.Linear):
             self.bias_mu = None
         self.reset_parameters()
         self.reset_noise()
+        self.training = True
 
+    @torch.no_grad()
     def reset_parameters(self) -> None:
+        # Use initialization for factorized noisy linear layers.
         mu_range = 1 / math.sqrt(self.in_features)
+        # Initialize weight distribution parameters.
         self.weight_mu.data.uniform_(-mu_range, mu_range)
         self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
+        # If bias is used initial these parameters, too.
         if self.bias_mu is not None:
-            self.bias_mu.data.uniform_(-mu_range, mu_range)
+            self.bias_mu.data.zero_()  # (-mu_range, mu_range)
             self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
 
+    @torch.no_grad()
     def reset_noise(self) -> None:
-        epsilon_in = self._scale_noise(self.in_features)
-        epsilon_out = self._scale_noise(self.out_features)
-        self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
-        if self.bias_mu is not None:
-            self.bias_epsilon.copy_(epsilon_out)
+        with torch.no_grad():
+            # Use factorized noise for better performance.
+            epsilon_in = self._scale_noise(self.in_features)
+            epsilon_out = self._scale_noise(self.out_features)
+            self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
+            if self.bias_mu is not None:
+                self.bias_epsilon.copy_(epsilon_out)
 
+    @torch.no_grad()
     def _scale_noise(self, size: Union[int, torch.Size, Sequence]) -> torch.Tensor:
         if isinstance(size, int):
             size = (size,)
@@ -120,6 +130,7 @@ class NoisyLinear(nn.Linear):
     @property
     def weight(self) -> torch.Tensor:
         if self.training:
+            # If in training mode, sample the noise.
             return self.weight_mu + self.weight_sigma * self.weight_epsilon
         else:
             return self.weight_mu
@@ -128,6 +139,7 @@ class NoisyLinear(nn.Linear):
     def bias(self) -> Optional[torch.Tensor]:
         if self.bias_mu is not None:
             if self.training:
+                # If in training mode, sample the noise.
                 return self.bias_mu + self.bias_sigma * self.bias_epsilon
             else:
                 return self.bias_mu

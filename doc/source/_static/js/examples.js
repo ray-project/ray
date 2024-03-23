@@ -29,10 +29,20 @@ function getFilterStatuses() {
       isChecked: label.querySelector('input').checked,
     };
   });
+  const contributor = Array.from(
+    document.querySelectorAll('#all-examples-dropdown .checkbox-container'),
+  ).map((label) => {
+    const inputElement = label.querySelector('input');
+    return {
+      name: inputElement.id.replace('-checkbox', ''),
+      isChecked: inputElement.checked,
+    };
+  });
   return {
     useCases,
     libraries,
     frameworks,
+    contributor,
   };
 }
 

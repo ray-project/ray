@@ -808,6 +808,15 @@ def _create_security_group(config, vpc_id, group_name):
         Description="Auto-created security group for Ray workers",
         GroupName=group_name,
         VpcId=vpc_id,
+        TagSpecifications=[
+            {
+                "ResourceType": "security-group",
+                "Tags": [
+                    {"Key": RAY, "Value": "true"},
+                    {"Key": "ray-cluster-name", "Value": config["cluster_name"]},
+                ],
+            },
+        ],
     )
     security_group = _get_security_group(config, vpc_id, group_name)
     cli_logger.doassert(security_group, "Failed to create security group")  # err msg

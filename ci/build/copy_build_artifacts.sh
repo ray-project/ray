@@ -33,8 +33,9 @@ if [[ "$OSTYPE" == "msys" ]]; then
   ARTIFACT_MOUNT="/c/artifact-mount"
 fi
 
-export PATH=/opt/python/cp38-cp38/bin:$PATH
-pip install -q -c python/requirements_compiled.txt aws_requests_auth boto3 pyopenssl
+export PATH=/opt/python/cp39-cp39/bin:$PATH
+pip install -U --ignore-installed -c python/requirements_compiled.txt \
+  aws_requests_auth boto3 urllib3 cryptography pyopenssl
 ./ci/env/env_info.sh
 
 # Sync the directory to buildkite artifacts

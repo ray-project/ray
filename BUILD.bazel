@@ -1217,6 +1217,9 @@ ray_cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
 )
 
 ray_cc_test(

@@ -206,7 +206,7 @@ class ScalingConfig:
 
         if self.accelerator_type:
             accelerator = f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
-            resources_per_worker.setdefault(accelerator, 1)
+            resources_per_worker.setdefault(accelerator, 0.001)
         return resources_per_worker
 
     @property

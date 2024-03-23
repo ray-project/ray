@@ -1,0 +1,38 @@
+{
+    "_dashboard_memory_usage_mb": 616.538112,
+    "_dashboard_test_success": true,
+    "_peak_memory": 4.05,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n151\t1.31GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n266\t1.16GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n1115\t0.73GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n1378\t0.08GiB\tray::StateAPIGeneratorActor.start\n1310\t0.07GiB\tray::DashboardTester.run\n934\t0.07GiB\tray::JobSupervisor\n425\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n423\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n577\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-\n1239\t0.06GiB\tray::MemoryMonitorActor.run",
+    "num_tasks": 10000,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "tasks_per_second",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 571.6182871286221
+        },
+        {
+            "perf_metric_name": "used_cpus_by_deadline",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 2500.0
+        },
+        {
+            "perf_metric_name": "dashboard_p50_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 9.115
+        },
+        {
+            "perf_metric_name": "dashboard_p95_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 18000.619
+        },
+        {
+            "perf_metric_name": "dashboard_p99_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 26846.899
+        }
+    ],
+    "success": "1",
+    "tasks_per_second": 571.6182871286221,
+    "time": 317.4941918849945,
+    "used_cpus": 2500.0
+}

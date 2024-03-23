@@ -85,7 +85,6 @@ if __name__ == "__main__":
         # .evaluation(
         #    evaluation_num_workers=1,
         #    evaluation_parallel_to_training=True,
-        #    enable_async_evaluation=True,
         #    evaluation_interval=1,
         #    evaluation_duration=10,
         #    evaluation_duration_unit="episodes",

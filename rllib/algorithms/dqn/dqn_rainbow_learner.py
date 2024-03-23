@@ -16,11 +16,13 @@ QF_LOGITS = "qf_logits"
 QF_MEAN_KEY = "qf_mean"
 QF_MAX_KEY = "qf_max"
 QF_MIN_KEY = "qf_min"
+QF_NEXT_PREDS = "qf_next_preds"
 QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
 QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 QF_PREDS = "qf_preds"
 QF_PROBS = "qf_probs"
 TD_ERROR_KEY = "td_error"
+TD_ERROR_MEAN_KEY = "td_error_mean"
 
 
 class DQNRainbowLearner(Learner):
@@ -64,4 +66,12 @@ class DQNRainbowLearner(Learner):
         Args:
             module_id: The module ID whose target Q network(s) should be updated.
             config: The `AlgorithmConfig` specific in the given `module_id`.
+        """
+
+    @abc.abstractmethod
+    def _reset_noise(self) -> None:
+        """Resets the noise in the `Algorithm.training_step()`
+
+        Note, this can be overridden by the user to reset the noise at different
+        points in the training loop.
         """

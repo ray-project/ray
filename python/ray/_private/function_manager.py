@@ -54,11 +54,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode(), key])
 
 
-def make_export_key(pos: int, job_id: JobID) -> bytes:
-    # big-endian for ordering in binary
-    return make_function_table_key(b"IsolatedExports", job_id, pos.to_bytes(8, "big"))
-
-
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
     Attributes:
@@ -92,12 +87,10 @@ class FunctionActorManager:
         # Deserialize an ActorHandle will call load_actor_class(). If a
         # function closure captured an ActorHandle, the deserialization of the
         # function will be:
-        #     import_thread.py
         #         -> fetch_and_register_remote_function (acquire lock)
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
-        self.cv = threading.Condition(lock=self.lock)
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
@@ -150,29 +143,6 @@ class FunctionActorManager:
             return object
         except Exception:
             return None
-
-    def export_key(self, key):
-        """Export a key so it can be imported by other workers"""
-
-        # It's going to check all the keys until if reserve one key not
-        # existing in the cluster.
-        # One optimization is that we can use importer counter since
-        # it's sure keys before this counter has been allocated.
-        with self._export_lock:
-            while True:
-                self._num_exported += 1
-                holder = make_export_key(
-                    self._num_exported, self._worker.current_job_id
-                )
-                # This step is atomic since internal kv is a single thread
-                # atomic db.
-                if (
-                    self._worker.gcs_client.internal_kv_put(
-                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE
-                    )
-                    > 0
-                ):
-                    break
 
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None
@@ -475,9 +445,6 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
-            # Try importing in case the worker did not get notified, or the
-            # importer thread did not run.
-            self._worker.import_thread._do_importing()
             time.sleep(0.001)
 
     def export_actor_class(

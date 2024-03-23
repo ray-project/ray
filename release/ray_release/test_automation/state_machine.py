@@ -90,6 +90,9 @@ class TestStateMachine(abc.ABC):
         """
         Move the test to the next state.
         """
+        if not self.test_results:
+            # No result to move the state
+            return
         from_state = self.test.get_state()
         to_state = self._next_state(from_state)
         self.test.set_state(to_state)

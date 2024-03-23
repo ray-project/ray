@@ -4,7 +4,6 @@ opentelemetry-api
 opentelemetry-sdk
 opentelemetry-exporter-otlp
 google-cloud-storage
-grpcio
-grpcio-tools
+grpcio==1.60.0
 pyyaml
 pyopenssl

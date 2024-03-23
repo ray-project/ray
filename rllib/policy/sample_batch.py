@@ -716,7 +716,9 @@ class SampleBatch(dict):
 
         # Exclude INFOs from regular array slicing as the data under this column might
         # be a list (not good for `tree.map_structure` call).
-        infos = self.get(SampleBatch.INFOS)
+        # Furthermore, slicing does not work when the data in the column is
+        # singular (not a list or array).
+        infos = self.pop(SampleBatch.INFOS, None)
         data = tree.map_structure(lambda value: value[start:stop], self)
         if infos is not None:
             data[SampleBatch.INFOS] = infos[start:stop]

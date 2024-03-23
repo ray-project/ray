@@ -264,7 +264,7 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._fut_queue = fut_queue
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="channel.AwaitableBackgroundWriter"
+            max_workers=1, thread_name_prefix="channel.AwaitableBackgroundReader"
         )
 
     def start(self):

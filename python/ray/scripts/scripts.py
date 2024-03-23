@@ -2593,7 +2593,7 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=True)
+    add_command_alias(job_cli_group, name="job", hidden=False)
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 

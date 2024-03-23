@@ -90,6 +90,10 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
+            if self.is_stateful():
+                # The recurrent encoders expect a `(state_in, h)`  key in the
+                # input dict while the key returned is `(state_in, critic, h)`.
+                batch[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
             encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
         # Shared encoder.
         else:

@@ -1356,7 +1356,7 @@ def start_api_server(
                     "Error should be written to 'dashboard.log' or "
                     "'dashboard.err'. We are printing the last "
                     f"{lines_to_read} lines for you. See "
-                    "'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' "  # noqa
+                    "'https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure' "  # noqa
                     "to find where the log file is."
                 )
                 try:

@@ -3124,55 +3124,38 @@ Status CoreWorker::ReportGeneratorItemReturns(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
   }
+  const auto return_id = dynamic_return_object.first;
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << dynamic_return_object.first;
+                 << ", id: " << return_id;
 
-  if (waiter) {
-    waiter->IncrementObjectGenerated();
-  }
+  waiter->IncrementObjectGenerated();
 
   client->ReportGeneratorItemReturns(
       request,
-      [waiter, generator_id, item_index](
+      [waiter, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
-        if (waiter) {
-          RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                         << ". Total object generated: "
-                         << waiter->TotalObjectGenerated();
-          if (status.ok()) {
-            /// Since unary gRPC requests are not ordered, it is possible the stale
-            /// total value can be replied. Since total object consumed only can
-            /// increment, we always choose the larger value here.
-            waiter->UpdateTotalObjectConsumed(std::max(
-                waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
-          } else {
-            // TODO(sang): Handle network error more gracefully.
-            // If the request fails, we should just resume until task finishes without
-            // backpressure.
-            waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
-            RAY_LOG(WARNING) << "Failed to send the object ref.";
-          }
+        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                       << ". Total object generated: " << waiter->TotalObjectGenerated();
+        int64_t num_objects_consumed;
+        if (status.ok()) {
+          num_objects_consumed = reply.total_num_object_consumed();
+        } else {
+          // TODO(sang): Handle network error more gracefully.
+          // If the request fails, we should just resume until task finishes without
+          // backpressure.
+          num_objects_consumed = waiter->TotalObjectGenerated();
+          RAY_LOG(WARNING) << "Failed to report streaming generator return " << return_id
+                           << " to the caller. The yield'ed ObjectRef may not be usable.";
         }
+        waiter->HandleObjectReported(num_objects_consumed);
       });
 
-  auto check_signals_callback = [this]() {
-    if (options_.check_signals) {
-      return options_.check_signals();
-    } else {
-      return Status::OK();
-    }
-  };
-
-  if (waiter) {
-    // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-    // details.
-    return waiter->WaitUntilObjectConsumed(check_signals_callback);
-  } else {
-    return check_signals_callback();
-  }
+  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+  // details.
+  return waiter->WaitUntilObjectConsumed();
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(

@@ -52,7 +52,7 @@ def test_callback_save_restore(
         runner._callbacks.on_trial_result(
             iteration=i, trials=None, trial=None, result=None
         )
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
     callback = StatefulCallback()
     runner2 = TuneController(callbacks=[callback], storage=storage)
     assert callback.counter == 0

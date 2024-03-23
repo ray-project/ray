@@ -1,8 +1,8 @@
 import os
 import threading
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import ray
 from ray._private.ray_constants import env_bool, env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -18,15 +18,13 @@ _context_lock = threading.Lock()
 # a risk of triggering spilling. This is used to generate user warnings only.
 ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 
-# The max target block size in bytes for reads and transformations.  We choose
-# 128MiB: With streaming execution and num_cpus many concurrent tasks, the
-# memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM *
-# DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
+# We chose 128MiB for default: With streaming execution and num_cpus many concurrent
+# tasks, the memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM
+# * DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
 # fraction set by Ray core), assuming typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 
-# The max target block size in bytes for shuffle ops (random_shuffle, sort,
-# repartition). Set a higher target block size because we have to materialize
+# We set a higher target block size because we have to materialize
 # all input blocks anyway, so there is no performance advantage to having
 # smaller blocks. Setting a larger block size allows avoiding overhead from an
 # excessive number of partitions.
@@ -38,81 +36,76 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
-# Dataset will avoid creating blocks smaller than this size in bytes on read.
-# This takes precedence over DEFAULT_MIN_PARALLELISM.
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
-# Default buffer size when doing streaming reads from local or remote storage.
 # This default appears to work well with most file sizes on remote storage systems,
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
-# Whether pandas block format is enabled.
-# TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Minimum number of read output blocks for a dataset. Note that the min
-# block size config takes precedence over this.
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
-# Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
-# Whether to use push-based shuffle by default.
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
-# The default global scheduling strategy. Note that for tasks with large args,
-# DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS applies.
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
-# Default scheduling strategy for tasks with large args. This enables locality-based
-# scheduling in Ray for tasks where arg data transfer is a bottleneck.
+# This default enables locality-based scheduling in Ray for tasks where arg data
+# transfer is a bottleneck.
 DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS = "DEFAULT"
 
-# Size in bytes after which point task arguments are considered large. Choose a value
-# here at which point data transfer overhead becomes significant in comparison to
-# task scheduling (i.e., low tens of ms).
 DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
-# Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
-# Whether to eagerly free memory (new backend only).
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
-# Whether to trace allocations / eager free (new backend only). This adds significant
-# performance overheads and should only be used for debugging.
-DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
-
-# Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
-# Whether to automatically cast NumPy ndarray columns in Pandas DataFrames to tensor
-# extension columns.
+DEFAULT_MIN_PARALLELISM = 200
+
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
-# Whether to automatically print Dataset stats after execution.
-# If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
-# Whether stats logs should be verbose. This will include fields such
-# as `extra_metrics` in the stats output, which are excluded by default.
 DEFAULT_VERBOSE_STATS_LOG = False
 
-# Whether to include internal Ray Data/Ray Core code stack frames
-# when logging to stdout. The full stack trace is always written to the
-# Ray Data log file.
+DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
+
 DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = False
 
-# Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
-# If driver memory exceeds this threshold, warn the user.
-# For now, this only applies to shuffle ops because most other ops are unlikely
-# to use as much driver memory.
+DEFAULT_ENABLE_PROGRESS_BARS = not bool(
+    env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
+)
+
+DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
+
+
+DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error SLOW_DOWN",
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
+
+DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
+
+DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
+    "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
+)
+
+DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
+    os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
+)
+
+DEFAULT_MAX_ERRORED_BLOCKS = 0
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
@@ -122,36 +115,6 @@ OK_PREFIX = "✔️ "
 
 # Default batch size for batch transformations.
 DEFAULT_BATCH_SIZE = 1024
-
-# Whether to enable progress bars.
-DEFAULT_ENABLE_PROGRESS_BARS = not bool(
-    env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
-)
-
-# Whether to enable get_object_locations for metric
-DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
-
-DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = [
-    "AWS Error INTERNAL_FAILURE",
-    "AWS Error NETWORK_CONNECTION",
-    "AWS Error SLOW_DOWN",
-]
-
-# The application-level errors that actor task would retry.
-# Default to `False` to not retry on any errors.
-# Set to `True` to retry all errors, or set to a list of errors to retry.
-# This follows same format as `retry_exceptions` in Ray Core.
-DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
-
-# Whether to enable ReservationOpResourceAllocator by default.
-DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
-    "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
-)
-
-# The default reservation ratio for ReservationOpResourceAllocator.
-DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
-    os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
-)
 
 # Default value of the max number of blocks that can be buffered at the
 # streaming generator of each `DataOpTask`.
@@ -163,88 +126,145 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
 
-@DeveloperAPI
-class DataContext:
-    """Singleton for shared Dataset resources and configurations.
+def _execution_options_factory() -> "ExecutionOptions":
+    # Lazily import to avoid circular dependencies.
+    from ray.data._internal.execution.interfaces import ExecutionOptions
 
-    This object is automatically propagated to workers and can be retrieved
-    from the driver and remote workers via DataContext.get_current().
+    return ExecutionOptions()
+
+
+@DeveloperAPI
+@dataclass
+class DataContext:
+    """Global settings for Ray Data.
+
+    Configure this class to enable advanced features and tune performance.
+
+    .. warning::
+        Apply changes before creating a :class:`~ray.data.Dataset`. Changes made after
+        won't take effect.
+
+    .. note::
+        This object is automatically propagated to workers. Access it from the driver
+        and remote workers with :meth:`DataContext.get_current()`.
+
+    Examples:
+        >>> from ray.data import DataContext
+        >>> DataContext.get_current().enable_progress_bars = False
+
+    Args:
+        target_max_block_size: The max target block size in bytes for reads and
+            transformations.
+        target_shuffle_max_block_size: The max target block size in bytes for shuffle
+            ops like ``random_shuffle``, ``sort``, and ``repartition``.
+        target_min_block_size: Ray Data avoids creating blocks smaller than this
+            size in bytes on read. This takes precedence over
+            ``read_op_min_num_blocks``.
+        streaming_read_buffer_size: Buffer size when doing streaming reads from local or
+            remote storage.
+        enable_pandas_block: Whether pandas block format is enabled.
+        actor_prefetcher_enabled: Whether to use actor based block prefetcher.
+        use_push_based_shuffle: Whether to use push-based shuffle.
+        pipeline_push_based_shuffle_reduce_tasks:
+        scheduling_strategy: The global scheduling strategy. For tasks with large args,
+            ``scheduling_strategy_large_args`` takes precedence.
+        scheduling_strategy_large_args: Scheduling strategy for tasks with large args.
+        large_args_threshold: Size in bytes after which point task arguments are
+            considered large. Choose a value so that the data transfer overhead is
+            significant in comparison to task scheduling (i.e., low tens of ms).
+        use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
+            aggregations.
+        eager_free: Whether to eagerly free memory.
+        decoding_size_estimation: Whether to estimate in-memory decoding data size for
+            data source.
+        min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
+            instead.
+        read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
+        enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
+            columns in Pandas DataFrames to tensor extension columns.
+        enable_auto_log_stats: Whether to automatically log stats after execution. If
+            disabled, you can still manually print stats with ``Dataset.stats()``.
+        verbose_stats_logs: Whether stats logs should be verbose. This includes fields
+            such as `extra_metrics` in the stats output, which are excluded by default.
+        trace_allocations: Whether to trace allocations / eager free. This adds
+            significant performance overheads and should only be used for debugging.
+        execution_options: The
+            :class:`~ray.data._internal.execution.interfaces.execution_options.ExecutionOptions`
+            to use.
+        use_ray_tqdm: Whether to enable distributed tqdm.
+        enable_progress_bars: Whether to enable progress bars.
+        enable_get_object_locations_for_metrics: Whether to enable
+            ``get_object_locations`` for metrics.
+        write_file_retry_on_errors: A list of substrings of error messages that should
+            trigger a retry when writing files. This is useful for handling transient
+            errors when writing to remote storage systems.
+        warn_on_driver_memory_usage_bytes: If driver memory exceeds this threshold,
+            Ray Data warns you. For now, this only applies to shuffle ops because most
+            other ops are unlikely to use as much driver memory.
+        actor_task_retry_on_errors: The application-level errors that actor task should
+            retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
+            Ray Core. Default to `False` to not retry on any errors. Set to `True` to
+            retry all errors, or set to a list of errors to retry.
+        enable_op_resource_reservation: Whether to reserve resources for each operator.
+        op_resource_reservation_ratio: The ratio of the total resources to reserve for
+            each operator.
+        max_errored_blocks: Max number of blocks that are allowed to have errors,
+            unlimited if negative. This option allows application-level exceptions in
+            block processing tasks. These exceptions may be caused by UDFs (e.g., due to
+            corrupted data samples) or IO errors. Data in the failed blocks are dropped.
+            This option can be useful to prevent a long-running job from failing due to
+            a small number of bad blocks.
+        log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
+            Core code stack frames when logging to stdout. The full stack trace is
+            always written to the Ray Data log file.
     """
 
-    def __init__(
-        self,
-        target_max_block_size: int,
-        target_shuffle_max_block_size: int,
-        target_min_block_size: int,
-        streaming_read_buffer_size: int,
-        enable_pandas_block: bool,
-        actor_prefetcher_enabled: bool,
-        use_push_based_shuffle: bool,
-        pipeline_push_based_shuffle_reduce_tasks: bool,
-        scheduling_strategy: SchedulingStrategyT,
-        scheduling_strategy_large_args: SchedulingStrategyT,
-        large_args_threshold: int,
-        use_polars: bool,
-        eager_free: bool,
-        decoding_size_estimation: bool,
-        min_parallelism: int,
-        enable_tensor_extension_casting: bool,
-        enable_auto_log_stats: bool,
-        verbose_stats_log: bool,
-        log_internal_stack_trace_to_stdout: bool,
-        trace_allocations: bool,
-        execution_options: "ExecutionOptions",
-        use_ray_tqdm: bool,
-        enable_progress_bars: bool,
-        enable_get_object_locations_for_metrics: bool,
-        write_file_retry_on_errors: List[str],
-        warn_on_driver_memory_usage_bytes: int,
-        actor_task_retry_on_errors: Union[bool, List[BaseException]],
-    ):
-        """Private constructor (use get_current() instead)."""
-        self.target_max_block_size = target_max_block_size
-        self.target_shuffle_max_block_size = target_shuffle_max_block_size
-        self.target_min_block_size = target_min_block_size
-        self.streaming_read_buffer_size = streaming_read_buffer_size
-        self.enable_pandas_block = enable_pandas_block
-        self.actor_prefetcher_enabled = actor_prefetcher_enabled
-        self.use_push_based_shuffle = use_push_based_shuffle
-        self.pipeline_push_based_shuffle_reduce_tasks = (
-            pipeline_push_based_shuffle_reduce_tasks
-        )
-        self.scheduling_strategy = scheduling_strategy
-        self.scheduling_strategy_large_args = scheduling_strategy_large_args
-        self.large_args_threshold = large_args_threshold
-        self.use_polars = use_polars
-        self.eager_free = eager_free
-        self.decoding_size_estimation = decoding_size_estimation
-        self.min_parallelism = min_parallelism
-        self.enable_tensor_extension_casting = enable_tensor_extension_casting
-        self.enable_auto_log_stats = enable_auto_log_stats
-        self.verbose_stats_logs = verbose_stats_log
-        self.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
-        self.trace_allocations = trace_allocations
-        # TODO: expose execution options in Dataset public APIs.
-        self.execution_options = execution_options
-        self.use_ray_tqdm = use_ray_tqdm
-        self.enable_progress_bars = enable_progress_bars
-        self.enable_get_object_locations_for_metrics = (
-            enable_get_object_locations_for_metrics
-        )
-        self.write_file_retry_on_errors = write_file_retry_on_errors
-        self.warn_on_driver_memory_usage_bytes = warn_on_driver_memory_usage_bytes
-        self.actor_task_retry_on_errors = actor_task_retry_on_errors
+    target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
+    target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
+    target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
+    streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
+    enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
+    actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+    use_push_based_shuffle: bool = DEFAULT_USE_PUSH_BASED_SHUFFLE
+    pipeline_push_based_shuffle_reduce_tasks: bool = True
+    scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
+    scheduling_strategy_large_args: SchedulingStrategyT = (
+        DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+    )
+    large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
+    use_polars: bool = DEFAULT_USE_POLARS
+    eager_free: bool = DEFAULT_EAGER_FREE
+    decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
+    min_parallelism: int = DEFAULT_MIN_PARALLELISM
+    read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
+    enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
+    verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
+    trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
+    execution_options: "ExecutionOptions" = field(
+        default_factory=_execution_options_factory
+    )
+    use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
+    enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
+    enable_get_object_locations_for_metrics: bool = (
+        DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
+    )
+    write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
+    warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
+    actor_task_retry_on_errors: Union[
+        bool, List[BaseException]
+    ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
+    op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+    max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
+    log_internal_stack_trace_to_stdout: bool = (
+        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
+    )
+
+    def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
-        # Max number of blocks that are allowed to have errors, unlimited if negative.
-        # This option allows application-level exceptions in block processing tasks.
-        # These exceptions may be caused by UDFs (e.g., due to corrupted data samples)
-        # or IO errors.
-        # Data in the failed blocks will be dropped.
-        # This option can be useful to prevent a long-running job from failing due to
-        # a small number of bad blocks.
-        self.max_errored_blocks = 0
         # The extra key-value style configs.
         # These configs are managed by individual components or plugins via
         # `set_config`, `get_config` and `remove_config`.
@@ -255,12 +275,6 @@ class DataContext:
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
-        # Whether to enable ReservationOpResourceAllocator.
-        self.op_resource_reservation_enabled = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
-        # The reservation ratio for ReservationOpResourceAllocator.
-        self.op_resource_reservation_ratio = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
-        # Minimum number of read output blocks for a dataset.
-        self.read_op_min_num_blocks = DEFAULT_READ_OP_MIN_NUM_BLOCKS
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -274,47 +288,7 @@ class DataContext:
 
         with _context_lock:
             if _default_context is None:
-                _default_context = DataContext(
-                    target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
-                    target_shuffle_max_block_size=DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE,
-                    target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
-                    streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
-                    enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
-                    actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
-                    use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
-                    # NOTE(swang): We have to pipeline reduce tasks right now
-                    # because of a scheduling bug at large scale.
-                    # See https://github.com/ray-project/ray/issues/25412.
-                    pipeline_push_based_shuffle_reduce_tasks=True,
-                    scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
-                    scheduling_strategy_large_args=(
-                        DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
-                    ),
-                    large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
-                    use_polars=DEFAULT_USE_POLARS,
-                    eager_free=DEFAULT_EAGER_FREE,
-                    decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
-                    # NOTE: This parameter is deprecated. Use `read_op_min_num_blocks`.
-                    min_parallelism=DEFAULT_READ_OP_MIN_NUM_BLOCKS,
-                    enable_tensor_extension_casting=(
-                        DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
-                    ),
-                    enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
-                    verbose_stats_log=DEFAULT_VERBOSE_STATS_LOG,
-                    log_internal_stack_trace_to_stdout=(
-                        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
-                    ),
-                    trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
-                    execution_options=ray.data.ExecutionOptions(),
-                    use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
-                    enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
-                    enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
-                    write_file_retry_on_errors=DEFAULT_WRITE_FILE_RETRY_ON_ERRORS,
-                    warn_on_driver_memory_usage_bytes=(
-                        DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
-                    ),
-                    actor_task_retry_on_errors=DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS,
-                )
+                _default_context = DataContext()
 
             return _default_context
 
