@@ -180,6 +180,26 @@ def test_multi_args_kwargs(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_multi_args_intermediate_node(ray_start_regular):
+    # Test passing multiple args and kwargs to .execute.
+    actors = [Actor.remote(0) for _ in range(4)]
+    sink = Actor.remote(0)
+    with InputNode() as inp:
+        dag = [actor.echo.bind(inp[i]) for i, actor in enumerate(actors)]
+        dag = sink.inc_four.bind(*dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(1, 2, 3, 4)
+        # TODO(terry): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (1, 2, 3, 4)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_scatter_gather_dag(ray_start_regular, num_actors):
     actors = [Actor.remote(0) for _ in range(num_actors)]
