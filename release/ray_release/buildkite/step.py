@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
@@ -57,9 +57,50 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
 }
 
 
+def get_step_for_test_group(
+    grouped_tests: Dict[str, List[Tuple[Test, bool]]],
+    minimum_run_per_test: int = 1,
+    test_collection_file: List[str] = None,
+    env: Optional[Dict] = None,
+    priority: int = 0,
+    global_config: Optional[str] = None,
+    is_concurrency_limit: bool = True,
+):
+    steps = []
+    for group in sorted(grouped_tests):
+        tests = grouped_tests[group]
+        group_steps = []
+        for test, smoke_test in tests:
+            for run_id in range(max(test.get("repeated_run", 1), minimum_run_per_test)):
+                step = get_step(
+                    test,
+                    test_collection_file,
+                    run_id=run_id,
+                    # Always report performance data to databrick. Since the data is
+                    # indexed by branch and commit hash, we can always filter data later
+                    report=True,
+                    smoke_test=smoke_test,
+                    env=env,
+                    priority_val=priority,
+                    global_config=global_config,
+                )
+
+                if not is_concurrency_limit:
+                    step.pop("concurrency", None)
+                    step.pop("concurrency_group", None)
+
+                group_steps.append(step)
+
+        group_step = {"group": group, "steps": group_steps}
+        steps.append(group_step)
+
+    return steps
+
+
 def get_step(
     test: Test,
     test_collection_file: List[str] = None,
+    run_id: int = 1,
     report: bool = False,
     smoke_test: bool = False,
     env: Optional[Dict] = None,
@@ -91,7 +132,7 @@ def get_step(
     env_dict.update(env)
 
     step["env"].update(env_dict)
-    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.8"
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -129,7 +170,7 @@ def get_step(
     full_label += test["name"]
     if smoke_test:
         full_label += " [smoke test] "
-    full_label += f" ({label})"
+    full_label += f" ({label}) ({run_id})"
 
     step["label"] = full_label
 

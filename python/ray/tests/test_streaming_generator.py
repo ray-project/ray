@@ -11,7 +11,7 @@ from unittest.mock import patch, Mock
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects
-from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEndOfStreamError
+from ray._raylet import ObjectRefGenerator, ObjectRefStreamEndOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
 
@@ -34,7 +34,7 @@ class MockedWorker:
 def mocked_worker():
     mocked_core_worker = Mock()
     mocked_core_worker.try_read_next_object_ref_stream.return_value = None
-    mocked_core_worker.delete_object_ref_stream.return_value = None
+    mocked_core_worker.async_delete_object_ref_stream.return_value = None
     mocked_core_worker.create_object_ref_stream.return_value = None
     mocked_core_worker.peek_object_ref_stream.return_value = [], []
     worker = MockedWorker(mocked_core_worker)
@@ -50,7 +50,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         with patch("ray.get") as mocked_ray_get:
             c = mocked_worker.core_worker
             generator_ref = ray.ObjectRef.from_random()
-            generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+            generator = ObjectRefGenerator(generator_ref, mocked_worker)
 
             # Test when there's no new ref, it returns a nil.
             new_ref = ray.ObjectRef.from_random()
@@ -94,7 +94,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 dumps(generator)
 
             del generator
-            c.delete_object_ref_stream.assert_called()
+            c.async_delete_object_ref_stream.assert_called()
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
@@ -106,7 +106,7 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
         with patch("ray.wait") as mocked_ray_wait:
             c = mocked_worker.core_worker
             generator_ref = ray.ObjectRef.from_random()
-            generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+            generator = ObjectRefGenerator(generator_ref, mocked_worker)
 
             # Simulate the worker failure happens.
             next_ref = ray.ObjectRef.from_random()
@@ -473,7 +473,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
     def verify_sync_task_executor():
         generator = a.f.remote(ray.put(arr))
         # Verify it works with next.
-        assert isinstance(generator, StreamingObjectRefGenerator)
+        assert isinstance(generator, ObjectRefGenerator)
         assert ray.get(next(generator)) == 0
         assert ray.get(next(generator)) == 1
         assert ray.get(next(generator)) == 2
@@ -488,7 +488,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
     def verify_async_task_executor():
         # Verify it works with next.
         generator = a.async_f.remote(ray.put(arr))
-        assert isinstance(generator, StreamingObjectRefGenerator)
+        assert isinstance(generator, ObjectRefGenerator)
         assert ray.get(next(generator)) == 0
         assert ray.get(next(generator)) == 1
         assert ray.get(next(generator)) == 2
@@ -501,7 +501,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
     async def verify_sync_task_async_generator():
         # Verify anext
         async_generator = a.f.remote(ray.put(arr))
-        assert isinstance(async_generator, StreamingObjectRefGenerator)
+        assert isinstance(async_generator, ObjectRefGenerator)
         for expected in range(3):
             ref = await async_generator.__anext__()
             assert await ref == expected
@@ -518,7 +518,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
 
     async def verify_async_task_async_generator():
         async_generator = a.async_f.remote(ray.put(arr))
-        assert isinstance(async_generator, StreamingObjectRefGenerator)
+        assert isinstance(async_generator, ObjectRefGenerator)
         for expected in range(3):
             ref = await async_generator.__anext__()
             assert await ref == expected

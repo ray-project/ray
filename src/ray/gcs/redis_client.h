@@ -32,12 +32,10 @@ class RedisClientOptions {
   RedisClientOptions(const std::string &ip,
                      int port,
                      const std::string &password,
-                     bool enable_sharding_conn = false,
                      bool enable_ssl = false)
       : server_ip_(ip),
         server_port_(port),
         password_(password),
-        enable_sharding_conn_(enable_sharding_conn),
         enable_ssl_(enable_ssl) {}
 
   // Redis server address
@@ -46,9 +44,6 @@ class RedisClientOptions {
 
   // Password of Redis.
   std::string password_;
-
-  // Whether we enable sharding for accessing data.
-  bool enable_sharding_conn_ = false;
 
   // Whether to use tls/ssl for redis connection
   bool enable_ssl_ = false;
@@ -69,24 +64,8 @@ class RedisClient {
   /// \return Status
   Status Connect(instrumented_io_context &io_service);
 
-  // TODO(micafan) Maybe it's not necessary to use multi threads.
-  /// Connect to Redis. Non-thread safe.
-  /// Call this function before calling other functions.
-  ///
-  /// \param io_services The event loops for this client. Each RedisContext bind to
-  /// an event loop. Each io_service must be single-threaded. Because `RedisAsioClient`
-  /// is non-thread safe.
-  /// \return Status
-  Status Connect(std::vector<instrumented_io_context *> io_services);
-
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
-
-  std::vector<std::shared_ptr<RedisContext>> GetShardContexts() {
-    return shard_contexts_;
-  }
-
-  std::shared_ptr<RedisContext> GetShardContext(const std::string &shard_key);
 
   std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
 
@@ -102,11 +81,8 @@ class RedisClient {
   /// Whether this client is connected to redis.
   bool is_connected_{false};
 
-  // The following contexts write to the data shard
-  std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
-  std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;
-  std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   // The following context writes everything to the primary shard
+  std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::shared_ptr<RedisContext> primary_context_;
 };
 

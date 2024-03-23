@@ -33,7 +33,11 @@ import {
   ServeApplicationDetailLayout,
   ServeApplicationDetailPage,
 } from "./pages/serve/ServeApplicationDetailPage";
-import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
+import {
+  ServeDeploymentDetailLayout,
+  ServeDeploymentDetailPage,
+} from "./pages/serve/ServeDeploymentDetailPage";
+import { ServeDeploymentsListPage } from "./pages/serve/ServeDeploymentsListPage";
 import { ServeLayout, ServeSideTabLayout } from "./pages/serve/ServeLayout";
 import { ServeReplicaDetailLayout } from "./pages/serve/ServeReplicaDetailLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
@@ -250,8 +254,8 @@ const App = () => {
                     />
                     <Route
                       element={
-                        <SideTabPage tabId="applications">
-                          <ServeApplicationsListPage />
+                        <SideTabPage tabId="deployments">
+                          <ServeDeploymentsListPage />
                         </SideTabPage>
                       }
                       path=""
@@ -273,11 +277,17 @@ const App = () => {
                   >
                     <Route element={<ServeApplicationDetailPage />} path="" />
                     <Route
-                      element={<ServeReplicaDetailLayout />}
-                      path=":deploymentName/:replicaId"
+                      element={<ServeDeploymentDetailLayout />}
+                      path=":deploymentName"
                     >
-                      <Route element={<ServeReplicaDetailPage />} path="" />
-                      <Route path="tasks/:taskId" element={<TaskPage />} />
+                      <Route element={<ServeDeploymentDetailPage />} path="" />
+                      <Route
+                        element={<ServeReplicaDetailLayout />}
+                        path=":replicaId"
+                      >
+                        <Route element={<ServeReplicaDetailPage />} path="" />
+                        <Route path="tasks/:taskId" element={<TaskPage />} />
+                      </Route>
                     </Route>
                   </Route>
                 </Route>

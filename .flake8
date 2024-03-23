@@ -10,6 +10,7 @@ exclude =
   python/ray/_private/thirdparty/*
   python/ray/workflow/tests/mock_server.py
   python/ray/serve/tests/test_config_files/syntax_error.py
+  python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc.py
 max-line-length = 88
 inline-quotes = "
 ignore =

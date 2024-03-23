@@ -1,23 +1,6 @@
 .. List of most important features of RLlib, with sigil-like buttons for each of the features.
     To be included into different rst files.
 
-
-.. container:: clear-both
-
-    .. container:: buttons-float-left
-
-        .. https://docs.google.com/drawings/d/1i_yoxocyEOgiCxcfRZVKpNh0R_-2tQZOX4syquiytAI/edit?skip_itp2_check=true&pli=1
-
-        .. image:: images/sigils/rllib-sigil-tf-and-torch.svg
-            :width: 100
-            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
-
-    .. container::
-
-        The most **popular deep-learning frameworks**: `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`_ and `TensorFlow
-        (tf1.x/2.x static-graph/eager/traced) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`_.
-
-
 .. container:: clear-both
 
     .. container:: buttons-float-left
@@ -26,7 +9,7 @@
 
         .. image:: images/sigils/rllib-sigil-distributed-learning.svg
             :width: 100
-            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/tune/framework.py
+            :target: https://github.com/ray-project/ray/blob/master/rllib/utils/framework.py
 
     .. container::
 
@@ -34,25 +17,6 @@
         allow you to set the ``num_workers`` config parameter, such that your workloads can run
         on 100s of CPUs/nodes thus parallelizing and speeding up learning.
 
-
-.. container:: clear-both
-
-    .. container:: buttons-float-left
-
-        .. https://docs.google.com/drawings/d/1b8uaRo0KjPH-x-elBmyvDwAA4I2oy8cj3dxNnUT3HTE/edit
-
-        .. image:: images/sigils/rllib-sigil-vector-envs.svg
-            :width: 100
-            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/env_rendering_and_recording.py
-
-    .. container::
-
-        **Vectorized (batched) and remote (parallel) environments**: RLlib auto-vectorizes
-        your ``gym.Envs`` via the ``num_envs_per_worker`` config. Environment workers can
-        then batch and thus significantly speedup the action computing forward pass.
-        On top of that, RLlib offers the ``remote_worker_envs`` config to create
-        `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_envs_with_inference_done_on_main_node.py>`_,
-        thus parallelizing even the env stepping process.
 
 .. container:: clear-both
 

@@ -1,5 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 Connectors (Beta)
 ==================
 
@@ -234,7 +236,7 @@ With connectors essentially checkpointing all the transformations used during tr
 policies can be easily restored without the original algorithm for local inference,
 as demonstrated by the following Cartpole example:
 
-.. literalinclude:: ../../../rllib/examples/connectors/run_connector_policy.py
+.. literalinclude:: ../../../rllib/examples/connectors/v1/run_connector_policy.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -253,7 +255,7 @@ different environments to work together at the same time.
 Here is an example demonstrating adaptation of a policy trained for the standard Cartpole environment
 for a new mock Cartpole environment that returns additional features and requires extra action inputs.
 
-.. literalinclude:: ../../../rllib/examples/connectors/adapt_connector_policy.py
+.. literalinclude:: ../../../rllib/examples/connectors/v1/adapt_connector_policy.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

@@ -16,6 +16,7 @@ from ray._private.test_utils import (
     get_error_message,
     run_string_as_driver,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,47 @@ assert ray.get(f.remote()) == 1
     run_string_as_driver(script, dict(os.environ, **env))
 
 
+def test_release_cpu_resources(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    def child():
+        return 3
+
+    @ray.remote(num_cpus=1)
+    def parent():
+        # Parent should release the CPU resource
+        # to run child.
+        return ray.get(child.remote())
+
+    assert ray.get(parent.remote()) == 3
+
+    # Make sure CPU resource inside PG can also be released properly.
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    assert (
+        ray.get(
+            parent.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_capture_child_tasks=True
+                )
+            ).remote()
+        )
+        == 3
+    )
+    assert (
+        ray.get(
+            parent.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=0,
+                    placement_group_capture_child_tasks=True,
+                )
+            ).remote()
+        )
+        == 3
+    )
+
+
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
     # This test fails with the flag set to false.
@@ -67,6 +109,35 @@ def test_release_resources_race(shutdown_only):
     pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
+
+
+def test_not_release_resource(shutdown_only):
+    # Test to make sure we don't release CPU
+    # resource if the object is already fetched.
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def task1():
+        return [1] * (1024 * 1024)
+
+    o1 = task1.remote()
+
+    @ray.remote
+    def task2(*args, **kwargs):
+        # ray.get here should not release
+        # CPU resource since the object is already
+        # available in args[0]
+        assert args[0] == ray.get(kwargs["o"][0])
+        return os.getpid()
+
+    @ray.remote
+    def task3(*args):
+        return os.getpid()
+
+    o2 = task2.remote(o1, o=[o1])
+    # This should run after task2 finishes
+    o3 = task3.remote(o1)
+    assert len(set(ray.get([o2, o3]))) == 1
 
 
 # https://github.com/ray-project/ray/issues/22504
@@ -119,7 +190,7 @@ def test_grpc_message_size(shutdown_only):
     ray.get(bar.remote(*[f() for _ in range(200)]))
 
 
-def test_default_worker_import_dependency():
+def test_default_worker_import_dependency(shutdown_only):
     """
     Test ray's python worker import doesn't import the not-allowed dependencies.
     """
@@ -128,6 +199,11 @@ def test_default_worker_import_dependency():
     # is used by numpy when imported.
     # See https://github.com/ray-project/ray/issues/33891
     blocked_deps = ["numpy"]
+
+    # Ray should not be importing pydantic (used in serialization) eagerly.
+    # This introduces regression in worker start up time.
+    # https://github.com/ray-project/ray/issues/41338
+    blocked_deps += ["pydantic"]
 
     # Remove the ray module and the blocked deps from sys.modules.
     sys.modules.pop("ray", None)
@@ -145,6 +221,19 @@ def test_default_worker_import_dependency():
     # Check that the blocked deps are not imported.
     for dep in blocked_deps:
         assert dep not in sys.modules
+
+    # Test starting a ray workers should not see unwanted deps loaded eagerly.
+    ray.init()
+
+    @ray.remote
+    def f():
+        import ray  # noqa: F401
+
+        assert "ray" in sys.modules
+        for x in blocked_deps:
+            assert x not in sys.modules
+
+    ray.get(f.remote())
 
 
 # https://github.com/ray-project/ray/issues/7287

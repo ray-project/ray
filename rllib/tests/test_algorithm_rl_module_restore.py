@@ -70,8 +70,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             for i in range(NUM_AGENTS):
                 module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
                     module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=env.observation_space[0],
+                    action_space=env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
@@ -111,8 +111,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             for i in range(NUM_AGENTS):
                 module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
                     module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=env.observation_space[0],
+                    action_space=env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
@@ -124,8 +124,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # create a RLModule to load and override the "policy_1" module with
             module_to_swap_in = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
@@ -137,8 +137,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # and the module_to_swap_in_checkpoint
             module_specs["policy_1"] = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
                 load_state_path=module_to_swap_in_path,
@@ -246,8 +246,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             for i in range(num_agents):
                 module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
                     module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=env.observation_space[0],
+                    action_space=env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
@@ -259,8 +259,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # create a RLModule to load and override the "policy_1" module with
             module_to_swap_in = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
@@ -272,8 +272,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # and the module_to_swap_in_checkpoint
             module_specs["policy_1"] = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
                 load_state_path=module_to_swap_in_path,

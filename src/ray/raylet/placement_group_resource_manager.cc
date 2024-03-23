@@ -26,7 +26,7 @@ void PlacementGroupResourceManager::ReturnUnusedBundle(
     const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {
-      ReturnBundle(*iter->second);
+      RAY_CHECK(ReturnBundle(*iter->second).ok());
       bundle_spec_map_.erase(iter++);
     } else {
       iter++;
@@ -51,7 +51,7 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
       // return bundle resources so that we can start from the prepare phase again.
-      ReturnBundle(bundle_spec);
+      RAY_CHECK(ReturnBundle(bundle_spec).ok());
     }
   }
 
@@ -94,7 +94,7 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
     RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will "
                       "release the requested resources before.";
     for (const auto &bundle : prepared_bundles) {
-      ReturnBundle(*bundle);
+      RAY_CHECK(ReturnBundle(*bundle).ok());
       // Erase from `bundle_spec_map_`.
       const auto &iter = bundle_spec_map_.find(bundle->BundleId());
       if (iter != bundle_spec_map_.end()) {
@@ -119,7 +119,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
   } else {
     // Ignore request If the bundle state is already committed.
     if (it->second->state_ == CommitState::COMMITTED) {
-      RAY_LOG(DEBUG) << "Duplicate committ bundle request, skip it directly.";
+      RAY_LOG(DEBUG) << "Duplicate commit bundle request, skip it directly.";
       return;
     }
   }
@@ -152,13 +152,14 @@ void NewPlacementGroupResourceManager::CommitBundles(
   }
 }
 
-void NewPlacementGroupResourceManager::ReturnBundle(
+Status NewPlacementGroupResourceManager::ReturnBundle(
     const BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());
   if (it == pg_bundles_.end()) {
     RAY_LOG(DEBUG) << "Duplicate cancel request, skip it directly.";
-    return;
+    return Status::OK();
   }
+
   const auto &bundle_state = it->second;
   if (bundle_state->state_ == CommitState::PREPARED) {
     // Commit bundle first so that we can remove the bundle with consistent
@@ -166,17 +167,26 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     CommitBundle(bundle_spec);
   }
 
-  // Return original resources to resource allocator `ClusterResourceScheduler`.
-  auto original_resources = it->second->resources_;
-  cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-      original_resources);
-
   // Substract placement group resources from resource allocator
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-      placement_group_resources, resource_instances);
+  auto allocated =
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          placement_group_resources, resource_instances);
+
+  if (!allocated) {
+    RAY_LOG(WARNING) << "Bundle resources are still in use. GCS should retry to release "
+                        "a bundle. It only happens if a scheduler allocated resources, "
+                        "but a worker hasn't been started. "
+                     << bundle_spec.DebugString();
+    return Status::Invalid("Bundle resources are still in use. Retry again.");
+  } else {
+    // Return original resources to resource allocator `ClusterResourceScheduler`.
+    auto original_resources = it->second->resources_;
+    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+        original_resources);
+  }
 
   for (const auto &resource : placement_group_resources) {
     auto resource_id = scheduling::ResourceID{resource.first};
@@ -194,6 +204,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     }
   }
   pg_bundles_.erase(it);
+  return Status::OK();
 }
 
 }  // namespace raylet

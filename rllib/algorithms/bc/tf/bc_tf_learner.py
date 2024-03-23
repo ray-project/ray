@@ -1,17 +1,14 @@
 import logging
-from typing import Mapping
+from typing import Dict
 
-from ray.rllib.core.learner.learner import (
-    POLICY_LOSS_KEY,
-    LearnerHyperparameters,
-)
+from ray.rllib.algorithms.bc.bc import BCConfig
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
-from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
 logger = logging.getLogger(__file__)
@@ -28,9 +25,9 @@ class BCTfLearner(TfLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
+        config: BCConfig,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # In the RNN case, we expect incoming tensors to be padded to the maximum
         # sequence length. We infer the max sequence length from the actions
@@ -42,8 +39,8 @@ class BCTfLearner(TfLearner):
         #  which positions to insert these initial states.
         # This removes special reduction and only needs tf.reduce_mean().
         if self.module[module_id].is_stateful():
-            maxlen = tf.math.reduce_max(batch[SampleBatch.SEQ_LENS])
-            mask = tf.sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen)
+            maxlen = tf.math.reduce_max(batch[Columns.SEQ_LENS])
+            mask = tf.sequence_mask(batch[Columns.SEQ_LENS], maxlen)
 
             def possibly_masked_mean(t):
                 return tf.reduce_mean(tf.boolean_mask(t, mask))
@@ -54,9 +51,9 @@ class BCTfLearner(TfLearner):
 
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
         action_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
-        log_probs = action_dist.logp(batch[SampleBatch.ACTIONS])
+        log_probs = action_dist.logp(batch[Columns.ACTIONS])
 
         policy_loss = -possibly_masked_mean(log_probs)
 

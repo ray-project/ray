@@ -1,7 +1,7 @@
 .. _train-hf-accelerate:
 
-Get Started with Hugging Face Accelerate
-========================================
+Get Started with Distributed Training using Hugging Face Accelerate
+===================================================================
 
 The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `Accelerate <https://huggingface.co/docs/accelerate>`_  training across a distributed Ray cluster.
 
@@ -12,7 +12,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
 
     from accelerate import Accelerator
 
-    def train_func(config):
+    def train_func():
         # Instantiate the accelerator
         accelerator = Accelerator(...)
 
@@ -42,6 +42,10 @@ You only need to run your existing training code with a TorchTrainer. You can ex
     trainer = TorchTrainer(
         train_func,
         scaling_config=ScalingConfig(...),
+        # If running in a multi-node cluster, this is where you
+        # should configure the run's persistent storage that is accessible
+        # across all worker nodes.
+        # run_config=ray.train.RunConfig(storage_path="s3://..."),
         ...
     )
     trainer.fit()
@@ -51,7 +55,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
     Model and data preparation for distributed training is completely handled by the `Accelerator <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator>`_
     object and its `Accelerator.prepare() <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator.prepare>`_  method.
 
-    Unlike with native PyTorch, PyTorch Lightning, or Hugging Face Transformers, **don't** call any additional Ray Train utilities
+    Unlike with native PyTorch, **don't** call any additional Ray Train utilities
     like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training function.
 
 Configure Accelerate
@@ -98,7 +102,7 @@ object in your training function. Below are starter examples for configuring Acc
                 "wall_clock_breakdown": False
             }
 
-            def train_func(config):
+            def train_func():
                 # Create a DeepSpeedPlugin from config dict
                 ds_plugin = DeepSpeedPlugin(hf_ds_config=DEEPSPEED_CONFIG)
 
@@ -117,6 +121,7 @@ object in your training function. Below are starter examples for configuring Acc
             trainer = TorchTrainer(
                 train_func,
                 scaling_config=ScalingConfig(...),
+                run_config=ray.train.RunConfig(storage_path="s3://..."),
                 ...
             )
             trainer.fit()
@@ -133,7 +138,7 @@ object in your training function. Below are starter examples for configuring Acc
             from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
             from accelerate import Accelerator, FullyShardedDataParallelPlugin
 
-            def train_func(config):
+            def train_func():
                 fsdp_plugin = FullyShardedDataParallelPlugin(
                     state_dict_config=FullStateDictConfig(
                         offload_to_cpu=False,
@@ -160,6 +165,7 @@ object in your training function. Below are starter examples for configuring Acc
             trainer = TorchTrainer(
                 train_func,
                 scaling_config=ScalingConfig(...),
+                run_config=ray.train.RunConfig(storage_path="s3://..."),
                 ...
             )
             trainer.fit()

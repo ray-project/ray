@@ -48,8 +48,8 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("38" "39")
-  PY_MMS=("3.8.10" "3.9.5")
+  PY_WHEEL_VERSIONS=("39")
+  PY_MMS=("3.9.5")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
   "${ROOT_DIR}"/../suppress_output bash miniconda3.sh -b -p "$HOME/miniconda3"
   export PATH="$HOME/miniconda3/bin:$PATH"
@@ -93,13 +93,8 @@ if [[ "$platform" == "linux" ]]; then
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 
-  if [ "$(uname -m)" = "arm64" ]; then
-    PY_WHEEL_VERSIONS=("38" "39" "310")
-    PY_MMS=("3.8" "3.9" "3.10")
-  else
-    PY_WHEEL_VERSIONS=("37" "38" "39" "310")
-    PY_MMS=("3.8" "3.9" "3.10")
-  fi
+  PY_WHEEL_VERSIONS=("39" "310")
+  PY_MMS=("3.9" "3.10")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
@@ -144,7 +139,7 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist 'pytest==7.0.1' requests proxy.py
+    "$PIP_CMD" install -q aiohttp aiosignal numpy frozenlist 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090

@@ -1,8 +1,6 @@
 """This example script shows how one can use Ray Serve to serve an already
 trained RLlib Policy (and its model) to serve action computations.
 
-For a complete tutorial, also see:
-https://docs.ray.io/en/master/serve/tutorials/rllib.html
 """
 
 import argparse

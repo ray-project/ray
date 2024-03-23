@@ -1,5 +1,9 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
+
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16
@@ -47,12 +51,10 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
 .. testcode::
 	:hide:
-    :skipif: True
 
     from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
 .. testcode::
-    :skipif: True
 
     config = (
         PPOConfig()
@@ -60,16 +62,15 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
         .resources(
             num_gpus_per_learner_worker=0,  # Set this to 1 to enable GPU training.
             num_cpus_per_learner_worker=1,
-            num_learner_workers=0  # Set this to greater than 0 to allow for DDP style 
+            num_learner_workers=0  # Set this to greater than 1 to allow for DDP style
                                # updates.
         )
     )
 
 .. testcode::
 	:hide:
-    :skipif: True
 
-	config = config.environment(env="CartPole-v1")
+	config = config.environment("CartPole-v1")
 	config.build()  # test that the algorithm can be built with the given resources
 
 
@@ -108,21 +109,15 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 .. testcode::
     :hide:
-    :skipif: True
 
     # imports for the examples
-
-    import numpy as np
     import gymnasium as gym
+    import numpy as np
+
     import ray
-    from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-    from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
-    from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-    from ray.rllib.algorithms.ppo.ppo_learner import PPOLearnerHyperparameters
+    from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-    from ray.rllib.core.learner.learner import FrameworkHyperparameters, LearnerSpec
     from ray.rllib.core.learner.learner_group import LearnerGroup
-    from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
 .. tab-set::
@@ -131,81 +126,71 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 
         .. testcode::
-            :skipif: True
 
             env = gym.make("CartPole-v1")
 
-            module_spec = SingleAgentRLModuleSpec(
-                            module_class=PPOTorchRLModule,
-                            observation_space=env.observation_space,
-                            action_space=env.action_space,
-                            model_config_dict={},
-                            catalog_class=PPOCatalog
-                        )
-
-            hparams = PPOLearnerHyperparameters(
-                use_kl_loss=True, 
-                kl_coeff=0.01,
-                kl_target=0.05, 
-                clip_param=0.2, 
-                vf_clip_param=0.2, 
-                entropy_coeff=0.05,
-                vf_loss_coeff=0.5
+            # Create an AlgorithmConfig object from which we can build the
+            # LearnerGroup.
+            config = (
+                PPOConfig()
+                # Number of Learner workers (ray actors).
+                # Use 0 for no actors, only create a local Learner.
+                # Use >=1 to create n DDP-style Learner workers (ray actors).
+                .resources(num_learner_workers=1)
+                # Specify the learner's hyperparameters.
+                .training(
+                    use_kl_loss=True,
+                    kl_coeff=0.01,
+                    kl_target=0.05,
+                    clip_param=0.2,
+                    vf_clip_param=0.2,
+                    entropy_coeff=0.05,
+                    vf_loss_coeff=0.5
+                )
             )
 
-            scaling_config = LearnerGroupScalingConfig(num_workers=1)
-
-            learner_spec = LearnerSpec(
-                                learner_class=PPOTorchLearner,
-                                module_spec=module_spec,
-                                learner_group_scaling_config=scaling_config,
-                                learner_hyperparameters=hparams,
-                                framework_hyperparameters=FrameworkHyperparameters(),
-                            )
-
-            learner_group = LearnerGroup(learner_spec)
+            # Construct a new LearnerGroup using our config object.
+            learner_group = config.build_learner_group(env=env)
 
     .. tab-item:: Constructing a Learner
 
         .. testcode::
-            :skipif: True
 
             env = gym.make("CartPole-v1")
 
-            module_spec = SingleAgentRLModuleSpec(
-                            module_class=PPOTorchRLModule,
-                            observation_space=env.observation_space,
-                            action_space=env.action_space,
-                            model_config_dict={},
-                            catalog_class=PPOCatalog
-                        )
-
-            hparams = PPOLearnerHyperparameters(
-                use_kl_loss=True, 
-                kl_coeff=0.01,
-                kl_target=0.05, 
-                clip_param=0.2, 
-                vf_clip_param=0.2, 
-                entropy_coeff=0.05,
-                vf_loss_coeff=0.5
+            # Create an AlgorithmConfig object from which we can build the
+            # Learner.
+            config = (
+                PPOConfig()
+                # Specify the Learner's hyperparameters.
+                .training(
+                    use_kl_loss=True,
+                    kl_coeff=0.01,
+                    kl_target=0.05,
+                    clip_param=0.2,
+                    vf_clip_param=0.2,
+                    entropy_coeff=0.05,
+                    vf_loss_coeff=0.5
+                )
             )
+            # Construct a new Learner using our config object.
+            learner = config.build_learner(env=env)
 
-            learner = PPOTorchLearner(
-                module_spec=module_spec, 
-                learner_hyperparameters=hparams,
-                framework_hyperparameters=FrameworkHyperparameters()
-            )
 
 Updates
 -------
 
 .. testcode::
     :hide:
-    :skipif: True
 
-    from ray.rllib.policy.sample_batch import (DEFAULT_POLICY_ID, SampleBatch, 
-        MultiAgentBatch)
+    import time
+
     from ray.rllib.evaluation.postprocessing import Postprocessing
+    from ray.rllib.policy.sample_batch import (
+        DEFAULT_POLICY_ID,
+        SampleBatch,
+        MultiAgentBatch,
+    )
 
     DUMMY_BATCH = {
         SampleBatch.OBS: np.array(
@@ -234,7 +219,10 @@ Updates
     }
     default_batch = SampleBatch(DUMMY_BATCH)
     DUMMY_BATCH = default_batch.as_multi_agent()
-    ADDITIONAL_UPDATE_KWARGS = {"timestep": 0, "sampled_kl_values": {DEFAULT_POLICY_ID: 1e-4}}
+    ADDITIONAL_UPDATE_KWARGS = {
+        "timestep": 0,
+        "sampled_kl_values": {DEFAULT_POLICY_ID: 1e-4},
+    }
 
     learner.build() # needs to be called on the learner before calling any functions
 
@@ -244,14 +232,27 @@ Updates
     .. tab-item:: Updating a LearnerGroup
 
         .. testcode::
-            :skipif: True
 
-            # This is a blocking update
-            results = learner_group.update(DUMMY_BATCH)
+            # This is a blocking update.
+            results = learner_group.update_from_batch(batch=DUMMY_BATCH)
 
             # This is a non-blocking update. The results are returned in a future
-            # call to `async_update`
-            results = learner_group.async_update(DUMMY_BATCH)
+            # call to `update_from_batch(..., async_update=True)`
+            _ = learner_group.update_from_batch(batch=DUMMY_BATCH, async_update=True)
+
+            # Artificially wait for async request to be done to get the results
+            # in the next call to
+            # `LearnerGroup.update_from_batch(..., async_update=True)`.
+            time.sleep(5)
+            results = learner_group.update_from_batch(
+                batch=DUMMY_BATCH, async_update=True
+            )
+            # `results` is a list of results dict. The items in the list represent the different
+            # remote results from the different calls to
+            # `update_from_batch(..., async_update=True)`.
+            assert len(results) > 0
+            # Each item is a results dict, already reduced over the n Learner workers.
+            assert isinstance(results[0], dict), results[0]
 
             # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
@@ -262,10 +263,9 @@ Updates
     .. tab-item:: Updating a Learner
 
         .. testcode::
-            :skipif: True
 
-            # This is a blocking update.
-            result = learner.update(DUMMY_BATCH)
+            # This is a blocking update (given a training batch).
+            result = learner.update_from_batch(batch=DUMMY_BATCH)
 
             # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
@@ -282,13 +282,12 @@ Getting and setting state
     .. tab-item:: Getting and Setting State for a LearnerGroup
 
         .. testcode::
-            :skipif: True
 
-            # module weights and optimizer states
+            # Get the LearnerGroup's RLModule weights and optimizer states.
             state = learner_group.get_state()
             learner_group.set_state(state)
 
-            # just module weights
+            # Only get the RLModule weights.
             weights = learner_group.get_weights()
             learner_group.set_weights(weights)
 
@@ -305,15 +304,14 @@ Getting and setting state
     .. tab-item:: Getting and Setting State for a Learner
 
         .. testcode::
-            :skipif: True
 
-            # module weights and optimizer states
+            # Get the Learner's RLModule weights and optimizer states.
             state = learner.get_state()
             learner.set_state(state)
 
-            # just module state
+            # Only get the RLModule weights (as numpy arrays).
             module_state = learner.get_module_state()
-            learner.module.set_module_state(module_state)
+            learner.module.set_state(module_state)
 
         You can set and get the weights of a :py:class:`~ray.rllib.core.learner.learner.Learner` 
         using :py:meth:`~ray.rllib.core.learner.learner.Learner.set_state` 
@@ -325,9 +323,7 @@ Getting and setting state
 
 .. testcode::
 	:hide:
-    :skipif: True
 
-	import shutil
 	import tempfile
 
 	LEARNER_CKPT_DIR = str(tempfile.TemporaryDirectory())
@@ -342,7 +338,6 @@ Checkpointing
     .. tab-item:: Checkpointing a LearnerGroup
 
         .. testcode::
-            :skipif: True
 
             learner_group.save_state(LEARNER_GROUP_CKPT_DIR)
             learner_group.load_state(LEARNER_GROUP_CKPT_DIR)
@@ -355,7 +350,6 @@ Checkpointing
     .. tab-item:: Checkpointing a Learner
 
         .. testcode::
-            :skipif: True
 
             learner.save_state(LEARNER_CKPT_DIR)
             learner.load_state(LEARNER_CKPT_DIR)
@@ -392,20 +386,19 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
 
 .. testcode::
     :hide:
-    :skipif: True
 
-    from typing import Any, Dict, DefaultDict, Mapping
+    from typing import Any, Dict, DefaultDict
 
-    from ray.rllib.core.learner.learner import LearnerHyperparameters, Learner
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.learner.learner import Learner
     from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-    from ray.rllib.core.rl_module.rl_module import ModuleID
     from ray.rllib.policy.sample_batch import SampleBatch
     from ray.rllib.utils.annotations import override
     from ray.rllib.utils.nested_dict import NestedDict
-    from ray.rllib.utils.typing import TensorType
+    from ray.rllib.utils.numpy import convert_to_numpy
+    from ray.rllib.utils.typing import ModuleID, TensorType
 
 .. testcode::
-    :skipif: True
 
     class BCTorchLearner(TorchLearner):
 
@@ -414,10 +407,10 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
             self,
             *,
             module_id: ModuleID,
-            hps: LearnerHyperparameters,
+            config: AlgorithmConfig = None,
             batch: NestedDict,
-            fwd_out: Mapping[str, TensorType],
-        ) -> Mapping[str, Any]:
+            fwd_out: Dict[str, TensorType],
+        ) -> TensorType:
 
             # standard behavior cloning loss 
             action_dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -427,16 +420,15 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
 
             return loss
 
-
         @override(Learner)
         def compile_results(
             self,
             *,
-            batch: NestedDict,
-            fwd_out: Mapping[str, Any],
-            loss_per_module: Mapping[str, TensorType],
+            batch: MultiAgentBatch,
+            fwd_out: Dict[str, Any],
+            loss_per_module: Dict[str, TensorType],
             metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-        ) -> Mapping[str, Any]:
+        ) -> Dict[str, Any]:
 
             results = super().compile_results(
                 batch=batch,

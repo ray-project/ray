@@ -40,6 +40,7 @@ import setproctitle
 from typing import Literal, Protocol
 
 import ray
+import ray._private.worker
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -55,10 +56,8 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import (
-    StreamingObjectRefGenerator,
-    raise_sys_exit_with_custom_error_message,
-)
+from ray._raylet import raise_sys_exit_with_custom_error_message
+from ray._raylet import ObjectRefGenerator, TaskID
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -428,8 +427,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
-        # TPU_VISIBLE_CHIPS, ..) environment variables.
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
         )
@@ -470,6 +469,9 @@ class Worker:
         self._filter_logs_by_job = True
         # the debugger port for this worker
         self._debugger_port = None
+        # Cache the job id from initialize_job_config() to optimize lookups.
+        # This is on the critical path of ray.get()/put() calls.
+        self._cached_job_id = None
 
     @property
     def connected(self):
@@ -488,7 +490,9 @@ class Worker:
 
     @property
     def current_job_id(self):
-        if hasattr(self, "core_worker"):
+        if self._cached_job_id is not None:
+            return self._cached_job_id
+        elif hasattr(self, "core_worker"):
             return self.core_worker.get_current_job_id()
         return JobID.nil()
 
@@ -509,7 +513,7 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
-    def current_node_id(self):
+    def current_node_id(self) -> ray.NodeID:
         return self.core_worker.get_current_node_id()
 
     @property
@@ -547,12 +551,16 @@ class Worker:
     @property
     def debugger_port(self):
         """Get the debugger port for this worker"""
-        return self._debugger_port
+        worker_id = self.core_worker.get_worker_id()
+        return ray._private.state.get_worker_debugger_port(worker_id)
 
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
         ray._private.state.update_worker_debugger_port(worker_id, port)
-        self._debugger_port = port
+
+    def set_cached_job_id(self, job_id):
+        """Set the cached job id to speed `current_job_id()`."""
+        self._cached_job_id = job_id
 
     @contextmanager
     def task_paused_by_debugger(self):
@@ -567,6 +575,18 @@ class Worker:
                 ray.get_runtime_context()._get_current_task_id(), False
             )
 
+    @contextmanager
+    def worker_paused_by_debugger(self):
+        """
+        Updates the worker num paused threads when the worker is paused by debugger
+        """
+        try:
+            worker_id = self.core_worker.get_worker_id()
+            ray._private.state.update_worker_num_paused_threads(worker_id, 1)
+            yield
+        finally:
+            ray._private.state.update_worker_num_paused_threads(worker_id, -1)
+
     def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's err file where stderr is redirected to"""
         self._err_file = err_file
@@ -575,7 +595,7 @@ class Worker:
         """Set the worker's out file where stdout is redirected to"""
         self._out_file = out_file
 
-    def record_task_log_start(self):
+    def record_task_log_start(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task starts executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -589,13 +609,15 @@ class Worker:
             return
 
         self.core_worker.record_task_log_start(
+            task_id,
+            attempt_number,
             self.get_out_file_path(),
             self.get_err_file_path(),
             self.get_current_out_offset(),
             self.get_current_err_offset(),
         )
 
-    def record_task_log_end(self):
+    def record_task_log_end(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task finishes executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -609,7 +631,10 @@ class Worker:
             return
 
         self.core_worker.record_task_log_end(
-            self.get_current_out_offset(), self.get_current_err_offset()
+            task_id,
+            attempt_number,
+            self.get_current_out_offset(),
+            self.get_current_err_offset(),
         )
 
     def get_err_file_path(self) -> str:
@@ -688,7 +713,13 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None):
+    def put_object(
+        self,
+        value: Any,
+        object_ref: Optional["ray.ObjectRef"] = None,
+        owner_address: Optional[str] = None,
+        _is_experimental_channel: bool = False,
+    ):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -703,6 +734,10 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
+            _is_experimental_channel: An experimental flag for mutable
+                objects. If True, then the returned object will not have a
+                valid value. The object must be written to using the
+                ray.experimental.channel API before readers can read.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -736,6 +771,11 @@ class Worker:
                 f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
+
+        # If the object is mutable, then the raylet should never read the
+        # object. Instead, clients will keep the object pinned.
+        pin_object = not _is_experimental_channel
+
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -744,7 +784,11 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value, object_ref=object_ref, owner_address=owner_address
+                serialized_value,
+                object_ref=object_ref,
+                pin_object=pin_object,
+                owner_address=owner_address,
+                _is_experimental_channel=_is_experimental_channel,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -766,7 +810,11 @@ class Worker:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_refs: list, timeout: Optional[float] = None):
+    def get_objects(
+        self,
+        object_refs: list,
+        timeout: Optional[float] = None,
+    ):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -793,7 +841,9 @@ class Worker:
 
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_refs, self.current_task_id, timeout_ms
+            object_refs,
+            self.current_task_id,
+            timeout_ms,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
@@ -805,10 +855,16 @@ class Worker:
                     debugger_breakpoint = metadata_fields[1][
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
-        return (
-            self.deserialize_objects(data_metadata_pairs, object_refs),
-            debugger_breakpoint,
-        )
+        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        for i, value in enumerate(values):
+            if isinstance(value, RayError):
+                if isinstance(value, ray.exceptions.ObjectLostError):
+                    global_worker.core_worker.dump_object_store_memory_usage()
+                if isinstance(value, RayTaskError):
+                    raise value.as_instanceof_cause()
+                else:
+                    raise value
+        return values, debugger_breakpoint
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -878,7 +934,7 @@ class Worker:
 
     def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> List[str]:
+    ) -> Union[List[str], List[int]]:
         """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
@@ -886,7 +942,8 @@ class Worker:
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource.
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
@@ -904,7 +961,8 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
+        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
@@ -918,12 +976,12 @@ class Worker:
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
-        return [str(assigned_id) for assigned_id in assigned_ids]
+        return list(assigned_ids)
 
 
 @PublicAPI
 @client_mode_hook
-def get_gpu_ids():
+def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -936,12 +994,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return [
-        int(i)
-        for i in worker.get_accelerator_ids_for_accelerator_resource(
-            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-        )
-    ]
+    return worker.get_accelerator_ids_for_accelerator_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -1104,7 +1159,6 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         super().__init__()
@@ -1112,9 +1166,6 @@ class RayContext(BaseContext, Mapping):
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
-        # No client protocol version since this driver was intiialized
-        # directly
-        self.protocol_version = None
         self.address_info = address_info
 
     def __getitem__(self, key):
@@ -1592,10 +1643,11 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
+            ray_params=ray_params,
             head=True,
             shutdown_at_exit=False,
             spawn_reaper=True,
-            ray_params=ray_params,
+            ray_init_cluster=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -1793,6 +1845,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
+    global_worker.set_cached_job_id(None)
 
 
 atexit.register(shutdown, True)
@@ -2283,29 +2336,50 @@ def connect(
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        # We also want to skip adding script directory when running from dashboard.
-        code_paths = []
-        if not interactive_mode and not (
-            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+        # paths of the workers. Also add the current directory. This is useful when the
+        # worker code references local libraries like `import local_lib`, *without*
+        # working_dir set and the worker and driver are on the same node, e.g. when the
+        # user is running on a single node cluster on their laptop.
+        #
+        # In production, This is not encouraged, and won't work if the driver and worker
+        # are on different nodes. In that case, the user should use `working_dir` to
+        # specify the code search path.
+        #
+        # Formally, the local path(s) should be added when all of these are true:
+        # (1) there's no working_dir (or code search path should be in working_dir),
+        # (2) it's not interactive mode, (there's no script file in interactive mode),
+        # (3) it's not in dashboard (should only skip script location but still append
+        #   current directory),
+        # (4) it's not client mode, (handled by client code)
+        # (5) the driver is at the same node (machine) as the worker.
+        #
+        # We only do the first 4 checks here. The (5) check is done in _raylet.pyx
+        # maybe_initialize_job_config.
+        if not any(
+            [
+                job_config._runtime_env_has_working_dir(),
+                interactive_mode,
+                job_config._client_job,
+            ]
         ):
-            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            code_paths = set()
+            script_directory = os.path.dirname(os.path.realpath(driver_name))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                code_paths.append(script_directory)
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
+                # If user code contains names like `utils`, it will be conflicting with
+                # the `utils` module in the dashboard module. We should skip adding
+                # script directory for dashboard clients and should have the
+                # current directory available for loading user code.
+                # See: https://github.com/anyscale/product/issues/20746
+                if namespace != ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE:
+                    code_paths.add(script_directory)
             current_directory = os.path.abspath(os.path.curdir)
-            code_paths.append(current_directory)
-        if len(code_paths) != 0:
-            job_config._py_driver_sys_path.extend(code_paths)
+            code_paths.add(current_directory)
+            if len(code_paths) != 0:
+                job_config._py_driver_sys_path.extend(code_paths)
 
     serialized_job_config = job_config._serialize()
     if not node.should_redirect_logs():
@@ -2433,19 +2507,6 @@ def disconnect(exiting_interpreter=False):
         ray_actor._ActorClassMethodMetadata.reset_cache()
 
 
-def start_import_thread():
-    """Start the import thread if the worker is connected."""
-    worker = global_worker
-    worker.check_connected()
-
-    assert _mode() not in (
-        RESTORE_WORKER_MODE,
-        SPILL_WORKER_MODE,
-    ), "import thread can not be used in IO workers."
-    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
-        worker.import_thread.start()
-
-
 @contextmanager
 def _changeproctitle(title, next_title):
     if _mode() is not LOCAL_MODE:
@@ -2531,7 +2592,7 @@ def get(
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
-    Passing :class:`~StreamingObjectRefGenerator` is not allowed.
+    Passing :class:`~ObjectRefGenerator` is not allowed.
 
     Related patterns and anti-patterns:
 
@@ -2574,9 +2635,9 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        # TODO(sang): Should make StreamingObjectRefGenerator
+        # TODO(sang): Should make ObjectRefGenerator
         # compatible to ray.get for dataset.
-        if isinstance(object_refs, StreamingObjectRefGenerator):
+        if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2623,7 +2684,9 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
+    value: Any,
+    *,
+    _owner: Optional["ray.actor.ActorHandle"] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2686,14 +2749,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"],
+    ray_waitables: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-    List[Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"]],
-    List[Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"]],
+    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
 ]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -2703,7 +2766,7 @@ def wait(
     and returns that exact number of object refs.
 
     `ray_waitables` is a list of :class:`~ObjectRef` and
-    :class:`~StreamingObjectRefGenerator`.
+    :class:`~ObjectRefGenerator`.
 
     The method returns two lists, ready and unready `ray_waitables`.
 
@@ -2712,7 +2775,7 @@ def wait(
         in the object store are in the first list.
         The rest of the object refs are in the second list.
 
-    StreamingObjectRefGenerator:
+    ObjectRefGenerator:
             Generators whose next reference (that will be obtained
             via `next(generator)`) has a corresponding object available
             in the object store are in the first list.
@@ -2734,7 +2797,7 @@ def wait(
 
     Args:
         ray_waitables: List of :class:`~ObjectRef` or
-            :class:`~StreamingObjectRefGenerator` for objects that may or may
+            :class:`~ObjectRefGenerator` for objects that may or may
             not be ready. Note that these must be unique.
         num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
@@ -2768,18 +2831,18 @@ def wait(
             blocking_wait_inside_async_warned = True
 
     if isinstance(ray_waitables, ObjectRef) or isinstance(
-        ray_waitables, StreamingObjectRefGenerator
+        ray_waitables, ObjectRefGenerator
     ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
-            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
+            "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.ObjectRefGenerator "
             f"{ray_waitables}"
         )
 
     if not isinstance(ray_waitables, list):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef or "
-            "ray.StreamingObjectRefGenerator, "
+            "ray.ObjectRefGenerator, "
             f"got {type(ray_waitables)}"
         )
 
@@ -2790,11 +2853,11 @@ def wait(
 
     for ray_waitable in ray_waitables:
         if not isinstance(ray_waitable, ObjectRef) and not isinstance(
-            ray_waitable, StreamingObjectRefGenerator
+            ray_waitable, ObjectRefGenerator
         ):
             raise TypeError(
                 "wait() expected a list of ray.ObjectRef or "
-                "ray.StreamingObjectRefGenerator, "
+                "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
             )
     worker.check_connected()
@@ -2898,7 +2961,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 @PublicAPI
 @client_mode_hook
 def cancel(
-    ray_waitable: Union["ObjectRef[R]", "StreamingObjectRefGenerator[R]"],
+    ray_waitable: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
     *,
     force: bool = False,
     recursive: bool = True,
@@ -2950,7 +3013,7 @@ def cancel(
 
     Args:
         ray_waitable: :class:`~ObjectRef` and
-            :class:`~StreamingObjectRefGenerator`
+            :class:`~ObjectRefGenerator`
             returned by the task that should be canceled.
         force: Whether to force-kill a running task by killing
             the worker that is running the task.
@@ -2960,7 +3023,7 @@ def cancel(
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    if isinstance(ray_waitable, ray._raylet.StreamingObjectRefGenerator):
+    if isinstance(ray_waitable, ray._raylet.ObjectRefGenerator):
         assert hasattr(ray_waitable, "_generator_ref")
         ray_waitable = ray_waitable._generator_ref
 
@@ -3303,7 +3366,7 @@ def remote(
             invocation. The default value is 1.
             Pass "dynamic" to allow the task to decide how many
             return values to return during execution, and the caller will
-            receive an ObjectRef[ObjectRefGenerator].
+            receive an ObjectRef[DynamicObjectRefGenerator].
             See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.

@@ -2,7 +2,7 @@ import dataclasses
 import logging
 from typing import Any, Dict, Iterator, List, Optional, Union
 import ray
-from pkg_resources import packaging
+import packaging.version
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.dashboard.modules.job.utils import strip_keys_with_value_none
 from ray.dashboard.modules.job.pydantic_models import (
@@ -214,6 +214,17 @@ class JobSubmissionClient(SubmissionClient):
         self._upload_working_dir_if_needed(runtime_env)
         self._upload_py_modules_if_needed(runtime_env)
 
+        # Verify worker_process_setup_hook type.
+        setup_hook = runtime_env.get("worker_process_setup_hook")
+        if setup_hook and not isinstance(setup_hook, str):
+            raise ValueError(
+                f"Invalid type {type(setup_hook)} for `worker_process_setup_hook`. "
+                "When a job submission API is used, `worker_process_setup_hook` "
+                "only allows a string type (module name). "
+                "Specify `worker_process_setup_hook` via "
+                "ray.init within a driver to use a `Callable` type. "
+            )
+
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
@@ -276,7 +287,7 @@ class JobSubmissionClient(SubmissionClient):
         else:
             self._raise_error(r)
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="stable")
     def delete_job(
         self,
         job_id: str,

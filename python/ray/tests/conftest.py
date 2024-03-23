@@ -134,6 +134,7 @@ def get_default_fixure_system_config():
         "health_check_initial_delay_ms": 0,
         "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
+        "local_gc_min_interval_s": 1,
     }
     return system_config
 
@@ -703,12 +704,15 @@ def enable_pickle_debug():
 
 
 @pytest.fixture
-def set_enable_auto_connect(enable_auto_connect: str = "0"):
+def set_enable_auto_connect(enable_auto_connect: bool = False):
+    from ray._private import auto_init_hook
+
     try:
-        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        old_value = auto_init_hook.enable_auto_connect
+        auto_init_hook.enable_auto_connect = enable_auto_connect
         yield enable_auto_connect
     finally:
-        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
+        auto_init_hook.enable_auto_connect = old_value
 
 
 @pytest.fixture
@@ -1045,7 +1049,7 @@ def append_short_test_summary(rep):
 
     summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
 
-    if platform.system() != "Linux":
+    if platform.system() == "Darwin":
         summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR_HOST")
 
     if not summary_dir:
@@ -1056,9 +1060,9 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
-    if os.name == "nt":
+    if platform.system() == "Windows":
         # ":" is not legal in filenames in windows
-        test_name.replace(":", "$")
+        test_name = test_name.replace(":", "$")
 
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
@@ -1170,7 +1174,7 @@ def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
     if not commit:
         return file, ""
 
-    path = os.path.relpath(file, "/ray")
+    path = file.split("com_github_ray_project_ray/")[-1]
 
     return path, base_url.format(commit=commit, path=path, lineno=lineno)
 
@@ -1180,7 +1184,7 @@ def create_ray_logs_for_failed_test(rep):
 
     # We temporarily restrict to Linux until we have artifact dirs
     # for Windows and Mac
-    if platform.system() != "Linux":
+    if platform.system() != "Linux" and platform.system() != "Windows":
         return
 
     # Only archive failed tests after the "call" phase of the test
@@ -1205,6 +1209,9 @@ def create_ray_logs_for_failed_test(rep):
 
     # Write zipped logs to logs archive dir
     test_name = rep.nodeid.replace(os.sep, "::")
+    if platform.system() == "Windows":
+        # ":" is not legal in filenames in windows
+        test_name = test_name.replace(":", "$")
     output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
     shutil.make_archive(output_file, "zip", logs_dir)
 

@@ -9,7 +9,12 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import EndpointInfo, EndpointTag, RunningReplicaInfo
+from ray.serve._private.common import (
+    DeploymentID,
+    EndpointInfo,
+    ReplicaID,
+    RunningReplicaInfo,
+)
 from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,
@@ -203,7 +208,7 @@ def test_listen_for_change_java(serve_instance):
     assert set(poll_result_1.updated_objects.keys()) == {"key_1"}
     assert poll_result_1.updated_objects["key_1"].object_snapshot.decode() == "999"
     request_2 = {"keys_to_snapshot_ids": {"ROUTE_TABLE": -1}}
-    endpoints: Dict[EndpointTag, EndpointInfo] = dict()
+    endpoints: Dict[DeploymentID, EndpointInfo] = dict()
     endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll")
     endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1")
     ray.get(host.notify_changed.remote(LongPollNamespace.ROUTE_TABLE, endpoints))
@@ -222,12 +227,13 @@ def test_listen_for_change_java(serve_instance):
     request_3 = {"keys_to_snapshot_ids": {"(RUNNING_REPLICAS,deployment_name)": -1}}
     replicas = [
         RunningReplicaInfo(
-            deployment_name="deployment_name",
-            replica_tag=str(i),
+            replica_id=ReplicaID(
+                str(i), deployment_id=DeploymentID(name="deployment_name")
+            ),
             node_id="node_id",
             availability_zone="some-az",
             actor_handle=host,
-            max_concurrent_queries=1,
+            max_ongoing_requests=1,
         )
         for i in range(2)
     ]
@@ -246,7 +252,10 @@ def test_listen_for_change_java(serve_instance):
             "(RUNNING_REPLICAS,deployment_name)"
         ].object_snapshot
     )
-    assert replica_name_list.names == ["SERVE_REPLICA::0", "SERVE_REPLICA::1"]
+    assert replica_name_list.names == [
+        "SERVE_REPLICA::default#deployment_name#0",
+        "SERVE_REPLICA::default#deployment_name#1",
+    ]
 
 
 if __name__ == "__main__":

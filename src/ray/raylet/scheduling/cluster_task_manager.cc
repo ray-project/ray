@@ -308,44 +308,6 @@ bool ClusterTaskManager::CancelTask(
       task_id, failure_type, scheduling_failure_message);
 }
 
-void ClusterTaskManager::CancelTaskForOwner(
-    const TaskID &owner_task_id,
-    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-    const std::string &scheduling_failure_message) {
-  std::function<bool(std::shared_ptr<internal::Work>)> filter(
-      [owner_task_id, failure_type, scheduling_failure_message](
-          std::shared_ptr<internal::Work> work) {
-        auto task = work->task;
-        if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
-          if (!task.GetTaskSpecification().IsDetachedActor()) {
-            RAY_LOG(DEBUG) << "Canceling task from owner " << owner_task_id
-                           << " for task " << task.GetTaskSpecification().DebugString();
-            ReplyCancelled(*work, failure_type, scheduling_failure_message);
-            return true;
-          }
-        }
-        return false;
-      });
-
-  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
-       shapes_it++) {
-    auto &work_queue = shapes_it->second;
-    remove_elements(filter, work_queue);
-    if (work_queue.empty()) {
-      tasks_to_schedule_.erase(shapes_it);
-    }
-  }
-
-  for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
-       shapes_it++) {
-    auto &work_queue = shapes_it->second;
-    remove_elements(filter, work_queue);
-    if (work_queue.empty()) {
-      infeasible_tasks_.erase(shapes_it);
-    }
-  }
-}
-
 void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   // This populates load information.
   scheduler_resource_reporter_.FillResourceUsage(data);
@@ -360,6 +322,8 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   data.set_object_pulls_queued(resource_view_sync_message.object_pulls_queued());
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   data.set_is_draining(resource_view_sync_message.is_draining());
+  data.set_draining_deadline_timestamp_ms(
+      resource_view_sync_message.draining_deadline_timestamp_ms());
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(

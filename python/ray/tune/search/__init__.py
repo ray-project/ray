@@ -21,12 +21,6 @@ def _import_ax_search():
     return AxSearch
 
 
-def _import_skopt_search():
-    from ray.tune.search.skopt.skopt_search import SkOptSearch
-
-    return SkOptSearch
-
-
 def _import_hyperopt_search():
     from ray.tune.search.hyperopt.hyperopt_search import HyperOptSearch
 
@@ -43,6 +37,12 @@ def _import_bohb_search():
     from ray.tune.search.bohb.bohb_search import TuneBOHB
 
     return TuneBOHB
+
+
+def _import_nevergrad_search():
+    from ray.tune.search.nevergrad.nevergrad_search import NevergradSearch
+
+    return NevergradSearch
 
 
 def _import_optuna_search():
@@ -67,10 +67,10 @@ SEARCH_ALG_IMPORT = {
     "variant_generator": _import_variant_generator,
     "random": _import_variant_generator,
     "ax": _import_ax_search,
-    "skopt": _import_skopt_search,
     "hyperopt": _import_hyperopt_search,
     "bayesopt": _import_bayesopt_search,
     "bohb": _import_bohb_search,
+    "nevergrad": _import_nevergrad_search,
     "optuna": _import_optuna_search,
     "zoopt": _import_zoopt_search,
     "hebo": _import_hebo_search,

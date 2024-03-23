@@ -1,6 +1,6 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+.. include:: /_includes/rllib/new_api_stack.rst
 
 Examples
 ========
@@ -43,46 +43,21 @@ Environments and Adapters
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
    For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
-- `Rendering and recording of an environment <https://github.com/ray-project/ray/blob/master/rllib/examples/env_rendering_and_recording.py>`__:
-   Example showing how to switch on rendering and recording of an env.
-- `Coin Game Example <https://github.com/ray-project/ray/blob/master/rllib/examples/coin_game_env.py>`__:
-   Coin Game Env Example (provided by the "Center on Long Term Risk").
-- `DMLab Watermaze example <https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py>`__:
-   Example for how to use a DMLab environment (Watermaze).
-- `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py>`__:
-   Script showing how to train SlateQ on a RecSym environment.
-- `SUMO (Simulation of Urban MObility) environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py>`__:
-   Example demonstrating how to use the SUMO simulator in connection with RLlib.
-- `VizDoom example script using RLlib's auto-attention wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/vizdoom_with_attention_net.py>`__:
-   Script showing how to run PPO with an attention net against a VizDoom gym environment.
-- `Subprocess environment <https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py>`__:
-   Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
-
 
 Custom- and Complex Models
 --------------------------
 
-- `Attention Net (GTrXL) learning the "repeat-after-me" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__:
-   Example showing how to use the auto-attention wrapper for your default- and custom models in RLlib.
-- `LSTM model learning the "repeat-after-me" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/lstm_auto_wrapping.py>`__:
-   Example showing how to use the auto-LSTM wrapper for your default- and custom models in RLlib.
 - `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__:
    Example of using a custom Keras model.
-- `Custom Keras/PyTorch RNN model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py>`__:
-   Example of using a custom Keras- or PyTorch RNN model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
-- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__:
+- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/models/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.
-- `Eager execution <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__:
-   Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
-- `Custom "Fast" Model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_fast_model.py>`__:
-   Example of a "fast" Model learning only one parameter for tf and torch.
 - `Custom model API example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
    Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
-- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/trajectory_view_api.py>`__:
+- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/models/trajectory_view_utilizing_models.py>`__:
    An example on how a model can use the trajectory view API to specify its own input.
-- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py>`__:
+- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/models/mobilenet_v2_with_lstm_models.py>`__:
    Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
 - `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/models/neural_computer.py>`__:
    Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
@@ -100,12 +75,6 @@ Training Workflows
    How to setup a custom Logger object in RLlib.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
-- `Custom Policy class (TensorFlow) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__:
-   How to setup a custom TFPolicy.
-- `Custom Policy class (PyTorch) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`__:
-   How to setup a custom TorchPolicy.
-- `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__:
-   Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 - `Custom execution plan function handling two different Policies (DQN and PPO) at the same time <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__:
    Example of how to use the exec. plan of an Algorithm to trin two different policies in parallel (also using multi-agent API).
 - `Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_experiment.py>`__:
@@ -124,8 +93,6 @@ Serving and Offline
 -------------------
 - `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py>`__:
    Example showing how to run an offline RL training job using a historic-data json file.
-- :ref:`Serving RLlib models with Ray Serve <serve-rllib-tutorial>`: Example of using Ray Serve to serve RLlib models
-   with HTTP and JSON interface. **This is the recommended way to expose RLlib for online serving use case**.
 - `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py>`__
    This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained
    one and serving the new policy via Ray Serve.
@@ -168,14 +135,6 @@ Multi-Agent and Hierarchical
    Example of alternating training between DQN and PPO.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
-- `Iterated Prisoner's Dilemma environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/iterated_prisoners_dilemma_env.py>`__:
-   Example of an iterated prisoner's dilemma environment solved by RLlib.
-
-
-GPU examples
-------------
-- `Example showing how to setup fractional GPUs <https://github.com/ray-project/ray/blob/master/rllib/examples/partial_gpus.py>`__:
-   Example of how to setup fractional GPUs for learning (driver) and environment rollouts (remote workers).
 
 
 Special Action- and Observation Spaces
@@ -184,9 +143,7 @@ Special Action- and Observation Spaces
 - `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/nested_action_spaces.py>`__:
    Learning in arbitrarily nested action spaces.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__:
-   Example of how to handle variable-length or parametric action spaces (see also `this example here <https://github.com/ray-project/ray/blob/master/rllib/examples/random_parametric_agent.py>`__).
-- `Custom observation filters <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_observation_filters.py>`__:
-   How to filter raw observations coming from the environment for further processing by the Agent's model(s).
+   Example of how to handle variable-length or parametric action spaces.
 - `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py>`__:
    How to use RLlib's `Repeated` space to handle variable length observations.
 - `Autoregressive action distribution example <https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py>`__:
@@ -199,7 +156,7 @@ Community Examples
    A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence
    with RLlib-generated baselines.
 - `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
-   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.   
+   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
 - `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
    Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
    "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication) (`code <https://github.com/proroklab/adversarial_comms>`__).

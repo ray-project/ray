@@ -200,15 +200,14 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status raylet::RayletClient::TaskDone() {
-  return conn_->WriteMessage(MessageType::TaskDone);
+Status raylet::RayletClient::ActorCreationTaskDone() {
+  return conn_->WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
 Status raylet::RayletClient::FetchOrReconstruct(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses,
     bool fetch_only,
-    bool mark_worker_blocked,
     const TaskID &current_task_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
@@ -218,7 +217,6 @@ Status raylet::RayletClient::FetchOrReconstruct(
                                          object_ids_message,
                                          AddressesToFlatbuffer(fbb, owner_addresses),
                                          fetch_only,
-                                         mark_worker_blocked,
                                          to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
@@ -249,7 +247,6 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns,
                                   int64_t timeout_milliseconds,
-                                  bool mark_worker_blocked,
                                   const TaskID &current_task_id,
                                   WaitResultPair *result) {
   // Write request.
@@ -259,7 +256,6 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                              AddressesToFlatbuffer(fbb, owner_addresses),
                                              num_returns,
                                              timeout_milliseconds,
-                                             mark_worker_blocked,
                                              to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
@@ -337,15 +333,6 @@ void raylet::RayletClient::RequestWorkerLease(
   request->set_backlog_size(backlog_size);
   request->set_is_selected_based_on_locality(is_selected_based_on_locality);
   grpc_client_->RequestWorkerLease(*request, callback);
-}
-
-/// Spill objects to external storage.
-void raylet::RayletClient::RequestObjectSpillage(
-    const ObjectID &object_id,
-    const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback) {
-  rpc::RequestObjectSpillageRequest request;
-  request.set_object_id(object_id.Binary());
-  grpc_client_->RequestObjectSpillage(request, callback);
 }
 
 std::shared_ptr<grpc::Channel> raylet::RayletClient::GetChannel() const {
@@ -518,10 +505,12 @@ void raylet::RayletClient::ShutdownRaylet(
 void raylet::RayletClient::DrainRaylet(
     const rpc::autoscaler::DrainNodeReason &reason,
     const std::string &reason_message,
+    int64_t deadline_timestamp_ms,
     const rpc::ClientCallback<rpc::DrainRayletReply> &callback) {
   rpc::DrainRayletRequest request;
   request.set_reason(reason);
   request.set_reason_message(reason_message);
+  request.set_deadline_timestamp_ms(deadline_timestamp_ms);
   grpc_client_->DrainRaylet(request, callback);
 }
 

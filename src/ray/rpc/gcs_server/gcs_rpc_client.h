@@ -409,6 +409,12 @@ class GcsRpcClient {
                              worker_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Update the worker number of paused threads delta
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             UpdateWorkerNumPausedThreads,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   /// Create placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
                              CreatePlacementGroup,
@@ -518,9 +524,11 @@ class GcsRpcClient {
     auto status = channel_->GetState(false);
     // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
     // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
-    RAY_LOG(DEBUG) << "GCS channel status: " << status;
+    if (status != GRPC_CHANNEL_READY) {
+      RAY_LOG(DEBUG) << "GCS channel status: " << status;
+    }
 
-    // We need to cleanup all the pending requets which are timeout.
+    // We need to cleanup all the pending requests which are timeout.
     auto now = absl::Now();
     while (!pending_requests_.empty()) {
       auto iter = pending_requests_.begin();
@@ -550,8 +558,8 @@ class GcsRpcClient {
                             "`ray stop` or "
                          << "is killed unexpectedly. If it is killed unexpectedly, "
                          << "see the log file gcs_server.out. "
-                         << "https://docs.ray.io/en/master/ray-observability/"
-                            "ray-logging.html#logging-directory-structure. "
+                         << "https://docs.ray.io/en/master/ray-observability/user-guides/"
+                            "configure-logging.html#logging-directory-structure. "
                          << "The program will terminate.";
           std::_Exit(EXIT_FAILURE);
         }

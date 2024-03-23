@@ -7,9 +7,9 @@ import shutil
 import tempfile
 import unittest
 
-import skopt
 import numpy as np
 from hyperopt import hp
+from nevergrad.optimization import optimizerlib
 from zoopt import ValueType
 from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
@@ -19,7 +19,7 @@ from ray.rllib import _register_all
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.bayesopt import BayesOptSearch
-from ray.tune.search.skopt import SkOptSearch
+from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.search.hebo import HEBOSearch
@@ -189,22 +189,22 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         )
 
 
-class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
-        optimizer = skopt.Optimizer([(0, 20), (-100, 100)])
-        previously_run_params = [[10, 0], [15, -20]]
-        known_rewards = [-189, -1144]
+        instrumentation = 2
+        parameter_names = ["height", "width"]
+        optimizer = optimizerlib.OnePlusOne(instrumentation)
 
         def cost(space):
-            train.report(dict(loss=(space["height"] ** 2 + space["width"] ** 2)))
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
-        search_alg = SkOptSearch(
+        search_alg = NevergradSearch(
             optimizer,
-            ["width", "height"],
+            space=parameter_names,
             metric="loss",
             mode="min",
-            points_to_evaluate=previously_run_params,
-            evaluated_rewards=known_rewards,
         )
         return search_alg, cost
 

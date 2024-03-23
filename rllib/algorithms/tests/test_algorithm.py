@@ -11,7 +11,9 @@ import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
+from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
+    AssertEvalCallback,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -102,6 +104,8 @@ class TestAlgorithm(unittest.TestCase):
                     new_pol = algo.add_policy(
                         pid,
                         algo.get_default_policy_class(config),
+                        observation_space=obs_space,
+                        action_space=act_space,
                         # Test changing the mapping fn.
                         policy_mapping_fn=new_mapping_fn,
                         # Change the list of policies to train.
@@ -237,6 +241,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
+                always_attach_evaluation_results=False,
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -310,7 +315,7 @@ class TestAlgorithm(unittest.TestCase):
             algo_wo_env_on_local_worker = config.build()
             self.assertRaisesRegex(
                 ValueError,
-                "Cannot evaluate w/o an evaluation worker set",
+                "Cannot evaluate on a local worker",
                 algo_wo_env_on_local_worker.evaluate,
             )
             algo_wo_env_on_local_worker.stop()

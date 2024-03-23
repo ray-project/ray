@@ -246,6 +246,9 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
                                     int64_t timeout_ms,
                                     bool is_from_worker) {
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Adding get request " << object_id;
+  }
   get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
 }
 
@@ -419,9 +422,23 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     ProcessGetRequest(client, object_ids_to_get, timeout_ms, is_from_worker);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
-    RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id));
+    // May unmap: client knows a fallback-allocated fd is involved.
+    // Should unmap: server finds refcnt == 0 -> need to be unmapped.
+    bool may_unmap;
+    RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
     bool should_unmap = ReleaseObject(object_id, client);
-    RAY_RETURN_NOT_OK(SendReleaseReply(client, object_id, should_unmap, PlasmaError::OK));
+    if (!may_unmap) {
+      RAY_CHECK(!should_unmap)
+          << "Plasma client thinks a mmap should not be unmapped but server thinks so. "
+             "This should not happen because a client knows the object is "
+             "fallback-allocated in Get/Create time. Object ID: "
+          << object_id;
+    }
+    if (may_unmap) {
+      RAY_RETURN_NOT_OK(
+          SendReleaseReply(client, object_id, should_unmap, PlasmaError::OK));
+    }
+
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
     std::vector<ObjectID> object_ids;

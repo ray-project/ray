@@ -9,7 +9,6 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.replica.ReplicaName;
-import io.ray.serve.util.CommonUtil;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -24,21 +23,14 @@ public class ServeTest {
     try {
       String dummyName = "getReplicaContextNormalTest";
       ReplicaName replicaName = new ReplicaName(dummyName, RandomStringUtils.randomAlphabetic(6));
-      String controllerName = dummyName;
       Object servableObject = new Object();
       Serve.setInternalReplicaContext(
-          replicaName.getDeploymentTag(),
-          replicaName.getReplicaTag(),
-          controllerName,
-          servableObject,
-          null,
-          null);
+          replicaName.getDeploymentTag(), replicaName.getReplicaTag(), servableObject, null, null);
 
       ReplicaContext replicaContext = Serve.getReplicaContext();
       Assert.assertNotNull(replicaContext, "no replica context");
       Assert.assertEquals(replicaContext.getDeploymentName(), replicaName.getDeploymentTag());
       Assert.assertEquals(replicaContext.getReplicaTag(), replicaName.getReplicaTag());
-      Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
     } finally {
       BaseServeTest.clearContext();
     }
@@ -91,13 +83,7 @@ public class ServeTest {
       BaseServeTest.initRay();
 
       // Mock controller.
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, "getGlobalClientInReplicaTest");
-      Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
-
-      // Mock replica context.
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null, null);
+      Ray.actor(DummyServeController::new, "").setName(Constants.SERVE_CONTROLLER_NAME).remote();
 
       // Get client.
       ServeControllerClient client = Serve.getGlobalClient();

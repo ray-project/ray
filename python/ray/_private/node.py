@@ -22,7 +22,6 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-import ray._private.utils
 from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
@@ -55,6 +54,7 @@ class Node:
         spawn_reaper: bool = True,
         connect_only: bool = False,
         default_worker: bool = False,
+        ray_init_cluster: bool = False,
     ):
         """Start a node.
 
@@ -70,6 +70,7 @@ class Node:
             connect_only: If true, connect to the node without starting
                 new processes.
             default_worker: Whether it's running from a ray worker or not
+            ray_init_cluster: Whether it's a cluster created by ray.init()
         """
         if shutdown_at_exit:
             if connect_only:
@@ -84,6 +85,10 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
+
+        self.ray_init_cluster = ray_init_cluster
+        if ray_init_cluster:
+            assert head, "ray.init() created cluster only has the head node"
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
@@ -330,7 +335,9 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
-        self._record_stats()
+
+        if not connect_only:
+            self._record_stats()
 
     def check_persisted_session_name(self):
         if self._ray_params.external_addresses is None:
@@ -385,7 +392,10 @@ class Node:
 
         if not cluster_metadata:
             return
-        ray._private.utils.check_version_info(cluster_metadata)
+        node_ip_address = ray._private.services.get_node_ip_address()
+        ray._private.utils.check_version_info(
+            cluster_metadata, f"node {node_ip_address}"
+        )
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -1206,6 +1216,8 @@ class Node:
         any modification to these files may break existing
         cluster launching commands.
         """
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
         stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
@@ -1217,6 +1229,7 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             monitor_ip=self._node_ip_address,
+            autoscaler_v2=is_autoscaler_v2(fetch_from_server=True),
         )
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
@@ -1250,7 +1263,9 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
+        ray_usage_lib.put_cluster_metadata(
+            self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
+        )
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
             b"session_name",
@@ -1720,11 +1735,16 @@ class Node:
         external_storage.reset_external_storage()
 
     def _record_stats(self):
+        # This is only called when a new node is started.
         # Initialize the internal kv so that the metrics can be put
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._private.usage.usage_lib import (
+            TagKey,
+            record_extra_usage_tag,
+            record_hardware_usage,
+        )
 
         if not ray.experimental.internal_kv._internal_kv_initialized():
-            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client())
         assert ray.experimental.internal_kv._internal_kv_initialized()
         if self.head:
             # record head node stats
@@ -1732,3 +1752,9 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
+        cpu_model_name = ray._private.utils.get_current_node_cpu_model_name()
+        if cpu_model_name:
+            # CPU model name can be an arbitrary long string
+            # so we truncate it to the first 50 characters
+            # to avoid any issues.
+            record_hardware_usage(cpu_model_name[:50])
