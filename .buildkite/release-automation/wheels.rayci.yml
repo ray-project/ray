@@ -18,11 +18,12 @@ steps:
     depends_on: 
       - forge
       - forge_arm64
-      - upload-wheels-testpypi
+      # - upload-wheels-testpypi
 
   - label: "Linux x86_64 Python {{matrix}}"
     key: validate-linux-x86_64-wheels
     job_env: forge
+    tags: disabled
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
@@ -37,6 +38,7 @@ steps:
     key: validate-linux-arm64-wheels
     instance_type: medium-arm64
     job_env: forge-arm64
+    tags: disabled
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
@@ -51,6 +53,7 @@ steps:
     key: validate-macos-x86_64-wheels
     job_env: MACOS
     instance_type: macos
+    tags: disabled
     commands:
       - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
 
@@ -58,8 +61,18 @@ steps:
     key: validate-macos-arm64-wheels
     job_env: MACOS
     instance_type: macos-arm64
+    tags: disabled
     commands:
       - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
+
+  - label: "Windows"
+    key: validate-windows-wheels
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_HASH="$RAY_HASH"
+      - bash -i /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
   
   - block: "Upload wheels to PyPI"
     depends_on: 
