@@ -636,7 +636,7 @@ class ActorReplicaWrapper:
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except RuntimeEnvSetupError as e:
