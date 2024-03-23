@@ -32,7 +32,7 @@ adduser --home /home/forge --uid 2000 forge --gid 100
 
 EOF
 
-USER forge
+# USER forge
 ENV CC=clang
 ENV CXX=clang++-12
 ENV USE_BAZEL_VERSION=5.4.1
