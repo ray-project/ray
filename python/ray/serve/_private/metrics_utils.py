@@ -20,7 +20,12 @@ class _MetricsTask:
 
 
 class MetricsPusher:
-    """Periodically runs registered asyncio tasks."""
+    """Periodically runs registered asyncio tasks.
+
+    This class is only best-effort but not guaranteed thread-safe. To
+    avoid unexpected edge cases, it is recommended to call all methods
+    (apart from initialization) from the same asyncio event loop.
+    """
 
     def __init__(
         self,
@@ -54,6 +59,12 @@ class MetricsPusher:
         wait_for_stop_event = asyncio.create_task(self.stop_event.wait())
         while True:
             if wait_for_stop_event.done():
+                return
+
+            # NOTE(zcin): this is to guard against a potential race condition
+            # if the task function is cleared in another thread after we
+            # check for stop event but before we execute the function.
+            if not self._tasks.get(name):
                 return
 
             try:
