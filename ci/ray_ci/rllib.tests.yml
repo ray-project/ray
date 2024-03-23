@@ -11,6 +11,7 @@ flaky_tests:
   - //rllib:learning_tests_cartpole_crashing_and_stalling_appo
   - //rllib:learning_tests_multi_agent_cartpole_crashing_appo
   - //rllib:learning_tests_multi_agent_cartpole_crashing_and_stalling_appo
+  - //rllib:examples/self_play_with_open_spiel_connect_4_appo_w_rlm_tf2
   # algorithm, model and other tests
   - //rllib:test_bc 
   - //rllib:test_a3c

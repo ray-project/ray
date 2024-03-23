@@ -8,7 +8,7 @@ from ray.data._internal.null_aggregate import (
     _null_wrap_init,
     _null_wrap_merge,
 )
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import PublicAPI
 

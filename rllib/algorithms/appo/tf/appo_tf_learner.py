@@ -1,6 +1,5 @@
 from typing import Any, Dict
 
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo import (
     APPOConfig,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
@@ -8,9 +7,10 @@ from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.appo.appo_learner import AppoLearner
+from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -19,10 +19,10 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 _, tf, _ = try_import_tf()
 
 
-class APPOTfLearner(AppoLearner, TfLearner):
+class APPOTfLearner(AppoLearner, ImpalaTfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner."""
 
-    @override(TfLearner)
+    @override(ImpalaTfLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -31,19 +31,19 @@ class APPOTfLearner(AppoLearner, TfLearner):
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        values = fwd_out[SampleBatch.VF_PREDS]
+        values = fwd_out[Columns.VF_PREDS]
         action_dist_cls_train = self._module[module_id].get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         old_target_policy_dist = action_dist_cls_train.from_logits(
             fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
         )
         old_target_policy_actions_logp = old_target_policy_dist.logp(
-            batch[SampleBatch.ACTIONS]
+            batch[Columns.ACTIONS]
         )
-        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
-        target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        behaviour_actions_logp = batch[Columns.ACTION_LOGP]
+        target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
         rollout_frag_or_episode_len = config.get_rollout_fragment_length()
         recurrent_seq_len = None
 
@@ -63,7 +63,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
             recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
-            batch[SampleBatch.REWARDS],
+            batch[Columns.REWARDS],
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
@@ -72,12 +72,15 @@ class APPOTfLearner(AppoLearner, TfLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED],
-            trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=recurrent_seq_len,
-        )
-        bootstrap_value = bootstrap_values_time_major[-1]
+        if self.config.uses_new_env_runners:
+            bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
+        else:
+            bootstrap_values_time_major = make_time_major(
+                batch[Columns.VALUES_BOOTSTRAPPED],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=recurrent_seq_len,
+            )
+            bootstrap_values = bootstrap_values_time_major[-1]
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -85,7 +88,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
             1.0
             - tf.cast(
                 make_time_major(
-                    batch[SampleBatch.TERMINATEDS],
+                    batch[Columns.TERMINATEDS],
                     trajectory_len=rollout_frag_or_episode_len,
                     recurrent_seq_len=recurrent_seq_len,
                 ),
@@ -100,7 +103,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
-            bootstrap_value=bootstrap_value,
+            bootstrap_values=bootstrap_values,
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )

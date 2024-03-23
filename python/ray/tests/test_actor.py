@@ -23,11 +23,6 @@ from ray._private.test_utils import SignalActor
 # with ray.
 import setproctitle  # noqa
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
@@ -1360,6 +1355,37 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
     result = ray.get(refs)
     for actual, expected in result:
         assert actual, expected
+
+
+def test_actor_hash(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        ...
+
+    origin = Actor.remote()
+
+    @ray.remote
+    def get_actor(actor):
+        return actor
+
+    remote = ray.get(get_actor.remote(origin))
+    assert hash(origin) == hash(remote)
+
+
+def test_actor_equal(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        ...
+
+    origin = Actor.remote()
+    assert origin != 1
+
+    @ray.remote
+    def get_actor(actor):
+        return actor
+
+    remote = ray.get(get_actor.remote(origin))
+    assert origin == remote
 
 
 if __name__ == "__main__":

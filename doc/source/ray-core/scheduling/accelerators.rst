@@ -97,9 +97,9 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
         .. tip::
 
-            You can set ``ASCEND_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            You can set the ``ASCEND_RT_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the Huawei Ascend NPUs that are visible to Ray.
-            For example, ``ASCEND_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
+            For example, ``ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
             will let Ray only see devices 1 and 3.
 
 .. note::
@@ -330,12 +330,12 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             class NPUActor:
                 def ping(self):
                     print("NPU ids: {}".format(ray.get_runtime_context().get_accelerator_ids()["NPU"]))
-                    print("ASCEND_VISIBLE_DEVICES: {}".format(os.environ["ASCEND_VISIBLE_DEVICES"]))
+                    print("ASCEND_RT_VISIBLE_DEVICES: {}".format(os.environ["ASCEND_RT_VISIBLE_DEVICES"]))
 
             @ray.remote(resources={"NPU": 1})
             def npu_task():
                 print("NPU ids: {}".format(ray.get_runtime_context().get_accelerator_ids()["NPU"]))
-                print("ASCEND_VISIBLE_DEVICES: {}".format(os.environ["ASCEND_VISIBLE_DEVICES"]))
+                print("ASCEND_RT_VISIBLE_DEVICES: {}".format(os.environ["ASCEND_RT_VISIBLE_DEVICES"]))
 
             npu_actor = NPUActor.remote()
             ray.get(npu_actor.ping.remote())
@@ -346,9 +346,9 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             :options: +MOCK
 
             (NPUActor pid=52420) NPU ids: [0]
-            (NPUActor pid=52420) ASCEND_VISIBLE_DEVICES: 0
+            (NPUActor pid=52420) ASCEND_RT_VISIBLE_DEVICES: 0
             (npu_task pid=51830) NPU ids: [1]
-            (npu_task pid=51830) ASCEND_VISIBLE_DEVICES: 1
+            (npu_task pid=51830) ASCEND_RT_VISIBLE_DEVICES: 1
 
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` will return a

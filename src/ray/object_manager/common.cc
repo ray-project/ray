@@ -27,18 +27,20 @@ void PlasmaObjectHeader::Init() {
 
   sem_init(&rw_semaphore, PTHREAD_PROCESS_SHARED, 1);
 
-  // Condition is shared between writer and readers.
-  pthread_condattr_t cond_attr;
-  pthread_condattr_init(&cond_attr);
-  pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
-  pthread_cond_init(&cond, &cond_attr);
+  version = 0;
+  is_sealed = false;
+  has_error = false;
+  num_readers = 0;
+  num_read_acquires_remaining = 0;
+  num_read_releases_remaining = 0;
+  data_size = 0;
+  metadata_size = 0;
 #endif
 }
 
 void PlasmaObjectHeader::Destroy() {
 #ifdef __linux__
   RAY_CHECK(pthread_mutex_destroy(&wr_mut) == 0);
-  RAY_CHECK(pthread_cond_destroy(&cond) == 0);
   RAY_CHECK(sem_destroy(&rw_semaphore) == 0);
 #endif
 }
@@ -57,25 +59,43 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
                  << "metadata_size: " << header->metadata_size << "\n";
 }
 
-void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
-                                      uint64_t write_data_size,
-                                      uint64_t write_metadata_size,
-                                      int64_t write_num_readers) {
-  RAY_LOG(DEBUG) << "WriteAcquire. version: " << write_version << ", data size "
-                 << write_data_size << ", metadata size " << write_metadata_size
-                 << ", num readers: " << write_num_readers;
-  sem_wait(&rw_semaphore);
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
+Status PlasmaObjectHeader::TryAcquireWriterMutex() {
+  // Try to acquire the lock, checking every 1s for the error bit.
+  struct timespec ts;
+  do {
+    if (has_error) {
+      return Status::IOError("channel closed");
+    }
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 1;
+  } while (pthread_mutex_timedlock(&wr_mut, &ts));
+
+  return Status::OK();
+}
+
+Status PlasmaObjectHeader::WriteAcquire(uint64_t write_data_size,
+                                        uint64_t write_metadata_size,
+                                        int64_t write_num_readers) {
+  RAY_LOG(DEBUG) << "WriteAcquire. data size " << write_data_size << ", metadata size "
+                 << write_metadata_size << ", num readers: " << write_num_readers;
+
+  // Try to acquire the semaphore, checking every 1s for the error bit.
+  struct timespec ts;
+  do {
+    if (has_error) {
+      return Status::IOError("channel closed");
+    }
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 1;
+  } while (sem_timedwait(&rw_semaphore, &ts));
+
+  RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
   PrintPlasmaObjectHeader(this);
 
   RAY_CHECK(num_read_acquires_remaining == 0);
   RAY_CHECK(num_read_releases_remaining == 0);
-  RAY_CHECK(write_version == version + 1)
-      << "Write version " << write_version
-      << " is more than 1 greater than current version " << version
-      << ". Are you sure this is the only writer?";
 
-  version = write_version;
+  version++;
   is_sealed = false;
   data_size = write_data_size;
   metadata_size = write_metadata_size;
@@ -84,19 +104,15 @@ void PlasmaObjectHeader::WriteAcquire(int64_t write_version,
   RAY_LOG(DEBUG) << "WriteAcquire done";
   PrintPlasmaObjectHeader(this);
   RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
+  return Status::OK();
 }
 
-void PlasmaObjectHeader::WriteRelease(int64_t write_version) {
-  RAY_LOG(DEBUG) << "WriteRelease Waiting. version: " << write_version;
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
-  RAY_LOG(DEBUG) << "WriteRelease " << write_version;
+Status PlasmaObjectHeader::WriteRelease() {
+  RAY_LOG(DEBUG) << "WriteRelease Waiting. version: " << version;
+  RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
+  RAY_LOG(DEBUG) << "WriteRelease " << version;
   PrintPlasmaObjectHeader(this);
 
-  RAY_CHECK(version == write_version)
-      << "Write version " << write_version << " no longer matches current version "
-      << version << ". Are you sure this is the only writer?";
-
-  version = write_version;
   is_sealed = true;
   RAY_CHECK(num_readers != 0) << num_readers;
   num_read_acquires_remaining = num_readers;
@@ -105,19 +121,25 @@ void PlasmaObjectHeader::WriteRelease(int64_t write_version) {
   RAY_LOG(DEBUG) << "WriteRelease done, num_readers: " << num_readers;
   PrintPlasmaObjectHeader(this);
   RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
-  // Signal to all readers.
-  RAY_CHECK(pthread_cond_broadcast(&cond) == 0);
+  return Status::OK();
 }
 
-bool PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_read) {
+Status PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_read) {
   RAY_LOG(DEBUG) << "ReadAcquire waiting version " << version_to_read;
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
+  RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
   RAY_LOG(DEBUG) << "ReadAcquire " << version_to_read;
   PrintPlasmaObjectHeader(this);
 
   // Wait for the requested version (or a more recent one) to be sealed.
+  int tries = 0;
   while (version < version_to_read || !is_sealed) {
-    RAY_CHECK(pthread_cond_wait(&cond, &wr_mut) == 0);
+    RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
+    // Lower values than 100k seem to start impacting perf compared
+    // to mutex.
+    if (tries++ > 100000) {
+      std::this_thread::yield();  // Too many tries, yield thread.
+    }
+    RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
   }
 
   bool success = false;
@@ -137,7 +159,7 @@ bool PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_r
                        << version_to_read;
     } else {
       RAY_LOG(WARNING) << "Version " << version << " already has " << num_readers
-                       << "readers";
+                       << " readers";
     }
   }
 
@@ -145,15 +167,17 @@ bool PlasmaObjectHeader::ReadAcquire(int64_t version_to_read, int64_t *version_r
   PrintPlasmaObjectHeader(this);
 
   RAY_CHECK(pthread_mutex_unlock(&wr_mut) == 0);
-  // Signal to other readers that they may read.
-  RAY_CHECK(pthread_cond_signal(&cond) == 0);
-  return success;
+  if (!success) {
+    return Status::Invalid(
+        "Reader missed a value. Are you sure there are num_readers many readers?");
+  }
+  return Status::OK();
 }
 
-void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
+Status PlasmaObjectHeader::ReadRelease(int64_t read_version) {
   bool all_readers_done = false;
   RAY_LOG(DEBUG) << "ReadRelease Waiting" << read_version;
-  RAY_CHECK(pthread_mutex_lock(&wr_mut) == 0);
+  RAY_RETURN_NOT_OK(TryAcquireWriterMutex());
   PrintPlasmaObjectHeader(this);
 
   RAY_LOG(DEBUG) << "ReadRelease " << read_version << " version is currently " << version;
@@ -174,6 +198,7 @@ void PlasmaObjectHeader::ReadRelease(int64_t read_version) {
   if (all_readers_done) {
     sem_post(&rw_semaphore);
   }
+  return Status::OK();
 }
 
 #endif

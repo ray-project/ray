@@ -123,11 +123,13 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DataContext.get_current()
 
-    ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+    ray.data.range(8, override_num_blocks=8).write_csv(str(tmp_path))
     if not block_split:
-        # Setting infinite block size effectively disables block splitting.
-        ctx.target_max_block_size = float("inf")
-    ds = ray.data.read_datasource(SlowCSVDatasource(str(tmp_path)), parallelism=8)
+        # Setting a huge block size effectively disables block splitting.
+        ctx.target_max_block_size = 2**64
+    ds = ray.data.read_datasource(
+        SlowCSVDatasource(str(tmp_path)), override_num_blocks=8
+    )
 
     start = time.time()
     ds.map(lambda x: x)
@@ -194,14 +196,14 @@ def test_dataset(
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=num_tasks,
+        override_num_blocks=num_tasks,
         num_batches_per_task=num_blocks_per_task,
         row_size=ctx.target_max_block_size,
     )
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
     assert ds.count() == num_blocks_per_task * num_tasks
-    assert ds.num_blocks() == num_tasks
+    assert ds._plan.initial_num_blocks() == num_tasks
     assert (
         ds.size_bytes()
         >= 0.7 * ctx.target_max_block_size * num_blocks_per_task * num_tasks
@@ -224,7 +226,7 @@ def test_dataset(
     map_ds = ds.map_batches(identity_func, compute=compute)
     map_ds = map_ds.materialize()
     num_blocks_expected = num_tasks * num_blocks_per_task
-    assert map_ds.num_blocks() == num_blocks_expected
+    assert map_ds._plan.initial_num_blocks() == num_blocks_expected
     assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
@@ -250,34 +252,34 @@ def test_dataset(
         compute=compute,
     )
     map_ds = map_ds.materialize()
-    assert map_ds.num_blocks() == 1
+    assert map_ds._plan.initial_num_blocks() == 1
     map_ds = ds.map(identity_func, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds.num_blocks() == num_blocks_per_task * num_tasks
+    assert map_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks
 
     ds_list = ds.split(5)
     assert len(ds_list) == 5
     for new_ds in ds_list:
-        assert new_ds.num_blocks() == num_blocks_per_task * num_tasks / 5
+        assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks / 5
 
     train, test = ds.train_test_split(test_size=0.25)
-    assert train.num_blocks() == num_blocks_per_task * num_tasks * 0.75
-    assert test.num_blocks() == num_blocks_per_task * num_tasks * 0.25
+    assert train._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 0.75
+    assert test._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 0.25
 
     new_ds = ds.union(ds, ds)
-    assert new_ds.num_blocks() == num_tasks * 3
+    assert new_ds._plan.initial_num_blocks() == num_tasks * 3
     new_ds = new_ds.materialize()
-    assert new_ds.num_blocks() == num_blocks_per_task * num_tasks * 3
+    assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 3
 
     new_ds = ds.random_shuffle()
-    assert new_ds.num_blocks() == num_tasks
+    assert new_ds._plan.initial_num_blocks() == num_tasks
     new_ds = ds.randomize_block_order()
-    assert new_ds.num_blocks() == num_tasks
+    assert new_ds._plan.initial_num_blocks() == num_tasks
     assert ds.groupby("one").count().count() == num_blocks_per_task * num_tasks
 
     new_ds = ds.zip(ds)
     new_ds = new_ds.materialize()
-    assert new_ds.num_blocks() == num_blocks_per_task * num_tasks
+    assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks
 
     assert len(ds.take(5)) == 5
     assert len(ds.take_all()) == num_blocks_per_task * num_tasks
@@ -293,7 +295,7 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=1,
+        override_num_blocks=1,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
     )
@@ -301,12 +303,12 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
     ds = ds.filter(lambda _: True)
     ds = ds.materialize()
     assert ds.count() == num_blocks_per_task
-    assert ds.num_blocks() == num_blocks_per_task
+    assert ds._plan.initial_num_blocks() == num_blocks_per_task
 
     ds = ds.filter(lambda _: False)
     ds = ds.materialize()
     assert ds.count() == 0
-    assert ds.num_blocks() == num_blocks_per_task
+    assert ds._plan.initial_num_blocks() == num_blocks_per_task
 
 
 def test_lazy_block_list(shutdown_only, target_max_block_size):
@@ -318,7 +320,7 @@ def test_lazy_block_list(shutdown_only, target_max_block_size):
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=num_tasks,
+        override_num_blocks=num_tasks,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
     )
@@ -424,7 +426,7 @@ def test_read_large_data(ray_start_cluster):
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=1,
+        override_num_blocks=1,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
     )
@@ -442,7 +444,7 @@ def _test_write_large_data(
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=1,
+        override_num_blocks=1,
         num_batches_per_task=num_blocks_per_task,
         row_size=block_size,
         use_bytes=use_bytes,
@@ -588,14 +590,14 @@ def test_block_slicing(
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
-        parallelism=num_tasks,
+        override_num_blocks=num_tasks,
         num_batches_per_task=num_batches,
         num_rows_per_batch=num_rows_per_batch,
         row_size=row_size,
         use_bytes=False,
         use_arrow=True,
     ).materialize()
-    assert ds.num_blocks() == expected_num_blocks
+    assert ds._plan.initial_num_blocks() == expected_num_blocks
 
     block_sizes = []
     num_rows = 0
@@ -610,6 +612,31 @@ def test_block_slicing(
         )
         # Blocks are not too small.
         assert size >= target_max_block_size / 2
+
+
+@pytest.mark.parametrize(
+    "target_max_block_size",
+    [128, 256, 512],
+)
+def test_dynamic_block_split_deterministic(
+    ray_start_regular_shared, target_max_block_size
+):
+    # Tests the determinism of block splitting.
+    TEST_ITERATIONS = 10
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_max_block_size = target_max_block_size
+
+    # ~800 bytes per block
+    ds = ray.data.range(1000, override_num_blocks=10).map_batches(lambda x: x)
+    data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+    # Maps: first item of block -> block
+    block_map = {block["id"][0]: block for block in data}
+    # Iterate over multiple executions of the dataset,
+    # and check that blocks were split in the same way
+    for _ in range(TEST_ITERATIONS):
+        data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+        for block in data:
+            assert block_map[block["id"][0]] == block
 
 
 if __name__ == "__main__":

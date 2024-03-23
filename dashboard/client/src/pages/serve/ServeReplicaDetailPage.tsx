@@ -18,6 +18,8 @@ import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
 import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
+export const LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS = "serve-entity-deployments";
+
 const useStyles = makeStyles((theme) =>
   createStyles({
     root: {
@@ -162,7 +164,7 @@ const ServeReplicaLogs = ({
     ...(log_file_path
       ? [
           {
-            title: "replica",
+            title: "Serve logger",
             nodeId: node_id,
             filename: log_file_path.startsWith("/")
               ? log_file_path.substring(1)
@@ -170,6 +172,21 @@ const ServeReplicaLogs = ({
           },
         ]
       : []),
+    {
+      title: "stderr",
+      actorId: actor_id,
+      suffix: "err",
+    },
+    {
+      title: "stdout",
+      actorId: actor_id,
+      suffix: "out",
+    },
   ];
-  return <MultiTabLogViewer tabs={tabs} />;
+  return (
+    <MultiTabLogViewer
+      tabs={tabs}
+      contextKey={LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS}
+    />
+  );
 };

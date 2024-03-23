@@ -32,6 +32,10 @@ from .utils import (
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
     _wait_service_up,
+    _get_local_ray_node_slots,
+    get_configured_spark_executor_memory_bytes,
+    _get_cpu_cores,
+    _get_num_physical_gpus,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
@@ -446,6 +450,15 @@ def _get_default_ray_tmp_dir():
     return os.path.join(os.environ.get("RAY_TMPDIR", "/tmp"), "ray")
 
 
+def _create_hook_entry(is_global):
+    if RAY_ON_SPARK_START_HOOK in os.environ:
+        return _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
+    elif is_in_databricks_runtime():
+        return DefaultDatabricksRayOnSparkStartHook(is_global)
+    else:
+        return RayOnSparkStartHook(is_global)
+
+
 def _setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -484,13 +497,7 @@ def _setup_ray_cluster(
     from pyspark.util import inheritable_thread_target
     import fcntl
 
-    if RAY_ON_SPARK_START_HOOK in os.environ:
-        start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
-    elif is_in_databricks_runtime():
-        start_hook = DefaultDatabricksRayOnSparkStartHook(is_global)
-    else:
-        start_hook = RayOnSparkStartHook(is_global)
-
+    start_hook = _create_hook_entry(is_global)
     spark = get_spark_session()
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
@@ -700,6 +707,7 @@ def _setup_ray_cluster(
             extra_env={
                 RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
                 RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+                **start_hook.custom_environment_variables(),
             },
         )
         spark_job_server = None
@@ -891,6 +899,8 @@ def _setup_ray_cluster_internal(
     num_cpus_head_node: Optional[int],
     num_gpus_worker_node: Optional[int],
     num_gpus_head_node: Optional[int],
+    heap_memory_worker_node: Optional[int],
+    heap_memory_head_node: Optional[int],
     object_store_memory_worker_node: Optional[int],
     object_store_memory_head_node: Optional[int],
     head_node_options: Optional[Dict],
@@ -1019,11 +1029,34 @@ def _setup_ray_cluster_internal(
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
 
-    if num_cpus_worker_node is not None or num_gpus_worker_node is not None:
-        if support_stage_scheduling:
-            num_cpus_worker_node = num_cpus_worker_node or num_spark_task_cpus
-            num_gpus_worker_node = num_gpus_worker_node or num_spark_task_gpus
+    def _get_spark_worker_resources(_):
+        from ray.util.spark.utils import (
+            _get_cpu_cores,
+            _get_num_physical_gpus,
+            _get_spark_worker_total_physical_memory,
+        )
 
+        num_cpus_spark_worker = _get_cpu_cores()
+        if num_spark_task_gpus == 0:
+            num_gpus_spark_worker = 0
+        else:
+            num_gpus_spark_worker = _get_num_physical_gpus()
+        total_mem_bytes = _get_spark_worker_total_physical_memory()
+
+        return (
+            num_cpus_spark_worker,
+            num_gpus_spark_worker,
+            total_mem_bytes,
+        )
+
+    (num_cpus_spark_worker, num_gpus_spark_worker, spark_worker_mem_bytes,) = (
+        spark.sparkContext.parallelize([1], 1)
+        .map(_get_spark_worker_resources)
+        .collect()[0]
+    )
+
+    if num_cpus_worker_node is not None and num_gpus_worker_node is not None:
+        if support_stage_scheduling:
             using_stage_scheduling = True
             res_profile = _create_resource_profile(
                 num_cpus_worker_node, num_gpus_worker_node
@@ -1040,22 +1073,72 @@ def _setup_ray_cluster_internal(
                 "scheduling, you need to upgrade spark to 3.4 version or use "
                 "Databricks Runtime 12.x, and you cannot use spark local mode."
             )
-    else:
-        using_stage_scheduling = False
-        res_profile = None
+    elif num_cpus_worker_node is None and num_gpus_worker_node is None:
+        if support_stage_scheduling:
+            # Make one Ray worker node using maximum CPU / GPU resources
+            # of the whole spark worker node, this is the optimal
+            # configuration.
+            num_cpus_worker_node = num_cpus_spark_worker
+            num_gpus_worker_node = num_gpus_spark_worker
+            using_stage_scheduling = True
+            res_profile = _create_resource_profile(
+                num_cpus_worker_node, num_gpus_worker_node
+            )
+        else:
+            using_stage_scheduling = False
+            res_profile = None
 
-        num_cpus_worker_node = num_spark_task_cpus
-        num_gpus_worker_node = num_spark_task_gpus
+            num_cpus_worker_node = num_spark_task_cpus
+            num_gpus_worker_node = num_spark_task_gpus
+    else:
+        raise ValueError(
+            "'num_cpus_worker_node' and 'num_gpus_worker_node' arguments must be"
+            "set together or unset together."
+        )
 
     (
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_mem_bytes,
     ) = get_avail_mem_per_ray_worker_node(
         spark,
+        heap_memory_worker_node,
         object_store_memory_worker_node,
         num_cpus_worker_node,
         num_gpus_worker_node,
     )
+
+    spark_worker_ray_node_slots = _get_local_ray_node_slots(
+        num_cpus_spark_worker,
+        num_gpus_spark_worker,
+        num_cpus_worker_node,
+        num_gpus_worker_node,
+    )
+
+    spark_executor_memory_bytes = get_configured_spark_executor_memory_bytes(spark)
+    spark_worker_required_memory_bytes = (
+        spark_executor_memory_bytes
+        + spark_worker_ray_node_slots
+        * (ray_worker_node_heap_mem_bytes + ray_worker_node_object_store_mem_bytes)
+    )
+    if spark_worker_required_memory_bytes > 0.8 * spark_worker_mem_bytes:
+        warn_msg = (
+            "In each spark worker node, we recommend making the sum of "
+            "'spark_executor_memory + num_Ray_worker_nodes_per_spark_worker * "
+            "(memory_worker_node + object_store_memory_worker_node)' to be less than "
+            "'spark_worker_physical_memory * 0.8', otherwise it might lead to "
+            "spark worker physical memory exhaustion and Ray task OOM errors."
+        )
+
+        if is_in_databricks_runtime():
+            from ray.util.spark.databricks_hook import (
+                get_databricks_display_html_function,
+            )
+
+            get_databricks_display_html_function()(
+                f"<b style='background-color:Cyan;'>{warn_msg}</b>"
+            )
+        else:
+            _logger.warning(warn_msg)
 
     if "num_worker_nodes" in kwargs:
         raise ValueError(
@@ -1085,7 +1168,7 @@ def _setup_ray_cluster_internal(
     if "autoscale" in kwargs:
         raise ValueError(
             "'autoscale' argument is removed. You can set 'min_worker_nodes' argument "
-            "to be less than 'min_worker_nodes' to make autoscaling enabled."
+            "to be less than 'max_worker_nodes' to make autoscaling enabled."
         )
 
     if min_worker_nodes is None:
@@ -1119,7 +1202,7 @@ def _setup_ray_cluster_internal(
             f"{ray_worker_node_heap_mem_bytes} bytes heap memory. This is less than "
             "the recommended value of 10GB. The ray worker node heap memory size is "
             "calculated by "
-            "(SPARK_WORKER_NODE_PHYSICAL_MEMORY / num_local_spark_task_slots * 0.8) - "
+            "(SPARK_WORKER_PHYSICAL_MEMORY / num_local_spark_task_slots * 0.8) - "
             "object_store_memory_worker_node. To increase the heap space available, "
             "increase the memory in the spark cluster by using instance types with "
             "larger memory, or increase number of CPU/GPU per Ray worker node "
@@ -1139,7 +1222,10 @@ def _setup_ray_cluster_internal(
             _logger.warning("\n".join(insufficient_resources))
 
     if num_cpus_head_node is None:
-        num_cpus_head_node = 0
+        if is_global:
+            num_cpus_head_node = _get_cpu_cores()
+        else:
+            num_cpus_head_node = 0
     else:
         if num_cpus_head_node < 0:
             raise ValueError(
@@ -1148,7 +1234,13 @@ def _setup_ray_cluster_internal(
             )
 
     if num_gpus_head_node is None:
-        num_gpus_head_node = 0
+        if is_global:
+            try:
+                num_gpus_head_node = _get_num_physical_gpus()
+            except Exception:
+                num_gpus_head_node = 0
+        else:
+            num_gpus_head_node = 0
     else:
         if num_gpus_head_node < 0:
             raise ValueError(
@@ -1169,7 +1261,7 @@ def _setup_ray_cluster_internal(
         object_store_memory_head_node = 1024 * 1024 * 1024
     else:
         heap_memory_head_node, object_store_memory_head_node = calc_mem_ray_head_node(
-            object_store_memory_head_node
+            heap_memory_head_node, object_store_memory_head_node
         )
 
     with _active_ray_cluster_rwlock:
@@ -1214,6 +1306,8 @@ def setup_ray_cluster(
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
     num_gpus_head_node: Optional[int] = None,
+    memory_worker_node: Optional[int] = None,
+    memory_head_node: Optional[int] = None,
     object_store_memory_worker_node: Optional[int] = None,
     object_store_memory_head_node: Optional[int] = None,
     head_node_options: Optional[Dict] = None,
@@ -1254,23 +1348,36 @@ def setup_ray_cluster(
             and Ray cluster is launched with fixed number "max_worker_nodes" of
             Ray worker nodes, otherwise autoscaling is enabled.
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
-            provided, use spark application configuration 'spark.task.cpus' instead.
+            provided, if spark stage scheduling is supported, 'num_cpus_head_node'
+            value equals to number of cpu cores per spark worker node, otherwise
+            it uses spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
         num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
+            if it is global mode Ray cluster, use number of cpu cores in spark driver
+            node, otherwise use 0 instead.
             use 0 instead. Number 0 means tasks requiring CPU resources are not
             scheduled to Ray head node.
         num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
-            provided, use spark application configuration
+            provided, if spark stage scheduling is supported, 'num_gpus_worker_node'
+            value equals to number of GPUs per spark worker node, otherwise
+            it uses spark application configuration
             'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
             'gpu' resources.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
         num_gpus_head_node: Number of gpus available to Ray head node, if not provide,
-            use 0 instead.
+            if it is global mode Ray cluster, use number of GPUs in spark driver node,
+            otherwise use 0 instead.
             This argument is only available on spark cluster which spark driver node
             has GPUs.
+        memory_worker_node: Optional[int]:
+            Heap memory configured for Ray worker node. This is basically setting
+            `--memory` option when starting Ray node by `ray start` command.
+        memory_head_node: Optional[int]:
+            Heap memory configured for Ray head node. This is basically setting
+            `--memory` option when starting Ray node by `ray start` command.
         object_store_memory_worker_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
@@ -1341,6 +1448,8 @@ def setup_ray_cluster(
         num_cpus_head_node=num_cpus_head_node,
         num_gpus_worker_node=num_gpus_worker_node,
         num_gpus_head_node=num_gpus_head_node,
+        heap_memory_worker_node=memory_worker_node,
+        heap_memory_head_node=memory_head_node,
         object_store_memory_worker_node=object_store_memory_worker_node,
         object_store_memory_head_node=object_store_memory_head_node,
         head_node_options=head_node_options,
@@ -1364,6 +1473,8 @@ def setup_global_ray_cluster(
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
     num_gpus_head_node: Optional[int] = None,
+    memory_worker_node: Optional[int] = None,
+    memory_head_node: Optional[int] = None,
     object_store_memory_worker_node: Optional[int] = None,
     object_store_memory_head_node: Optional[int] = None,
     head_node_options: Optional[Dict] = None,
@@ -1397,7 +1508,7 @@ def setup_global_ray_cluster(
     If "is_blocking" is True,
     then keep the call blocking until it is interrupted.
     once the call is interrupted, the global Ray on spark cluster is shut down and
-    `serve_global_ray_cluster` call terminates.
+    `setup_global_ray_cluster` call terminates.
     If "is_blocking" is False,
     once Ray cluster setup completes, return immediately.
     """
@@ -1409,6 +1520,8 @@ def setup_global_ray_cluster(
         num_cpus_head_node=num_cpus_head_node,
         num_gpus_worker_node=num_gpus_worker_node,
         num_gpus_head_node=num_gpus_head_node,
+        heap_memory_worker_node=memory_worker_node,
+        heap_memory_head_node=memory_head_node,
         object_store_memory_worker_node=object_store_memory_worker_node,
         object_store_memory_head_node=object_store_memory_head_node,
         head_node_options=head_node_options,
@@ -1508,10 +1621,13 @@ def _start_ray_worker_nodes(
         if ray_temp_dir is not None:
             ray_worker_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
+        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
+            **hook_entry.custom_environment_variables(),
         }
 
         if num_gpus_per_node > 0:
@@ -1611,6 +1727,9 @@ def _start_ray_worker_nodes(
             num_gpus_per_node,
         )
         job_rdd = job_rdd.withResources(resource_profile)
+
+    hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+    hook_entry.on_spark_job_created(spark_job_group_id)
 
     job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
@@ -1774,10 +1893,13 @@ class AutoscalingCluster:
         )
         ray_head_node_cmd.extend(_convert_ray_node_options(head_node_options))
 
+        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
+
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+            **hook_entry.custom_environment_variables(),
         }
 
         self.ray_head_node_cmd = ray_head_node_cmd

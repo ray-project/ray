@@ -447,24 +447,6 @@ def test_run_config_port2(ray_start_stop, config_file):
     p.wait()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize(
-    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
-)
-def test_run_config_port3(ray_start_stop, config_file):
-    """If port is specified as argument to `serve run`, it should override config."""
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", config_file
-    )
-    p = subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8010/").text == "wonderful world",
-        timeout=15,
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
 @serve.deployment
 class ConstructorFailure:
     def __init__(self):
@@ -947,6 +929,39 @@ def test_grpc_proxy_model_composition(ray_start_stop):
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app)
+
+
+@serve.deployment(route_prefix="/foo")
+async def deployment_with_route_prefix(args):
+    return "bar..."
+
+
+route_prefix_app = deployment_with_route_prefix.bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_serve_run_mount_to_correct_deployment_route_prefix(ray_start_stop):
+    """Test running serve run with deployment with route_prefix should mount the
+    deployment to the correct route."""
+
+    import_path = "ray.serve.tests.test_cli_2.route_prefix_app"
+    subprocess.Popen(["serve", "run", import_path])
+
+    # /-/routes should show the app having the correct route.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/-/routes").text
+        == '{"/foo":"default"}'
+    )
+
+    # Ping root path directly should 404.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/").status_code == 404
+    )
+
+    # Ping the mounting route should return 200.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/foo").status_code == 200
+    )
 
 
 if __name__ == "__main__":

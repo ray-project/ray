@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+message Request {
+  string request_data = 2;
+}
+
+message Response {
+  string response_data = 2;
+}
+
+service GRPCTestServer {
+  rpc Unary(Request) returns (Response);
+  rpc ClientStreaming(stream Request) returns (Response);
+  rpc ServerStreaming(Request) returns (stream Response);
+  rpc BidiStreaming(stream Request) returns (stream Response);
+}

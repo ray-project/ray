@@ -8,6 +8,7 @@ import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.framework import try_import_tf
@@ -22,23 +23,21 @@ tf1.enable_eager_execution()
 frag_length = 50
 
 FAKE_BATCH = {
-    SampleBatch.OBS: np.random.uniform(low=0, high=1, size=(frag_length, 4)).astype(
+    Columns.OBS: np.random.uniform(low=0, high=1, size=(frag_length, 4)).astype(
         np.float32
     ),
-    SampleBatch.ACTIONS: np.random.choice(2, frag_length).astype(np.float32),
-    SampleBatch.REWARDS: np.random.uniform(low=-1, high=1, size=(frag_length,)).astype(
+    Columns.ACTIONS: np.random.choice(2, frag_length).astype(np.float32),
+    Columns.REWARDS: np.random.uniform(low=-1, high=1, size=(frag_length,)).astype(
         np.float32
     ),
-    SampleBatch.TERMINATEDS: np.array(
+    Columns.TERMINATEDS: np.array(
         [False for _ in range(frag_length - 1)] + [True]
     ).astype(np.float32),
-    SampleBatch.VF_PREDS: np.array(
+    Columns.VF_PREDS: np.array(list(reversed(range(frag_length))), dtype=np.float32),
+    Columns.VALUES_BOOTSTRAPPED: np.array(
         list(reversed(range(frag_length))), dtype=np.float32
     ),
-    SampleBatch.VALUES_BOOTSTRAPPED: np.array(
-        list(reversed(range(frag_length))), dtype=np.float32
-    ),
-    SampleBatch.ACTION_LOGP: np.log(
+    Columns.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
 }
@@ -97,7 +96,7 @@ class TestAPPOTfLearner(unittest.TestCase):
                 env=algo.workers.local_worker().env
             )
             learner_group.set_weights(algo.get_weights())
-            learner_group.update(train_batch.as_multi_agent())
+            learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
             algo.stop()
 
