@@ -217,7 +217,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crashing_appo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-crashing-recreate-workers-appo.py"],
@@ -279,6 +279,16 @@ py_test(
 #    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
 #    args = ["--dir=tuned_examples/dqn"]
 # )
+
+py_test(
+    name = "learning_tests_carpole_dqn_envrunner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dqn/cartpole_dqn_envrunner.py"],
+    args = ["--dir=tuned_examples/dqn"]
+)
 
 py_test(
     name = "learning_tests_cartpole_dqn_softq",

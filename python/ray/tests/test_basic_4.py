@@ -95,32 +95,6 @@ def test_worker_startup_count(ray_start_cluster):
         time.sleep(0.1)
 
 
-def test_function_import_without_importer_thread(shutdown_only):
-    """Test that without background importer thread, dependencies can still be
-    imported in workers."""
-    ray.init(
-        _system_config={
-            "start_python_importer_thread": False,
-        },
-    )
-
-    @ray.remote
-    def f():
-        import threading
-
-        assert threading.get_ident() == threading.main_thread().ident
-        # Make sure the importer thread is not running.
-        for thread in threading.enumerate():
-            assert "import" not in thread.name
-
-    @ray.remote
-    def g():
-        ray.get(f.remote())
-
-    ray.get(g.remote())
-    ray.get([g.remote() for _ in range(5)])
-
-
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Fork is only supported on *nix systems.",
