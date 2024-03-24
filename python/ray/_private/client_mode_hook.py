@@ -2,6 +2,7 @@ import os
 import threading
 from contextlib import contextmanager
 from functools import wraps
+from typing import TypeVar, Callable
 from ray._private.auto_init_hook import auto_init_ray
 
 # Attr set on func defs to mark they have been converted to client mode.
@@ -78,7 +79,10 @@ def enable_client_mode():
         _explicitly_disable_client_mode()
 
 
-def client_mode_hook(func: callable):
+_Func = TypeVar("_Func", bound=Callable)
+
+
+def client_mode_hook(func: _Func) -> _Func:
     """Decorator for whether to use the 'regular' ray version of a function,
     or the Ray Client version of that function.
 
