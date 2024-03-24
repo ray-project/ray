@@ -97,17 +97,14 @@ def train_func(config):
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            model_state_dict = torch.load(
-                os.path.join(checkpoint_dir, "model.pt"),
+            checkpoint = torch.load(
+                os.path.join(checkpoint_dir, "checkpoint.pt"),
                 # map_location=...,  # Load onto a different device if needed.
             )
+            model_state_dict = checkpoint["model_state_dict"]
             model.module.load_state_dict(model_state_dict)
-            optimizer.load_state_dict(
-                torch.load(os.path.join(checkpoint_dir, "optimizer.pt"))
-            )
-            start_epoch = (
-                torch.load(os.path.join(checkpoint_dir, "extra_state.pt"))["epoch"] + 1
-            )
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            start_epoch = checkpoint["epoch"] + 1
     # ========================================================
 
     for epoch in range(start_epoch, config["num_epochs"]):
@@ -128,16 +125,12 @@ def train_func(config):
             if train.get_context().get_world_rank() == 0 and should_checkpoint:
                 # === Make sure to save all state needed for resuming training ===
                 torch.save(
-                    model.module.state_dict(),  # NOTE: Unwrap the model.
-                    os.path.join(temp_checkpoint_dir, "model.pt"),
-                )
-                torch.save(
-                    optimizer.state_dict(),
-                    os.path.join(temp_checkpoint_dir, "optimizer.pt"),
-                )
-                torch.save(
-                    {"epoch": epoch},
-                    os.path.join(temp_checkpoint_dir, "extra_state.pt"),
+                    {
+                        "model_state_dict": model.module.state_dict(),  # NOTE: Unwrap the model.
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "epoch": epoch,
+                    },
+                    os.path.join(temp_checkpoint_dir, "checkpoint.pt"),
                 )
                 # ================================================================
                 checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
