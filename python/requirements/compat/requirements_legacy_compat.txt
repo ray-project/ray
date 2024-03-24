@@ -21,6 +21,6 @@ torchvision==0.10.0
 pytorch-lightning==1.5.10
 
 # Datasets
-pyarrow==6.0.1
+pyarrow==14.0.1
 
 ray[tune,data]
