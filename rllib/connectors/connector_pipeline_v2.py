@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -9,7 +8,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
-from ray.util.timer import _Timer
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +38,6 @@ class ConnectorPipelineV2(ConnectorV2):
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
-        self.timers = defaultdict(_Timer)
-
     def __len__(self):
         return len(self.connectors)
 
@@ -63,16 +59,14 @@ class ConnectorPipelineV2(ConnectorV2):
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
-            timer = self.timers[str(connector)]
-            with timer:
-                data = connector(
-                    rl_module=rl_module,
-                    data=data,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=shared_data,
-                    **kwargs,
-                )
+            data = connector(
+                rl_module=rl_module,
+                data=data,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+                **kwargs,
+            )
         return data
 
     def remove(self, name_or_class: Union[str, Type]):

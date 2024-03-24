@@ -26,7 +26,7 @@ class GetActions(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
