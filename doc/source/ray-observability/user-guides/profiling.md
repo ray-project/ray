@@ -101,7 +101,7 @@ ray.init()
 
 @ray.remote(num_gpus=1, runtime_env={ "nsight": "default"})
 class RayActor:
-    def run():
+  def run(self):
     a = torch.tensor([1.0, 2.0, 3.0]).cuda()
     b = torch.tensor([4.0, 5.0, 6.0]).cuda()
     c = a * b
@@ -129,12 +129,12 @@ ray.init()
 @ray.remote(
 num_gpus=1, 
 runtime_env={ "nsight": {
-    "t": "cuda,cudnn,cublas",
-    "cuda-memory-usage": "true",
-    "cuda-graph-trace": "graph",
+  "t": "cuda,cudnn,cublas",
+  "cuda-memory-usage": "true",
+  "cuda-graph-trace": "graph",
 }})
 class RayActor:
-    def run():
+  def run(self):
     a = torch.tensor([1.0, 2.0, 3.0]).cuda()
     b = torch.tensor([4.0, 5.0, 6.0]).cuda()
     c = a * b
