@@ -136,11 +136,10 @@ execution time of all function calls made within the profiled code.
 
 .. _`profiling module`: https://docs.python.org/3/library/profile.html#module-cProfile
 
-Unlike ``line_profiler`` above, this detailed list of profiled function calls
+cProfile's detailed list of profiled function calls
 **includes** internal function calls and function calls made within Ray.
 
-However, similar to ``line_profiler``, cProfile can be enabled with minimal
-changes to your application code (given that each section of the code you want
+cProfile can be enabled with minimal changes to your application code (given that each section of the code you want
 to profile is defined as its own function). To use cProfile, add an import
 statement, then replace calls to the loop functions as follows:
 
@@ -148,6 +147,12 @@ statement, then replace calls to the loop functions as follows:
   :skipif: True
 
   import cProfile  # Added import statement
+  import ray
+  import time
+
+  @ray.remote
+  def func():
+      time.sleep(0.5)
 
   def ex1():
       list1 = []
@@ -157,8 +162,6 @@ statement, then replace calls to the loop functions as follows:
   def main():
       ray.init()
       cProfile.run('ex1()')  # Modified call to ex1
-      cProfile.run('ex2()')
-      cProfile.run('ex3()')
 
   if __name__ == "__main__":
       main()
