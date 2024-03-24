@@ -18,8 +18,15 @@
 
 namespace ray {
 
+const int DEFAULT_MEMCOPY_THREADS = 6;
+
 // A helper function for doing memcpy with multiple threads. This is required
 // to saturate the memory bandwidth of modern cpus.
+void parallel_memcopy_with_default_threads(uint8_t *dst,
+                                           const uint8_t *src,
+                                           int64_t nbytes,
+                                           uintptr_t block_size);
+
 void parallel_memcopy(uint8_t *dst,
                       const uint8_t *src,
                       int64_t nbytes,
