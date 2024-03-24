@@ -32,7 +32,7 @@ def is_scalar_list(udf_return_col: Any) -> bool:
     )
 
 
-def is_nested_list(udf_return_col: Any) -> bool:
+def is_nested_list(udf_return_col: List[Any]) -> bool:
     if not udf_return_col:
         return False
     for e in udf_return_col:

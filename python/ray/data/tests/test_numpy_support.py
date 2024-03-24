@@ -154,11 +154,13 @@ def test_scalar_ragged_array_like(ray_start_regular_shared):
         output, create_ragged_ndarray([np.zeros((3, 5, 10)), np.zeros((3, 8, 8))])
     )
 
+
 def test_nested_ragged_arrays(ray_start_regular_shared):
     data = [
         {"a": [[1], [2, 3]]},
         {"a": [[4, 5], [6]]},
     ]
+
     def f(row):
         return data[row["id"]]
 
