@@ -998,7 +998,7 @@ def set_runtime_env_retry_times(request):
 def listen_port(request):
     port = getattr(request, "param", 0)
     try:
-        sock = net._get_socket_dualstack_fallback_single_stack_laddr()
+        sock = net._get_sock_stream_from_host("localhost")
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
 
@@ -1006,7 +1006,6 @@ def listen_port(request):
         MAX_RETRY = 10
         for i in range(MAX_RETRY):
             try:
-                # Binds to all loopback interfaces (IPv4, or IPv6, or both if dualstack support)
                 sock.bind(("localhost", port))
                 break
             except OSError as e:

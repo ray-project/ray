@@ -2059,7 +2059,7 @@ def get_current_unused_port():
         A port number that is not currently in use. (Note that this port
         might become used by the time you try to bind to it.)
     """
-    sock = net._get_socket_dualstack_fallback_single_stack_laddr()
+    sock = net._get_sock_stream_from_host('localhost')
 
     # Bind the socket to a local address with a random port number
     sock.bind(("localhost", 0))

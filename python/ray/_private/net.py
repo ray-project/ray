@@ -7,7 +7,6 @@ import socket
 from contextlib import closing
 
 
-@staticmethod
 def _get_addrinfo_from_sock_kind(address, kind, family=0):
     """
     Get a list of valid IP addresses compatible with requested filters.
@@ -29,7 +28,6 @@ def _get_addrinfo_from_sock_kind(address, kind, family=0):
     ]
 
 
-@staticmethod
 def _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(address, kind):
     """
     Same as _get_sock_kind_from_addrinfo() but favors IPv4 if it is available.
@@ -48,7 +46,6 @@ def _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(address, kind):
         return _get_addrinfo_from_sock_kind(address, kind)
 
 
-@staticmethod
 def _get_sock_from_host(address, kind):
     """
     Get a socket.socket for a provided inet address.
@@ -61,7 +58,6 @@ def _get_sock_from_host(address, kind):
     return socket.socket(inet_address[0], kind)
 
 
-@staticmethod
 def _get_sock_stream_from_host(address):
     """
     Returns a socket.socket which can either be IPv4 or IPv6 with
@@ -72,7 +68,6 @@ def _get_sock_stream_from_host(address):
     return _get_sock_from_host(address, socket.SOCK_STREAM)
 
 
-@staticmethod
 def _get_sock_dgram_from_host(address):
     """
     Returns a socket.socket which can either be IPv4 or IPv6 with
@@ -83,7 +78,6 @@ def _get_sock_dgram_from_host(address):
     return _get_sock_from_host(address, socket.SOCK_DGRAM)
 
 
-@staticmethod
 def _get_private_ip_addresses():
     """
     Connects to Google DNS over IPv4, IPv6, or both to discover private IP
@@ -106,7 +100,6 @@ def _get_private_ip_addresses():
     return private_ip_addresses
 
 
-@staticmethod
 def _get_socket_dualstack_fallback_single_stack_laddr(kind=socket.SOCK_STREAM):
     """
     Similar to socket.socket() except that if networking is dualstack it will
@@ -121,13 +114,12 @@ def _get_socket_dualstack_fallback_single_stack_laddr(kind=socket.SOCK_STREAM):
         # set up to listen on all IPv4 and IPv6 interfaces with a single socket
         return sock
     else:
-        # fall back to supporting the host single network stack.i
+        # fall back to supporting the host single network stack.
         # (IPv4 or IPv6 only)
         return _get_sock_from_host("localhost", kind)
 
 
-@staticmethod
-def _parse_ip_port(address: str) -> list[str]:
+def _parse_ip_port(address):
     """
     Parses a str of ip:port and returns a List with (ip, port).
 
@@ -160,4 +152,5 @@ def _parse_ip_port(address: str) -> list[str]:
             ip = re.sub(r'^.*/', r'', ip)
         if "/" in port:
             port = re.sub(r'^([^/]+)/.*', r'\g<1>', port)
+    ip = re.sub(r'^\[?([^\]]*)\]?$', r'\g<1>', ip)
     return [ip, port]

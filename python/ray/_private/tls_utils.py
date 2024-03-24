@@ -1,6 +1,7 @@
 import datetime
 import os
 import socket
+from ray._private import net
 
 
 def generate_self_signed_tls_certs():
@@ -42,7 +43,7 @@ def generate_self_signed_tls_certs():
         private_dns_addresses.append(
             x509.DNSName(socket.gethostbyname(socket.gethostname()))
         )
-    except:
+    except Exception as ignored:  # noqa: F841
         # fall back to friendly name of the host
         private_dns_addresses.append(
             x509.DNSName(os.uname()[1])
