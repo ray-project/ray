@@ -1,6 +1,5 @@
 import inspect
 import logging
-import threading
 import weakref
 from typing import Any, Dict, List, Optional, Union
 
