@@ -2,7 +2,7 @@
 | Template Specification | Description |
 | ---------------------- | ----------- |
 | Summary | This template, demonstrates how to perform fine-tuning (full parameter or LoRA) for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
-| Time to Run | ~14 min. for 7B for 1 epoch on 3.5M tokens. ~26 min for 13B for 1 epoch.  |
+| Time to Run | 1 epoch (3.5M tokens) training wall-clock time: ~14 min. for 7B, ~26 min. for 13B, and ~190 min. for 70B (see the setup details below)  |
 | Minimum Compute Requirements | 16xg5.4xlarge for worker nodes for 7B model, 4xg5.12xlarge nodes for 13B model, and 4xg5.48xlarge (or 2xp4de.24xlarge) nodes for 70B|
 | Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). |
 
@@ -66,7 +66,7 @@ aws s3 ls s3://<bucket_path>/checkpoint_00000
 └── tokenizer_config.json
 ```
 
-After training we can use [Aviary](https://github.com/ray-project/aviary) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
+After training we can use [RayLLM](https://github.com/ray-project/ray-llm) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
 
 ### Creating the dataset
 
