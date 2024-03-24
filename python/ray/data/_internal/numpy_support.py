@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 
 import numpy as np
 
@@ -26,13 +26,19 @@ def is_valid_udf_return(udf_return_col: Any) -> bool:
 
 def is_scalar_list(udf_return_col: Any) -> bool:
     """Check whether a UDF column is is a scalar list."""
-    if not (isinstance(udf_return_col, (list, np.ndarray))):
+
+    return isinstance(udf_return_col, list) and (
+        not udf_return_col or np.isscalar(udf_return_col[0])
+    )
+
+
+def is_nested_list(udf_return_col: Any) -> bool:
+    if not udf_return_col:
         return False
-    if len(udf_return_col) == 0:
-        return True
-    if np.isscalar(udf_return_col[0]):
-        return True
-    return is_scalar_list(udf_return_col[0])
+    for e in udf_return_col:
+        if isinstance(e, list) or isinstance(e, np.ndarray):
+            return True
+    return False
 
 
 def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
@@ -68,7 +74,7 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             # creating an inefficient array of array of object dtype. Don't convert
             # scalar lists though, since those can be represented as pyarrow list type
             # without needing to go through our tensor extension.
-            if all(
+            if not is_nested_list(udf_return_col) and all(
                 is_valid_udf_return(e) and not is_scalar_list(e) for e in udf_return_col
             ):
                 # Use np.asarray() instead of np.array() to avoid copying if possible.
