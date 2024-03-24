@@ -1173,7 +1173,7 @@ def test_get_actor_race_condition(shutdown_only):
         assert ["ok"] * CONCURRENCY == results
 
 
-def test_create_actor_race_condition():
+def test_create_actor_race_condition(shutdown_only):
     """Make sure we can create actors in multiple threads without
     race conditions.
 
