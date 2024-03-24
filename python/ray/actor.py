@@ -1,5 +1,6 @@
 import inspect
 import logging
+import sys
 import weakref
 from typing import Any, Dict, List, Optional, Union
 
@@ -41,6 +42,11 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
+
+if sys.version_info >= (3, 9):
+    from types import GenericAlias
+else:
+    GenericAlias = None
 
 logger = logging.getLogger(__name__)
 
@@ -422,10 +428,18 @@ class _ActorClassMethodMetadata(object):
                 modified_class, method_name
             )
 
-            # Print a warning message if the method signature is not
-            # supported. We don't raise an exception because if the actor
-            # inherits from a class that has a method whose signature we
-            # don't support, there may not be much the user can do about it.
+            # Hotfix: This should be removed once GenericAlias includes signatures.
+            # See https://github.com/ray-project/ray/pull/43117 for more details.
+            if GenericAlias and any(
+                (
+                    method is GenericAlias,
+                    getattr(method, "__func__", None) is GenericAlias,
+                )
+            ):
+                method = method.__init__
+                assert type(method) == type(all.__call__)
+                assert 1 == 2
+
             self.signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not is_bound
             )

@@ -1388,6 +1388,29 @@ def test_actor_equal(ray_start_regular_shared):
     assert origin == remote
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 9), reason="GenericAlias is new in Python 3.9"
+)
+def test_classmethod_genericalias():
+    """
+    The Python built-in function `inspect.signature` doesn't support
+    classmethod(GenericAlias). Hence, passing the `__class_getitem__`
+    to the function `inspect.signature` will raise a ValueError.
+    """
+    from types import GenericAlias
+
+    @ray.remote
+    class MyClass:
+        __class_getitem__ = classmethod(GenericAlias)
+
+    assert getattr(MyClass.__class_getitem__, "__func__", None) is GenericAlias
+
+    # This would allow MyClass[int] to behave similarly to specifying a generic type
+    myClass = MyClass.remote()
+    obj_ref = myClass.__class_getitem__.remote(int)
+    print(ray.get(obj_ref))
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
