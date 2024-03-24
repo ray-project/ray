@@ -264,8 +264,8 @@ class APPO(Impala):
 
         # After init: Initialize target net.
 
-        # TODO(avnishn):
-        # does this need to happen in __init__? I think we can move it to setup()
+        # TODO(avnishn): Does this need to happen in __init__? I think we can move it
+        #  to setup()
         if not self.config._enable_new_api_stack:
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()

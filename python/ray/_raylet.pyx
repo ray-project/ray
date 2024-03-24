@@ -1223,12 +1223,10 @@ cdef class StreamingGeneratorExecutionContext:
         self.application_error = application_error
         self.should_retry_exceptions = should_retry_exceptions
 
-        if generator_backpressure_num_objects > 0:
-            self.waiter = make_shared[CGeneratorBackpressureWaiter](
-                generator_backpressure_num_objects
-            )
-        else:
-            self.waiter = shared_ptr[CGeneratorBackpressureWaiter]()
+        self.waiter = make_shared[CGeneratorBackpressureWaiter](
+            generator_backpressure_num_objects,
+            check_signals
+        )
 
         return self
 
@@ -1371,6 +1369,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     """
     cdef:
         int64_t gen_index = 0
+        CRayStatus return_status
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1385,6 +1384,15 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
             gen_index += 1
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
+
+    # The caller gets object values through the reports. If we finish the task
+    # before sending the report is complete, then we may fail before the report
+    # is sent to the caller. Then, the caller would never be able to ray.get
+    # the yield'ed ObjectRef. Therefore, we must wait for all in-flight object
+    # reports to complete before finishing the task.
+    with nogil:
+        return_status = context.waiter.get().WaitAllObjectsReported()
+    check_status(return_status)
 
 
 async def execute_streaming_generator_async(
@@ -2230,8 +2238,8 @@ cdef execute_task_with_cancellation_handler(
         task_counter = manager.get_task_counter(function_descriptor)
         if task_counter == execution_info.max_calls:
             raise_sys_exit_with_custom_error_message(
-                "max_call has reached, "
-                f"max_calls: {execution_info.max_calls}")
+                f"Exited because worker reached max_calls={execution_info.max_calls}"
+                " for this method.")
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
