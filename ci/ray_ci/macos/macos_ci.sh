@@ -22,7 +22,7 @@ select_flaky_tests() {
 run_my_tests() {
   (bazel test --config=ci $(./ci/run/bazel_export_options) \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV \
-      --test_env=CONDA_PROMPT_MODIFIER --test_env=CI --runs_per_test=30 --flaky_test_attempts=1 //python/ray/tests:test_plasma_unlimite) || exit 42
+      --test_env=CONDA_PROMPT_MODIFIER --test_env=CI --runs_per_test=30 --flaky_test_attempts=1 //python/ray/tests:test_plasma_unlimited) || exit 42
 }
 
 run_small_and_large_flaky_tests() {
