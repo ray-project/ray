@@ -398,9 +398,11 @@ temporary Ray session directory. See :ref:`temp-dir-log-files` for how to set th
     Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable was the way to configure
     the local staging directory to be outside of the home directory (``~/ray_results``).
 
-    This environment variable is now deprecated, and ``storage_path`` should be the
-    only path that you need to configure. When ``storage_path`` is set, *there will
-    no longer be any files written to ``~/ray_results`` starting from Ray 2.10.*
+    ``RunConfig(local_dir)`` was another deprecated alternative to set the local staging directory.
+
+    These options are now deprecated, and you should instead set ``storage_path``.
+    When ``storage_path`` is set, there will no longer be any files written to
+    ``~/ray_results`` starting from Ray 2.10.
 
 
 .. _train-working-directory:
