@@ -425,14 +425,13 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
 #else
     pid_t pid = getpid();
 #endif
-    *expose_osstream_ << absl::StrFormat(
-        "%s:%d (PID: %d, TID: ", file_name, line_number, pid);
-    // Different OS's have different types for the TID. Thus, we pass the TID to the
-    // std::ostringstream by itself so that the compiler can handle the type. This is
-    // better than manually choosing a format specific for the type in absl::StrFormat()
-    // above.
-    *expose_osstream_ << GetTid();
-    *expose_osstream_ << absl::StrFormat(", errno: %d (%s)):", errno, strerror(errno));
+    *expose_osstream_ << absl::StrFormat("%s:%d (PID: %d, TID: %s, errno: %d (%s)):",
+                                         file_name,
+                                         line_number,
+                                         pid,
+                                         GetTid(),
+                                         errno,
+                                         strerror(errno));
   }
   if (is_enabled_) {
     logging_provider_ = new LoggingProvider(
