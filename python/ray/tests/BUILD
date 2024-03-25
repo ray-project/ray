@@ -679,7 +679,6 @@ py_test(
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
   files = [
-    "test_actor.py",
     "test_advanced.py",
     "test_asyncio.py",
     "test_basic.py",
@@ -695,6 +694,17 @@ py_test_module_list(
     "test_object_assign_owner.py",
   ],
   size = "large",
+  name_suffix = "_client_mode",
+  env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
+  tags = ["exclusive", "client_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_actor.py",
+  ],
+  size = "enormous",
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
   tags = ["exclusive", "client_tests", "team:core"],
