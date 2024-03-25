@@ -429,7 +429,7 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
                                          file_name,
                                          line_number,
                                          pid,
-                                         GetTid(),
+                                         std::to_string(GetTid()),
                                          errno,
                                          strerror(errno));
   }
