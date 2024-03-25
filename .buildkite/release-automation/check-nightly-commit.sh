@@ -38,13 +38,7 @@ verify_image_commit() {
 }
 
 check_images() {
-    VERSIONS=("cpu" "gpu" "cu118" "py39" "py39-cpu" "py39-gpu" "py39-cu118" "py310" "py310-gpu" "py310-cu118" "py310-cpu")
-    TAGS=("nightly")
-
-    for VERSION in "${VERSIONS[@]}"; do
-        TAGS+=("nightly-$VERSION")
-    done
-
+    TAGS=($(bazel run //ci/ray_ci/automation:list_docker_tags -- --prefix="nightly" --ray_type="$RAY_TYPE"))
     for TAG in "${TAGS[@]}"; do
         verify_image_commit "$TAG"
     done
