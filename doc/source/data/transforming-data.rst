@@ -54,6 +54,8 @@ input and output a dictionary with keys of strings and values of any type. For e
 
 .. testcode::
 
+    from typing import Any, Dict
+
     def fn(row: Dict[str, Any]) -> Dict[str, Any]:
         # access row data
         value = row["col1"]
@@ -94,6 +96,8 @@ input a dictionary with keys of strings and values of any type and output a list
 dictionaries that have the same type as the input, for example:
 
 .. testcode::
+
+    from typing import Any, Dict, List
 
     def fn(row: Dict[str, Any]) -> List[Dict[str, Any]]:
         # access row data
@@ -198,6 +202,7 @@ In this case, your function would look like:
 
 .. testcode::
 
+    from typing import Dict, Iterator
     import numpy as np
 
     def fn(batch: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
