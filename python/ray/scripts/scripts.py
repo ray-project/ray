@@ -1161,7 +1161,7 @@ def stop(force: bool, grace_period: int):
     # they are still alive, send sigkill.
     processes_to_kill = RAY_PROCESSES
     # Raylet should exit before all other processes exit.
-    # Otherwise, fate-sharing agents will complain and suicide.
+    # Otherwise, fate-sharing agents will complain and exit.
     assert processes_to_kill[0][0] == "raylet"
 
     # GCS should exit after all other processes exit.
