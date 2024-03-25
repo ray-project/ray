@@ -159,6 +159,7 @@ class ActorMethod:
     ):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
+        self._bind_index = 0
         self._num_returns = num_returns
 
         # Default case.
@@ -259,7 +260,9 @@ class ActorMethod:
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: actor,
             PREV_CLASS_METHOD_CALL_KEY: None,
+            BIND_INDEX_KEY: self._bind_index,
         }
+        self._bind_index += 1
 
         node = ClassMethodNode(
             self._method_name,

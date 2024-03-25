@@ -37,84 +37,85 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(
+    output_channel = Channel(
         readers,
         buffer_size_bytes,
     )
-    return self._output_channel
+    return output_channel
 
 
 @DeveloperAPI
-def do_exec_compiled_task(
-    self,
-    inputs: List[Union[Any, Channel]],
-    actor_method_name: str,
-) -> None:
-    """Generic actor method to begin executing a compiled DAG. This runs an
-    infinite loop to repeatedly read input channel(s), execute the given
-    method, and write output channel(s). It only exits if the actor dies or an
-    exception is thrown.
+def do_exec_tasks(self, tasks: List["ExecutableTask"]) -> None:
+    """Generic actor method to begin executing the tasks belonging to an actor.
+    This runs an infinite loop to run each task in turn: reading input channel(s),
+    executing the given taks, and writing output channel(s). It only exits if the
+    actor dies or an exception is thrown.
 
     Args:
-        inputs: The arguments to the task. Arguments that are not Channels will
-            get passed through to the actor method. If the argument is a channel,
-            it will be replaced by the value read from the channel before the
-            method execute.
-        actor_method_name: The name of the actual actor method to execute in
-            the loop.
+        tasks: the executable tasks corresponding to the actor methods.
     """
     try:
-        method = getattr(self, actor_method_name)
+        self._uuid_to_input_reader = {}
+        self._uuid_to_output_writer = {}
+        for task in tasks:
+            task.resolved_inputs = []
+            task.input_channels = []
+            task.input_channel_idxs = []
+            # Add placeholders for input channels.
+            for idx, inp in enumerate(task.resolved_args):
+                if isinstance(inp, Channel):
+                    task.input_channels.append(inp)
+                    task.input_channel_idxs.append(idx)
+                    task.resolved_inputs.append(None)
+                else:
+                    task.resolved_inputs.append(inp)
 
-        resolved_inputs = []
-        input_channels = []
-        input_channel_idxs = []
-        # Add placeholders for input channels.
-        for idx, inp in enumerate(inputs):
-            if isinstance(inp, Channel):
-                input_channels.append(inp)
-                input_channel_idxs.append(idx)
-                resolved_inputs.append(None)
-            else:
-                resolved_inputs.append(inp)
+            input_reader: ReaderInterface = SynchronousReader(task.input_channels)
+            output_writer: WriterInterface = SynchronousWriter(task.output_channel)
+            self._uuid_to_input_reader[task.uuid] = input_reader
+            self._uuid_to_output_writer[task.uuid] = output_writer
 
-        self._input_reader: ReaderInterface = SynchronousReader(input_channels)
-        self._output_writer: WriterInterface = SynchronousWriter(self._output_channel)
-        self._input_reader.start()
-        self._output_writer.start()
+            input_reader.start()
+            output_writer.start()
 
         while True:
             res = None
             try:
-                res = self._input_reader.begin_read()
+                for task in tasks:
+                    method = getattr(self, task.method_name)
+                    input_reader = self._uuid_to_input_reader[task.uuid]
+                    output_writer = self._uuid_to_output_writer[task.uuid]
+                    res = input_reader.begin_read()
             except IOError:
                 break
 
-            for idx, output in zip(input_channel_idxs, res):
-                resolved_inputs[idx] = output
+                for idx, output in zip(task.input_channel_idxs, res):
+                    task.resolved_inputs[idx] = output
 
-            try:
-                output_val = method(*resolved_inputs)
-            except Exception as exc:
-                backtrace = ray._private.utils.format_error_message(
-                    "".join(
-                        traceback.format_exception(type(exc), exc, exc.__traceback__)
-                    ),
-                    task_exception=True,
-                )
-                wrapped = RayTaskError(
-                    function_name="do_exec_compiled_task",
-                    traceback_str=backtrace,
-                    cause=exc,
-                )
-                self._output_writer.write(wrapped)
-            else:
-                self._output_writer.write(output_val)
+                try:
+                    output_val = method(*task.resolved_inputs)
+                except Exception as exc:
+                    backtrace = ray._private.utils.format_error_message(
+                        "".join(
+                            traceback.format_exception(
+                                type(exc), exc, exc.__traceback__
+                            )
+                        ),
+                        task_exception=True,
+                    )
+                    wrapped = RayTaskError(
+                        function_name="do_exec_tasks",
+                        traceback_str=backtrace,
+                        cause=exc,
+                    )
+                    output_writer.write(wrapped)
+                else:
+                    output_writer.write(output_val)
 
-            try:
-                self._input_reader.end_read()
-            except IOError:
-                break
+                try:
+                    input_reader.end_read()
+                except IOError:
+                    break
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
@@ -122,9 +123,10 @@ def do_exec_compiled_task(
 
 
 @DeveloperAPI
-def do_cancel_compiled_task(self):
-    self._input_reader.close()
-    self._output_writer.close()
+def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
+    for task in tasks:
+        self._uuid_to_input_reader[task.uuid].close()
+        self._uuid_to_output_writer[task.uuid].close()
 
 
 @PublicAPI(stability="alpha")
@@ -180,6 +182,35 @@ Node: {self.dag_node}
 Arguments: {self.args}
 Output: {self.output_channel}
 """
+
+
+@DeveloperAPI
+class ExecutableTask:
+    """A task that can be executed in a compiled DAG, and it
+    corresponds to an actor method.
+    """
+
+    def __init__(
+        self,
+        method_name: str,
+        resolved_args: List[Any],
+        output_channel: Channel,
+        uuid: str,
+    ):
+        """
+        Args:
+            method_name: The name of the method to execute.
+            resolved_args: The arguments to the method. Arguments that are
+                not Channels will get passed through to the actor method.
+                If the argument is a channel, it will be replaced by the
+                value read from the channel before the method executes.
+            output_channel: The channel to write the output to.
+            uuid: The unique identifier for the task.
+        """
+        self.method_name = method_name
+        self.resolved_args = resolved_args
+        self.output_channel = output_channel
+        self.uuid = uuid
 
 
 @DeveloperAPI
@@ -260,9 +291,19 @@ class CompiledDAG:
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: List["ray.ObjectRef"] = []
         # Set of actors present in the DAG.
-        self.actor_refs = set()
+        self.actor_and_method_name_tuples = set()
+        self.actor_to_ref = {}
+        self.actor_to_tasks: Dict[
+            "ray._raylet.ActorID", List["CompiledTask"]
+        ] = defaultdict(list)
+        self.actor_to_executable_tasks: Dict[
+            "ray._raylet.ActorID", List["ExecutableTask"]
+        ] = {}
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
+        logger.info(f"Adding node {node} to index {self.counter}")
+        import traceback
+        traceback.print_stack()
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
@@ -324,13 +365,9 @@ class CompiledDAG:
                 if isinstance(arg, DAGNode):
                     arg_idx = self.dag_node_to_idx[arg]
                     self.idx_to_task[arg_idx].downstream_node_idxs.add(idx)
-
-        for actor_id, task_count in self.actor_task_count.items():
-            if task_count > 1:
-                raise NotImplementedError(
-                    "Compiled DAGs can contain at most one task per actor handle. "
-                    f"Actor with ID {actor_id} appears {task_count}x."
-                )
+                    logger.info(
+                        f"Adding {idx} as downstream for {arg_idx}, all downstream is {self.idx_to_task[arg_idx].downstream_node_idxs}"
+                    )
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -393,7 +430,7 @@ class CompiledDAG:
             visited.add(cur_idx)
 
             task = self.idx_to_task[cur_idx]
-            # Create an output buffer on the actor.
+            # Create an output buffer for the actor method.
             assert task.output_channel is None
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
@@ -430,7 +467,10 @@ class CompiledDAG:
                         buffer_size_bytes=self._buffer_size_bytes,
                     )
                 )
-                self.actor_refs.add(task.dag_node._get_actor_handle())
+                actor_handle = task.dag_node._get_actor_handle()
+                self.actor_to_ref[actor_handle._actor_id] = actor_handle
+                self.actor_to_tasks[actor_handle._actor_id].append(task)
+                logger.info(f"Adding task index {cur_idx} to actor {actor_handle._actor_id}")
             elif isinstance(task.dag_node, InputNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 reader_handles = [
@@ -444,43 +484,88 @@ class CompiledDAG:
                 assert isinstance(task.dag_node, MultiOutputNode)
 
             for idx in task.downstream_node_idxs:
+                logger.info(f"Appending {idx} to frontier")
                 frontier.append(idx)
 
+        # Validate input channels for tasks that have not been visited
         for node_idx, task in self.idx_to_task.items():
             if node_idx == self.input_task_idx:
-                # We don't need to assign an actual task for the input node.
                 continue
-
             if node_idx == self.output_task_idx:
-                # We don't need to assign an actual task for the input node.
                 continue
+            if node_idx not in visited:
+                has_at_least_one_channel_input = False
+                for arg in task.args:
+                    if isinstance(arg, DAGNode):
+                        has_at_least_one_channel_input = True
+                if not has_at_least_one_channel_input:
+                    raise ValueError(
+                        "Compiled DAGs require each task to take a ray.dag.InputNode "
+                        "or at least one other DAGNode as an input"
+                    )
 
-            resolved_args = []
-            has_at_least_one_channel_input = False
-            for arg in task.args:
-                if isinstance(arg, DAGNode):
-                    arg_idx = self.dag_node_to_idx[arg]
-                    arg_channel = self.idx_to_task[arg_idx].output_channel
-                    assert arg_channel is not None
-                    resolved_args.append(arg_channel)
-                    has_at_least_one_channel_input = True
-                else:
-                    resolved_args.append(arg)
-            # TODO: Support no-input DAGs (use an empty object to signal).
-            if not has_at_least_one_channel_input:
-                raise ValueError(
-                    "Compiled DAGs require each task to take a "
-                    "ray.dag.InputNode or at least one other DAGNode as an "
-                    "input"
+        # Create executable tasks for each actor
+        for actor_id, tasks in self.actor_to_tasks.items():
+            executable_tasks = []
+            worker_fn = None
+            for task in tasks:
+                resolved_args = []
+                has_at_least_one_channel_input = False
+                for arg in task.args:
+                    if isinstance(arg, DAGNode):
+                        arg_idx = self.dag_node_to_idx[arg]
+                        arg_channel = self.idx_to_task[arg_idx].output_channel
+                        assert arg_channel is not None
+                        resolved_args.append(arg_channel)
+                        has_at_least_one_channel_input = True
+                    else:
+                        resolved_args.append(arg)
+                # TODO: Support no-input DAGs (use an empty object to signal).
+                if not has_at_least_one_channel_input:
+                    raise ValueError(
+                        "Compiled DAGs require each task to take a "
+                        "ray.dag.InputNode or at least one other DAGNode as an "
+                        "input"
+                    )
+                executable_task = ExecutableTask(
+                    task.dag_node.get_method_name(),
+                    resolved_args,
+                    task.output_channel,
+                    task.dag_node.get_stable_uuid(),
                 )
+                executable_tasks.append(executable_task)
+                if worker_fn is None:
+                    worker_fn = task.dag_node._get_remote_method("__ray_call__")
 
-            # Assign the task with the correct input and output buffers.
-            worker_fn = task.dag_node._get_remote_method("__ray_call__")
+            import itertools
+
+            for _, g in itertools.groupby(executable_tasks, lambda x: x.method_name):
+                group = list(g)
+                if len(group) > 1:
+                    resolved_args = set()
+                    for executable_task in group:
+                        if (
+                            len(
+                                set(executable_task.resolved_args).intersection(
+                                    resolved_args
+                                )
+                            )
+                            > 0
+                        ):
+                            # TODO: Support binding the same actor method to the
+                            # same input multiple times.
+                            raise ValueError(
+                                f"Compiled DAGs currently do not support binding the "
+                                f"same actor method to the same input multiple times. "
+                                f"Method: {executable_task.method_name}"
+                            )
+                        resolved_args.update(executable_task.resolved_args)
+
+            self.actor_to_executable_tasks[actor_id] = executable_tasks
             self.worker_task_refs.append(
                 worker_fn.options(concurrency_group="_ray_system").remote(
-                    do_exec_compiled_task,
-                    resolved_args,
-                    task.dag_node.get_method_name(),
+                    do_exec_tasks,
+                    executable_tasks,
                 )
             )
 
@@ -533,28 +618,28 @@ class CompiledDAG:
             def teardown(self):
                 if self.in_teardown:
                     return
-                logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
 
                 self.in_teardown = True
-                for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
-                    # TODO(swang): Suppress exceptions from actors trying to
-                    # read closed channels when DAG is being torn down.
+                for actor_id, tasks in outer.actor_to_executable_tasks.items():
                     try:
-                        ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
+                         # TODO(swang): Suppress exceptions from actors trying to
+                        # read closed channels when DAG is being torn down.
+                        ray.get(
+                                outer.actor_to_ref[actor_id].__ray_call__.remote(
+                                    do_cancel_executable_tasks, tasks
+                                )
+                            )
                     except Exception:
-                        logger.exception("Error cancelling worker task")
+                        logger.exception("Error cancelling task")
                         pass
-                logger.info("Waiting for worker tasks to exit")
                 for ref in outer.worker_task_refs:
                     try:
                         ray.get(ref)
                     except Exception:
                         pass
-                logger.info("Teardown complete")
 
             def run(self):
                 try:
