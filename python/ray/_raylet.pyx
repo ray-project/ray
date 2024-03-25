@@ -1437,14 +1437,18 @@ async def execute_streaming_generator_async(
     try:
         try:
             async for output in gen:
-                # NOTE: Reporting generator output in a streaming fashion, is
-                # done in a standalone thread-pool to avoid blocking the
-                # event-loop , since serializing and actual RPC I/O is done
-                # with "nogil". We still wait for the report to finish to
-                # ensure that the task does not modify the output before we
-                # serialize it. Note that the RPC is sent asynchronously, and
-                # we do not wait for the reply here (unless we are under
-                # backpressure).
+                # NOTE: Report of streaming generator output is done in a
+                # standalone thread-pool to avoid blocking the event loop,
+                # since serializing and actual RPC I/O is done with "nogil". We
+                # still wait for the report to finish to ensure that the task
+                # does not modify the output before we serialize it.
+                #
+                # Note that the RPC is sent asynchronously, and we do not wait
+                # for the reply here. The exception is if the user specified a
+                # backpressure threshold for the streaming generator, and we
+                # are currently under backpressure. Then we need to wait for an
+                # ack from the caller (the reply for a possibly previous report
+                # RPC) that they have consumed more ObjectRefs.
                 await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
