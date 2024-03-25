@@ -1,6 +1,7 @@
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
+from ray._private import net
 
 from ray.includes.common cimport (
     CObjectLocation,
@@ -24,8 +25,7 @@ cdef class GcsClientOptions:
     def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
         try:
-            # TODO: use ray._private.net._parse_ip_port(gcs_address); I'm not familiar with pxi
-            ip, port = gcs_address.rsplit(":", 1)
+            ip, port = net._parse_ip_port(gcs_address)
             port = int(port)
             self.inner.reset(
                 new CGcsClientOptions(ip, port))

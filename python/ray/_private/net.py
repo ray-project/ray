@@ -132,6 +132,16 @@ def _parse_ip_port(address):
 
     This uses str.rsplit(":", 1) to support DNS, IPv6, and IPv4 parsing.
     """
+    # dashboard passes bytes instead of str so coerce
+    if isinstance(address, bytes):
+        address = address.decode('ascii')
+
+    if not isinstance(address, str):
+        raise ValueError(
+            "address type not str or bytes:\n\n" +
+            f"    type: {repr(type(address))}\n" +
+            f"   value: {repr(address)}"
+        )
 
     # If no colon is in the address then assume a List with the original value
     # is desired.
