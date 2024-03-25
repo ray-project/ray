@@ -1,12 +1,12 @@
 import os
 import unittest
-from unittest.mock import patch, PropertyMock
+from unittest.mock import patch
 
 from ci.ray_ci.builder_container import PYTHON_VERSIONS
 from ci.ray_ci.builder import DEFAULT_PYTHON_VERSION
-import ray_release.configs.global_config
 
-POSTMERGE_PIPELINE = "w00tw00t"
+
+PIPELINE_POSTMERGE = "w00tw00t"
 
 
 class RayCITestBase(unittest.TestCase):

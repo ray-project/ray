@@ -59,7 +59,10 @@ class RayDockerContainer(DockerContainer):
     def _should_upload(self) -> bool:
         if not self.upload:
             return False
-        if os.environ.get("BUILDKITE_PIPELINE_ID") not in get_global_config()["pipeline_postmerge"]:
+        if (
+            os.environ.get("BUILDKITE_PIPELINE_ID")
+            not in get_global_config()["pipeline_postmerge"]
+        ):
             return False
         if os.environ.get("BUILDKITE_BRANCH", "").startswith("releases/"):
             return True

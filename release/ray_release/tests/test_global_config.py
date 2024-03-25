@@ -22,7 +22,7 @@ state_machine:
 credentials:
   aws2gce: release/aws2gce_iam.json
 pipeline:
-  postmerge: 
+  postmerge:
     - hi
     - w00t
 """
