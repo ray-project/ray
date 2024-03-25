@@ -381,22 +381,27 @@ Note that this behavior is off by default.
 Advanced configuration
 ----------------------
 
-Setting the intermediate local directory
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Setting the local staging directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When a ``storage_path`` is specified, training outputs are saved to an
-*intermediate local directory*, then persisted (copied/uploaded) to the ``storage_path``.
-By default, this intermediate local directory is a sub-directory of ``~/ray_results``.
+Apart from files written to the ``storage_path``, Ray Train also writes to some
+logfiles and metadata files in a *local staging directory* before they get
+persisted (copied/uploaded) to the ``storage_path``.
+By default, this local staging directory is a sub-directory of the temporary Ray session
+directory (``/tmp/ray/session_latest``), which is also where Ray Core logs are dumped.
 
-Customize this intermediate local directory with the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable:
+Customize the location of the staging directory by customizing the location of the
+temporary Ray session directory. See :ref:`temp-dir-log-files` for how to set this directory.
 
-.. testcode::
-    :skipif: True
+.. warning::
 
-    import os
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/custom/"
+    Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable was the way to configure
+    the local staging directory to be outside of the home directory (``~/ray_results``).
 
-    ...
+    This environment variable is now deprecated, and ``storage_path`` should be the
+    only path that you need to configure. When ``storage_path`` is set, *there will
+    no longer be any files written to ``~/ray_results`` starting from Ray 2.10.*
+
 
 .. _train-working-directory:
 
