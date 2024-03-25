@@ -212,11 +212,15 @@ def dummy_map_batches(x):
     return x
 
 
-def map_batches_sleep(x, n):
-    """Dummy function used in calls to map_batches below, which
-    simply sleeps for `n` seconds before returning the input batch."""
-    time.sleep(n)
-    return x
+def dummy_map_batches_sleep(n):
+    """Function used to create a function that sleeps for n seconds
+    to be used in map_batches below."""
+
+    def f(x):
+        time.sleep(n)
+        return x
+
+    return f
 
 
 @contextmanager
@@ -1042,7 +1046,9 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     )
 
     # total time across all blocks is sum of wall times of blocks
-    assert dataset_stats_summary.get_total_time_all_blocks() == sum(block_params["wall_time"])
+    assert dataset_stats_summary.get_total_time_all_blocks() == sum(
+        block_params["wall_time"]
+    )
 
     cpu_time_stats = op_stats.cpu_time
     assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.get("sum")
@@ -1194,33 +1200,77 @@ def test_time_backpressure(ray_start_regular_shared, restore_data_context):
 
 
 def test_runtime_metrics(ray_start_regular_shared):
-    pass
+    from math import isclose
+
+    def time_to_seconds(time_str):
+        if time_str.endswith("us"):
+            # Convert microseconds to seconds
+            return float(time_str[:-2]) / (1000 * 1000)
+        elif time_str.endswith("ms"):
+            # Convert milliseconds to seconds
+            return float(time_str[:-2]) / 1000
+        elif time_str.endswith("s"):
+            # Already in seconds, just remove the 's' and convert to float
+            return float(time_str[:-1])
+
+    f = dummy_map_batches_sleep(0.01)
+    ds = ray.data.range(100).map(f).materialize().map(f).materialize()
+    metrics_str = ds._plan.stats().runtime_metrics()
+
+    # Dictionary to store the metrics for testing
+    metrics_dict = {}
+
+    # Regular expression to match the pattern of each metric line
+    pattern = re.compile(r"\* (.+?): ([\d\.]+(?:ms|s)) \(([\d\.]+)%\)")
+
+    # Split the input string into lines and iterate over them
+    for line in metrics_str.split("\n"):
+        match = pattern.match(line)
+        if match:
+            # Extracting the operator name, time, and percentage
+            operator_name, time_str, percent_str = match.groups()
+            # Converting percentage to float and keeping time as string
+            metrics_dict[operator_name] = (
+                time_to_seconds(time_str),
+                float(percent_str),
+            )
+
+    total_time, total_percent = metrics_dict["Total"]
+    metrics_dict.pop("Total")
+    assert total_percent == 100
+
+    for time_s, percent in metrics_dict.values():
+        assert time_s < total_time
+        # Check percentage, this is done with some expected loss of precision
+        # due to rounding in the intital output.
+        assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
 
+
 def test_dataset_throughput():
     ray.shutdown()
     ray.init(num_cpus=2)
-    def f(x):
-        time.sleep(0.01)
-        return x
 
+    f = dummy_map_batches_sleep(0.01)
     ds = ray.data.range(100).map(f).materialize().map(f).materialize()
 
     # Pattern to match operator throughput
     operator_pattern = re.compile(
-        r"Operator (\d+).*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",
-        re.DOTALL)
+        r"Operator (\d+).*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
+        re.DOTALL,
+    )
 
     for match in operator_pattern.findall(ds.stats()):
         assert float(match[1]) >= float(match[2])
 
     # Pattern to match dataset throughput
     dataset_pattern = re.compile(
-        r"Dataset throughput:.*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",
-        re.DOTALL)
+        r"Dataset throughput:.*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
+        re.DOTALL,
+    )
 
     dataset_match = dataset_pattern.search(ds.stats())
     assert float(dataset_match[1]) >= float(dataset_match[2])

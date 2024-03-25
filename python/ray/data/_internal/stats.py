@@ -950,9 +950,7 @@ class DatasetStatsSummary:
 
     @staticmethod
     def _find_start_and_end(summ: "DatasetStatsSummary") -> Tuple[float, float]:
-        earliest_start = min(
-                ops.earliest_start_time for ops in summ.operators_stats
-            )
+        earliest_start = min(ops.earliest_start_time for ops in summ.operators_stats)
         latest_end = max(ops.latest_end_time for ops in summ.operators_stats)
         return earliest_start, latest_end
 
@@ -1009,7 +1007,10 @@ class DatasetStatsSummary:
         the earliest start time and latest end time for any block in any operator.
         The wall time is the difference of these two times.
         """
-        start_ends = [DatasetStatsSummary._find_start_and_end(summ) for summ in DatasetStatsSummary._collect_dataset_stats_summaries(self)]
+        start_ends = [
+            DatasetStatsSummary._find_start_and_end(summ)
+            for summ in DatasetStatsSummary._collect_dataset_stats_summaries(self)
+        ]
         if len(start_ends) == 0:
             return 0
         else:
