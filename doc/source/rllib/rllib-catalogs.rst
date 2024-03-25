@@ -1,6 +1,8 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/rlmodules_rollout.rst
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
 
 
 Catalog (Alpha)
