@@ -11,7 +11,6 @@ if [[ ! -f /usr/local/bin/kind || ! $(kind version | grep -q "kind $kind_version
     kind --help
 fi
 
-
 if [[ ! -f /usr/local/bin/kubectl ]]; then
     echo "--- Installing kubectl"
     curl -sfL "https://dl.k8s.io/release/v1.28.4/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl
