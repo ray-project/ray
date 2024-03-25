@@ -47,6 +47,8 @@ with your cloud service provider. Then, call a method like
 :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a URI with
 the appropriate scheme. URI can point to buckets or folders.
 
+To write data to formats other than Parquet, read the :ref:`Input/Output reference <input-output>`.
+
 .. tab-set::
 
     .. tab-item:: S3
@@ -61,6 +63,10 @@ the appropriate scheme. URI can point to buckets or folders.
             ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             ds.write_parquet("s3://my-bucket/my-folder")
+
+        Ray Data relies on PyArrow for authenticaion with Amazon S3. For more on how to configure
+        your credentials to be compatible with PyArrow, see their
+        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
     .. tab-item:: GCS
 
@@ -83,7 +89,11 @@ the appropriate scheme. URI can point to buckets or folders.
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
 
-    .. tab-item:: ABL
+        Ray Data relies on PyArrow for authenticaion with Google Cloud Storage. For more on how
+        to configure your credentials to be compatible with PyArrow, see their
+        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+
+    .. tab-item:: ABS
 
         To save data to Azure Blob Storage, install the
         `Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage <https://pypi.org/project/adlfs/>`_
@@ -104,8 +114,9 @@ the appropriate scheme. URI can point to buckets or folders.
             filesystem = adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
             ds.write_parquet("az://my-bucket/my-folder", filesystem=filesystem)
 
-To write data to formats other than Parquet, read the
-:ref:`Input/Output reference <input-output>`.
+        Ray Data relies on PyArrow for authenticaion with Azure Blob Storage. For more on how
+        to configure your credentials to be compatible with PyArrow, see their
+        `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
 Writing data to NFS
 ~~~~~~~~~~~~~~~~~~~

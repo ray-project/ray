@@ -1697,12 +1697,14 @@
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_4.yaml
 
   run:
     timeout: 86400
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
+    wait_for_nodes:
+      num_nodes: 4
 
   smoke_test:
     frequency: nightly
@@ -1722,7 +1724,7 @@
         run:
           timeout: 3600
       cluster:
-        cluster_compute: tpl_cpu_1_gce.yaml
+        cluster_compute: tpl_cpu_4_gce.yaml
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -1871,47 +1873,6 @@
   run:
     timeout: 86400
     script: python workloads/node_failures.py
-    long_running: true
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_compute: tpl_cpu_1_gce.yaml
-
-- name: long_running_pbt
-  group: Long running tests
-  working_dir: long_running_tests
-
-  frequency: weekly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: tpl_cpu_1.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/pbt.py
     long_running: true
 
   smoke_test:
@@ -2239,7 +2200,7 @@
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
+  team: core
 
   cluster:
     byod: {}
@@ -2267,7 +2228,7 @@
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
+  team: core
 
   cluster:
     byod: {}
@@ -2297,7 +2258,7 @@
 #   working_dir: runtime_env_tests
 
 #   frequency: nightly
-#   team: serve
+#   team: core
 
 #   cluster:
 #     cluster_compute: rte_minimal.yaml
@@ -2839,6 +2800,7 @@
 
   frequency: nightly
   team: rllib
+  stable: False
 
   cluster:
     byod:
@@ -3369,7 +3331,7 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: true
+  stable: False
 
   frequency: nightly
   team: rllib
@@ -5089,6 +5051,7 @@
 
   frequency: nightly
   team: data
+  stable: False
 
   cluster:
     byod:
@@ -5149,6 +5112,7 @@
 
   frequency: nightly
   team: data
+  stable: False
 
   cluster:
     byod:
