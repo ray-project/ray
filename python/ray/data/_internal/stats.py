@@ -965,7 +965,7 @@ class DatasetStatsSummary:
         summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"
         for summ in summaries:
-            earliest_start, latest_end = DatasetStatsSummary._find_start_and_end(self)
+            earliest_start, latest_end = DatasetStatsSummary._find_start_and_end(summ)
             op_total_time = latest_end - earliest_start
             out += fmt_line(summ.base_name, op_total_time)
         out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
@@ -1009,20 +1009,13 @@ class DatasetStatsSummary:
         the earliest start time and latest end time for any block in any operator.
         The wall time is the difference of these two times.
         """
-        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
-        earliest_start, latest_end = None, None
-        for summ in summaries:
-            curr_earliest_start, curr_latest_end = DatasetStatsSummary._find_start_and_end(summ)
-            earliest_start = (
-                min(curr_earliest_start, earliest_start)
-                if earliest_start
-                else curr_earliest_start
-            )
-            latest_end = (
-                min(curr_latest_end, latest_end) if latest_end else curr_latest_end
-            )
-
-        return latest_end - earliest_start if earliest_start and latest_end else 0
+        start_ends = [DatasetStatsSummary._find_start_and_end(summ) for summ in DatasetStatsSummary._collect_dataset_stats_summaries(self)]
+        if len(start_ends) == 0:
+            return 0
+        else:
+            earliest_start = min(start_end[0] for start_end in start_ends)
+            latest_end = max(start_end[1] for start_end in start_ends)
+            return latest_end - earliest_start
 
     def get_total_time_all_blocks(self) -> float:
         """Calculate the sum of the wall times across all blocks of all operators."""
