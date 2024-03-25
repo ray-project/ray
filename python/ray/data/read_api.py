@@ -1495,12 +1495,13 @@ def read_avro(
         Read a avro file in remote storage or local storage.
 
         >>> import ray
-        >>> ds = ray.data.read_avro(
-        ...     "s3://anonymous@ray-example-data/mnist.avro")
-        Dataset(
-            num_rows=4,
-            schema={features: list<item: int64>, label: int64, dataType: string}
-        )
+        >>> ds = ray.data.read_avro("s3://anonymous@ray-example-data/mnist.avro")
+        >>> ds.schema()
+        Column    Type
+        ------    ----
+        features  list<item: int64>
+        label     int64
+        dataType  string
 
         >>> ray.data.read_avro( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
