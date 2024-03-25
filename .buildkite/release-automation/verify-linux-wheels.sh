@@ -27,7 +27,7 @@ pip install \
 
 (
     cd release/util
-    python sanity_check.py
+    python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$RAY_HASH"
 )
 
 (

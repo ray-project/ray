@@ -9,6 +9,7 @@ RAY_COMMIT = "RAY_HASH"
 ray_version = os.getenv(RAY_VERSION)
 ray_commit = os.getenv(RAY_COMMIT)
 
+
 @click.command()
 @click.option("--ray_version", required=True, type=str)
 @click.option("--ray_commit", required=True, type=str)

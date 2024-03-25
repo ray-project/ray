@@ -1,5 +1,35 @@
 group: Upload & Validate wheels
+depends_on:
+  - forge
+  - forge-arm64
 steps:
+  - label: "Linux x86_64 Python {{matrix}}"
+    key: validate-linux-x86_64-wheels
+    job_env: forge
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_HASH="$BUILDKITE_COMMIT"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: "Linux arm64 Python {{matrix}}"
+    key: validate-linux-arm64-wheels
+    instance_type: medium-arm64
+    job_env: forge-arm64
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_HASH="$BUILDKITE_COMMIT"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
   - label: "MacOS x86_64"
     key: validate-macos-x86_64-wheels
     job_env: MACOS
