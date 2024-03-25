@@ -51,6 +51,10 @@ provider:
     # if not set, a default user-assigned identity will be generated in the resource group specified above
     # msi_name: ray-cluster-msi
     # msi_resource_group: other-rg
+    # Set provisioning and use of public/private IPs for head and worker nodes. If both options below are true,
+    # only the head node will have a public IP address provisioned.
+    # use_internal_ips: True
+    # use_external_head_ip: True
 
 # How Ray will authenticate with newly launched nodes.
 auth:
