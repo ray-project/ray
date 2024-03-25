@@ -9,18 +9,19 @@ from ci.ray_ci.docker_container import (
     PYTHON_VERSIONS_RAY_ML,
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,
+    RayType,
 )
 
 
 @click.command()
 @click.option("--prefix", required=True, type=str)
-@click.option("--ray_type", required=True, type=click.Choice(["ray", "ray-ml"]))
+@click.option("--ray_type", required=True, type=RayType)
 def main(prefix, ray_type):
-    if ray_type == "ray":
+    if ray_type == RayType.RAY:
         tags = list_image_tags(
             prefix, ray_type, PYTHON_VERSIONS_RAY, PLATFORMS_RAY, ARCHITECTURES_RAY
         )
-    elif ray_type == "ray-ml":
+    elif ray_type == RayType.RAY_ML:
         tags = list_image_tags(
             prefix,
             ray_type,
@@ -28,9 +29,8 @@ def main(prefix, ray_type):
             PLATFORMS_RAY_ML,
             ARCHITECTURES_RAY_ML,
         )
-    output = sys.stdout
     for tag in tags:
-        output.write(tag + "\n")
+        sys.stdout.write(tag + "\n")
 
 
 if __name__ == "__main__":

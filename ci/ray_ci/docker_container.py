@@ -1,6 +1,7 @@
 import os
 from typing import List
 from datetime import datetime
+from enum import Enum
 
 from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
@@ -24,6 +25,11 @@ PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11"]
 PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10"]
 ARCHITECTURES_RAY = ["x86_64", "aarch64"]
 ARCHITECTURES_RAY_ML = ["x86_64"]
+
+
+class RayType(str, Enum):
+    RAY = "ray"
+    RAY_ML = "ray-ml"
 
 
 class DockerContainer(LinuxContainer):

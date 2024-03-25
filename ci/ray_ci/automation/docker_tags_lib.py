@@ -18,6 +18,7 @@ from ci.ray_ci.docker_container import (
     PLATFORMS_RAY_ML,
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,
+    RayType,
 )
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -25,27 +26,27 @@ SHA_LENGTH = 6
 
 
 def _check_python_version(python_version: str, ray_type: str) -> None:
-    if ray_type == "ray" and python_version not in PYTHON_VERSIONS_RAY:
+    if ray_type == RayType.RAY and python_version not in PYTHON_VERSIONS_RAY:
         raise ValueError(
             f"Python version {python_version} not supported for ray image."
         )
-    if ray_type == "ray-ml" and python_version not in PYTHON_VERSIONS_RAY_ML:
+    if ray_type == RayType.RAY_ML and python_version not in PYTHON_VERSIONS_RAY_ML:
         raise ValueError(
             f"Python version {python_version} not supported for ray-ml image."
         )
 
 
 def _check_platform(platform: str, ray_type: str) -> None:
-    if ray_type == "ray" and platform not in PLATFORMS_RAY:
+    if ray_type == RayType.RAY and platform not in PLATFORMS_RAY:
         raise ValueError(f"Platform {platform} not supported for ray image.")
-    if ray_type == "ray-ml" and platform not in PLATFORMS_RAY_ML:
+    if ray_type == RayType.RAY_ML and platform not in PLATFORMS_RAY_ML:
         raise ValueError(f"Platform {platform} not supported for ray-ml image.")
 
 
 def _check_architecture(architecture: str, ray_type: str) -> None:
-    if ray_type == "ray" and architecture not in ARCHITECTURES_RAY:
+    if ray_type == RayType.RAY and architecture not in ARCHITECTURES_RAY:
         raise ValueError(f"Architecture {architecture} not supported for ray image.")
-    if ray_type == "ray-ml" and architecture not in ARCHITECTURES_RAY_ML:
+    if ray_type == RayType.RAY_ML and architecture not in ARCHITECTURES_RAY_ML:
         raise ValueError(f"Architecture {architecture} not supported for ray-ml image.")
 
 
@@ -80,12 +81,11 @@ def list_image_tag_suffixes(
 
     if python_version == DEFAULT_PYTHON_VERSION:
         python_version_tags.append("")
-    if platform == "cpu" and ray_type == "ray":
+    if platform == "cpu" and ray_type == RayType.RAY:
         platform_tags.append("")  # no tag is alias to cpu for ray image
-
     if platform == GPU_PLATFORM:
         platform_tags.append("-gpu")  # gpu is alias for cu11.8.0
-        if ray_type == "ray-ml":
+        if ray_type == RayType.RAY_ML:
             platform_tags.append("")  # no tag is alias to gpu for ray-ml image
 
     tag_suffixes = []
@@ -115,8 +115,8 @@ def list_image_tags(
         prefix: The build version of the image tag (e.g. nightly, abc123).
         ray_type: The type of the ray image. It can be "ray" or "ray-ml".
     """
-    if ray_type not in ["ray", "ray-ml"]:
-        raise ValueError(f"ray_type {ray_type} not supported.")
+    if ray_type not in RayType.__members__.values():
+        raise ValueError(f"Ray type {ray_type} not supported.")
 
     tag_suffixes = []
     for python_version in python_versions:

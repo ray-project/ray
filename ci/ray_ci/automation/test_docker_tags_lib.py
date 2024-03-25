@@ -529,6 +529,13 @@ def test_list_image_tags(
             ["cpu", "cu11.5.2"],
             ["x86_64"],
         ),  # platform not supported
+        (
+            "test",
+            "not-ray",
+            ["3.8"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64"],
+        ),  # ray type not supported
     ],
 )
 def test_list_images_tags_failure(
