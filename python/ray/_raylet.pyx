@@ -2240,8 +2240,8 @@ cdef execute_task_with_cancellation_handler(
         task_counter = manager.get_task_counter(function_descriptor)
         if task_counter == execution_info.max_calls:
             raise_sys_exit_with_custom_error_message(
-                "max_call has reached, "
-                f"max_calls: {execution_info.max_calls}")
+                f"Exited because worker reached max_calls={execution_info.max_calls}"
+                " for this method.")
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
