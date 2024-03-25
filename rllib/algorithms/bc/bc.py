@@ -124,9 +124,9 @@ class BCConfig(MARWILConfig):
             raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
 
     @property
-    def _auto_model_keys(self):
-        # Note, MARWIL has already added `beta` to the `_auto_model_keys`.
-        return super()._auto_model_keys
+    def _model_auto_keys(self):
+        # Note, MARWIL has already added `beta` to the `_model_auto_keys`.
+        return super()._model_auto_keys
 
 
 class BC(MARWIL):

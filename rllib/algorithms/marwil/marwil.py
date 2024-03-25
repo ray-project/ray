@@ -208,8 +208,8 @@ class MARWILConfig(AlgorithmConfig):
             )
 
     @property
-    def _auto_model_keys(self):
-        return super()._auto_model_keys | {"beta": self.beta}
+    def _model_auto_keys(self):
+        return super()._model_auto_keys | {"beta": self.beta}
 
 
 class MARWIL(Algorithm):

@@ -317,11 +317,6 @@ class SACConfig(AlgorithmConfig):
                 num_steps_sampled_before_learning_starts
             )
 
-        # Include the `twin_q` hyperparameter into the model config.
-        # TODO (simon, sven): Find a general way to update the model_config.
-        if self._enable_new_api_stack:
-            self.model.update({"twin_q": self.twin_q})
-
         return self
 
     @override(AlgorithmConfig)
@@ -414,6 +409,10 @@ class SACConfig(AlgorithmConfig):
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
+
+    @property
+    def _model_auto_keys(self):
+        return super()._model_auto_keys | {"twin_q": self.twin_q}
 
 
 class SAC(DQN):
