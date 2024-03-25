@@ -948,6 +948,14 @@ class DatasetStatsSummary:
                 summs.extend(DatasetStatsSummary._collect_dataset_stats_summaries(p))
         return summs + [curr]
 
+    @staticmethod
+    def _find_start_and_end(summ: "DatasetStatsSummary") -> Tuple[float, float]:
+        earliest_start = min(
+                ops.earliest_start_time for ops in summ.operators_stats
+            )
+        latest_end = max(ops.latest_end_time for ops in summ.operators_stats)
+        return earliest_start, latest_end
+
     def runtime_metrics(self) -> str:
         total_wall_time = self.get_total_wall_time()
 
@@ -957,9 +965,8 @@ class DatasetStatsSummary:
         summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"
         for summ in summaries:
-            op_total_time = sum(
-                [op_stats.time_total_s for op_stats in summ.operators_stats]
-            )
+            earliest_start, latest_end = DatasetStatsSummary._find_start_and_end(self)
+            op_total_time = latest_end - earliest_start
             out += fmt_line(summ.base_name, op_total_time)
         out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
         out += fmt_line("Total", total_wall_time)
@@ -1005,10 +1012,7 @@ class DatasetStatsSummary:
         summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         earliest_start, latest_end = None, None
         for summ in summaries:
-            curr_earliest_start = min(
-                ops.earliest_start_time for ops in summ.operators_stats
-            )
-            curr_latest_end = max(ops.latest_end_time for ops in summ.operators_stats)
+            curr_earliest_start, curr_latest_end = DatasetStatsSummary._find_start_and_end(summ)
             earliest_start = (
                 min(curr_earliest_start, earliest_start)
                 if earliest_start
