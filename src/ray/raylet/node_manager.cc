@@ -1664,6 +1664,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   double timestamp = message->timestamp();
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
+  RAY_LOG(INFO) << "jjyao " << error_message;
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
