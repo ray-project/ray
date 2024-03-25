@@ -1,7 +1,7 @@
 group: Upload & Validate wheels
 depends_on:
   - forge
-  - forge-arm64
+  - forge_arm64
 steps:
   - label: "Linux x86_64 Python {{matrix}}"
     key: validate-linux-x86_64-wheels
