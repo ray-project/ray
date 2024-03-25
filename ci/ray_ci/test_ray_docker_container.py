@@ -2,6 +2,7 @@ import os
 import sys
 from typing import List
 from unittest import mock
+from unittest.mock import patch
 from datetime import datetime
 import pytest
 
@@ -9,8 +10,9 @@ from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
-from ci.ray_ci.utils import RAY_VERSION, POSTMERGE_PIPELINE
+from ci.ray_ci.utils import RAY_VERSION
 
+POSTMERGE_PIPELINE = "w00tw00t"
 
 class TestRayDockerContainer(RayCITestBase):
     cmds = []
@@ -313,7 +315,13 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cu11.8.0", "ray")
         assert container.get_platform_tag() == "-cu118"
 
-    def test_should_upload(self) -> None:
+    @patch(
+        "ci.ray_ci.ray_docker_container.get_global_config",
+        return_value={
+            "pipeline_postmerge": [POSTMERGE_PIPELINE]
+        },
+    )
+    def test_should_upload(self, mock_config) -> None:
         v = DEFAULT_PYTHON_VERSION
         test_cases = [
             # environment_variables, expected_result (with upload flag on)

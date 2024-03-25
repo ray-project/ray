@@ -21,6 +21,10 @@ state_machine:
   aws_bucket: ray-ci-results
 credentials:
   aws2gce: release/aws2gce_iam.json
+pipeline:
+  postmerge: 
+    - hi
+    - w00t
 """
 
 
@@ -37,6 +41,8 @@ def test_init_global_config() -> None:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
             == "/workdir/release/aws2gce_iam.json"
         )
+        assert config["pipeline_premerge"] == []
+        assert config["pipeline_postmerge"] == ["hi", "w00t"]
 
 
 if __name__ == "__main__":
