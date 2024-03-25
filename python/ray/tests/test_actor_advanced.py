@@ -1224,6 +1224,7 @@ def test_create_actor_race_condition(shutdown_only):
         )  # Creation and get should be successful
         ray.kill(actor)  # Cleanup
 
+    ray.init()
     for _ in range(50):
         run_and_check()
 
