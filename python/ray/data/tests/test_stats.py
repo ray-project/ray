@@ -1193,8 +1193,37 @@ def test_time_backpressure(ray_start_regular_shared, restore_data_context):
     assert ds._plan.stats().extra_metrics["task_submission_backpressure_time"] > 0
 
 
+def test_runtime_metrics(ray_start_regular_shared):
+    pass
+
+
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
+
+def test_dataset_throughput():
+    ray.shutdown()
+    ray.init(num_cpus=2)
+    def f(x):
+        time.sleep(0.01)
+        return x
+
+    ds = ray.data.range(100).map(f).materialize().map(f).materialize()
+
+    # Pattern to match operator throughput
+    operator_pattern = re.compile(
+        r"Operator (\d+).*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",
+        re.DOTALL)
+
+    for match in operator_pattern.findall(ds.stats()):
+        assert float(match[1]) >= float(match[2])
+
+    # Pattern to match dataset throughput
+    dataset_pattern = re.compile(
+        r"Dataset throughput:.*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",
+        re.DOTALL)
+
+    dataset_match = dataset_pattern.search(ds.stats())
+    assert float(dataset_match[1]) >= float(dataset_match[2])
 
 
 def test_stats_actor_cap_num_stats(ray_start_cluster):
