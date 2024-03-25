@@ -2,12 +2,15 @@
 
 set -euo pipefail
 
-if [[ ! -f /usr/local/bin/kind ]]; then
-    echo "--- Installing kind"
-    curl -sfL "https://github.com/kubernetes-sigs/kind/releases/download/v0.22.0/kind-linux-amd64" -o /usr/local/bin/kind
+kind_version="v0.22.0"
+
+if [[ ! -f /usr/local/bin/kind || ! $(kind version | grep -q "kind $kind_version") ]]; then
+    echo "--- Installing kind $kind_version"
+    curl -sfL "https://github.com/kubernetes-sigs/kind/releases/download/$kind_version/kind-linux-amd64" -o /usr/local/bin/kind
     chmod +x /usr/local/bin/kind
     kind --help
 fi
+
 
 if [[ ! -f /usr/local/bin/kubectl ]]; then
     echo "--- Installing kubectl"
