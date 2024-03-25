@@ -64,7 +64,7 @@ Text
 
    read_text
 
-Text
+Avro
 ----
 
 .. autosummary::
