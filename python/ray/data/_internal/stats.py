@@ -963,9 +963,12 @@ class DatasetStatsSummary:
         summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"
         for summ in summaries:
-            earliest_start, latest_end = DatasetStatsSummary._find_start_and_end(summ)
-            op_total_time = latest_end - earliest_start
-            out += fmt_line(summ.base_name, op_total_time)
+            if len(summ.operators_stats) > 0:
+                earliest_start, latest_end = DatasetStatsSummary._find_start_and_end(
+                    summ
+                )
+                op_total_time = latest_end - earliest_start
+                out += fmt_line(summ.base_name, op_total_time)
         out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
         out += fmt_line("Total", total_wall_time)
         return out
@@ -1010,6 +1013,7 @@ class DatasetStatsSummary:
         start_ends = [
             DatasetStatsSummary._find_start_and_end(summ)
             for summ in DatasetStatsSummary._collect_dataset_stats_summaries(self)
+            if len(summ.operators_stats) > 0
         ]
         if len(start_ends) == 0:
             return 0
