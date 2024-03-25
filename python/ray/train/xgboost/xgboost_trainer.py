@@ -1,9 +1,9 @@
 import logging
 from functools import partial
-from packaging.version import Version
 from typing import Any, Dict, Optional
 
 import xgboost
+from packaging.version import Version
 
 import ray.train
 from ray.train import Checkpoint
