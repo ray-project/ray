@@ -1262,7 +1262,8 @@ def test_dataset_throughput():
         re.DOTALL,
     )
 
-    # Ray data throughput should always be better than single node throughput for multi-cpu case.
+    # Ray data throughput should always be better than single node throughput for
+    # multi-cpu case.
     for match in operator_pattern.findall(ds.stats()):
         assert float(match[1]) >= float(match[2])
 
