@@ -210,7 +210,9 @@ def test_cancel(shutdown_only, use_asyncio):
 
                 ready, _ = ray.wait([cancelled_ref], timeout=0)
                 if not ready:
-                    # Continue executing for one second past cancellation.
+                    # Continue executing for one second after the driver
+                    # cancels. This is to make sure that we receive the cancel
+                    # signal while the task is still running.
                     done_at = time.time() + 1
 
         async def async_stream(self, signal):
@@ -224,7 +226,9 @@ def test_cancel(shutdown_only, use_asyncio):
 
                 ready, _ = ray.wait([cancelled_ref], timeout=0)
                 if not ready:
-                    # Continue executing for one second past cancellation.
+                    # Continue executing for one second after the driver
+                    # cancels. This is to make sure that we receive the cancel
+                    # signal while the task is still running.
                     done_at = time.time() + 1
 
     signal = SignalActor.remote()
@@ -234,6 +238,7 @@ def test_cancel(shutdown_only, use_asyncio):
         gen = a.async_stream.remote(signal)
     else:
         gen = a.stream.remote(signal)
+
     try:
         for i, ref in enumerate(gen):
             assert i == ray.get(ref)
