@@ -11,7 +11,7 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12 git curl gnupg
+apt-get install -y curl zip clang-12 git curl gnupg sudo
 
 # Add docker client APT repository
 mkdir -p /etc/apt/keyrings
@@ -22,7 +22,8 @@ echo \
   "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-apt-get install docker-ce-cli
+apt-get update
+apt-get install -y docker-ce-cli
 
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
