@@ -1,5 +1,6 @@
 import logging
 from functools import partial
+from packaging.version import Version
 from typing import Any, Dict, Optional
 
 import xgboost
@@ -152,6 +153,12 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
+        if Version(xgboost.__version__) < Version("1.7.0"):
+            raise ImportError(
+                "`XGBoostTrainer` requires the `xgboost` version to be >= 1.7.0. "
+                'Upgrade with: `pip install -U "xgboost>=1.7"`'
+            )
+
         # TODO(justinvyu): [Deprecated] Remove in 2.11
         if dmatrix_params != _DEPRECATED_VALUE:
             raise DeprecationWarning(
