@@ -657,6 +657,11 @@ def test_put_get(shutdown_only):
         value_after = ray.get(object_ref)
         assert value_before == value_after
 
+    int_obj, float_obj, str_obj = 1, 1.1, "hello"
+    int_ref, float_ref, str_ref = ray.put(int_obj), ray.put(float_obj), ray.put(str_obj)
+    int_ret, float_ret, str_ret = ray.get((int_ref, float_ref, str_ref))
+    assert (int_obj, float_obj, str_obj) == (int_ret, float_ret, str_ret)
+
 
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
