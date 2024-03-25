@@ -1235,8 +1235,7 @@ def test_runtime_metrics(ray_start_regular_shared):
                 float(percent_str),
             )
 
-    total_time, total_percent = metrics_dict["Total"]
-    metrics_dict.pop("Total")
+    total_time, total_percent = metrics_dict.pop("Total")
     assert total_percent == 100
 
     for time_s, percent in metrics_dict.values():
@@ -1263,6 +1262,7 @@ def test_dataset_throughput():
         re.DOTALL,
     )
 
+    # Ray data throughput should always be better than single node throughput for multi-cpu case.
     for match in operator_pattern.findall(ds.stats()):
         assert float(match[1]) >= float(match[2])
 
