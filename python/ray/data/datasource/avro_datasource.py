@@ -1,4 +1,3 @@
-from io import BytesIO
 from typing import TYPE_CHECKING, Iterator, List, Union
 
 from ray.data._internal.output_buffer import BlockOutputBuffer
