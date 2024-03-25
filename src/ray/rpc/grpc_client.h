@@ -111,14 +111,11 @@ inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
         "maxBackoff": "1s",
         "backoffMultiplier": 1.5,
         "retryableStatusCodes": [
-          "retryableStatusCodes": [
-              "UNAVAILABLE",
-              "DEADLINE_EXCEEDED",
-              "INTERNAL",
-              "UNKNOWN",
-              "ABORTED",
-          ],
-        ]
+            "UNAVAILABLE",
+            "DEADLINE_EXCEEDED",
+            "INTERNAL",
+            "UNKNOWN",
+        ],
       }
     }]}
   )";
