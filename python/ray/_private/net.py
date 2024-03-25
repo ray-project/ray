@@ -52,9 +52,16 @@ def _get_sock_from_host(address, kind):
 
     Favor IPv4 but expand to IPv6 if IPv4 not available.
     """
-    # obtain the first valid address for use
-    # inet_address is a tuple with (socket.AF_INET or socket.AF_INET6, ip_address)
-    inet_address = _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(address, kind)[0]
+    try:
+        # obtain the first valid address for use
+        # inet_address is a tuple with (socket.AF_INET or socket.AF_INET6, ip_address)
+        inet_address = _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(address, kind)[0]
+    except socket.gaierror as e:
+        # This is an undesirable workaround for some existing tests.
+        raise ValueError(
+            f"Address invalid or not reachable: {address}\n\n" +
+            repr(e)
+        )
     return socket.socket(inet_address[0], kind)
 
 
@@ -143,7 +150,11 @@ def _parse_ip_port(address):
     # ip:port for DNS, IPv4, and IPv6 supported
     pattern = re.compile("^(.*/)?.*[^:]:[0-9]+(/.*)?$")
     if not pattern.match(address):
-        raise ValueError(f"Malformed address (expected address to include IP or DNS host and port e.g. ip:port): {address}")  # noqa: E501
+        raise ValueError(
+            "Malformed address (expected address to " +
+            "include IP or DNS host and port " +
+            f"e.g. ip:port): {address}"
+        )
     # use rsplit for IPv6 or IPv4
     ip, port = address.rsplit(":", 1)
     # check for url-ish

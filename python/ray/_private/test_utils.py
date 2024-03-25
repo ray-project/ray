@@ -10,7 +10,6 @@ import math
 import os
 import pathlib
 import random
-import socket
 import subprocess
 import sys
 import tempfile
