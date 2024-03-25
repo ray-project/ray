@@ -558,8 +558,8 @@ class GcsRpcClient {
                             "`ray stop` or "
                          << "is killed unexpectedly. If it is killed unexpectedly, "
                          << "see the log file gcs_server.out. "
-                         << "https://docs.ray.io/en/master/ray-observability/"
-                            "ray-logging.html#logging-directory-structure. "
+                         << "https://docs.ray.io/en/master/ray-observability/user-guides/"
+                            "configure-logging.html#logging-directory-structure. "
                          << "The program will terminate.";
           std::_Exit(EXIT_FAILURE);
         }
