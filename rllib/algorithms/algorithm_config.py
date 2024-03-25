@@ -502,6 +502,7 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
+        self._model_config_dict = None
         self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
@@ -2737,6 +2738,7 @@ class AlgorithmConfig(_Config):
     def rl_module(
         self,
         *,
+        model_config_dict: Optional[Dict[str, Any]] = NotProvided,
         rl_module_spec: Optional[RLModuleSpec] = NotProvided,
         # Deprecated arg.
         _enable_rl_module_api: Optional[bool] = NotProvided,
@@ -2744,6 +2746,9 @@ class AlgorithmConfig(_Config):
         """Sets the config's RLModule settings.
 
         Args:
+            model_config_dict: The default model config dictionary for `RLModule`s. This
+                will be used for any `RLModule` if not otherwise specified in the
+                `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
@@ -2753,6 +2758,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if model_config_dict is not NotProvided:
+            self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
 
@@ -3608,8 +3615,17 @@ class AlgorithmConfig(_Config):
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
+            # In case the `RLModuleSpec` does not have a model config dict, we use the
+            # the one defined by the auto keys and the `model_config_dict` arguments in
+            # `self.rl_module()`.
             if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = policy_spec.config.get("model", {})
+                module_spec.model_config_dict = self.model_config_dict
+            # Otherwise we combine the two dictionaries where settings from the
+            # `RLModuleSpec` have higher priority.
+            else:
+                module_spec.model_config_dict = (
+                    self.model_config_dict | module_spec.model_config_dict
+                )
 
         return marl_module_spec
 
@@ -3704,6 +3720,34 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    @property
+    def model_config_dict(self):
+        """Defines the model configuration used.
+
+        This method combines the auto configuration `self._model_auto_keys`
+        defined by an algorithm with the user-defined configuration in
+        `self._model_config_dict`.This configuration dictionary will be used to
+        configure the `RLModule` in the new stack and the `ModelV2` in the old
+        stack.
+
+        Returns:
+            A dictionary with the model configuration.
+        """
+        return self._model_auto_keys | self._model_config_dict
+
+    @property
+    def _model_auto_keys(self) -> Dict[str, Any]:
+        """Defines the main keys for auto-model configuration.
+
+        The dictionary in this property contains the default configuration of an
+        algorithm. Together with the `self._model`, this method will be used to
+        define the configuration sent to the `RLModule`.
+
+        Returns:
+            A dictionary with the main keys for auto-model configuration.
+        """
+        return MODEL_DEFAULTS
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.

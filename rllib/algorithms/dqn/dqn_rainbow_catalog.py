@@ -73,10 +73,10 @@ class DQNRainbowCatalog(Catalog):
         )
 
         # Is a noisy net used.
-        self.uses_noisy = self._model_config_dict["noisy"]
+        self.uses_noisy: bool = self._model_config_dict["noisy"]
 
         # The number of atoms to be used for distributional Q-learning.
-        self.num_atoms = self._model_config_dict["num_atoms"]
+        self.num_atoms: bool = self._model_config_dict["num_atoms"]
 
         # Advantage and value streams have MLP heads. Note, the advantage
         # stream will has an output dimension that is the product of the
@@ -84,8 +84,7 @@ class DQNRainbowCatalog(Catalog):
         # return distribution in distributional reinforcement learning.
         if self.uses_noisy:
             # Define the standard deviation to be used in the layers.
-            # TODO (simon): Once the old stack is gone, rename to `std_init`.
-            self.std_init = self._model_config_dict["sigma0"]
+            self.std_init: float = self._model_config_dict["std_init"]
 
         # In case of noisy networks we need to provide the intial standard
         # deviation and use the corresponding `NoisyMLPHeadConfig`.
@@ -210,7 +209,7 @@ class DQNRainbowCatalog(Catalog):
                     # output_layer_use_bias=self._model_config_dict[
                     #     "output_layer_use_bias"
                     # ],
-                    # TODO (sven, simon): Should these initializers rather the fcnet
+                    # TODO (sven, simon): Should these initializers be rather the fcnet
                     # ones?
                     output_layer_weights_initializer=model_config_dict[
                         "post_fcnet_weights_initializer"
@@ -224,9 +223,7 @@ class DQNRainbowCatalog(Catalog):
                     output_layer_bias_initializer_config=model_config_dict[
                         "post_fcnet_bias_initializer_config"
                     ],
-                    # TODO (simon): Set parameters via config dict when we have fixed
-                    # the `model_config_dict` in `AlgorithmConfig`.
-                    std_init=0.1,  # model_config_dict.get("sigma0", 0.02),
+                    std_init=model_config_dict["std_init"],
                 )
         # Otherwise return the base encoder config chosen by the parent.
         # This will choose a CNN for 3D Box and LSTM for 'use_lstm=True'.<
