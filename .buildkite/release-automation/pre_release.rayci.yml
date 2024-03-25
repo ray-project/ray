@@ -5,7 +5,7 @@ steps:
     job_env: forge
     commands:
       - export BUILDKITE_COMMIT="${BUILDKITE_COMMIT}"
-      - bash .buildkite/release-automation/check-nightly-commit.sh
+      - bash .buildkite/release-automation/check-nightly-commit.sh {{matrix}}
     matrix:
       - ray
       - ray-ml
