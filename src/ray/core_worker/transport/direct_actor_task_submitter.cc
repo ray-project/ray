@@ -254,7 +254,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
-  std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
+  std::deque<std::shared_ptr<ClientQueue::PendingTaskWaitingForDeathInfo>>
       wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
   {
@@ -292,7 +292,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
       // Reset the queue
       queue->second.wait_for_death_info_tasks =
-          std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>();
+          std::deque<std::shared_ptr<ClientQueue::PendingTaskWaitingForDeathInfo>>();
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
@@ -329,12 +329,9 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                      << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-      for (auto &net_err_task_pair : wait_for_death_info_tasks) {
-        RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
-            net_err_task_pair.second.first.TaskId(),
-            error_type,
-            /* status */ &net_err_task_pair.second.second,
-            &error_info));
+      for (auto &task : wait_for_death_info_tasks) {
+        GetTaskFinisherWithoutMu().FailPendingTask(
+            task->task_spec.TaskId(), error_type, &task->status, &error_info);
       }
     }
   }
@@ -342,52 +339,34 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   FailInflightTasks(inflight_task_callbacks);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(const TaskInfo &task_info) {
-  rpc::ActorDeathCause actor_death_cause;
-  actor_death_cause.mutable_actor_died_error_context()->set_actor_id(
-      task_info.actor_id.Binary());
-  actor_death_cause.mutable_actor_died_error_context()->set_preempted(
-      task_info.preempted);
-  rpc::RayErrorInfo error_info;
-  error_info.mutable_actor_died_error()->CopyFrom(actor_death_cause);
-  error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
-  error_info.set_error_message("Actor died.");
-
-  GetTaskFinisherWithoutMu().FailPendingTask(task_info.specification.TaskId(),
-                                             rpc::ErrorType::ACTOR_DIED,
-                                             &task_info.status,
-                                             &error_info);
-}
-
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  auto task_info_list = std::make_shared<std::vector<TaskInfo>>();
+  // For each task in `wait_for_death_info_tasks`, if it times out, fail it with
+  // timeout_error_info. But operating on the queue requires the mu_ lock; while calling
+  // FailPendingTask requires the opposite. So we copy the tasks out from the queue within
+  // the lock. This requires putting the data into shared_ptr.
+  std::vector<std::shared_ptr<ClientQueue::PendingTaskWaitingForDeathInfo>> timeout_tasks;
+  int64_t now = current_time_ms();
   {
     absl::MutexLock lock(&mu_);
-    for (auto &queue_pair : client_queues_) {
-      auto &queue = queue_pair.second;
-      auto deque_itr = queue.wait_for_death_info_tasks.begin();
-      while (deque_itr != queue.wait_for_death_info_tasks.end() &&
-             /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
-        auto &task_spec_status_pair = deque_itr->second;
-        task_info_list->push_back(TaskInfo{
-            task_spec_status_pair.first,
-            task_spec_status_pair.second,
-            queue_pair.first,
-            queue.preempted,
-        });
-        deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
+    for (auto &[actor_id, client_queue] : client_queues_) {
+      auto &deque = client_queue.wait_for_death_info_tasks;
+      auto it = deque.begin();
+      while (it != deque.end()) {
+        if ((*it)->deadline_ms < now) {
+          timeout_tasks.push_back(*it);
+          it = deque.erase(it);
+        } else {
+          ++it;  // Only increment if not erasing
+        }
       }
     }
   }
-
-  if (task_info_list->empty()) {
-    return;
-  }
-
-  // Do not hold mu_, because FailPendingTask may call python from cpp,
-  // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-  for (auto &task_info : *task_info_list) {
-    FailTaskWithError(task_info);
+  // Note: mu_ released.
+  for (auto &task : timeout_tasks) {
+    GetTaskFinisherWithoutMu().FailPendingTask(task->task_spec.TaskId(),
+                                               task->timeout_error_info.error_type(),
+                                               &task->status,
+                                               &task->timeout_error_info);
   }
 }
 
@@ -627,8 +606,9 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         auto queue_pair = client_queues_.find(actor_id);
         RAY_CHECK(queue_pair != client_queues_.end());
         auto &queue = queue_pair->second;
-        queue.wait_for_death_info_tasks.emplace_back(death_info_grace_period_ms,
-                                                     std::make_pair(task_spec, status));
+        queue.wait_for_death_info_tasks.push_back(
+            std::make_shared<ClientQueue::PendingTaskWaitingForDeathInfo>(
+                death_info_grace_period_ms, task_spec, status, error_info));
         RAY_LOG(INFO)
             << "PushActorTask failed because of network error, this task "
                "will be stashed away and waiting for Death info from GCS, task_id="
@@ -642,7 +622,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
           RAY_CHECK(queue_pair != client_queues_.end());
         }
         GetTaskFinisherWithoutMu().FailPendingTask(
-            task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status);
+            task_spec.TaskId(), error_type, &status, &error_info);
       }
     }
   }

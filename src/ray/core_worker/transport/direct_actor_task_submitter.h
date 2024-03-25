@@ -242,13 +242,6 @@ class CoreWorkerDirectActorTaskSubmitter
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
-  struct TaskInfo {
-    TaskSpecification specification;
-    Status status;
-    ActorID actor_id;
-    bool preempted;
-  };
-
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
@@ -301,8 +294,26 @@ class CoreWorkerDirectActorTaskSubmitter
     /// as failed.
     /// pair key: timestamp in ms when this task should be considered as timeout.
     /// pair value: task specification, and associated task execution status.
-    std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
-        wait_for_death_info_tasks;
+    ///
+    /// If we got a actor dead notification, the error_info from that death cause is used.
+    /// If it timed out, it's possible that the Actor is not dead yet, so we use
+    /// `timeout_error_info`.
+    struct PendingTaskWaitingForDeathInfo {
+      int64_t deadline_ms;
+      TaskSpecification task_spec;
+      ray::Status status;
+      rpc::RayErrorInfo timeout_error_info;
+
+      PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
+                                     TaskSpecification task_spec,
+                                     ray::Status status,
+                                     rpc::RayErrorInfo timeout_error_info)
+          : deadline_ms(deadline_ms),
+            task_spec(std::move(task_spec)),
+            status(std::move(status)),
+            timeout_error_info(std::move(timeout_error_info)) {}
+    };
+    std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -334,9 +345,6 @@ class CoreWorkerDirectActorTaskSubmitter
       return stream.str();
     }
   };
-
-  /// Fail the task with a constructed ActorDiedError, with preemption info.
-  void FailTaskWithError(const TaskInfo &task_info);
 
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while

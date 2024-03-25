@@ -2161,105 +2161,41 @@ def get_ray_default_worker_file_path():
     )
 
 
-class Cgroup2NetworkBlocker:
+from contextlib import contextmanager
+
+
+@contextmanager
+def pause_process(pid):
+    try:
+        # Send SIGSTOP to pause the process
+        subprocess.check_call(["kill", "-STOP", str(pid)])
+        yield
+    finally:
+        # Send SIGCONT to continue the process
+        subprocess.check_call(["kill", "-CONT", str(pid)])
+
+
+def close_common_connections(pid):
     """
-    Context manager to block all network output for a process. Used in testing.
-
-    The procedure:
-
-    (on enter)
-    0. record the original cgroup
-    1. create a cgroup v2
-    2. use iptables to set all-block to the cgroup
-    3. add the pid to the cgroup.
-
-    (on exit)
-    4. remove the pid from the cgroup, by adding it back to the original cgroupv2
-    5. delete the cgroup
+    Closes ipv4 connections between the current process and another process specified by
+    its PID.
     """
-
-    def __init__(self, pid):
-        assert os.name == "posix", "This blocker can only be run on Linux."
-        assert os.path.exists("/sys/fs/cgroup/unified"), "This blocker needs cgroup v2"
-
-        self.pid = pid
-        self.cgroupv2_name = "".join(random.choices(string.ascii_letters, k=10))
-        self.original_cgroup = None
-
-    def __enter__(self):
-        result = subprocess.run(
-            ["cat", f"/proc/{self.pid}/cgroup"], capture_output=True, text=True
-        )
-        self.original_cgroup = self.find_cgroup_v2_name(result.stdout)
-        print(f"pid {self.pid} was in cgroup v2 {self.original_cgroup}")
-
-        subprocess.run(
-            ["sudo", "mkdir", "-p", f"/sys/fs/cgroup/unified/{self.cgroupv2_name}"],
-            check=True,
-        )
-        subprocess.run(
-            [
-                "sudo",
-                "iptables",
-                "-A",
-                "OUTPUT",
-                "-m",
-                "cgroup",
-                "--path",
-                f"{self.cgroupv2_name}",
-                "-j",
-                "REJECT",
-            ],
-            check=True,
-        )
-        print(f"moving pid {self.pid} to {self.cgroupv2_name}")
-        subprocess.run(
-            f"echo {self.pid} | sudo tee"
-            f" /sys/fs/cgroup/unified/{self.cgroupv2_name}/cgroup.procs",
-            shell=True,
-            check=True,
-        )
-
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.original_cgroup:
-            print(f"moving pid {self.pid} back to {self.original_cgroup}")
-            subprocess.run(
-                f"echo {self.pid} | sudo tee"
-                f" /sys/fs/cgroup/unified/{self.original_cgroup}/cgroup.procs",
-                shell=True,
-                check=True,
-            )
-
-        subprocess.run(
-            [
-                "sudo",
-                "iptables",
-                "-D",
-                "OUTPUT",
-                "-m",
-                "cgroup",
-                "--path",
-                f"{self.cgroupv2_name}",
-                "-j",
-                "REJECT",
-            ],
-            check=True,
-        )
-        subprocess.run(
-            ["sudo", "rmdir", f"/sys/fs/cgroup/unified/{self.cgroupv2_name}"],
-            check=True,
-        )
-
-    def find_cgroup_v2_name(self, cgroup_data):
-        """
-        If a pid is in cgroupv2 named ABC, it looks like this:
-
-            0::/ABC
-        """
-        lines = cgroup_data.strip().split("\n")
-        for line in lines:
-            if line.startswith("0::/"):
-                return line[4:]
-        return None
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")

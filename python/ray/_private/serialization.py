@@ -381,6 +381,7 @@ class SerializationContext:
             elif error_type == ErrorType.Value("END_OF_STREAMING_GENERATOR"):
                 return ObjectRefStreamEndOfStreamError()
             elif error_type == ErrorType.Value("ACTOR_UNAVAILABLE"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnavailableError(error_info.error_message)
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))

@@ -702,7 +702,7 @@ def test_actor_failure_per_type(ray_start_cluster):
             return self.a
 
     # Test actor is dead because its reference is gone.
-    # Q(sang): Should we raise RayACtorError in this case?
+    # Q(sang): Should we raise RayActorError in this case?
     with pytest.raises(RuntimeError, match="Lost reference to actor") as exc_info:
         ray.get(Actor.remote().check_alive.remote())
     print(exc_info._excinfo[1])
