@@ -24,6 +24,9 @@
 using namespace testing;
 
 namespace ray {
+
+#if defined(__APPLE__) || defined(__linux__)
+
 namespace {
 
 constexpr size_t kNumReads = 10000;
@@ -591,6 +594,8 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
     ASSERT_EQ(metadata_results[i].back(), "error");
   }
 }
+
+#endif  // defined(__APPLE__) || defined(__linux__)
 
 }  // namespace ray
 

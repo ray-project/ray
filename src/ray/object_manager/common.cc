@@ -19,13 +19,7 @@
 namespace ray {
 
 void PlasmaObjectHeader::Init() {
-  // wr_mut is shared between writer and readers.
-  pthread_mutexattr_t mutex_attr;
-  pthread_mutexattr_init(&mutex_attr);
-  pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
-  pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK);
-  pthread_mutex_init(&wr_mut, &mutex_attr);
-
+#if defined(__APPLE__) || defined(__linux__)
   memset(unique_name, 0, sizeof(unique_name));
 
   semaphores_created = SemaphoresCreationLevel::kUnitialized;
@@ -35,6 +29,7 @@ void PlasmaObjectHeader::Init() {
       absl::StrCat(pid, "-", absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch()));
   RAY_CHECK_LE(name.size(), PSEMNAMLEN);
   memcpy(unique_name, name.c_str(), name.size());
+#endif  // defined(__APPLE__) || defined(__linux__)
 
   version = 0;
   is_sealed = false;
@@ -49,11 +44,13 @@ void PlasmaObjectHeader::Init() {
 void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
   std::string print;
   absl::StrAppend(&print, "PlasmaObjectHeader: \n");
+#if defined(__APPLE__) || defined(__linux__)
   absl::StrAppend(&print,
                   "semaphores_created: ",
                   header->semaphores_created.load(std::memory_order_relaxed),
                   "\n");
   absl::StrAppend(&print, "unique_name: ", header->unique_name, "\n");
+#endif  // defined(__APPLE__) || defined(__linux__)
   absl::StrAppend(&print, "version: ", header->version, "\n");
   absl::StrAppend(&print, "num_readers: ", header->num_readers, "\n");
   absl::StrAppend(
@@ -74,6 +71,8 @@ Status PlasmaObjectHeader::CheckHasError() const {
   return Status::OK();
 }
 
+#if defined(__APPLE__) || defined(__linux__)
+
 Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
   // Check `has_error` first to avoid blocking forever on the semaphore.
   RAY_RETURN_NOT_OK(CheckHasError());
@@ -85,6 +84,24 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
   RAY_RETURN_NOT_OK(CheckHasError());
 
   return Status::OK();
+}
+
+void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
+  RAY_CHECK(sem.header_sem);
+  RAY_CHECK(sem.object_sem);
+
+  // We do a store release so that no loads/stores are reordered after the store to
+  // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
+  has_error.store(true, std::memory_order_release);
+  // Increment `sem.object_sem` once to potentially unblock the writer. There will never
+  // be more than one writer.
+  RAY_CHECK_EQ(sem_post(sem.object_sem), 0);
+
+  // Increment `sem.header_sem` by `num_readers` since there could potentially be that
+  // many readers blocked on `sem_wait()`.
+  for (int64_t i = 0; i < num_readers; i++) {
+    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+  }
 }
 
 Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
@@ -181,5 +198,30 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
   }
   return Status::OK();
 }
+
+#else  // defined(__APPLE__) || defined(__linux__)
+
+Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
+  return Status::OK();
+}
+
+void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {}
+
+Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
+                                        uint64_t write_data_size,
+                                        uint64_t write_metadata_size,
+                                        int64_t write_num_readers) {
+  return Status::OK();
+}
+
+Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) { return Status::OK(); }
+
+Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
+                                       int64_t version_to_read,
+                                       int64_t *version_read) {
+  return Status::OK();
+}
+
+#endif
 
 }  // namespace ray

@@ -14,7 +14,9 @@
 
 #pragma once
 
+#if defined(__APPLE__) || defined(__linux__)
 #include <semaphore.h>
+#endif
 
 #include <atomic>
 #include <boost/asio.hpp>
@@ -54,6 +56,7 @@ using RestoreSpilledObjectCallback =
 /// needed once the object has been Sealed. For experimental mutable objects,
 /// we use the header to synchronize between writer and readers.
 struct PlasmaObjectHeader {
+#if defined(__APPLE__) || defined(__linux__)
   struct Semaphores {
     // Synchronizes readers and writers of the mutable object.
     sem_t *object_sem;
@@ -75,8 +78,12 @@ struct PlasmaObjectHeader {
   // A unique name for this object. This unique name is used to generate the named
   // semaphores for this object.
   char unique_name[32];
-  // Protects all following state, used to signal from writer to readers.
-  pthread_mutex_t wr_mut;
+#else  // defined(__APPLE__) || defined(__linux__)
+  // Fake types for Windows.
+  struct sem_t {};
+  struct Semaphores {};
+#endif
+
   // The object version. For immutable objects, this gets incremented to 1 on
   // the first write and then should never be modified. For mutable objects,
   // each new write must increment the version before releasing to readers.
@@ -166,23 +173,7 @@ struct PlasmaObjectHeader {
   /// Set the error bit. This is a non-blocking method.
   ///
   /// \param sem The semaphores for this channel.
-  void SetErrorUnlocked(Semaphores &sem) {
-    RAY_CHECK(sem.header_sem);
-    RAY_CHECK(sem.object_sem);
-
-    // We do a store release so that no loads/stores are reordered after the store to
-    // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
-    has_error.store(true, std::memory_order_release);
-    // Increment `sem.object_sem` once to potentially unblock the writer. There will never
-    // be more than one writer.
-    RAY_CHECK_EQ(sem_post(sem.object_sem), 0);
-
-    // Increment `sem.header_sem` by `num_readers` since there could potentially be that
-    // many readers blocked on `sem_wait()`.
-    for (int64_t i = 0; i < num_readers; i++) {
-      RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-    }
-  }
+  void SetErrorUnlocked(Semaphores &sem);
 
   /// Checks if `has_error` has been set.
   ///

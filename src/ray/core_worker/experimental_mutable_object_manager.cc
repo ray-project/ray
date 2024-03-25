@@ -17,6 +17,9 @@
 #include "ray/object_manager/common.h"
 
 namespace ray {
+
+#if defined(__APPLE__) || defined(__linux__)
+
 namespace {
 
 std::string GetSemaphoreObjectName(const std::string &name) {
@@ -313,5 +316,73 @@ Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
   header->SetErrorUnlocked(sem);
   return Status::OK();
 }
+
+#else  // defined(__APPLE__) || defined(__linux__)
+
+ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {}
+
+Status ExperimentalMutableObjectManager::RegisterWriterChannel(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
+  return Status::OK();
+}
+
+PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
+    const ObjectID &object_id) {
+  return nullptr;
+}
+
+std::string ExperimentalMutableObjectManager::GetSemaphoreName(
+    const ObjectID &object_id) {
+  return "";
+}
+
+PlasmaObjectHeader::Semaphores ExperimentalMutableObjectManager::GetSemaphores(
+    const ObjectID &object_id) {
+  return {};
+}
+
+void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id) {}
+
+void ExperimentalMutableObjectManager::DestroySemaphores(const ObjectID &object_id) {}
+
+Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
+                                                      int64_t data_size,
+                                                      const uint8_t *metadata,
+                                                      int64_t metadata_size,
+                                                      int64_t num_readers,
+                                                      std::shared_ptr<Buffer> *data) {
+  return Status::OK();
+}
+
+Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id) {
+  return Status::OK();
+}
+
+Status ExperimentalMutableObjectManager::RegisterReaderChannel(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
+  return Status::OK();
+}
+
+bool ExperimentalMutableObjectManager::ReaderChannelRegistered(
+    const ObjectID &object_id) const {
+  return true;
+}
+
+Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
+                                                     std::shared_ptr<RayObject> *result)
+    ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  return Status::OK();
+}
+
+Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id)
+    ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  return Status::OK();
+}
+
+Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
+  return Status::OK();
+}
+
+#endif
 
 }  // namespace ray
