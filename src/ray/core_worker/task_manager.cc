@@ -181,12 +181,15 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   if (end_of_stream_index_ != -1) {
     return;
   }
-  // ObjectRefStream should guarantee the next_index_
-  // will always have an object reference to avoid hang.
-  // That said, if there was already an index that's bigger than a given
-  // end of stream index, we should mark that as the end of stream.
-  // It can happen when a task is retried and return less values
-  // (e.g., the second retry is failed by an exception or worker failure).
+  // ObjectRefStream should guarantee that next_index_ will always have an
+  // object value, to avoid hanging the caller the next time it tries to read
+  // the stream.
+  //
+  // NOTE: If the task returns a nondeterministic number of values, the second
+  // try may return fewer values than the first try. If the first try fails
+  // mid-execution, then on a successful second try, when we mark the end of
+  // the stream here, any extra unconsumed returns from the first try will be
+  // dropped.
   end_of_stream_index_ = std::max(next_index_, item_index);
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);

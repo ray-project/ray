@@ -194,6 +194,16 @@ def test_sync_async_mix_regression_test(shutdown_only):
 
 @pytest.mark.parametrize("use_asyncio", [False, True])
 def test_cancel(shutdown_only, use_asyncio):
+    """Test concurrent task cancellation with generator task.
+
+    Once the caller receives an ack that the executor has cancelled the task
+    execution, the caller should receive a TaskCancelledError for the next
+    ObjectRef that it tries to read from the generator. This should happen even
+    if the caller has already received values for the next object indices in
+    the stream. Also, we should not apply the usual logic that reorders
+    out-of-order reports if the task was cancelled; waiting for the
+    intermediate indices to appear would hang the caller."""
+
     @ray.remote
     class Actor:
         def ready(self):

@@ -116,6 +116,11 @@ def test_segfault_report_streaming_generator_output(
     try:
         ray.get(caller.run.remote())
     except Exception as exc:
+        # There is a small chance that the task cancellation signal will arrive
+        # late at the executor, after the task has already finished. In that
+        # case, the task will complete normally, with no exception thrown.
+        # Thus, we wrap ray.get in a try-catch instead of asserting an
+        # exception.
         assert isinstance(exc, RayTaskError)
         assert isinstance(exc.cause, TaskCancelledError)
 
