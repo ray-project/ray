@@ -207,6 +207,10 @@ class MARWILConfig(AlgorithmConfig):
                 "`config.offline_data(postprocess_inputs=True)`."
             )
 
+    @property
+    def _auto_model_keys(self):
+        return super()._auto_model_keys | {"beta": self.beta}
+
 
 class MARWIL(Algorithm):
     @classmethod

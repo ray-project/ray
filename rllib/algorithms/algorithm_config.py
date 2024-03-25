@@ -502,7 +502,7 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
-        self._model_config_dict = None
+        self._model_config_dict = {}
         self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
