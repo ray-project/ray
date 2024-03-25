@@ -229,14 +229,11 @@ class GcsRpcClient {
           "maxBackoff": "2s",
           "backoffMultiplier": 2,
           "retryableStatusCodes": [
-            "retryableStatusCodes": [
-                "UNAVAILABLE",
-                "DEADLINE_EXCEEDED",
-                "INTERNAL",
-                "UNKNOWN",
-                "ABORTED",
-            ],
-          ]
+              "UNAVAILABLE",
+              "DEADLINE_EXCEEDED",
+              "INTERNAL",
+              "UNKNOWN",
+          ],
         }
       }]
     }
