@@ -8,12 +8,17 @@ To achieve performant and distributed workloads, Ray components require intra-cl
 
 Ray offers additional services to improve the developer experience. These services include Ray Dashboard (to allow for cluster introspection and debugging), Ray Jobs (hosted alongside the Dashboard, which services Ray Job submissions), and Ray Client (to allow for local, interactive development with a remote cluster). These services provide complete access to the Ray Cluster and the underlying compute resources.
 
-:::{admonition} Be careful when you expose access to your Ray Cluster
+:::{admonition} Ray allows any clients to run arbitrary code. Be extremely careful about what is allowed to access your Ray Cluster
 :class: caution
 
 If you expose these services (Ray Dashboard, Ray Jobs, Ray Client), anybody
-who can access the associated ports can execute arbitrary code on your Ray Cluster. This can either happen explicitly by submitting a Job or executing code via the Ray Client, or indirectly e.g. by calling the REST APIs of these services or because the Ray Client uses cloudpickle for serialization under the hood, see [the pickle documentation](https://docs.python.org/3/library/pickle.html). The Ray Dashboard, Ray Jobs and Ray Client are developer tools and you should
-only use them for development and make sure the necessary access controls are in place to restrict access to trusted parties only.
+who can access the associated ports can execute arbitrary code on your Ray Cluster. This can happen:
+* Explicitly: By submitting a Ray Job, or using the Ray Client
+* Indirectly: By calling the Dashboard REST APIs of these services
+* Implicitly: Ray extensively uses cloudpickle for serialization of arbitrary python objects. See [the pickle documentation](https://docs.python.org/3/library/pickle.html) for more details on Pickle's security model.
+
+The Ray Dashboard, Ray Jobs and Ray Client are developer tools that you should
+only use with the necessary access controls in place to restrict access to trusted parties only.
 :::
 
 ## Personas
