@@ -8,5 +8,5 @@ flask_cors
 modin==0.28.0
 pandas==2.2.1
 raydp==1.7.0b20231223.dev0
-responses==0.25.0
+responses==0.18.0
 pymars>=0.8.3

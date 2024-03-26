@@ -226,7 +226,7 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
-    numpy_dep = "numpy >= 1.20"
+    numpy_dep = "numpy"
     pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
         "data": [

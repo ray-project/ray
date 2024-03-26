@@ -41,7 +41,7 @@ aimrocks==0.5.1
     # via aim
 aioboto3==12.3.0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
-aiobotocore==2.11.2
+aiobotocore==2.12.1
     # via
     #   aioboto3
     #   s3fs
@@ -1222,7 +1222,7 @@ numexpr==2.9.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   pymars
-numpy==1.26.4
+numpy
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1606,7 +1606,7 @@ py==1.11.0
     #   pytest-forked
 py-cpuinfo==9.0.0
     # via deepspeed
-py-partiql-parser==0.5.2
+py-partiql-parser==0.5.0
     # via moto
 py-spy==0.3.14
     # via -r /ray/ci/../python/requirements.txt
@@ -1927,7 +1927,7 @@ requests-oauthlib==2.0.0
     #   msrest
 requests-toolbelt==1.0.0
     # via comet-ml
-responses==0.25.0
+responses==0.18.0
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
     #   evaluate
@@ -1987,7 +1987,7 @@ scikit-learn==1.0.2 ; python_version < "3.11"
     #   scikit-optimize
     #   torch-geometric
     #   tune-sklearn
-scipy==1.10.1 ; python_version < "3.11"
+scipy==1.12.0 ; python_version < "3.11"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   ax-platform
@@ -2137,7 +2137,7 @@ sphinxcontrib-qthelp==1.0.7
     # via sphinx
 sphinxcontrib-serializinghtml==1.1.10
     # via sphinx
-sqlalchemy==2.0.29
+sqlalchemy==1.4.17
     # via
     #   aim
     #   alembic

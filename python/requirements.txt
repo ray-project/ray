@@ -22,17 +22,17 @@ watchfiles
 # Python version-specific requirements
 grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
-numpy>=1.20
+numpy
 
 pyarrow >= 6.0.1
 
 # ray[all]
 smart_open
 lz4
-numpy>=1.20
+numpy
 aiorwlock
 opentelemetry-exporter-otlp
-scipy
+scipy==1.12.0
 colorful
 pyyaml
 rich
