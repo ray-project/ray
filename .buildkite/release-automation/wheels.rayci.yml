@@ -18,6 +18,9 @@ steps:
         --pypi_env=test
 
   - block: "Download & validate Ray wheels from TestPyPI"
+    depends_on:
+      - forge
+      - forge_arm64
 
   - label: "Linux x86_64 Python {{matrix}}"
     key: validate-linux-x86_64-wheels
