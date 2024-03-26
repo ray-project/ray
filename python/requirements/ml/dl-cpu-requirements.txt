@@ -7,7 +7,7 @@ tensorflow-probability==0.24.0
 tensorflow-io-gcs-filesystem==0.36.0
 tensorflow-datasets
 array-record==0.5.0; sys_platform != 'darwin' and platform_system != "Windows"
-etils==1.8.0
+etils
 
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!

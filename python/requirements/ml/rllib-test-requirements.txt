@@ -25,7 +25,7 @@ kaggle_environments==1.14.3
 # Unity3D testing
 # TODO(sven): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
 #mlagents==0.28.0
-mlagents_envs==1.0.0
+mlagents_envs
 
 # For tests on minigrid.
 minigrid==2.3.1

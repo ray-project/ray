@@ -86,7 +86,7 @@ pytest-forked==1.6.0
 # For dataset tests
 polars==0.20.16
 
-importlib-metadata==7.1.0
+importlib-metadata==6.0
 
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.

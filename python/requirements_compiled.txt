@@ -103,7 +103,7 @@ appdirs==1.4.4
     # via fs
 applicationinsights==0.11.10
     # via azure-cli-telemetry
-argcomplete==3.2.3
+argcomplete==3.1.1
     # via
     #   azure-cli-core
     #   gsutil
@@ -219,7 +219,7 @@ bleach==6.1.0
     # via nbconvert
 bokeh==3.4.0
     # via dask
-boltons==23.1.1
+boltons==21.0
     # via
     #   face
     #   glom
@@ -461,7 +461,7 @@ entrypoints==0.4
     #   nbconvert
 et-xmlfile==1.1.0
     # via openpyxl
-etils==1.8.0
+etils
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
@@ -596,7 +596,7 @@ glfw==2.7.0
     # via
     #   dm-control
     #   mujoco
-glom==23.5.0
+glom==22.1
     # via semgrep
 google-api-core==2.18.0
     # via
@@ -781,7 +781,7 @@ imageio-ffmpeg==0.4.9
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 imagesize==1.4.1
     # via sphinx
-importlib-metadata==7.1.0
+importlib-metadata==6.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ale-py
@@ -808,7 +808,7 @@ ipykernel==6.29.3
     # via
     #   nbclassic
     #   notebook
-ipython==8.22.2
+ipython
     # via
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   ipykernel
@@ -1095,12 +1095,12 @@ moto==5.0.3
     #   moto
 mpmath==1.3.0
     # via sympy
-msal==1.27.0b2
+msal==1.26.0
     # via
     #   azure-cli-core
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.1.0
+msal-extensions==1.0.0
     # via
     #   azure-cli-core
     #   azure-identity
@@ -1649,7 +1649,7 @@ pydantic==2.6.4
     #   deepspeed
     #   fastapi
     #   gradio
-pydantic-core==2.17.0
+pydantic-core==2.16.3
     # via pydantic
 pydeprecate==0.3.2
     # via pytorch-lightning
@@ -1960,7 +1960,7 @@ rsa==4.9
     #   google-auth
     #   oauth2client
     #   python-jose
-ruamel-yaml==0.18.6
+ruamel-yaml<0.18.0
     # via semgrep
 ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
@@ -2156,7 +2156,7 @@ stack-data==0.6.3
     # via ipython
 stanio==0.5.0
     # via cmdstanpy
-starlette==0.37.2
+starlette==0.36.3
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
