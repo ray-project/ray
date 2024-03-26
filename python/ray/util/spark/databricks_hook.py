@@ -177,5 +177,10 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         and ends up selecting the loopback interface, breaking cross-node
         commnication."""
         return {
+            **super().custom_environment_variables(),
             "GLOO_SOCKET_IFNAME": "eth0",
+            # Ray nodes runs as subprocess of spark UDF or spark driver,
+            # in databricks, it doens't have MLflow service credentials
+            # so it can't use MLflow.
+            "DISABLE_MLFLOW_INTEGRATION": "TRUE",
         }
