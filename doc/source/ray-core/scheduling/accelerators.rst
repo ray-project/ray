@@ -38,6 +38,11 @@ Starting Ray Nodes with Accelerators
 ------------------------------------
 
 By default, Ray will set the quantity of accelerator resources of a node to the physical quantities of accelerators auto detected by Ray.
+
+For GPU auto-detection, Ray uses the `gpustat <https://github.com/wookayin/gpustat>`_ tool.
+If you find that GPUs are not being auto-detected, first test that there are no errors by running ``gpustat --debug``.
+Run this command inside the Ray container if using Docker.
+
 If you need to, you can :ref:`override <specify-node-resources>` this.
 
 .. tab-set::
