@@ -1,4 +1,5 @@
-group: Linux aarch64 tests
+group: aarch64 tests
+sort_key: "~aarch64"
 steps:
   # block on premerge
   - block: "Run Linux aarch64 tests"
