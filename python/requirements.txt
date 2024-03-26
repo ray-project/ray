@@ -38,14 +38,14 @@ pyyaml
 rich
 opentelemetry-sdk
 fastapi
-gymnasium==0.28.1
+gymnasium==0.29.1
 virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api
 opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-scikit-image==0.21.0
+scikit-image==0.22.0
 prometheus_client>=0.7.1
 requests
 pandas
