@@ -1489,10 +1489,10 @@ def read_avro(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from records stored in avro files.
+    """Create a :class:`~ray.data.Dataset` from records stored in Avro files.
 
     Examples:
-        Read a avro file in remote storage or local storage.
+        Read an Avro file in remote storage or local storage.
 
         >>> import ray
         >>> ds = ray.data.read_avro("s3://anonymous@ray-example-data/mnist.avro")
@@ -1551,7 +1551,7 @@ def read_avro(
             value in most cases.
 
     Returns:
-        :class:`~ray.data.Dataset` holding records from the avro files.
+        :class:`~ray.data.Dataset` holding records from the Avro files.
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(AvroDatasource._FILE_EXTENSIONS)
