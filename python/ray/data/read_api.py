@@ -16,6 +16,7 @@ from typing import (
 )
 
 import numpy as np
+from datasource import IcebergDatasource
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
@@ -94,6 +95,7 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
+    from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
@@ -2176,6 +2178,77 @@ def read_databricks_tables(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI
+def read_iceberg(
+    *,
+    table_identifier: str,
+    catalog_type: str = "glue",
+    row_filter: Union[str, "BooleanExpression"] = None,
+    parallelism: int = -1,
+    selected_fields: Tuple[str, ...] = ("*",),
+    snapshot_id: Optional[int] = None,
+    scan_kwargs: Optional[dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from an Iceberg table. The table to read from
+    is specified using a fully qualified ```table_identifier```. Using PyIceberg, any
+    intended row filters, snapshot IDs, etc. are applied, and the files that satisfy
+    the query are distributed across Ray read tasks. The number of tasks is
+    determined by ``parallelism`` which can be requested from this interface or
+    automatically chosen if unspecified (see the``parallelism`` arg below).
+
+    A catalog must be chosen for Iceberg, and we currently only support Glue.
+
+    .. tip::
+
+        For more details on PyIceberg, see
+        - URI: https://py.iceberg.apache.org/
+
+    Examples:
+        >>> import ray
+        >>> from pyiceberg.expressions import BooleanExpression, EqualTo
+        >>> ds = ray.data.read_iceberg(
+        ...     table_identifier="db_name.table_name",
+        ...     row_filter=BooleanExpression(EqualTo("column_name", "literal_value")),
+        ...     parallelism=64
+        ... )
+
+    Args:
+        table_identifier: Fully qualified table identifier (i.e., "db_name.table_name")
+        catalog_type: The type of catalog to use PyIceberg with (defaults to "glue")
+        row_filter: A PyIceberg BooleanExpression to use to filter the data *prior*
+            to reading
+        selected_fields: Which columns from the data to read, passed directly to
+            PyIceberg's load functions
+        snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
+            snapshot is used
+        scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
+             (e.g., case_sensitive, limit, etc.)
+        parallelism: Degree of parallelism to use for the Dataset
+        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+
+    Returns:
+        :class:`~ray.data.Dataset` producing rows from the results of executing the
+            pipeline on the specified Iceberg table.
+    """
+    # Setup the Datasource
+    datasource = IcebergDatasource(
+        table_identifier=table_identifier,
+        catalog_type=catalog_type,
+        row_filter=row_filter,
+        selected_fields=selected_fields,
+        snapshot_id=snapshot_id,
+        scan_kwargs=scan_kwargs,
+    )
+
+    dataset = read_datasource(
+        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+    )
+
+    return dataset
 
 
 @PublicAPI

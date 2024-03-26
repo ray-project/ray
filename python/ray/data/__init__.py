@@ -44,6 +44,7 @@ from ray.data.read_api import (  # noqa: F401
     read_csv,
     read_databricks_tables,
     read_datasource,
+    read_iceberg,
     read_images,
     read_json,
     read_mongo,

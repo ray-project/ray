@@ -1,3 +1,5 @@
+from iceberg_datasource import IcebergDatasource
+
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
