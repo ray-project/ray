@@ -901,20 +901,35 @@ class DatasetStatsSummary:
                 out += "\nDataset memory:\n"
                 out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
 
+            # For throughput, we compute both an observed Ray Data dataset throughput
+            # and an estimated single node dataset throughput.
+
+            # The observed dataset throughput is computed by dividing the total number
+            # of rows produced by the total wall time of the dataset (i.e. from start to
+            # finish how long did the dataset take to be processed). With the recursive
+            # nature of the DatasetStatsSummary, we use get_total_wall_time to determine
+            # the total wall time (this finds the difference between the earliest start
+            # and latest end for any block in any operator).
+
+            # The estimated single node dataset throughput is computed by dividing the
+            # total number of rows produced the sum of the wall times across all blocks
+            # of all operators. This assumes that on a single node the work done would
+            # be equivalent, with no concurrency.
             output_num_rows = self.operators_stats[-1].output_num_rows
             total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
-            total_wall_time = self.get_total_wall_time()
-            if total_num_out_rows and self.time_total_s and total_wall_time:
+            wall_time = self.get_total_wall_time()
+            total_time_all_blocks = self.get_total_time_all_blocks()
+            if total_num_out_rows and wall_time and total_time_all_blocks:
                 out += "\n"
                 out += "Dataset throughput:\n"
                 out += (
                     "\t* Ray Data throughput:"
-                    f" {total_num_out_rows / self.time_total_s} "
+                    f" {total_num_out_rows / wall_time} "
                     "rows/s\n"
                 )
                 out += (
                     "\t* Estimated single node throughput:"
-                    f" {total_num_out_rows / total_wall_time} "
+                    f" {total_num_out_rows / total_time_all_blocks} "
                     "rows/s\n"
                 )
         if verbose_stats_logs and add_global_stats:
@@ -923,29 +938,39 @@ class DatasetStatsSummary:
         return out
 
     @staticmethod
-    def _collect_parent_summaries(
+    def _collect_dataset_stats_summaries(
         curr: "DatasetStatsSummary",
     ) -> List["DatasetStatsSummary"]:
         summs = []
         # TODO: Do operators ever have multiple parents? Do we need to deduplicate?
         for p in curr.parents:
             if p and p.parents:
-                summs.extend(DatasetStatsSummary._collect_parent_summaries(p))
+                summs.extend(DatasetStatsSummary._collect_dataset_stats_summaries(p))
         return summs + [curr]
 
-    def runtime_metrics(self) -> str:
-        def fmt_line(name: str, time: float) -> str:
-            return f"* {name}: {fmt(time)} ({time / self.time_total_s * 100:.3f}%)\n"
+    @staticmethod
+    def _find_start_and_end(summ: "DatasetStatsSummary") -> Tuple[float, float]:
+        earliest_start = min(ops.earliest_start_time for ops in summ.operators_stats)
+        latest_end = max(ops.latest_end_time for ops in summ.operators_stats)
+        return earliest_start, latest_end
 
-        summaries = DatasetStatsSummary._collect_parent_summaries(self)
+    def runtime_metrics(self) -> str:
+        total_wall_time = self.get_total_wall_time()
+
+        def fmt_line(name: str, time: float) -> str:
+            return f"* {name}: {fmt(time)} ({time / total_wall_time * 100:.3f}%)\n"
+
+        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"
         for summ in summaries:
-            op_total_time = sum(
-                [op_stats.time_total_s for op_stats in summ.operators_stats]
-            )
-            out += fmt_line(summ.base_name, op_total_time)
+            if len(summ.operators_stats) > 0:
+                earliest_start, latest_end = DatasetStatsSummary._find_start_and_end(
+                    summ
+                )
+                op_total_time = latest_end - earliest_start
+                out += fmt_line(summ.base_name, op_total_time)
         out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
-        out += fmt_line("Total", self.time_total_s)
+        out += fmt_line("Total", total_wall_time)
         return out
 
     def __repr__(self, level=0) -> str:
@@ -981,11 +1006,33 @@ class DatasetStatsSummary:
         )
 
     def get_total_wall_time(self) -> float:
-        parent_wall_times = [p.get_total_wall_time() for p in self.parents]
-        parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
-        return parent_max_wall_time + sum(
-            ss.wall_time.get("max", 0) if ss.wall_time else 0
-            for ss in self.operators_stats
+        """Calculate the total wall time for the dataset, this is done by finding
+        the earliest start time and latest end time for any block in any operator.
+        The wall time is the difference of these two times.
+        """
+        start_ends = [
+            DatasetStatsSummary._find_start_and_end(summ)
+            for summ in DatasetStatsSummary._collect_dataset_stats_summaries(self)
+            if len(summ.operators_stats) > 0
+        ]
+        if len(start_ends) == 0:
+            return 0
+        else:
+            earliest_start = min(start_end[0] for start_end in start_ends)
+            latest_end = max(start_end[1] for start_end in start_ends)
+            return latest_end - earliest_start
+
+    def get_total_time_all_blocks(self) -> float:
+        """Calculate the sum of the wall times across all blocks of all operators."""
+        summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
+        return sum(
+            (
+                sum(
+                    ops.wall_time.get("sum", 0) if ops.wall_time else 0
+                    for ops in summ.operators_stats
+                )
+            )
+            for summ in summaries
         )
 
     def get_total_cpu_time(self) -> float:
@@ -1017,6 +1064,8 @@ class OperatorStatsSummary:
     # overall runtime of the operator, pulled from the stats actor, whereas the
     # computed walltimes in `self.wall_time` are calculated on a operator level.
     time_total_s: float
+    earliest_start_time: float
+    latest_end_time: float
     # String summarizing high-level statistics from executing the operator
     block_execution_summary_str: str
     # The fields below are dicts with stats aggregated across blocks
@@ -1053,6 +1102,7 @@ class OperatorStatsSummary:
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
         rounded_total = 0
         time_total_s = 0
+        earliest_start_time, latest_end_time = 0, 0
 
         if exec_stats:
             # Calculate the total execution time of operator as
@@ -1164,6 +1214,8 @@ class OperatorStatsSummary:
             operator_name=operator_name,
             is_sub_operator=is_sub_operator,
             time_total_s=time_total_s,
+            earliest_start_time=earliest_start_time,
+            latest_end_time=latest_end_time,
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
@@ -1271,6 +1323,17 @@ class OperatorStatsSummary:
                 node_count_stats["count"],
             )
         if output_num_rows_stats and self.time_total_s and wall_time_stats:
+            # For throughput, we compute both an observed Ray Data operator throughput
+            # and an estimated single node operator throughput.
+
+            # The observed Ray Data operator throughput is computed by dividing the
+            # total number of rows produced by the wall time of the operator,
+            # time_total_s.
+
+            # The estimated single node operator throughput is computed by dividing the
+            # total number of rows produced by the the sum of the wall times across all
+            # blocks of the operator. This assumes that on a single node the work done
+            # would be equivalent, with no concurrency.
             total_num_out_rows = output_num_rows_stats["sum"]
             out += indent
             out += "* Operator throughput:\n"
