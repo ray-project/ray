@@ -1380,7 +1380,7 @@ opentelemetry-sdk==1.23.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-semantic-conventions==0.20b0
+opentelemetry-semantic-conventions==0.44b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
     # via
@@ -2499,7 +2499,7 @@ websocket-client==1.7.0
     #   docker
     #   jupyter-server
     #   kubernetes
-websockets==12.0
+websockets==11.0.3
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gradio

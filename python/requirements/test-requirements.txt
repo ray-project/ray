@@ -25,7 +25,7 @@ freezegun==1.4.0
 google-api-python-client==2.123.0
 google-cloud-storage==2.16.0
 gradio==3.50.2; platform_system != "Windows"
-websockets==12.0
+websockets==11.0.3
 joblib==1.3.2
 jsonpatch==1.33
 kubernetes==29.0.0
