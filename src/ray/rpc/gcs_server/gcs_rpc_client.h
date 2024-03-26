@@ -179,64 +179,64 @@ class GcsRpcClient {
     // Please refer to explanation of gRPC returned statuses for more details:
     // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
     std::string service_config_json = R"(
-    {
-      "methodConfig": [{
-        "name": [
-          {"service": "ray.rpc.NodeInfoGcsService", "method": "DrainNode"},
+      {
+        "methodConfig": [{
+          "name": [
+            {"service": "ray.rpc.NodeInfoGcsService", "method": "DrainNode"},
 
-          {"service": "ray.rpc.JobInfoGcsService", "method": "MarkJobFinished"},
-          {"service": "ray.rpc.JobInfoGcsService", "method": "ReportJobError"},
+            {"service": "ray.rpc.JobInfoGcsService", "method": "MarkJobFinished"},
+            {"service": "ray.rpc.JobInfoGcsService", "method": "ReportJobError"},
 
-          {"service": "ray.rpc.ActorInfoGcsService", "method": "RegisterActor"},
+            {"service": "ray.rpc.ActorInfoGcsService", "method": "RegisterActor"},
 
-          {"service": "ray.rpc.WorkerInfoGcsService", "method": "ReportWorkerFailure"},
-          {"service": "ray.rpc.WorkerInfoGcsService", "method": "UpdateWorkerDebuggerPort"},
+            {"service": "ray.rpc.WorkerInfoGcsService", "method": "ReportWorkerFailure"},
+            {"service": "ray.rpc.WorkerInfoGcsService", "method": "UpdateWorkerDebuggerPort"},
 
-          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVPut"},
-          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVDel"},
+            {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVPut"},
+            {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVDel"},
 
-          {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllAvailableResources"},
-          {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllResourceUsage"},
-          {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetDrainingNodesRequest"},
+            {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllAvailableResources"},
+            {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetAllResourceUsage"},
+            {"service": "ray.rpc.NodeResourceInfoGcsService", "method": "GetDrainingNodesRequest"},
 
-          {"service": "ray.rpc.NodeInfoGcsService", "method": "GetClusterId"},
-          {"service": "ray.rpc.NodeInfoGcsService", "method": "GetAllNodeInfo"},
-          {"service": "ray.rpc.NodeInfoGcsService", "method": "GetInternalConfig"},
-          {"service": "ray.rpc.NodeInfoGcsService", "method": "CheckAlive"},
+            {"service": "ray.rpc.NodeInfoGcsService", "method": "GetClusterId"},
+            {"service": "ray.rpc.NodeInfoGcsService", "method": "GetAllNodeInfo"},
+            {"service": "ray.rpc.NodeInfoGcsService", "method": "GetInternalConfig"},
+            {"service": "ray.rpc.NodeInfoGcsService", "method": "CheckAlive"},
 
-          {"service": "ray.rpc.JobInfoGcsService", "method": "GetAllJobInfo"},
+            {"service": "ray.rpc.JobInfoGcsService", "method": "GetAllJobInfo"},
 
-          {"service": "ray.rpc.ActorInfoGcsService", "method": "GetActorInfo"},
-          {"service": "ray.rpc.ActorInfoGcsService", "method": "GetNamedActorInfo"},
-          {"service": "ray.rpc.ActorInfoGcsService", "method": "ListNamedActors"},
-          {"service": "ray.rpc.ActorInfoGcsService", "method": "GetAllActorInfo"},
+            {"service": "ray.rpc.ActorInfoGcsService", "method": "GetActorInfo"},
+            {"service": "ray.rpc.ActorInfoGcsService", "method": "GetNamedActorInfo"},
+            {"service": "ray.rpc.ActorInfoGcsService", "method": "ListNamedActors"},
+            {"service": "ray.rpc.ActorInfoGcsService", "method": "GetAllActorInfo"},
 
-          {"service": "ray.rpc.WorkerInfoGcsService", "method": "GetWorkerInfo"},
-          {"service": "ray.rpc.WorkerInfoGcsService", "method": "GetAllWorkerInfo"},
+            {"service": "ray.rpc.WorkerInfoGcsService", "method": "GetWorkerInfo"},
+            {"service": "ray.rpc.WorkerInfoGcsService", "method": "GetAllWorkerInfo"},
 
-          {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetPlacementGroup"},
-          {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetNamedPlacementGroup"},
-          {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetAllPlacementGroup"},
+            {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetPlacementGroup"},
+            {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetNamedPlacementGroup"},
+            {"service": "ray.rpc.PlacementGroupInfoGcsService", "method": "GetAllPlacementGroup"},
 
-          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVGet"},
-          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVMultiGet"},
-          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVExists"},
-          {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVKeys"},
-        ],
-        "retryPolicy": {
-          "maxAttempts": 3,
-          "initialBackoff": "0.5s",
-          "maxBackoff": "2s",
-          "backoffMultiplier": 2,
-          "retryableStatusCodes": [
-              "UNAVAILABLE",
-              "DEADLINE_EXCEEDED",
-              "INTERNAL",
-              "UNKNOWN",
+            {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVGet"},
+            {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVMultiGet"},
+            {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVExists"},
+            {"service": "ray.rpc.InternalKVGcsService", "method": "InternalKVKeys"}
           ],
-        }
-      }]
-    }
+          "retryPolicy": {
+            "maxAttempts": 3,
+            "initialBackoff": "0.5s",
+            "maxBackoff": "2s",
+            "backoffMultiplier": 2,
+            "retryableStatusCodes": [
+                "UNAVAILABLE",
+                "DEADLINE_EXCEEDED",
+                "INTERNAL",
+                "UNKNOWN"
+            ]
+          }
+        }]
+      }
     )";
 
     grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);

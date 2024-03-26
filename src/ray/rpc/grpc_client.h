@@ -92,32 +92,33 @@ inline grpc::ChannelArguments CreateClientDefaultChannelArguments() {
   // Please refer to explanation of gRPC returned statuses for more details:
   // REF: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
   std::string service_config_json = R"(
-  {
-    "methodConfig": [{
-      "name": [
-        {"service": "ray.rpc.CoreWorkerService", "method": "ReportGeneratorItemReturns"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "DeleteObjects"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "CancelTask"},
+    {
+      "methodConfig": [{
+        "name": [
+          {"service": "ray.rpc.CoreWorkerService", "method": "ReportGeneratorItemReturns"},
+          {"service": "ray.rpc.CoreWorkerService", "method": "DeleteObjects"},
+          {"service": "ray.rpc.CoreWorkerService", "method": "CancelTask"},
 
-        {"service": "ray.rpc.CoreWorkerService", "method": "GetCoreWorkerStats"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "NumPendingTasks"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "PlasmaObjectReady"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectLocationsOwner"},
-        {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectStatus"},
-      ],
-      "retryPolicy": {
-        "maxAttempts": 5,
-        "initialBackoff": "0.1s",
-        "maxBackoff": "1s",
-        "backoffMultiplier": 1.5,
-        "retryableStatusCodes": [
-            "UNAVAILABLE",
-            "DEADLINE_EXCEEDED",
-            "INTERNAL",
-            "UNKNOWN",
+          {"service": "ray.rpc.CoreWorkerService", "method": "GetCoreWorkerStats"},
+          {"service": "ray.rpc.CoreWorkerService", "method": "NumPendingTasks"},
+          {"service": "ray.rpc.CoreWorkerService", "method": "PlasmaObjectReady"},
+          {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectLocationsOwner"},
+          {"service": "ray.rpc.CoreWorkerService", "method": "GetObjectStatus"}
         ],
-      }
-    }]}
+        "retryPolicy": {
+          "maxAttempts": 5,
+          "initialBackoff": "0.1s",
+          "maxBackoff": "1s",
+          "backoffMultiplier": 1.5,
+          "retryableStatusCodes": [
+              "UNAVAILABLE",
+              "DEADLINE_EXCEEDED",
+              "INTERNAL",
+              "UNKNOWN"
+          ]
+        }
+      }]
+    }
   )";
 
   grpc::ChannelArguments arguments = CreateDefaultChannelArguments(service_config_json);
