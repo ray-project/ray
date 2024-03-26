@@ -9,8 +9,8 @@ if [[ -z "$RAY_VERSION" ]]; then
     echo "RAY_VERSION environment variable is not set"
     exit 1
 fi
-if [[ -z "$RAY_HASH" ]]; then
-    echo "RAY_HASH environment variable is not set"
+if [[ -z "$BUILDKITE_COMMIT" ]]; then
+    echo "BUILDKITE_COMMIT environment variable is not set"
     exit 1
 fi
 
@@ -28,7 +28,7 @@ pip install \
 
 (
     cd release/util
-    python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$RAY_HASH"
+    python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
 )
 
 (

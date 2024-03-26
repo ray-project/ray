@@ -25,7 +25,6 @@ steps:
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_HASH="$BUILDKITE_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.9"
@@ -39,7 +38,6 @@ steps:
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_HASH="$BUILDKITE_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.9"
