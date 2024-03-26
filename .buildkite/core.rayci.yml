@@ -287,13 +287,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... core 
         --run-flaky-tests  --build-type clang
-      - bazel run //ci/ray_ci:test_in_docker -- 
-        //python/ray/tests:test_placement_group
-        //python/ray/tests:test_runtime_env_working_dir_3 
-        //python/ray/tests:test_state_api_log
-        //python/ray/tests:test_object_assign_owner_client_mode core 
-        --test-env CI_SKIP_FLAKY_TEST=0
-        --skip-ray-installation
 
   - label: ":ray: core: cpp worker tests"
     tags: core_cpp
