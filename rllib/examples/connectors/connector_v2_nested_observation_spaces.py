@@ -75,20 +75,23 @@ if __name__ == "__main__":
         .training(
             gamma=0.99,
             lr=0.0003,
-            model=dict(
-                {
-                    "fcnet_hiddens": [32],
-                    "fcnet_activation": "linear",
-                    "vf_share_layers": True,
-                },
-                **(
-                    {}
-                    if not args.enable_new_api_stack
-                    else {"uses_new_env_runners": True}
-                ),
-            ),
         )
     )
+    if args.enable_new_api_stack:
+        config.rl_module(
+            model_config_dict={
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
+                "uses_new_env_runners": True,
+            },
+        )
+    else:
+        config.training(
+            model=dict(
+                fcnet_hiddens=[32], fcnet_activation="linear", vf_share_layers=True
+            )
+        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:

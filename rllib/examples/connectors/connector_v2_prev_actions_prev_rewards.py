@@ -85,6 +85,24 @@ if __name__ == "__main__":
             lr=0.0003,
             train_batch_size=4000,
             vf_loss_coeff=0.01,
+        )
+    )
+
+    if args.enable_new_api_stack:
+        config.rl_module(
+            model_config_dict={
+                "use_lstm": True,
+                "max_seq_len": 50,
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
+                "fcnet_weights_initializer": nn.init.xavier_uniform_,
+                "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
+                "uses_new_env_runners": True,
+            }
+        )
+    else:
+        config.training(
             model=dict(
                 {
                     "use_lstm": True,
@@ -94,15 +112,9 @@ if __name__ == "__main__":
                     "vf_share_layers": True,
                     "fcnet_weights_initializer": nn.init.xavier_uniform_,
                     "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
-                },
-                **(
-                    {}
-                    if not args.enable_new_api_stack
-                    else {"uses_new_env_runners": True}
-                ),
-            ),
+                }
+            )
         )
-    )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:

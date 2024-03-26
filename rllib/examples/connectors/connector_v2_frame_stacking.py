@@ -143,18 +143,27 @@ if __name__ == "__main__":
             lr=0.00015 * (args.num_gpus or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
-            model=dict(
-                {
-                    "vf_share_layers": True,
-                    "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                    "conv_activation": "relu",
-                    "post_fcnet_hiddens": [256],
-                },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
         )
     )
-
+    if args.enable_new_api_stack:
+        config.rl_module(
+            model_config_dict={
+                "vf_share_layers": True,
+                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                "conv_activation": "relu",
+                "post_fcnet_hiddens": [256],
+                "uses_new_env_runners": True,
+            }
+        )
+    else:
+        config.training(
+            model={
+                "vf_share_layers": True,
+                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                "conv_activation": "relu",
+                "post_fcnet_hiddens": [256],
+            }
+        )
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
         config.multi_agent(
