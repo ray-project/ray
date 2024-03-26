@@ -2202,7 +2202,7 @@ tensorflow==2.11.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   dopamine-rl
     #   recsim
-tensorflow-datasets==4.9.4
+tensorflow-datasets
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
