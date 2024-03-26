@@ -1084,6 +1084,23 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_request(request))
             assert (await task) == r2
 
+    async def test_backoff_from_least_number_of_models_replicas(self, pow_2_scheduler):
+        """
+        If no replica has the model_id, choose the least number of models replicas.
+        If those replicas cannot be scheduled to, we should fall back to all replicas.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
+        r1.set_queue_len_response(0)
+        r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+        s.update_replicas([r1, r2])
+        for _ in range(10):
+            request = fake_pending_request(model_id="m3")
+            task = loop.create_task(s.choose_replica_for_request(request))
+            assert (await task) == r1
+
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
         """
         If no replica has the model_id, we should fall back to normal procedure.
@@ -1579,6 +1596,35 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
         assert s._replica_queue_len_cache.get(r1.replica_id) == r1_queue_len
         assert s._replica_queue_len_cache.get(r2.replica_id) == r2_queue_len
         TIMER.advance(staleness_timeout_s + 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("backoff_index", [0, 10, 2048])
+async def test_backoff_index_handling(pow_2_scheduler, backoff_index: int):
+    """Ensure that different ranges of backoff_index are valid.
+
+    In the past, high backoff_indexes (greater than 1024) have caused
+    OverflowErrors. See https://github.com/ray-project/ray/issues/43964.
+    """
+    s = pow_2_scheduler
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_len_response(0)
+
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_len_response(0)
+
+    s.update_replicas([r1, r2])
+
+    r = await s.select_from_candidate_replicas([r1, r2], backoff_index)
+    assert r in [r1, r2]
 
 
 if __name__ == "__main__":

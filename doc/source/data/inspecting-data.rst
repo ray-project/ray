@@ -11,7 +11,7 @@ This guide shows you how to:
 * `Describe datasets <#describing-datasets>`_
 * `Inspect rows <#inspecting-rows>`_
 * `Inspect batches <#inspecting-batches>`_
-* `Inspect execution statistics <#inspecting-stats>`_
+* `Inspect execution statistics <#inspecting-execution-statistics>`_
 
 .. _describing-datasets:
 
@@ -151,46 +151,58 @@ Inspecting execution statistics
 Ray Data calculates statistics during execution for each operator, such as wall clock time and memory usage.
 
 To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data.log`.
+For more on how to read this output, see :ref:`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
 
 .. testcode::
+
     import ray
-    import time
+    import datasets
 
-    def pause(x):
-        time.sleep(.0001)
-        return x
+    def f(batch):
+        return batch
 
+    def g(row):
+        return True
+
+    hf_ds = datasets.load_dataset("mnist", "mnist")
     ds = (
-        ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-        .map(lambda x: x)
-        .map(pause)
+        ray.data.from_huggingface(hf_ds["train"])
+        .map_batches(f)
+        .filter(g)
+        .materialize()
     )
-
-    for batch in ds.iter_batches():
-        pass
 
     print(ds.stats())
 
 .. testoutput::
     :options: +MOCK
 
-    Operator 1 ReadCSV->SplitBlocks(4): 1 tasks executed, 4 blocks produced in 0.22s
-    * Remote wall time: 222.1ms min, 222.1ms max, 222.1ms mean, 222.1ms total
-    * Remote cpu time: 15.6ms min, 15.6ms max, 15.6ms mean, 15.6ms total
-    * Peak heap memory usage (MiB): 157953.12 min, 157953.12 max, 157953 mean
-    * Output num rows: 150 min, 150 max, 150 mean, 150 total
-    * Output size bytes: 6000 min, 6000 max, 6000 mean, 6000 total
+    Operator 1 ReadParquet->SplitBlocks(32): 1 tasks executed, 32 blocks produced in 2.92s
+    * Remote wall time: 103.38us min, 1.34s max, 42.14ms mean, 1.35s total
+    * Remote cpu time: 102.0us min, 164.66ms max, 5.37ms mean, 171.72ms total
+    * UDF time: 0us min, 0us max, 0.0us mean, 0us total
+    * Peak heap memory usage (MiB): 266375.0 min, 281875.0 max, 274491 mean
+    * Output num rows per block: 1875 min, 1875 max, 1875 mean, 60000 total
+    * Output size bytes per block: 537986 min, 555360 max, 545963 mean, 17470820 total
+    * Output rows per task: 60000 min, 60000 max, 60000 mean, 1 tasks used
     * Tasks per node: 1 min, 1 max, 1 mean; 1 nodes used
-    * Extra metrics: {'obj_store_mem_freed': 5761}
+    * Operator throughput:
+        * Ray Data throughput: 20579.80984833993 rows/s
+        * Estimated single node throughput: 44492.67361278733 rows/s
 
-    Dataset iterator time breakdown:
-    * Total time user code is blocked: 5.68ms
-    * Total time in user code: 0.96us
-    * Total time overall: 238.93ms
-    * Num blocks local: 0
-    * Num blocks remote: 0
-    * Num blocks unknown location: 1
-    * Batch iteration time breakdown (summed across prefetch threads):
-        * In ray.get(): 2.16ms min, 2.16ms max, 2.16ms avg, 2.16ms total
-        * In batch creation: 897.67us min, 897.67us max, 897.67us avg, 897.67us total
-        * In batch formatting: 836.87us min, 836.87us max, 836.87us avg, 836.87us total
+    Operator 2 MapBatches(f)->Filter(g): 32 tasks executed, 32 blocks produced in 3.63s
+    * Remote wall time: 675.48ms min, 1.0s max, 797.07ms mean, 25.51s total
+    * Remote cpu time: 673.41ms min, 897.32ms max, 768.09ms mean, 24.58s total
+    * UDF time: 661.65ms min, 978.04ms max, 778.13ms mean, 24.9s total
+    * Peak heap memory usage (MiB): 152281.25 min, 286796.88 max, 164231 mean
+    * Output num rows per block: 1875 min, 1875 max, 1875 mean, 60000 total
+    * Output size bytes per block: 530251 min, 547625 max, 538228 mean, 17223300 total
+    * Output rows per task: 1875 min, 1875 max, 1875 mean, 32 tasks used
+    * Tasks per node: 32 min, 32 max, 32 mean; 1 nodes used
+    * Operator throughput:
+        * Ray Data throughput: 16512.364546087643 rows/s
+        * Estimated single node throughput: 2352.3683708977856 rows/s
+
+    Dataset throughput:
+        * Ray Data throughput: 11463.372316361854 rows/s
+        * Estimated single node throughput: 25580.963670075285 rows/s

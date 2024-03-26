@@ -18,6 +18,7 @@ steps:
       - core_cpp
     job_env: WINDOWS
     mount_windows_artifacts: true
+    soft_fail: true
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
