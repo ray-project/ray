@@ -450,7 +450,6 @@ When developing or hyperparameter tuning models, reproducibility is important du
 
 **Step 2:** Set a seed for any shuffling operations:
 
-.. TODO(hchen): document setting the seed for `shufle="files"` once implemented.
 * `seed` argument to :meth:`random_shuffle <ray.data.Dataset.random_shuffle>`
 * `seed` argument to :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`
 * `local_shuffle_seed` argument to :meth:`iter_batches <ray.data.DataIterator.iter_batches>`
