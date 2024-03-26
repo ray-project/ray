@@ -1,13 +1,6 @@
 import click
-import os
 import ray
 import sys
-
-RAY_VERSION = "RAY_VERSION"
-RAY_COMMIT = "RAY_HASH"
-
-ray_version = os.getenv(RAY_VERSION)
-ray_commit = os.getenv(RAY_COMMIT)
 
 
 @click.command()

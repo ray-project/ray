@@ -1,7 +1,4 @@
 group: Upload & Validate wheels
-depends_on:
-  - forge
-  - forge_arm64
 steps:
   - block: "Upload wheels from S3 to TestPyPI"
     depends_on: 
