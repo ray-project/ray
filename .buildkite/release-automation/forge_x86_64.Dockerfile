@@ -11,32 +11,15 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12 git curl gnupg sudo
-
-# Add docker client APT repository
-mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-echo \
-  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-apt-get update
-apt-get install -y docker-ce-cli
+apt-get install -y curl zip clang-12 git
 
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
-# Needs to be synchronized to the host group id as we map /var/run/docker.sock
-# into the container.
-addgroup --gid 1001 docker0  # Used on old buildkite AMIs.
-addgroup --gid 993 docker
-
 # Install miniconda
 curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-x86_64.sh > /tmp/miniconda.sh
-bash /tmp/miniconda.sh -b -u -p /root/miniconda3
+bash /tmp/miniconda.sh -b -u -p /usr/local/bin/miniconda3
 rm /tmp/miniconda.sh
-/root/miniconda3/bin/conda init bash
+/usr/local/bin/miniconda3/bin/conda init bash
 
 # Install Bazelisk
 curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 --output /usr/local/bin/bazelisk
@@ -46,8 +29,6 @@ ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
-usermod -a -G docker0 forge
-usermod -a -G docker forge
 
 EOF
 
