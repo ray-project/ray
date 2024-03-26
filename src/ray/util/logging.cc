@@ -383,10 +383,11 @@ void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_h
   if (is_failure_signal_handler_installed_) {
     return;
   }
-  // InitializeSymbolizer cannot be called twice, and is called in
-  // other libraries like pytorchaudio. So do not call it here.
+  // InitializeSymbolizer cannot be called twice, (causes a crash)and is called
+  // in other libraries like pytorchaudio. It does not seem there is a API to
+  // determine if it has already been called, and is only needed to provide
+  // better stack traces on crahses. So do not call it here.
   // absl::InitializeSymbolizer(argv0);
-  absl::InitializeSymbolizer(argv0);
   absl::FailureSignalHandlerOptions options;
   options.call_previous_handler = call_previous_handler;
   options.writerfn = WriteFailureMessage;
