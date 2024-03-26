@@ -1,4 +1,6 @@
 import subprocess
+import docker
+import re
 from datetime import datetime
 from typing import List, Optional, Callable, Tuple
 import os
@@ -95,6 +97,38 @@ def list_image_tag_suffixes(
                 tag_suffix = f"{py_version}{platform}{architecture}"
                 tag_suffixes.append(tag_suffix)
     return tag_suffixes
+
+
+def pull_image(image_name: str) -> None:
+    """
+    Pull image from Docker Hub.
+    """
+    client = docker.from_env()
+    client.images.pull(image_name)
+
+
+def get_ray_commit(image_name: str) -> str:
+    """
+    Get the commit hash of Ray in the image.
+    """
+    client = docker.from_env()
+    pull_image(image_name)
+    # Command to grab commit hash from ray image
+    command = "python -u -c 'import ray; print(ray.__commit__)'"
+
+    container = client.containers.run(
+        image=image_name, command=command, remove=True, stdout=True, stderr=True
+    )
+    output = container.decode("utf-8").strip()
+    match = re.search(
+        r"^[a-f0-9]{40}$", output, re.MULTILINE
+    )  # Grab commit hash from output
+
+    if not match:
+        raise Exception(
+            f"Failed to get commit hash from image {image_name}. Output: {output}"
+        )
+    return match.group(0)
 
 
 def list_image_tags(

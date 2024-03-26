@@ -15,6 +15,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     query_tags_from_docker_with_oci,
     _is_release_tag,
     list_image_tags,
+    get_ray_commit,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -543,6 +544,36 @@ def test_list_images_tags_failure(
 ):
     with pytest.raises(ValueError):
         list_image_tags(prefix, ray_type, python_versions, platforms, architectures)
+
+
+@mock.patch("docker.from_env")
+def test_get_ray_commit(mock_docker_from_env):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+    # Setup mock
+    mock_client = mock_docker_from_env.return_value
+    mock_container = mock_client.containers.run.return_value
+    mock_container.decode.return_value = expected_commit
+
+    commit = get_ray_commit("test_repo/test_image:tag")
+
+    assert mock_client.containers.run.call_count == 1
+    assert (
+        mock_client.containers.run.call_args.kwargs["image"]
+        == "test_repo/test_image:tag"
+    )
+    assert commit == expected_commit
+
+
+@mock.patch("docker.from_env")
+def test_get_ray_commit_failure(mock_docker_from_env):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e"
+    # Setup mock
+    mock_client = mock_docker_from_env.return_value
+    mock_container = mock_client.containers.run.return_value
+    mock_container.decode.return_value = expected_commit
+
+    with pytest.raises(Exception):
+        get_ray_commit("test_repo/test_image:tag")
 
 
 if __name__ == "__main__":

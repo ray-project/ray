@@ -85,8 +85,7 @@ steps:
     allow_dependency_failure: true
     job_env: forge
     commands:
-      - export BUILDKITE_COMMIT="${BUILDKITE_COMMIT}"
-      - bash .buildkite/release-automation/check-nightly-commit.sh {{matrix}}
+      - bazel run //ci/ray_ci/automation:check_nightly_ray_commit -- --ray_type={{matrix}} --expected_commit="${BUILDKITE_COMMIT}"
     matrix:
       - ray
       - ray-ml
