@@ -28,10 +28,11 @@ pip install \
 
 (
     cd release/util
-    python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
+    bash sanity_check_cpp.sh
 )
 
 (
     cd release/util
-    bash sanity_check_cpp.sh
+    python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
 )
+
