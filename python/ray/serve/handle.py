@@ -540,11 +540,14 @@ class DeploymentResponse(_DeploymentResponseBase):
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+        # return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
-        # obj_ref = await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
-        # obj_ref_hex = obj_ref.hex()
-        # print("in _to_object_ref!!!, ref in memory? before get", obj_ref_hex in ray._private.internal_api.memory_summary())
+        self.obj_ref = await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+        # obj_ref_hex = self.obj_ref.hex()
+        # print("in _to_object_ref!!!, ref in memory? before get", obj_ref_hex in ray._private.internal_api.memory_summary(), self.obj_ref)
+        # print("ray.get(self.obj_ref)", ray.get(self.obj_ref))
+        return self.obj_ref
+
         # result = ray.get(obj_ref)
         # print("in _to_object_ref!!!, ref in memory? after get", obj_ref_hex in ray._private.internal_api.memory_summary())
         # del obj_ref
@@ -809,4 +812,8 @@ class DeploymentHandle(_DeploymentHandleBase):
         else:
             response_cls = DeploymentResponse
 
+        print("in remote", future, args)
+        # for arg in args:
+        #     if isinstance(arg, ray.ObjectRef):
+        #         ray.cancel(arg)
         return response_cls(future)

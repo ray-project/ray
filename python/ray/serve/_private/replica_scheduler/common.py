@@ -1,3 +1,4 @@
+import gc
 import asyncio
 import logging
 import pickle
@@ -42,6 +43,22 @@ class PendingRequest:
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""
         self.future = asyncio.Future()
+
+    def __del__(self):
+        print("pr.free called!!!", self.args, self.kwargs)
+        for i in range(len(self.args)):
+            arg = self.args[i]
+            if isinstance(arg, ObjectRef):
+                r1 = gc.get_referrers(arg)
+                print("referrers of arg", arg, r1)
+                ray._private.internal_api.free(arg)
+                print("freeing arg", arg)
+                r2 = gc.get_referrers(arg)
+                print("referrers of arg after", arg, r2)
+        self.args = None
+        for arg in self.kwargs.values():
+            if isinstance(arg, ObjectRef):
+                ray._private.internal_api.free(arg)
 
 
 class ReplicaWrapper(ABC):
@@ -181,10 +198,15 @@ class ActorReplicaWrapper:
 
         pickled_metadata = pickle.dumps(pr.metadata)
         # print(ray._private.internal_api.memory_summary())
-        obj_ref_gen = method.remote(pickled_metadata, *pr.args, **pr.kwargs)
-        print("in _send_request_python!!!", type(obj_ref_gen), obj_ref_gen, pr.metadata, with_rejection, self)
+        print("method", method, pr.metadata, pr.args, pr.kwargs)
+        self.obj_ref_gen = method.remote(pickled_metadata, *pr.args, **pr.kwargs)
+        # pr.free()
+        # for arg in pr.args:
+        #     if isinstance(arg, ObjectRef):
+        #         ray._private.internal_api.free(arg)
+        # print("in _send_request_python!!!", type(self.obj_ref_gen), self.obj_ref_gen, pr.metadata, with_rejection, self)
         # print(ray._private.internal_api.memory_summary())
-        return obj_ref_gen
+        return self.obj_ref_gen
 
     def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
         if self._replica_info.is_cross_language:
@@ -200,17 +222,19 @@ class ActorReplicaWrapper:
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
 
-        obj_ref_gen = self._send_request_python(pr, with_rejection=True)
+        self.obj_ref_gen = self._send_request_python(pr, with_rejection=True)
         try:
-            first_ref = await obj_ref_gen.__anext__()
+            first_ref = await self.obj_ref_gen.__anext__()
             queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
+            print("in send_request_with_rejection!!!", self.obj_ref_gen, first_ref, queue_len_info)
 
             if not queue_len_info.accepted:
                 print("in send_request_with_rejection!!! not accepted", queue_len_info)
                 return None, queue_len_info
             else:
                 print("in send_request_with_rejection!!! this is accepted", queue_len_info)
-                return obj_ref_gen, queue_len_info
+                # pr.free()
+                return self.obj_ref_gen, queue_len_info
         except asyncio.CancelledError as e:
             print("in send_request_with_rejection!!! cancelled", queue_len_info)
             ray.cancel(obj_ref_gen)

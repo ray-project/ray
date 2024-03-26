@@ -381,6 +381,7 @@ class Router:
             responses = []
             replacement_table = {}
             objs = scanner.find_nodes((request_args, request_kwargs))
+            print("objs!!!", objs)
             for obj in objs:
                 if isinstance(obj, DeploymentResponseGenerator):
                     raise RuntimeError(
@@ -398,6 +399,7 @@ class Router:
                 )
                 replacement_table.update((zip(responses, obj_refs)))
 
+            print("replacement_table", replacement_table)
             return scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
@@ -426,11 +428,13 @@ class Router:
                     obj_ref_gen,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
+                print("in schedule_and_send_request!!!", obj_ref_gen, queue_len_info)
                 if self._enable_queue_len_cache:
                     self._replica_scheduler.replica_queue_len_cache.update(
                         replica.replica_id, queue_len_info.num_ongoing_requests
                     )
                 if queue_len_info.accepted:
+                    # pr.free()
                     return obj_ref_gen, replica.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
@@ -470,6 +474,7 @@ class Router:
                 request_args, request_kwargs = await self._resolve_deployment_responses(
                     request_args, request_kwargs
                 )
+                print("in assign_request!!! request_args", request_args, request_kwargs)
                 ref, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
                         args=list(request_args),
@@ -477,6 +482,7 @@ class Router:
                         metadata=request_meta,
                     ),
                 )
+                print("in assign_request!!!", ref, replica_id)
 
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:

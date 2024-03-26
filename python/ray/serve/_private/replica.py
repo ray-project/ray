@@ -469,6 +469,7 @@ class ReplicaActor:
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
+        print("in handle_request_streaming", request_args)
         request_metadata = pickle.loads(pickled_request_metadata)
         with self._wrap_user_method_call(request_metadata):
             async for result in self._call_user_generator(
@@ -496,6 +497,7 @@ class ReplicaActor:
         For streaming requests, the subsequent messages will be the results of the
         user request handler (which must be a generator).
         """
+        print("in handle_request_with_rejection", request_args)
         request_metadata = pickle.loads(pickled_request_metadata)
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
@@ -1081,6 +1083,7 @@ class UserCallableWrapper:
             user_method = self._get_user_callable_method(request_metadata.call_method)
             user_method_name = user_method.__name__
             user_method_params = inspect.signature(user_method).parameters
+            print("in call_user_method!!", request_args, request_kwargs)
             if request_metadata.is_http_request:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], StreamingHTTPRequest
