@@ -390,11 +390,10 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
             [this, task_spec = std::move(task.value().first)] {
               rpc::PushTaskReply reply;
               rpc::Address addr;
-              HandlePushTaskReply(
-                  Status::IOError("The actor is temporarily unavailable."),
-                  reply,
-                  addr,
-                  task_spec);
+              HandlePushTaskReply(Status::IOError("The actor is in RESTARTING state."),
+                                  reply,
+                                  addr,
+                                  task_spec);
             },
             "CoreWorkerDirectActorTaskSubmitter::SendPendingTasks_ForceFail");
       }
@@ -541,13 +540,12 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   } else {
     bool is_actor_dead = false;
     bool fail_immediately = false;
-    rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     if (status.ok()) {
       // retryable user exception.
       RAY_CHECK(is_retryable_exception);
-      error_type = rpc::ErrorType::TASK_EXECUTION_EXCEPTION;
-      error_info = gcs::GetRayErrorInfo(error_type, reply.task_execution_error());
+      error_info = gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                        reply.task_execution_error());
     } else {
       // push task failed due to network error. For example, actor is dead
       // and no process response for the push task.
@@ -562,7 +560,6 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       if (is_actor_dead) {
         const auto &death_cause = queue.death_cause;
         error_info = GetErrorInfoFromActorDeathCause(death_cause);
-        error_type = error_info.error_type();
         fail_immediately = error_info.has_actor_died_error() &&
                            error_info.actor_died_error().has_oom_context() &&
                            error_info.actor_died_error().oom_context().fail_immediately();
@@ -572,7 +569,6 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         error_info.set_error_message("The actor is temporarily unavailable: " +
                                      status.ToString());
         error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
-        error_type = rpc::ErrorType::ACTOR_UNAVAILABLE;
       }
     }
 
@@ -582,7 +578,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
 
     will_retry = GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
         task_id,
-        error_type,
+        error_info.error_type(),
         &status,
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
@@ -622,7 +618,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
           RAY_CHECK(queue_pair != client_queues_.end());
         }
         GetTaskFinisherWithoutMu().FailPendingTask(
-            task_spec.TaskId(), error_type, &status, &error_info);
+            task_spec.TaskId(), error_info.error_type(), &status, &error_info);
       }
     }
   }

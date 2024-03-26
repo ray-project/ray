@@ -10,7 +10,6 @@ import math
 import os
 import pathlib
 import random
-import string
 import socket
 import subprocess
 import sys
@@ -2159,9 +2158,6 @@ def get_ray_default_worker_file_path():
         f"/home/ray/anaconda3/lib/python{py_version}/"
         "site-packages/ray/_private/workers/default_worker.py"
     )
-
-
-from contextlib import contextmanager
 
 
 @contextmanager

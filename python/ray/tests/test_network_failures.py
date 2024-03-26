@@ -1,76 +1,178 @@
 import os
 import pytest
 import sys
+import time
+import signal
 
 import ray
 from ray._private.test_utils import close_common_connections
-from ray.exceptions import ActorUnavailableError
-import signal
-
-import time
+from ray.exceptions import ActorUnavailableError, RayActorError
 
 
-def test_actor_unavailable_conn_broken(ray_start_regular):
-    @ray.remote
-    class Counter:
-        def __init__(self) -> None:
-            self.c = 0
+@ray.remote
+class Counter:
+    def __init__(self, init_time_s=0.01) -> None:
+        print(f"Counter init! my pid = {os.getpid()}, sleeping {init_time_s}s...")
+        time.sleep(init_time_s)
+        self.c = 0
 
-        def slow_increment(self, i, secs):
-            self.c += i
-            print(f"incrementing {i} to {self.c}")
-            time.sleep(secs)
-            return self.c
+    def sum(self, i, j):
+        return i + j
 
-        def getpid(self):
-            return os.getpid()
+    def slow_increment(self, i, secs):
+        self.c += i
+        print(f"incrementing {i} to {self.c}")
+        time.sleep(secs)
+        return self.c
 
-        def read(self):
-            return self.c
+    def getpid(self):
+        return os.getpid()
 
-    a = Counter.remote()
-    assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
-    pid = ray.get(a.getpid.remote())
-    task = a.slow_increment.remote(3, 5)
+    def read(self):
+        return self.c
 
-    # Break the grpc connection from this process to the actor process. The `ray.get`
-    # call would fail because of grpc connection break, with ActorUnavailableError.
-    # However, the actor is still alive, and the side effect still happened.
-    # Also, a next remote() call would try to reestablish the connection and the actor
-    # can continue to work.
-    close_common_connections(pid)
-    with pytest.raises(ActorUnavailableError):
-        ray.get(task)
-    assert ray.get(a.read.remote()) == 5
-    assert ray.get(a.slow_increment.remote(4, 0.1)) == 9
+    def gen_iota(self, n):
+        for i in range(n):
+            # time.sleep(1.1)
+            yield i
 
 
-def test_actor_unavailable_restarting(ray_start_cluster):
-    @ray.remote(max_restarts=-1)
-    class Actor:
-        def sum(self, i, j):
-            print(f"sum({i} + {j}) = {i+j}")
-            return i + j
+def call_from(f, source):
+    if source == "driver":
+        return f()
+    elif source == "actor":
 
-        def getpid(self):
-            return os.getpid()
+        @ray.remote
+        class Wrapper:
+            def invoke(self):
+                f()
 
-    cluster = ray_start_cluster
-    ray.init(address=cluster.address)
+        a = Wrapper.remote()
+        return ray.get(a.invoke.remote())
+    elif source == "task":
 
-    a = Actor.remote()
-    assert ray.get(a.sum.remote(1, 2)) == 3
-    pid = ray.get(a.getpid.remote())
+        @ray.remote
+        def wrapper():
+            return f()
 
-    # Kill the actor process. The caller gets a connection reset so it's unavailable
-    os.kill(pid, signal.SIGKILL)
-    with pytest.raises(ActorUnavailableError):
-        print(ray.get(a.sum.remote(1, 2)))
+        return ray.get(wrapper.remote())
+    else:
+        raise ValueError(f"unknown {source}")
 
-    # A second remote call will try to re-establish the conn and fail; so it will
-    # restart the actor
-    for i in range(10):
+
+@pytest.mark.parametrize(
+    "caller",
+    ["driver", "actor", "task"],
+)
+def test_actor_unavailable_conn_broken(ray_start_regular, caller):
+    def body():
+        a = Counter.remote()
+        assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
+        pid = ray.get(a.getpid.remote())
+        task = a.slow_increment.remote(3, 5)
+        # Break the grpc connection from this process to the actor process. Next `ray.get`
+        # call would fail with ActorUnavailableError.
+        close_common_connections(pid)
+        with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
+            ray.get(task)
+        # Since the remote() call happens *before* the break, the actor did receive the
+        # request, so the side effects are observable, and the actor recovered.
+        assert ray.get(a.read.remote()) == 5
+        assert ray.get(a.slow_increment.remote(4, 0.1)) == 9
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["driver", "actor", "task"],
+)
+def test_actor_unavailable_restarting(ray_start_regular, caller):
+    def body():
+        a = Counter.options(max_restarts=1).remote(init_time_s=5)
+        assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
+
+        # Kill the actor process. The actor will restart so we get a temporal unavailable.
+        pid = ray.get(a.getpid.remote())
+        os.kill(pid, signal.SIGKILL)
+        with pytest.raises(ActorUnavailableError):
+            print(ray.get(a.slow_increment.remote(2, 0.1)))
+
+        # Actor restarting for 5s. In this period, we get a RESTARTING issue.
+        with pytest.raises(
+            ActorUnavailableError, match="The actor is in RESTARTING state"
+        ):
+            print(ray.get(a.slow_increment.remote(2, 0.1)))
+        time.sleep(6)
+
+        # After actor started, next calls are OK. However the previous actor instance's
+        # state is lost.
+        total = 0
+        for i in range(10):
+            total += i
+            assert ray.get(a.slow_increment.remote(i, 0.1)) == total
+
+        # Kill the actor again. This time it's not gonna restart so RayActorError.
+        pid = ray.get(a.getpid.remote())
+        os.kill(pid, signal.SIGKILL)
+        with pytest.raises(RayActorError):
+            print(ray.get(a.slow_increment.remote(1, 0.1)))
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["driver", "actor", "task"],
+)
+def test_actor_unavailable_norestart(ray_start_regular, caller):
+    def body():
+        a = Counter.remote()
         assert ray.get(a.sum.remote(1, 2)) == 3
+        pid = ray.get(a.getpid.remote())
+
+        # Kill the actor process. The actor died permanently so RayActorError.
+        os.kill(pid, signal.SIGKILL)
+        with pytest.raises(RayActorError):
+            print(ray.get(a.sum.remote(1, 2)))
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["driver", "actor", "task"],
+)
+def test_generators_early_stop_unavailable(ray_start_regular, caller):
+    """
+    For a streaming generator, if a connection break happens, *some* elements may still
+    yield because they are received prior to the break. Then, two things can happen:
+    - an early StopIteration, if `next(gen)` is called.
+    - a ActorUnavailableError, if `ray.get(obj_ref)` is called.
+    """
+
+    def body():
+        a = Counter.remote()
+        pid = ray.get(a.getpid.remote())
+        total = 2000000
+        break_at = 5
+        gen = a.gen_iota.remote(total)
+        obj_refs = []
+        i = 0
+        for obj_ref in gen:
+            obj_refs.append(obj_ref)
+            if i == break_at:
+                print(f"breaking conns at {i}")
+                close_common_connections(pid)
+            i += 1
+        # StopIteration happened before `total` elements reached.
+        # On my laptop, 11120 elements are collected.
+        print(f"collected {len(obj_refs)} elements")
+        assert len(obj_refs) < total
+        with pytest.raises(ActorUnavailableError):
+            ray.get(obj_refs)
+
+    call_from(body, caller)
 
 
 if __name__ == "__main__":
