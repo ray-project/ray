@@ -29,7 +29,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
 SPILLED - Objects that have spilled to disk or a remote Storage solution (for example, AWS S3). The default is the disk.
          MMAP_DISK - Objects stored on a memory-mapped page on disk. This mode very slow and only happens under severe memory pressure.
          MMAP_SHM - Objects store on a memory-mapped page in Shared Memory. This mode is the default, in the absence of memory pressure.
-         - WORKER_HEAP - Objects, usually smaller, stored in the memory of the Ray Worker process itself. Small objects are stored in the worker heap. 
+         WORKER_HEAP - Objects, usually smaller, stored in the memory of the Ray Worker process itself. Small objects are stored in the worker heap. 
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
