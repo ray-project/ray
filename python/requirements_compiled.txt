@@ -1075,7 +1075,7 @@ ml-dtypes==0.3.2
     # via
     #   jax
     #   jaxlib
-mlagents-envs==1.0.0
+mlagents-envs
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.11.3
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
