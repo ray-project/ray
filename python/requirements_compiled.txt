@@ -669,7 +669,7 @@ gpytorch==1.11
     #   hebo
 gradio==3.50.2 ; platform_system != "Windows"
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-gradio-client==0.14.0
+gradio-client==0.6.1
     # via gradio
 grapheme==0.6.0
     # via alive-progress
@@ -1362,7 +1362,7 @@ opentelemetry-api==1.23.0
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
-opentelemetry-exporter-opencensus==0.20b0
+opentelemetry-exporter-opencensus
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 opentelemetry-exporter-otlp==1.23.0
     # via

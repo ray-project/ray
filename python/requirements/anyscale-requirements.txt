@@ -1,6 +1,6 @@
 jupyterlab
 ipywidgets
-opentelemetry-api
+opentelemetry-api==1.23.0
 opentelemetry-sdk
 opentelemetry-exporter-otlp
 google-cloud-storage
