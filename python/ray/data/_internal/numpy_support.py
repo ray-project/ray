@@ -24,14 +24,6 @@ def is_valid_udf_return(udf_return_col: Any) -> bool:
     return isinstance(udf_return_col, list) or is_array_like(udf_return_col)
 
 
-def is_scalar_list(udf_return_col: Any) -> bool:
-    """Check whether a UDF column is is a scalar list."""
-
-    return isinstance(udf_return_col, list) and (
-        not udf_return_col or np.isscalar(udf_return_col[0])
-    )
-
-
 def is_nested_list(udf_return_col: List[Any]) -> bool:
     for e in udf_return_col:
         if isinstance(e, list):
