@@ -1,5 +1,5 @@
 import time
-from ray.rllib.algorithms.sac.sac import SACConfig
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.tune.schedulers.pb2 import PB2
 from ray import train, tune
@@ -18,17 +18,21 @@ from ray import train, tune
 #   AgileRL: https://github.com/AgileRL/AgileRL?tab=readme-ov-file#benchmarks
 benchmark_envs = {
     "HalfCheetah-v4": {
-        "timesteps_total": 3000000,
+        "timesteps_total": 1000000,
     },
     "Hopper-v4": {
         "timesteps_total": 1000000,
     },
-    "Humanoid-v4": {
-        "timesteps_total": 10000000,
+    "InvertedPendulum-v4": {
+        "timesteps_total": 1000000,
     },
-    "Ant-v4": {"timesteps_total": 3000000},
+    "InvertedDoublePendulum-v4": {
+        "timesteps_total": 1000000,
+    },
+    "Reacher-v4": {"timesteps_total": 1000000},
+    "Swimmer-v4": {"timesteps_total": 1000000},
     "Walker2d-v4": {
-        "timesteps_total": 3000000,
+        "timesteps_total": 1000000,
     },
 }
 
@@ -42,52 +46,60 @@ pb2_scheduler = PB2(
     hyperparam_bounds={
         "lr": [1e-5, 1e-3],
         "gamma": [0.95, 0.99],
-        "n_step": [1, 3],
-        "initial_alpha": [1.0, 1.5],
-        "tau": [0.001, 0.1],
-        "target_entropy": [-10, -1],
-        "train_batch_size": [128, 512],
-        "target_network_update_freq": [1, 4],
+        "lambda": [0.97, 1.0],
+        "entropy_coeff": [0.0, 0.01],
+        "vf_loss_coeff": [0.01, 1.0],
+        "clip_param": [0.1, 0.3],
+        "kl_target": [0.01, 0.03],
+        "sgd_minibatch_size": [512, 4096],
+        "num_sgd_iter": [6, 32],
+        "vf_share_layers": [False, True],
+        "use_kl_loss": [False, True],
+        "kl_coeff": [0.1, 0.4],
+        "vf_clip_param": [10.0, float("inf")],
+        "grad_clip": [40, 200],
     },
 )
 
 experiment_start_time = time.time()
+# Following the paper.
+num_rollout_workers = 32
 for env, stop_criteria in benchmark_envs.items():
     hp_trial_start_time = time.time()
     config = (
-        SACConfig()
+        PPOConfig()
         .environment(env=env)
         # Enable new API stack and use EnvRunner.
         .experimental(_enable_new_api_stack=True)
         .rollouts(
-            rollout_fragment_length="auto",
+            rollout_fragment_length=1,
             env_runner_cls=SingleAgentEnvRunner,
-            num_rollout_workers=1,
+            num_rollout_workers=num_rollout_workers,
             # TODO (sven, simon): Add resources.
         )
         # TODO (simon): Adjust to new model_config_dict.
         .training(
-            initial_alpha=tune.choice([1.0, 1.5]),
             lr=tune.uniform(1e-5, 1e-3),
-            target_entropy=tune.choice([-10, -5, -1, "auto"]),
-            n_step=tune.choice([1, 3, (1, 3)]),
-            tau=tune.uniform(0.001, 0.1),
-            train_batch_size=tune.choice([128, 256, 512]),
-            target_network_update_freq=tune.choice([1, 2, 4]),
-            replay_buffer_config={
-                "type": "PrioritizedEpisodeReplayBuffer",
-                "capacity": 1000000,
-                "alpha": 0.6,
-                "beta": 0.4,
-            },
-            num_steps_sampled_before_learning_starts=256,
+            gamma=tune.uniform(0.95, 0.99),
+            lambda_=tune.uniform(0.97, 1.0),
+            entropy_coeff=tune.choice([0.0, 0.01]),
+            vf_loss_coeff=tune.uniform(0.01, 1.0),
+            clip_param=tune.uniform(0.1, 0.3),
+            kl_target=tune.uniform(0.01, 0.03),
+            sgd_minibatch_size=tune.choice([512, 1024, 2048, 4096]),
+            num_sgd_iter=tune.randint(6, 32),
+            vf_share_layers=tune.choice([True, False]),
+            use_kl_loss=tune.choice([True, False]),
+            kl_coeff=tune.uniform(0.1, 0.4),
+            vf_clip_param=tune.choice([10.0, 40.0, float("inf")]),
+            grad_clip=tune.choice([None, 40, 100, 200]),
+            train_batch_size=tune.sample_from(
+                lambda spec: spec.config["sgd_minibatch_size"] * num_rollout_workers
+            ),
             model={
-                "fcnet_hiddens": [256, 256],
-                "fcnet_activation": "relu",
-                "post_fcnet_hiddens": [],
-                "post_fcnet_activation": None,
-                "post_fcnet_weights_initializer": "orthogonal_",
-                "post_fcnet_weights_initializer_config": {"gain": 0.01},
+                "fcnet_hiddens": [64, 64],
+                "fcnet_activation": "tanh",
+                "vf_share_layers": True,
             },
         )
         .reporting(
@@ -100,17 +112,18 @@ for env, stop_criteria in benchmark_envs.items():
             evaluation_num_workers=1,
             evaluation_parallel_to_training=True,
             evaluation_config={
+                # PPO learns stochastic policy.
                 "explore": False,
             },
         )
     )
 
     tuner = tune.Tuner(
-        "SAC",
+        "PPO",
         param_space=config,
         run_config=train.RunConfig(
             stop=stop_criteria,
-            name="benchmark_sac_mujoco_pb2_" + env,
+            name="benchmark_ppo_mujoco_pb2_" + env,
         ),
         tune_config=tune.TuneConfig(
             scheduler=pb2_scheduler,
@@ -129,11 +142,11 @@ for env, stop_criteria in benchmark_envs.items():
     # Run again with the best config.
     best_trial_start_time = time.time()
     tuner = tune.Tuner(
-        "SAC",
+        "PPO",
         param_space=best_result.config,
         run_config=train.RunConfig(
             stop=stop_criteria,
-            name="benchmark_sac_mujoco_pb2_" + env + "_best",
+            name="benchmark_ppo_mujoco_pb2_" + env + "_best",
         ),
     )
     print(f"Running best config for (env={env})...")
@@ -149,5 +162,5 @@ print(
 )
 print(
     "Results from running the best configs can be found in the "
-    "`benchmark_sac_mujoco_pb2_<ENV-NAME>_best` directories."
+    "`benchmark_ppo_mujoco_pb2_<ENV-NAME>_best` directories."
 )
