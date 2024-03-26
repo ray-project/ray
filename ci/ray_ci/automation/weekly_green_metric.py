@@ -5,10 +5,9 @@ import sys
 import boto3
 import click
 
-from ci.ray_ci.utils import logger
+from ci.ray_ci.utils import logger, ci_init
 from ray_release.test_automation.state_machine import TestStateMachine
-from ray_release.configs.global_config import init_global_config, get_global_config
-from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import get_global_config
 
 
 AWS_WEEKLY_GREEN_METRIC = "ray_weekly_green_metric"
@@ -31,7 +30,7 @@ AWS_WEEKLY_GREEN_METRIC = "ray_weekly_green_metric"
     help=("Check whether there is 0 blockers."),
 )
 def main(production: bool, check: bool) -> None:
-    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+    ci_init()
     blockers = TestStateMachine.get_release_blockers()
     logger.info(f"Found {blockers.totalCount} release blockers")
 
