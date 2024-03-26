@@ -100,11 +100,13 @@ def list_image_tag_suffixes(
 
 
 def pull_image(image_name: str) -> None:
-    """
-    Pull image from Docker Hub.
-    """
     client = docker.from_env()
     client.images.pull(image_name)
+
+
+def remove_image(image_name: str) -> None:
+    client = docker.from_env()
+    client.images.remove(image_name)
 
 
 def get_ray_commit(image_name: str) -> str:
@@ -112,7 +114,7 @@ def get_ray_commit(image_name: str) -> str:
     Get the commit hash of Ray in the image.
     """
     client = docker.from_env()
-    pull_image(image_name)
+
     # Command to grab commit hash from ray image
     command = "python -u -c 'import ray; print(ray.__commit__)'"
 

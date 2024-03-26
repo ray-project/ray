@@ -1,7 +1,13 @@
 import click
 import sys
 
-from ci.ray_ci.automation.docker_tags_lib import list_image_tags, get_ray_commit
+from ci.ray_ci.utils import logger
+from ci.ray_ci.automation.docker_tags_lib import (
+    list_image_tags,
+    get_ray_commit,
+    pull_image,
+    remove_image,
+)
 from ci.ray_ci.docker_container import (
     PLATFORMS_RAY,
     PLATFORMS_RAY_ML,
@@ -29,9 +35,14 @@ def main(ray_type, expected_commit):
             PLATFORMS_RAY_ML,
             ARCHITECTURES_RAY_ML,
         )
+    tags = [f"rayproject/{ray_type.value}:{tag}" for tag in tags]
 
-    for tag in tags:
-        commit = get_ray_commit(f"rayproject/{ray_type.value}:{tag}")
+    for i, tag in enumerate(tags):
+        logger.info(f"{i+1}/{len(tags)} Checking commit for tag {tag} ....")
+
+        pull_image(tag)
+        commit = get_ray_commit(tag)
+
         if commit != expected_commit:
             print(f"Ray commit mismatch for tag {tag}!")
             print("Expected:", expected_commit)
@@ -39,6 +50,9 @@ def main(ray_type, expected_commit):
             sys.exit(42)  # Not retrying the check on Buildkite jobs
         else:
             print(f"Commit {commit} match for tag {tag}!")
+
+        if i != 0:  # Only save first pulled image for caching
+            remove_image(tag)
 
 
 if __name__ == "__main__":
