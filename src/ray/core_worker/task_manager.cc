@@ -181,13 +181,16 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   if (end_of_stream_index_ != -1) {
     return;
   }
-  // ObjectRefStream should guarantee the max_index_seen_
-  // will always have an object reference to avoid hang.
-  // That said, if there was already an index that's bigger than a given
-  // end of stream index, we should mark that as the end of stream.
-  // It can happen when a task is retried and return less values
-  // (e.g., the second retry is failed by an exception or worker failure).
-  end_of_stream_index_ = std::max(max_index_seen_ + 1, item_index);
+  // ObjectRefStream should guarantee that next_index_ will always have an
+  // object value, to avoid hanging the caller the next time it tries to read
+  // the stream.
+  //
+  // NOTE: If the task returns a nondeterministic number of values, the second
+  // try may return fewer values than the first try. If the first try fails
+  // mid-execution, then on a successful second try, when we mark the end of
+  // the stream here, any extra unconsumed returns from the first try will be
+  // dropped.
+  end_of_stream_index_ = std::max(next_index_, item_index);
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
   *object_id_in_last_index = end_of_stream_id;
@@ -631,10 +634,11 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 
   stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
-                 << ". Last object id: " << last_object_id;
-
   if (!last_object_id.IsNil()) {
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                   << stream_it->second.EofIndex()
+                   << ". Last object id: " << last_object_id;
+
     reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
     // Put a dummy object at the end of the stream. We don't need to check if
@@ -1247,6 +1251,16 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
 }
 
 bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  ObjectID generator_id = TaskGeneratorId(task_id);
+  if (!generator_id.IsNil()) {
+    // Pass -1 because the task has been cancelled, so we should just end the
+    // stream at the caller's current index. This is needed because we may
+    // receive generator reports out of order. If the task reports a later
+    // index then exits because it was cancelled, we will hang waiting for the
+    // intermediate indices.
+    MarkEndOfStream(generator_id, /*eof_index=*/-1);
+  }
+
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it != submissible_tasks_.end()) {
