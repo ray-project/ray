@@ -116,7 +116,7 @@ argon2-cffi==23.1.0
     #   notebook
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-array-record==0.5.0 ; sys_platform != 'darwin' and platform_system != "Windows"
+array-record==0.5.0 ; sys_platform != "darwin" and platform_system != "Windows"
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow-datasets
@@ -134,7 +134,7 @@ async-timeout==4.0.3
     # via
     #   aiohttp
     #   redis
-attrs==21.4.0
+attrs==22.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aiohttp
@@ -143,7 +143,6 @@ attrs==21.4.0
     #   jschema-to-python
     #   jsonschema
     #   jupyter-cache
-    #   markdown-it-py
     #   open-spiel
     #   pytest
     #   sarif-om
@@ -159,9 +158,7 @@ aws-sam-translator==1.81.0
 aws-xray-sdk==2.12.1
     # via moto
 ax-platform==0.3.2
-    # via
-    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-    #   ax-platform
+    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.40.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 azure-cli-telemetry==1.0.8
@@ -293,6 +290,7 @@ click==8.1.7
     #   databricks-cli
     #   distributed
     #   flask
+    #   jupyter-cache
     #   mlflow
     #   ray
     #   semgrep
@@ -326,7 +324,6 @@ cmdstanpy==1.2.0
 colorama==0.4.6
     # via
     #   bayesian-optimization
-    #   nbdime
     #   semgrep
 coloredlogs==15.0.1
     # via onnxruntime
@@ -380,7 +377,6 @@ cython==0.29.32
 dask==2022.10.1
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
-    #   dask
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
@@ -465,15 +461,12 @@ etils==1.3.0
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
-    #   etils
     #   orbax-checkpoint
     #   tensorflow-datasets
 evaluate==0.4.0
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
 everett==3.3.0
-    # via
-    #   comet-ml
-    #   everett
+    # via comet-ml
 exceptiongroup==1.2.0
     # via anyio
 execnet==2.0.2
@@ -590,7 +583,6 @@ gitdb==4.0.11
 gitpython==3.1.40
     # via
     #   mlflow
-    #   nbdime
     #   wandb
 glfw==2.6.3
     # via
@@ -789,6 +781,7 @@ importlib-metadata==6.11.0
     #   gym
     #   gymnasium
     #   jax
+    #   jupyter-cache
     #   jupyter-ydoc
     #   jupyterlab-server
     #   markdown
@@ -806,6 +799,7 @@ iniconfig==2.0.0
     # via pytest
 ipykernel==6.27.1
     # via
+    #   myst-nb
     #   nbclassic
     #   notebook
 ipython==8.12.3
@@ -813,7 +807,6 @@ ipython==8.12.3
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   ipykernel
     #   ipywidgets
-    #   jupyter-sphinx
     #   jupyterlab
     #   myst-nb
 ipython-genutils==0.2.0
@@ -827,8 +820,6 @@ ipywidgets==7.8.1
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ax-platform
-    #   jupyter-sphinx
-    #   myst-nb
 isodate==0.6.1
     # via msrest
 isoduration==20.11.0
@@ -876,7 +867,6 @@ jinja2==3.1.2
     #   myst-parser
     #   nbclassic
     #   nbconvert
-    #   nbdime
     #   notebook
     #   sphinx
     #   torch
@@ -891,7 +881,6 @@ joblib==1.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   scikit-learn
-    #   scikit-optimize
 jschema-to-python==1.2.3
     # via cfn-lint
 json5==0.9.14
@@ -928,7 +917,7 @@ jsonschema-spec==0.1.6
     # via openapi-spec-validator
 junit-xml==1.9
     # via cfn-lint
-jupyter-cache==0.4.3
+jupyter-cache==0.5.0
     # via myst-nb
 jupyter-client==7.3.4
     # via
@@ -952,20 +941,14 @@ jupyter-events==0.6.3
 jupyter-server==1.24.0
     # via
     #   jupyter-server-fileid
-    #   jupyter-server-mathjax
     #   jupyterlab
     #   jupyterlab-server
     #   nbclassic
-    #   nbdime
     #   notebook-shim
 jupyter-server-fileid==0.9.0
     # via jupyter-server-ydoc
-jupyter-server-mathjax==0.2.6
-    # via nbdime
 jupyter-server-ydoc==0.6.1
     # via jupyterlab
-jupyter-sphinx==0.3.2
-    # via myst-nb
 jupyter-ydoc==0.2.5
     # via
     #   jupyter-server-ydoc
@@ -980,7 +963,7 @@ jupyterlab-server==2.24.0
     # via jupyterlab
 jupyterlab-widgets==1.1.7
     # via ipywidgets
-jupytext==1.13.6
+jupytext==1.14.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 kaggle-environments==1.7.11
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
@@ -1004,8 +987,6 @@ lightgbm==3.3.5
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
     #   hebo
-    #   lightgbm-ray
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 linear-operator==0.4.0
     # via
     #   botorch
@@ -1032,7 +1013,7 @@ markdown==3.5.1
     # via
     #   mlflow
     #   tensorboard
-markdown-it-py==1.1.0
+markdown-it-py==2.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   jupytext
@@ -1061,10 +1042,12 @@ matplotlib-inline==0.1.6
     #   ipython
 mccabe==0.6.1
     # via flake8
-mdit-py-plugins==0.2.8
+mdit-py-plugins==0.3.5
     # via
     #   jupytext
     #   myst-parser
+mdurl==0.1.2
+    # via markdown-it-py
 memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 minigrid==2.1.1
@@ -1090,9 +1073,7 @@ monotonic==1.6
 more-itertools==10.1.0
     # via configspace
 moto==4.2.12
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   moto
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 mpmath==1.3.0
     # via sympy
 msal==1.18.0b1
@@ -1147,9 +1128,9 @@ mypy-extensions==1.0.0
     # via
     #   black
     #   mypy
-myst-nb==0.13.1
+myst-nb==0.15.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-myst-parser==0.15.2
+myst-parser==0.17.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   myst-nb
@@ -1160,27 +1141,22 @@ nbclassic==1.0.0
 nbclient==0.5.13
     # via
     #   jupyter-cache
+    #   myst-nb
     #   nbconvert
 nbconvert==6.5.4
     # via
     #   jupyter-server
-    #   jupyter-sphinx
-    #   myst-nb
     #   nbclassic
     #   notebook
-nbdime==4.0.1
-    # via jupyter-cache
 nbformat==5.9.2
     # via
     #   jupyter-cache
     #   jupyter-server
-    #   jupyter-sphinx
     #   jupytext
     #   myst-nb
     #   nbclassic
     #   nbclient
     #   nbconvert
-    #   nbdime
     #   notebook
 nest-asyncio==1.5.8
     # via
@@ -1297,7 +1273,6 @@ numpy==1.24.4
     #   recsim
     #   scikit-image
     #   scikit-learn
-    #   scikit-optimize
     #   scipy
     #   shimmy
     #   stanio
@@ -1321,8 +1296,8 @@ numpy==1.24.4
     #   triad
     #   tune-sklearn
     #   utilsforecast
+    #   webdataset
     #   xgboost
-    #   xgboost-ray
     #   zoopt
 oauth2client==4.1.3
     # via
@@ -1418,7 +1393,6 @@ packaging==21.3
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
-    #   lightgbm-ray
     #   matplotlib
     #   mlflow
     #   modin
@@ -1440,7 +1414,6 @@ packaging==21.3
     #   torchmetrics
     #   transformers
     #   utilsforecast
-    #   xgboost-ray
 pandas==1.5.3
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1466,7 +1439,6 @@ pandas==1.5.3
     #   statsmodels
     #   triad
     #   utilsforecast
-    #   xgboost-ray
 pandocfilters==1.5.0
     # via nbconvert
 paramiko==2.12.0
@@ -1616,9 +1588,7 @@ py4j==0.10.9.7
     # via
     #   hyperopt
     #   pyspark
-pyaml==23.9.7
-    # via scikit-optimize
-pyarrow==12.0.1
+pyarrow==14.0.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   datasets
@@ -1671,7 +1641,6 @@ pygments==2.13.0
     #   ipython
     #   knack
     #   nbconvert
-    #   nbdime
     #   rich
     #   sphinx
 pyjwt==2.8.0
@@ -1788,9 +1757,7 @@ python-dateutil==2.8.2
     #   pandas
     #   segment-analytics-python
 python-jose==3.3.0
-    # via
-    #   moto
-    #   python-jose
+    # via moto
 python-json-logger==2.0.7
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
@@ -1827,6 +1794,7 @@ pyyaml==6.0.1
     #   gradio
     #   huggingface-hub
     #   jsonschema-spec
+    #   jupyter-cache
     #   jupyter-events
     #   jupytext
     #   knack
@@ -1838,7 +1806,6 @@ pyyaml==6.0.1
     #   myst-parser
     #   optuna
     #   orbax-checkpoint
-    #   pyaml
     #   pymars
     #   pytorch-lightning
     #   ray
@@ -1861,7 +1828,6 @@ querystring-parser==1.2.4
     # via
     #   raydp
     #   tune-sklearn
-    #   xgboost-ray
 raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 recsim==0.2.4 ; sys_platform != "darwin" or platform_machine != "arm64"
@@ -1902,7 +1868,6 @@ requests==2.31.0
     #   moto
     #   msal
     #   msrest
-    #   nbdime
     #   ray
     #   requests-oauthlib
     #   requests-toolbelt
@@ -1984,7 +1949,6 @@ scikit-learn==1.0.2 ; python_version < "3.11"
     #   lightgbm
     #   mlflow
     #   pymars
-    #   scikit-optimize
     #   torch-geometric
     #   tune-sklearn
 scipy==1.10.1 ; python_version < "3.11"
@@ -2011,7 +1975,6 @@ scipy==1.10.1 ; python_version < "3.11"
     #   recsim
     #   scikit-image
     #   scikit-learn
-    #   scikit-optimize
     #   statsforecast
     #   statsmodels
     #   torch-cluster
@@ -2119,11 +2082,10 @@ soupsieve==2.5
 sphinx==4.3.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   jupyter-sphinx
     #   myst-nb
     #   myst-parser
     #   sphinx-togglebutton
-sphinx-togglebutton==0.2.3
+sphinx-togglebutton==0.3.2
     # via myst-nb
 sphinxcontrib-applehelp==1.0.4
     # via sphinx
@@ -2159,7 +2121,6 @@ stanio==0.3.0
 starlette==0.36.3
     # via
     #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   fastapi
 statsforecast==1.7.0
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
@@ -2177,6 +2138,7 @@ sympy==1.12
 tabulate==0.9.0
     # via
     #   databricks-cli
+    #   jupyter-cache
     #   knack
 tblib==3.0.0
     # via
@@ -2325,7 +2287,6 @@ tornado==6.1
     #   jupyter-server
     #   jupyterlab
     #   nbclassic
-    #   nbdime
     #   notebook
     #   pymars
     #   terminado
@@ -2407,6 +2368,8 @@ typing-extensions==4.8.0
     #   huggingface-hub
     #   ipython
     #   mypy
+    #   myst-nb
+    #   myst-parser
     #   nevergrad
     #   onnx
     #   orbax-checkpoint
@@ -2527,17 +2490,12 @@ wrapt==1.16.0
     #   deprecated
     #   tensorflow
     #   tensorflow-datasets
-    #   xgboost-ray
 wurlitzer==3.0.3
     # via comet-ml
 xgboost==1.7.6
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
     #   hebo
-    #   xgboost-ray
-    # via
-    #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
-    #   lightgbm-ray
 xlrd==2.0.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 xmltodict==0.13.0
