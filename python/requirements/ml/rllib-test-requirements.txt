@@ -3,7 +3,7 @@
 # Environment adapters.
 # ---------------------
 # Atari
-gymnasium==0.29.1
+gymnasium==0.29.0
 imageio==2.34.0
 ale_py==0.8.1
 # For testing MuJoCo envs with gymnasium.
@@ -11,7 +11,7 @@ mujoco==3.1.3
 dm_control==1.0.16
 
 # For tests on PettingZoo's multi-agent envs.
-pettingzoo==1.24.3
+pettingzoo==1.24.0
 # When installing pettingzoo, chess is missing, even though its a dependancy
 # TODO: remove if a future pettingzoo and/or ray version fixes this dependancy issue.
 chess==1.10.0
