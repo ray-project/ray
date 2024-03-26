@@ -39,7 +39,7 @@ aimrecords==0.0.7
     # via aim
 aimrocks==0.5.1
     # via aim
-aioboto3==12.3.0
+aioboto3
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 aiobotocore==2.12.1
     # via
@@ -1006,7 +1006,7 @@ lightgbm==4.3.0
     #   hebo
     #   lightgbm-ray
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
-linear-operator==0.5.2
+linear-operator==0.5.1
     # via
     #   botorch
     #   gpytorch
@@ -1552,7 +1552,7 @@ proto-plus==1.23.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==3.19.6
+protobuf
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aim
@@ -2197,7 +2197,7 @@ tensorboardx==2.6.2.2
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ray
-tensorflow==2.11.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+tensorflow==2.12.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   dopamine-rl
@@ -2377,7 +2377,7 @@ triad==0.9.6
 trustme==1.1.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-typeguard==4.2.1
+typeguard
     # via ax-platform
 typer==0.10.0
     # via -r /ray/ci/../python/requirements.txt

@@ -333,7 +333,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf",
         "pyyaml",
         "aiosignal",
         "frozenlist",
