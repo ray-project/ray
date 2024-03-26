@@ -26,7 +26,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_object_store_memory`
      - `Location`, `ObjectState`, `InstanceId`
      - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, MMAP_DISK, MMAP_SHM, and WORKER_HEAP). Definitions are as follows: 
-         - SPILLED - Objects that have spilled to disk or a remote Storage solution (for example, AWS S3). The default is the disk.
+SPILLED - Objects that have spilled to disk or a remote Storage solution (for example, AWS S3). The default is the disk.
          MMAP_DISK - Objects stored on a memory-mapped page on disk. This mode very slow and only happens under severe memory pressure.
          - MMAP_SHM - Objects store on a memory-mapped page in Shared Memory. This mode is the default, in the absence of memory pressure.
          - WORKER_HEAP - Objects, usually smaller, stored in the memory of the Ray Worker process itself. Small objects are stored in the worker heap. 
