@@ -470,7 +470,7 @@ etils
     #   tensorflow-datasets
 evaluate==0.4.1
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
-everett==3.3.0
+everett==3.1.0
     # via
     #   comet-ml
     #   everett
@@ -575,7 +575,7 @@ future==1.0.0
     # via
     #   autograd
     #   hyperopt
-gast==0.5.4
+gast==0.4.0
     # via
     #   tensorflow
     #   tensorflow-probability
@@ -984,7 +984,7 @@ jupytext==1.16.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 kaggle-environments==1.14.3
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-keras==3.1.1
+keras==2.11.0
     # via tensorflow
 kiwisolver==1.4.5
     # via matplotlib
@@ -1395,7 +1395,7 @@ orbax-checkpoint==0.5.7
     # via flax
 orjson==3.9.15
     # via gradio
-packaging==24.0
+packaging==23.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   accelerate
@@ -1552,7 +1552,7 @@ proto-plus==1.23.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==5.26.0
+protobuf==4.25.3
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aim
@@ -2184,7 +2184,7 @@ tblib==3.0.0
     #   distributed
 tenacity==8.2.3
     # via plotly
-tensorboard==2.16.2
+tensorboard==2.11.2
     # via
     #   pytorch-lightning
     #   tensorflow
@@ -2206,7 +2206,7 @@ tensorflow-datasets
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
-tensorflow-estimator==2.15.0
+tensorflow-estimator==2.11.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
@@ -2493,7 +2493,7 @@ webencodings==0.5.1
     # via
     #   bleach
     #   tinycss2
-websocket-client==1.7.0
+websocket-client==1.3.3
     # via
     #   comet-ml
     #   docker
