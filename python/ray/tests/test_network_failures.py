@@ -70,8 +70,8 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
         pid = ray.get(a.getpid.remote())
         task = a.slow_increment.remote(3, 5)
-        # Break the grpc connection from this process to the actor process. Next `ray.get`
-        # call would fail with ActorUnavailableError.
+        # Break the grpc connection from this process to the actor process. Next
+        # `ray.get` call would fail with ActorUnavailableError.
         close_common_connections(pid)
         with pytest.raises(ActorUnavailableError, match="GrpcUnavailable"):
             ray.get(task)
@@ -92,7 +92,8 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
 
-        # Kill the actor process. The actor will restart so we get a temporal unavailable.
+        # Kill the actor process. The actor will restart so we get a temporal
+        # unavailable.
         pid = ray.get(a.getpid.remote())
         os.kill(pid, signal.SIGKILL)
         with pytest.raises(ActorUnavailableError):
