@@ -195,6 +195,8 @@ class ObjectBufferPool {
     std::vector<CreateChunkState> chunk_state;
     /// The number of chunks left to seal before the buffer is sealed.
     uint64_t num_seals_remaining;
+    /// The number of inflight copy operations.
+    uint64_t num_inflight_copies = 0;
   };
 
   /// Returned when GetChunk or CreateChunk fails.
