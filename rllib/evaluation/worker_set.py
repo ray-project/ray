@@ -385,6 +385,8 @@ class WorkerSet:
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
         if self.num_healthy_remote_workers() == 0:
+            if env_steps_sampled:
+                self.local_worker().global_num_env_steps_sampled = env_steps_sampled
             return
 
         from_worker = from_worker or self.local_worker()

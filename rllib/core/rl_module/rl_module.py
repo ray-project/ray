@@ -688,7 +688,10 @@ class RLModule(abc.ABC):
         pass
 
     @OverrideToImplementCustomLogic
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+    def load_state(
+        self,
+        dir: Union[str, pathlib.Path],
+    ) -> None:
         """Loads the weights of an RLModule from the directory dir.
 
         Args:
