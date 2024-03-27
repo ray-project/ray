@@ -368,20 +368,20 @@ class Router:
         Uses the `_PyObjScanner` to find and replace the objects. This
         enables composition without explicitly calling `_to_object_ref`.
         """
-        print("in _resolve_deployment_responses!!!", request_args, request_kwargs)
         from ray.serve.handle import (
             DeploymentResponse,
             DeploymentResponseGenerator,
             _DeploymentResponseBase,
         )
 
-        scanner = _PyObjScanner(source_type=_DeploymentResponseBase)
+        scanner = _PyObjScanner(
+            source_type=(_DeploymentResponseBase, ray.ObjectRef, ray.ObjectRefGenerator)
+        )
 
         try:
             responses = []
             replacement_table = {}
             objs = scanner.find_nodes((request_args, request_kwargs))
-            print("objs!!!", objs)
             for obj in objs:
                 if isinstance(obj, DeploymentResponseGenerator):
                     raise RuntimeError(
@@ -392,6 +392,12 @@ class Router:
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
 
+                # This is no-op replacing the object with itself. The purpose is to make
+                # sure both object refs and object ref generator are not getting pinned
+                # to memory by the scanner and cause memory leak.
+                elif isinstance(obj, (ray.ObjectRef, ray.ObjectRefGenerator)):
+                    replacement_table[obj] = obj
+
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:
                 obj_refs = await asyncio.gather(
@@ -399,7 +405,6 @@ class Router:
                 )
                 replacement_table.update((zip(responses, obj_refs)))
 
-            print("replacement_table", replacement_table)
             return scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
@@ -428,13 +433,11 @@ class Router:
                     obj_ref_gen,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
-                print("in schedule_and_send_request!!!", obj_ref_gen, queue_len_info)
                 if self._enable_queue_len_cache:
                     self._replica_scheduler.replica_queue_len_cache.update(
                         replica.replica_id, queue_len_info.num_ongoing_requests
                     )
                 if queue_len_info.accepted:
-                    # pr.free()
                     return obj_ref_gen, replica.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
@@ -474,7 +477,6 @@ class Router:
                 request_args, request_kwargs = await self._resolve_deployment_responses(
                     request_args, request_kwargs
                 )
-                print("in assign_request!!! request_args", request_args, request_kwargs)
                 ref, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
                         args=list(request_args),
@@ -482,7 +484,6 @@ class Router:
                         metadata=request_meta,
                     ),
                 )
-                print("in assign_request!!!", ref, replica_id)
 
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:

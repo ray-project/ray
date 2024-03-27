@@ -299,7 +299,6 @@ class _DeploymentResponseBase:
         self._object_ref_or_gen = None
         self.__lazy_object_ref_or_gen_asyncio_lock = None
         self._object_ref_or_gen_sync_lock = threading.Lock()
-        print("in _DeploymentResponseBase!!! __init__", object_ref_future)
 
     @property
     def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
@@ -540,20 +539,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        # return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
-
-        self.obj_ref = await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
-        # obj_ref_hex = self.obj_ref.hex()
-        # print("in _to_object_ref!!!, ref in memory? before get", obj_ref_hex in ray._private.internal_api.memory_summary(), self.obj_ref)
-        # print("ray.get(self.obj_ref)", ray.get(self.obj_ref))
-        return self.obj_ref
-
-        # result = ray.get(obj_ref)
-        # print("in _to_object_ref!!!, ref in memory? after get", obj_ref_hex in ray._private.internal_api.memory_summary())
-        # del obj_ref
-        # print("in _to_object_ref!!!, ref in memory? after del", obj_ref_hex in ray._private.internal_api.memory_summary(), result)
-        #
-        # return result
+        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -640,7 +626,6 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         self,
         object_ref_future: concurrent.futures.Future,
     ):
-        print("in DeploymentResponseGenerator!!! __init__", object_ref_future)
         super().__init__(object_ref_future)
         self._obj_ref_gen: Optional[ObjectRefGenerator] = None
 
@@ -812,8 +797,4 @@ class DeploymentHandle(_DeploymentHandleBase):
         else:
             response_cls = DeploymentResponse
 
-        print("in remote", future, args)
-        # for arg in args:
-        #     if isinstance(arg, ray.ObjectRef):
-        #         ray.cancel(arg)
         return response_cls(future)
