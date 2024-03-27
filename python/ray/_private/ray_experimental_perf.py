@@ -1,12 +1,15 @@
 """This is the script for `ray microbenchmark`."""
 
 import logging
-from ray._private.ray_microbenchmark_helpers import timeit
+from ray._private.ray_microbenchmark_helpers import timeit, async_timeit
 import multiprocessing
 import ray
 
 import ray.experimental.channel as ray_channel
 from ray.dag import InputNode, MultiOutputNode
+from ray._private.utils import (
+    get_or_create_event_loop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +66,6 @@ def main(results=None):
                     chan.end_read()
 
     chans = [ray_channel.Channel(1000)]
-    results += timeit(
-        "[unstable] local put, single channel calls",
-        lambda: put_channel_small(chans, do_release=True),
-    )
     results += timeit(
         "[unstable] local put:local get, single channel calls",
         lambda: put_channel_small(chans, do_get=True, do_release=True),
@@ -126,13 +125,6 @@ def main(results=None):
         output_channel.begin_read()
         output_channel.end_read()
 
-    def _exec_multi_output(dag):
-        output_channels = dag.execute(b"x")
-        for output_channel in output_channels:
-            output_channel.begin_read()
-        for output_channel in output_channels:
-            output_channel.end_read()
-
     a = DAGActor.remote()
     with InputNode() as inp:
         dag = a.echo.bind(inp)
@@ -152,11 +144,31 @@ def main(results=None):
         f"[unstable] scatter-gather DAG calls, n={n_cpu} actors",
         lambda: ray.get(dag.execute(b"x")),
     )
-    dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
     results += timeit(
         f"[unstable] compiled scatter-gather DAG calls, n={n_cpu} actors",
-        lambda: _exec_multi_output(dag),
+        lambda: _exec(compiled_dag),
     )
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+    async def main():
+        async def _exec():
+            output_channel = await compiled_dag.execute_async(b"x")
+            # Using context manager.
+            async with output_channel as _:
+                pass
+
+        return await async_timeit(
+            f"[unstable] compiled scatter-gather asyncio DAG calls, n={n_cpu} actors",
+            _exec,
+        )
+
+    results += loop.run_until_complete(main())
+    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
+    # these DAGs create a background thread that can segfault if the CoreWorker
+    # is torn down first.
+    compiled_dag.teardown()
 
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -173,10 +185,6 @@ def main(results=None):
     )
 
     ray.shutdown()
-
-    ############################
-    # End of channel perf tests.
-    ############################
 
     return results
 

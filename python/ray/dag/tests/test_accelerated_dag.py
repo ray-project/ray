@@ -364,11 +364,9 @@ def patch_delayed_channel(request):
     from ray.experimental.channel import Channel
 
     class DelayedChannel(Channel):
-
         def begin_read(self):
             time.sleep(1)
             return super().begin_read()
-
 
         def write(self, *args, **kwargs):
             time.sleep(1)
@@ -377,16 +375,17 @@ def patch_delayed_channel(request):
     original_channel_cls = Channel
 
     from ray.experimental import channel
+
     channel.Channel = DelayedChannel
 
     from ray.dag import compiled_dag_node
+
     compiled_dag_node.Channel = DelayedChannel
 
     yield
 
     channel.Channel = original_channel_cls
     compiled_dag_node.Channel = original_channel_cls
-
 
 
 def test_patch(ray_start_regular_shared, patch_delayed_channel):
