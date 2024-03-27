@@ -15,10 +15,9 @@ steps:
         --pypi_env=test
 
   - block: "Download & validate Ray wheels from TestPyPI"
-    depends_on: 
+    depends_on:
       - forge
       - forge_arm64
-      - upload-wheels-testpypi
 
   - label: "Linux x86_64 Python {{matrix}}"
     key: validate-linux-x86_64-wheels
@@ -26,7 +25,6 @@ steps:
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_HASH="$RAY_HASH"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.9"
@@ -40,7 +38,6 @@ steps:
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_HASH="$RAY_HASH"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.9"
@@ -60,7 +57,7 @@ steps:
     instance_type: macos-arm64
     commands:
       - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
-  
+
   - block: "Upload wheels to PyPI"
     depends_on: 
       - validate-linux-x86-64-wheels
