@@ -11,4 +11,3 @@ state_machine:
     aws_bucket: ray-ci-pr-results
   master:
     aws_bucket: ray-ci-results
-  aws_bucket: ray-ci-results
