@@ -1070,7 +1070,7 @@ ml-dtypes==0.2.0
     #   jaxlib
 mlagents-envs==0.28.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-mlflow==2.9.2
+mlflow==2.10.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 mock==5.1.0
     # via pytest-shutil
