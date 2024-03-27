@@ -227,9 +227,9 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3"
-    numpy_dep = "numpy >= 1.20"
-    pyarrow_dep = "pyarrow >= 6.0.1"
+    pandas_dep = "pandas >= 1.3, < 2.0"
+    numpy_dep = "numpy >= 1.20, < 2.0"
+    pyarrow_dep = "pyarrow >= 6.0.1, < 20.0"
     setup_spec.extras = {
         "data": [
             numpy_dep,
@@ -240,27 +240,27 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7",
-            "aiohttp_cors",
-            "colorful",
-            "py-spy >= 0.2.0",
-            "requests",
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+            "aiohttp >= 3.7, < 5.0",
+            "aiohttp_cors >= 0.5.0, < 1.0.0",
+            "colorful >= 0.5.0, < 0.7.0",
+            "py-spy >= 0.2.0, < 0.5.0",
+            "requests >= 2.25.0, <3.0.0",
+            "grpcio >= 1.32.0, < 1.60.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
-            "opencensus",
-            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+            "opencensus >= 0.8.0, < 1.0.0",
+            "pydantic >= 1.7.0, < 1.12.0",
             "prometheus_client >= 0.7.1",
-            "smart_open",
+            "smart_open >= 4.0.0, < 7.0.0",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "serve": [
-            "uvicorn[standard]",
-            "requests",
-            "starlette",
-            "fastapi",
-            "watchfiles",
+            "uvicorn[standard] >= 0.18.0, < 0.30.0",
+            "requests >= 2.25.0, < 3.0.0",
+            "starlette >= 0.14.0, < 1.0.0",
+            "fastapi >= 0.40, < 0.99",
+            "watchfiles >= 1.0.0, < 2.0.0",
         ],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
+        "tune": [pandas_dep, "tensorboardX>=1.9, <3.0", "requests >= 2.25.0, < 3.0.0", pyarrow_dep, "fsspec >= 2021.0, < 2025.0"],
         "observability": [
             "opentelemetry-api >= 1.1.0, < 1.2.0",
             "opentelemetry-sdk >= 1.1.0, < 1.2.0",
