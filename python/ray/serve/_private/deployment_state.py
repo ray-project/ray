@@ -2742,10 +2742,10 @@ class DeploymentStateManager:
         )
         if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
             # Tuple of target node to compact, and its draining deadline
-            node_info: Optional[Tuple[str, float]] = (
-                self._deployment_scheduler.get_node_to_compact(
-                    allow_new_compaction=allow_new_compaction
-                )
+            node_info: Optional[
+                Tuple[str, float]
+            ] = self._deployment_scheduler.get_node_to_compact(
+                allow_new_compaction=allow_new_compaction
             )
             if node_info:
                 target_node_id, deadline = node_info

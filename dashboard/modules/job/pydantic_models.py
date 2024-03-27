@@ -104,6 +104,18 @@ if PYDANTIC_INSTALLED:
             description="The driver process exit code after the driver executed. "
             "Return None if driver doesn't finish executing.",
         )
+        byted_log_url: Optional[str] = Field(
+            None, description="The driver stdout log url."
+        )
+        byted_err_log_url: Optional[str] = Field(
+            None, description="The driver stderr log url."
+        )
+        stdout_log_path: Optional[str] = Field(
+            None, description="The driver stdout log file path."
+        )
+        stderr_log_path: Optional[str] = Field(
+            None, description="The driver stderr log file path."
+        )
 
 else:
     DriverInfo = None

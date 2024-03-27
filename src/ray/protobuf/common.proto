@@ -879,6 +879,10 @@ message NodeResourceUsage {
   string json = 1;
 }
 
+message JobChangeMessage {
+  string json = 1;
+}
+
 // Type of a worker exit.
 enum WorkerExitType {
   // Worker exits due to system level failures (i.e. worker crash).

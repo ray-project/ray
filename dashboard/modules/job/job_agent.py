@@ -158,8 +158,9 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
+        is_err_log = req.query.get("err") == "1"
         resp = JobLogsResponse(
-            logs=self.get_job_manager().get_job_logs(job.submission_id)
+            logs=self.get_job_manager().get_job_logs(job.submission_id, is_err_log)
         )
         return Response(
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"

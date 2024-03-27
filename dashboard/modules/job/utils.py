@@ -237,3 +237,78 @@ async def find_job_by_ids(
         return job
 
     return None
+
+
+def parse_job_resources_json(
+    resources: str, cli_logger, cf, command_arg="--job-resources"
+) -> Dict[str, float]:
+    try:
+        import json
+
+        resources = json.loads(resources)
+        if not isinstance(resources, dict):
+            raise ValueError
+    except Exception:
+        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(f'{command_arg}=\'{{"replica": 8, ' '"bundle": {"GPU":4}}}\''),
+        )
+    return resources
+
+
+class JobQueueFullException(Exception):
+    def __init__(self, message):
+        self.message = message
+
+
+# https://stackoverflow.com/questions/29296064/python-asyncio-how-to-create-and-cancel-tasks-from-another-thread
+def execute_in_event_loop(coro, loop):
+    def _async_add(func, fut):
+        try:
+            ret = func()
+            fut.set_result(ret)
+        except Exception as e:
+            fut.set_exception(e)
+
+    f = functools.partial(
+        asyncio.ensure_future,
+        coro,
+        loop=loop,
+    )
+    fut = Future()
+    loop.call_soon_threadsafe(_async_add, f, fut)
+    return fut.result()
+
+
+def generate_job_id() -> str:
+    """Returns a job_id of the form 'raysubmit_XYZ'.
+
+    Prefixed with 'raysubmit' to avoid confusion with Ray JobID (driver ID).
+    """
+    rand = random.SystemRandom()
+    possible_characters = list(
+        set(string.ascii_letters + string.digits)
+        - {"I", "l", "o", "O", "0"}  # No confusing characters
+    )
+    id_part = "".join(rand.choices(possible_characters, k=16))
+    return f"raysubmit_{id_part}"
+
+
+def encrypt_aes(key, raw, now=None):
+    try:
+        from Crypto.Cipher import AES
+        from Crypto import Random
+        from binascii import hexlify
+    except Exception:
+        return None
+
+    length = 16
+    count = len(raw)
+    add = length - (count % length)
+    raw = raw + ("\0" * add)
+    iv = Random.new().read(AES.block_size)
+    aes_key = (key[:8] + now) if now else key
+    cipher = AES.new(aes_key.encode(), AES.MODE_CBC, iv)
+    result = iv + cipher.encrypt(raw.encode())
+    return hexlify(result)

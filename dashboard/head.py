@@ -17,6 +17,10 @@ from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
+from ray.dashboard.modules.job.history_server_storage import (
+    EventLogCache,
+    create_history_server_storage,
+)
 
 from typing import Optional, Set
 
@@ -159,6 +163,10 @@ class DashboardHead:
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
         self.http_server = None
+        self.history_server_storage = create_history_server_storage(
+            gcs_address=self.gcs_address
+        )
+        self.event_log_cache = EventLogCache()
 
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_head import HttpServerDashboardHead

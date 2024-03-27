@@ -37,6 +37,10 @@ from ray._private.ray_constants import (
 )
 from ray.dashboard.utils import async_loop_forever
 
+from ray.dashboard.modules.job.history_server_storage import (
+    append_node_event,
+)
+
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
@@ -211,6 +215,48 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.node_id_to_ip.reset(node_id_to_ip)
                 DataSource.node_id_to_hostname.reset(node_id_to_hostname)
                 DataSource.agents.reset(agents)
+
+                if dashboard_consts.history_server_enabled():
+                    cpu_metric = DataOrganizer.bytedance_cpu_metric
+                    gpu_metric = DataOrganizer.bytedance_gpu_metric
+
+                    # update history server storage iff node state has changed
+                    for node_id, node in nodes.items():
+                        if (
+                            node_id not in DataSource.nodes
+                            or node["state"] != DataSource.nodes[node_id]["state"]
+                        ):
+                            # generate log url
+                            psm = dashboard_consts.get_global_psm()
+                            pod_ip = node["nodeManagerAddress"]
+                            pod_name = node["nodeName"]
+                            container_name = (
+                                "ray-head" if "-head-" in pod_name else "ray-worker"
+                            )
+                            node["logUrl"] = "|".join(
+                                [psm, pod_ip, pod_name, container_name]
+                            )
+
+                            node["is_head_node"] = (
+                                node["nodeManagerAddress"] == DataOrganizer.head_node_ip
+                            )
+
+                            if cpu_metric != "":
+                                node["metricCpu"] = cpu_metric % (
+                                    node["nodeManagerHostname"],
+                                    node["nodeName"],
+                                )
+                            if gpu_metric != "":
+                                node["metricGpu"] = (
+                                    gpu_metric % node["nodeManagerHostname"]
+                                )
+
+                            append_node_event(
+                                self._dashboard_head.history_server_storage,
+                                node_id,
+                                node,
+                            )
+
                 DataSource.nodes.reset(nodes)
             except Exception:
                 logger.exception("Error updating nodes.")

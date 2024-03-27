@@ -12,6 +12,11 @@ from ray._private.runtime_env.packaging import parse_uri
 
 from ray.util.annotations import PublicAPI
 
+import ray.dashboard.consts as dashboard_consts
+import logging
+
+logger = logging.getLogger(__name__)
+
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
@@ -97,6 +102,10 @@ class JobInfo:
     #: The driver process exit code after the driver executed. Return None if driver
     #: doesn't finish executing
     driver_exit_code: Optional[int] = None
+    #: The driver log file path for the job.
+    stdout_log_path: Optional[str] = None
+    #: The driver stderr log file path for the job.
+    stderr_log_path: Optional[str] = None
 
     def __post_init__(self):
         if isinstance(self.status, str):
@@ -194,7 +203,12 @@ class JobInfoStorageClient:
         self._gcs_aio_client = gcs_aio_client
 
     async def put_info(
-        self, job_id: str, job_info: JobInfo, overwrite: bool = True
+        self,
+        job_id: str,
+        job_info: JobInfo,
+        overwrite: bool = True,
+        gcs_publisher=None,
+        timeout: int = 30,
     ) -> bool:
         """Put job info to the internal kv store.
 
@@ -211,8 +225,27 @@ class JobInfoStorageClient:
             json.dumps(job_info.to_json()).encode(),
             overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
+
+        if dashboard_consts.history_server_enabled() and gcs_publisher:
+            await gcs_publisher.publish_job_change(
+                job_id, json.dumps(job_info.to_json())
+            )
+
         return added_num == 1
+
+    async def put_info_with_result(
+        self, job_id: str, job_info: JobInfo, overwrite=True, gcs_publisher=None
+    ):
+        try:
+            await self.put_info(
+                job_id, job_info, overwrite=overwrite, gcs_publisher=gcs_publisher
+            )
+            return True
+        except Exception as e:
+            logger.error(f"The job {job_id} put_info exception: {e}")
+            return False
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         serialized_info = await self._gcs_aio_client.internal_kv_get(
@@ -237,6 +270,7 @@ class JobInfoStorageClient:
         self,
         job_id: str,
         status: JobStatus,
+        gcs_publisher,
         message: Optional[str] = None,
         driver_exit_code: Optional[int] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
@@ -262,7 +296,34 @@ class JobInfoStorageClient:
         if status.is_terminal():
             new_info.end_time = int(time.time() * 1000)
 
-        await self.put_info(job_id, new_info)
+        await self.put_info(job_id, new_info, gcs_publisher=gcs_publisher)
+
+    async def put_status_with_result(
+        self,
+        job_id: str,
+        status: JobStatus,
+        gcs_publisher,
+        message: Optional[str] = None,
+        driver_exit_code: Optional[int] = None,
+        jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
+    ):
+        try:
+            await self.put_status(
+                job_id,
+                status,
+                gcs_publisher,
+                message,
+                driver_exit_code,
+                jobinfo_replace_kwargs,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"The job {job_id} put_status to {status} exception: {e}")
+            import traceback
+
+            traceback.print_stack()
+            logger.error(f"{traceback.format_stack()}")
+            return False
 
     async def get_status(self, job_id: str) -> Optional[JobStatus]:
         job_info = await self.get_info(job_id)
@@ -297,6 +358,15 @@ class JobInfoStorageClient:
                 *[get_job_info(job_id) for job_id in job_ids]
             )
         }
+
+    async def put_log_path(
+        self, job_id: str, stdout_log_path: str, stderr_log_path: str
+    ):
+        old_info = await self.get_info(job_id)
+        new_info = replace(
+            old_info, stdout_log_path=stdout_log_path, stderr_log_path=stderr_log_path
+        )
+        await self.put_info(job_id, new_info)
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:

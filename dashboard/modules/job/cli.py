@@ -469,6 +469,14 @@ def delete(
     default=False,
     help="If set, follow the logs (like `tail -f`).",
 )
+@click.option(
+    "-e",
+    "--err",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, return the err logs if the environment BYTED_RAY_ENABLE_DRIVER_ERR_LOG_FILE is set.",
+)
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
@@ -478,6 +486,7 @@ def logs(
     follow: bool,
     headers: Optional[str],
     verify: Union[bool, str],
+    err: bool,
 ):
     """Gets the logs of a job.
 
@@ -499,7 +508,7 @@ def logs(
     else:
         # Set no_format to True because the logs may have unescaped "{" and "}"
         # and the CLILogger calls str.format().
-        cli_logger.print(client.get_job_logs(job_id), end="", no_format=True)
+        cli_logger.print(client.get_job_logs(job_id, err), end="", no_format=True)
 
 
 @job_cli_group.command()

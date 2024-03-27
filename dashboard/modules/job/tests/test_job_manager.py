@@ -959,6 +959,42 @@ class TestTailLogs:
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
+    @pytest.mark.parametrize(
+        "call_ray_start",
+        [
+            {
+                "cmd": """ray start --head --include-dashboard=true --num-cpus=16 --num-gpus=16""",
+                "env": {"BYTED_RAY_ENABLE_DRIVER_ERR_LOG_FILE": "true"},
+            }
+        ],
+        indirect=True,
+    )
+    async def test_error_log(self, call_ray_start, tmp_path):
+        entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    sys.exit()
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    sys.stderr.write('Waiting...\\n')
+    time.sleep(1)\"
+"""
+        address_info = ray.init(address=call_ray_start)
+        gcs_aio_client = GcsAioClient(
+            address=address_info["gcs_address"], nums_reconnect_retry=0
+        )
+
+        job_manager = JobManager(gcs_aio_client, tmp_path)
+        job_id = await job_manager.submit_job(entrypoint=entrypoint)
+        await async_wait_for_condition(
+            lambda: "Waiting..." in job_manager.get_job_err_logs(job_id)
+        )
+        assert job_manager.stop_job(job_id) is True
+
 
 @pytest.mark.asyncio
 async def test_stop_job_gracefully(job_manager):

@@ -89,3 +89,16 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
 PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )
+
+_history_server_enabled = os.getenv("BYTED_RAY_HISTORY_SERVER_ENABLED") == "true"
+
+
+def history_server_enabled():
+    return _history_server_enabled
+
+
+_tce_psm = os.getenv("TCE_PSM")
+
+
+def get_global_psm():
+    return _tce_psm

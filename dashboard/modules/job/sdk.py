@@ -424,7 +424,7 @@ class JobSubmissionClient(SubmissionClient):
         return self.get_job_info(job_id).status
 
     @PublicAPI(stability="stable")
-    def get_job_logs(self, job_id: str) -> str:
+    def get_job_logs(self, job_id: str, err: bool = False) -> str:
         """Get all logs produced by a job.
 
         Example:
@@ -445,7 +445,10 @@ class JobSubmissionClient(SubmissionClient):
             RuntimeError: If the job does not exist or if the request to the
                 job server fails.
         """
-        r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
+        if err:
+            r = self._do_request("GET", f"/api/jobs/{job_id}/logs?err=1")
+        else:
+            r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
 
         if r.status_code == 200:
             return JobLogsResponse(**r.json()).logs
