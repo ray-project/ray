@@ -21,7 +21,11 @@ from ray_release.test_automation.ci_state_machine import (
     JAILED_TAG,
     JAILED_MESSAGE,
 )
-from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.test_automation.state_machine import (
+    TestStateMachine,
+    WEEKLY_RELEASE_BLOCKER_TAG,
+    NO_TEAM,
+)
 
 
 class MockLabel:
@@ -43,11 +47,17 @@ class MockIssue:
         self.labels = labels or []
         self.comments = []
 
-    def edit(self, state: str = None, labels: List[MockLabel] = None):
+    def edit(
+        self, state: str = None, labels: List[MockLabel] = None, title: str = None
+    ):
         if state:
             self.state = state
         if labels:
             self.labels = labels
+        if title:
+            self.title = title
+        if state:
+            self.state = state
 
     def create_comment(self, comment: str):
         self.comments.append(comment)
@@ -71,6 +81,20 @@ class MockRepo:
 
     def get_issue(self, number: int):
         return MockIssueDB.issue_db[number]
+
+    def get_issues(self, state: str, labels: List[MockLabel]) -> List[MockIssue]:
+        issues = []
+        for issue in MockIssueDB.issue_db.values():
+            if issue.state != state:
+                continue
+            issue_labels = [label.name for label in issue.labels]
+            if all(label.name in issue_labels for label in labels):
+                issues.append(issue)
+
+        return issues
+
+    def get_label(self, name: str):
+        return MockLabel(name)
 
 
 class MockBuildkiteBuild:
@@ -99,6 +123,14 @@ class MockBuildkite:
 
 TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
+
+
+def test_ci_empty_results():
+    test = Test(name="w00t", team="ci", state=TestState.FLAKY)
+    test.test_results = []
+    CITestStateMachine(test).move()
+    # do not change the state
+    assert test.get_state() == TestState.FLAKY
 
 
 def test_ci_move_from_passing_to_flaky():
@@ -172,8 +204,17 @@ def test_ci_move_from_passing_to_failing_to_flaky():
     ] * CONTINUOUS_PASSING_TO_PASSING
     CITestStateMachine(test).move()
     assert test.get_state() == TestState.PASSING
-    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) == issue.number
     assert issue.state == "closed"
+
+    # go back to failing and reuse the github issue
+    test.test_results = 3 * [
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    ]
+    CITestStateMachine(test).move()
+    assert test.get_state() == TestState.CONSITENTLY_FAILING
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) == issue.number
+    assert issue.state == "open"
 
 
 def test_release_move_from_passing_to_failing():
@@ -243,7 +284,6 @@ def test_release_move_from_failing_to_passing():
     sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
-    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
     assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
     assert test.get(Test.KEY_BISECT_BLAMED_COMMIT) is None
 
@@ -287,8 +327,26 @@ def test_release_move_from_failing_to_jailed():
     sm = ReleaseTestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
-    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
     assert issue.state == "closed"
+
+
+def test_get_release_blockers() -> None:
+    MockIssueDB.issue_id = 1
+    MockIssueDB.issue_db = {}
+    TestStateMachine.ray_repo.create_issue(labels=["non-blocker"], title="non-blocker")
+    TestStateMachine.ray_repo.create_issue(
+        labels=[WEEKLY_RELEASE_BLOCKER_TAG], title="blocker"
+    )
+    issues = TestStateMachine.get_release_blockers()
+    assert len(issues) == 1
+    assert issues[0].title == "blocker"
+
+
+def test_get_issue_owner() -> None:
+    issue = TestStateMachine.ray_repo.create_issue(labels=["core"], title="hi")
+    assert TestStateMachine.get_issue_owner(issue) == "core"
+    issue = TestStateMachine.ray_repo.create_issue(labels=["w00t"], title="bye")
+    assert TestStateMachine.get_issue_owner(issue) == NO_TEAM
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import partial
 import json
 import logging
 import pathlib
@@ -15,24 +16,31 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    TYPE_CHECKING,
     Union,
 )
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.connectors.learner.learner_connector_pipeline import (
+    LearnerConnectorPipeline,
+)
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
+)
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -59,6 +67,9 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 torch, _ = try_import_torch()
@@ -205,7 +216,7 @@ class Learner:
     def __init__(
         self,
         *,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         module_spec: Optional[
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
@@ -233,7 +244,8 @@ class Learner:
                 help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
                 error=True,
             )
-        self.config = config
+        # TODO (sven): Figure out how to do this
+        self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
         self._module_obj = module
         self._device = None
@@ -254,6 +266,8 @@ class Learner:
 
         # The actual MARLModule used by this Learner.
         self._module: Optional[MultiAgentRLModule] = None
+        # Our Learner connector pipeline.
+        self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
@@ -271,6 +285,38 @@ class Learner:
         # `Learner.update()`. These metrics will be "compiled" automatically into
         # the final results dict in the `self.compile_update_results()` method.
         self._metrics = defaultdict(dict)
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def build(self) -> None:
+        """Builds the Learner.
+
+        This method should be called before the learner is used. It is responsible for
+        setting up the LearnerConnectorPipeline, the RLModule, optimizer(s), and
+        (optionally) the optimizers' learning rate schedulers.
+        """
+        if self._is_built:
+            logger.debug("Learner already built. Skipping build.")
+            return
+
+        # Build learner connector pipeline used on this Learner worker.
+        if self.config.uses_new_env_runners:
+            # TODO (sven): Figure out which space to provide here. For now,
+            #  it doesn't matter, as the default connector piece doesn't use
+            #  this information anyway.
+            #  module_spec = self._module_spec.as_multi_agent()
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=None,
+                input_action_space=None,
+            )
+
+        # Build the module to be trained by this learner.
+        self._module = self._make_module()
+
+        # Configure, construct, and register all optimizers needed to train
+        # `self.module`.
+        self.configure_optimizers()
+
+        self._is_built = True
 
     @property
     def distributed(self) -> bool:
@@ -387,7 +433,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -479,7 +525,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         module_gradients_dict: ParamDict,
         hps=None,
     ) -> ParamDict:
@@ -823,24 +869,26 @@ class Learner:
 
         self.module.remove_module(module_id)
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self) -> None:
-        """Builds the Learner.
+    @OverrideToImplementCustomLogic
+    def should_module_be_updated(self, module_id, multi_agent_batch=None):
+        """Returns whether a module should be updated or not based on `self.config`.
 
-        This method should be called before the learner is used. It is responsible for
-        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        Args:
+            module_id: The ModuleID that we want to query on whether this module
+                should be updated or not.
+            multi_agent_batch: An optional MultiAgentBatch to possibly provide further
+                information on the decision on whether the RLModule should be updated
+                or not.
         """
-        if self._is_built:
-            logger.debug("Learner already built. Skipping build.")
-            return
-        self._is_built = True
+        should_module_be_updated_fn = self.config.policies_to_train
+        # If None, return True (by default, all modules should be updated).
+        if should_module_be_updated_fn is None:
+            return True
+        # If container given, return whether `module_id` is in that container.
+        elif not callable(should_module_be_updated_fn):
+            return module_id in set(should_module_be_updated_fn)
 
-        # Build the module to be trained by this learner.
-        self._module = self._make_module()
-
-        # Configure, construct, and register all optimizers needed to train
-        # `self.module`.
-        self.configure_optimizers()
+        return should_module_be_updated_fn(module_id, multi_agent_batch)
 
     @OverrideToImplementCustomLogic
     def compute_loss(
@@ -901,7 +949,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -1053,7 +1101,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        config: AlgorithmConfig = None,
+        config: Optional["AlgorithmConfig"] = None,
         timestep: int,
         hps=None,
         **kwargs,
@@ -1185,39 +1233,6 @@ class Learner:
         )
 
     @OverrideToImplementCustomLogic
-    def _preprocess_train_data(
-        self,
-        *,
-        batch: Optional[MultiAgentBatch] = None,
-        episodes: Optional[List[EpisodeType]] = None,
-    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
-        """Allows custom preprocessing of batch/episode data before the actual update.
-
-        The higher level order, in which this method is called from within
-        `Learner.update(batch, episodes)` is:
-        * batch, episodes = self._preprocess_train_data(batch, episodes)
-        * batch = self._learner_connector(batch, episodes)
-        * results = self._update(batch)
-
-        The default implementation does not do any processing and is a mere pass
-        through. However, specific algorithms should override this method to implement
-        their specific training data preprocessing needs. It is possible to perform
-        preliminary RLModule forward passes (besides the main "forward_train()" call
-        during `self._update`) in this method and custom algorithms might also want to
-        use this Learner's `self._learner_connector` to prepare the data
-        (batch/episodes) for such extra forward calls.
-
-        Args:
-            batch: An optional batch of training data to preprocess.
-            episodes: An optional list of episodes objects to preprocess.
-
-        Returns:
-            A tuple consisting of the processed `batch` and the processed list of
-            `episodes`.
-        """
-        return batch, episodes
-
-    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _update(
         self,
@@ -1256,20 +1271,25 @@ class Learner:
 
         """
         self._check_is_built()
+
+        module_state = state.get("module_state")
         # TODO: once we figure out the optimizer format, we can set/get the state
-        if "module_state" not in state:
+        if module_state is None:
             raise ValueError(
                 "state must have a key 'module_state' for the module weights"
             )
-        if "optimizer_state" not in state:
+        self.set_module_state(module_state)
+
+        optimizer_state = state.get("optimizer_state")
+        if optimizer_state is None:
             raise ValueError(
                 "state must have a key 'optimizer_state' for the optimizer weights"
             )
-
-        module_state = state.get("module_state")
-        optimizer_state = state.get("optimizer_state")
-        self.set_module_state(module_state)
         self.set_optimizer_state(optimizer_state)
+
+        # Update our trainable Modules information/function via our config.
+        # If not provided in state (None), all Modules will be trained by default.
+        self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
 
     def get_state(self) -> Dict[str, Any]:
         """Get the state of the learner.
@@ -1282,6 +1302,7 @@ class Learner:
         return {
             "module_state": self.get_module_state(),
             "optimizer_state": self.get_optimizer_state(),
+            "modules_to_train": self.config.policies_to_train,
         }
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
@@ -1317,30 +1338,42 @@ class Learner:
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         self._check_is_built()
 
-        # If a (multi-agent) batch is provided, check, whether our RLModule
-        # contains all ModuleIDs found in this batch. If not, throw an error.
-        if batch is not None:
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains module ids that are not in the learner: "
-                    f"{unknown_module_ids}"
-                )
-
         if num_iters < 1:
             # We must do at least one pass on the batch for training.
             raise ValueError("`num_iters` must be >= 1")
 
-        # Call the train data preprocessor.
-        batch, episodes = self._preprocess_train_data(batch=batch, episodes=episodes)
+        # Call the learner connector.
+        if self._learner_connector is not None and episodes is not None:
+            batch = self._learner_connector(
+                rl_module=self.module,
+                data=batch,
+                episodes=episodes,
+                shared_data={},
+            )
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {mid: SampleBatch(v) for mid, v in batch.items()},
+                env_steps=sum(len(e) for e in episodes),
+            )
 
-        # TODO (sven): Insert a call to the Learner ConnectorV2 pipeline here, providing
-        #  it both `batch` and `episode` for further custom processing before the
-        #  actual `Learner._update()` call.
+        # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+        # found in this batch. If not, throw an error.
+        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
+        if len(unknown_module_ids) > 0:
+            raise ValueError(
+                "Batch contains module ids that are not in the learner: "
+                f"{unknown_module_ids}"
+            )
 
-        if minibatch_size:
+        # Filter out those RLModules from the final train batch that should not be
+        # updated.
+        for module_id in list(batch.policy_batches.keys()):
+            if not self.should_module_be_updated(module_id, batch):
+                del batch.policy_batches[module_id]
+
+        if minibatch_size and self._learner_connector is not None:
+            batch_iter = partial(MiniBatchCyclicIterator, uses_new_env_runners=True)
+        elif minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
             # `minibatch_size` was not set but `num_iters` > 1.
@@ -1365,11 +1398,9 @@ class Learner:
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
-            (
-                fwd_out,
-                loss_per_module,
-                metrics_per_module,
-            ) = self._update(nested_tensor_minibatch)
+            (fwd_out, loss_per_module, metrics_per_module) = self._update(
+                nested_tensor_minibatch
+            )
 
             result = self.compile_results(
                 batch=tensor_minibatch,
@@ -1381,7 +1412,7 @@ class Learner:
             # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
-            results.append(convert_to_numpy(result))
+            results.append(result)
 
         self._set_slicing_by_batch_id(batch, value=False)
 
@@ -1639,7 +1670,7 @@ class Learner:
         """Returns a framework-specific tensor variable with the initial given value.
 
         This is a framework specific method that should be implemented by the
-        framework specific sub-class.
+        framework specific sub-classes.
 
         Args:
             value: The initial value for the tensor variable variable.
@@ -1675,12 +1706,3 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
-
-    @Deprecated(
-        help="Use `config` (AlgorithmConfig) everywhere where you would have used "
-        "Learner.hps instead.",
-        error=True,
-    )
-    @property
-    def hps(self):
-        pass

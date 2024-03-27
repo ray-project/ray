@@ -28,7 +28,7 @@ from ray.train.constants import (
 )
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
 
@@ -206,7 +206,9 @@ def _noop_logger_creator(config: Dict[str, Any], logdir: str):
 def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
 
-    logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
+    logger_creator = partial(
+        _noop_logger_creator, logdir=trial.storage.trial_working_directory
+    )
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)
@@ -536,17 +538,17 @@ class Trial:
 
     @property
     def local_experiment_path(self) -> str:
-        return self.storage.experiment_local_path
+        return self.storage.experiment_driver_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")
     def logdir(self) -> Optional[str]:
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `logdir`.")
 
     @property
     def local_path(self) -> Optional[str]:
-        return self.storage.trial_local_path
+        return self.storage.trial_driver_staging_path
 
     @property
     def path(self) -> Optional[str]:
@@ -592,7 +594,7 @@ class Trial:
     def generate_id(cls):
         return str(uuid.uuid4().hex)[:8]
 
-    def reset(self):
+    def reset(self) -> "Trial":
         # If there is `default_resource_request` associated with the trainable,
         # clear `resources` and `placement_group_factory`.
         # This is mainly relevant for RLlib tuning jobs, where we save users
@@ -627,8 +629,8 @@ class Trial:
 
     @Deprecated("Replaced by `init_local_path()`")
     def init_logdir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        self.init_local_path()
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `init_local_path` instead of `init_logdir`.")
 
     def init_local_path(self):
         """Init logdir."""
@@ -743,13 +745,53 @@ class Trial:
     def error_file(self):
         if not self.local_path or not self.run_metadata.error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.error_filename)
+        return Path(self.local_path, self.run_metadata.error_filename).as_posix()
 
     @property
     def pickled_error_file(self):
         if not self.local_path or not self.run_metadata.pickled_error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
+        return Path(
+            self.local_path, self.run_metadata.pickled_error_filename
+        ).as_posix()
+
+    def get_pickled_error(self) -> Optional[Exception]:
+        """Returns the pickled error object if it exists in storage.
+
+        This is a pickled version of the latest error that the trial encountered.
+        """
+        error_filename = self.run_metadata.pickled_error_filename
+        if error_filename is None:
+            return None
+
+        fs = self.storage.storage_filesystem
+        pickled_error_fs_path = Path(
+            self.storage.trial_fs_path, error_filename
+        ).as_posix()
+
+        if _exists_at_fs_path(fs=fs, fs_path=pickled_error_fs_path):
+            with fs.open_input_stream(pickled_error_fs_path) as f:
+                return cloudpickle.loads(f.readall())
+        return None
+
+    def get_error(self) -> Optional[TuneError]:
+        """Returns the error text file trace as a TuneError object
+        if it exists in storage.
+
+        This is a text trace of the latest error that the trial encountered,
+        which is used in the case that the error is not picklable.
+        """
+        error_filename = self.run_metadata.error_filename
+        if error_filename is None:
+            return None
+
+        fs = self.storage.storage_filesystem
+        txt_error_fs_path = Path(self.storage.trial_fs_path, error_filename).as_posix()
+
+        if _exists_at_fs_path(fs=fs, fs_path=txt_error_fs_path):
+            with fs.open_input_stream(txt_error_fs_path) as f:
+                return f.readall().decode()
+        return None
 
     def _handle_restore_error(self, exc: Exception):
         if self.temporary_state.num_restore_failures >= int(
@@ -988,13 +1030,13 @@ class Trial:
     def from_directory(
         cls, path: Union[str, os.PathLike], stub: bool = False
     ) -> "Trial":
-        metadata_path = os.path.join(path, TRIAL_STATE_FILENAME)
-        if not os.path.exists(metadata_path):
+        metadata_path = Path(path, TRIAL_STATE_FILENAME)
+        if not metadata_path.exists():
             raise FileNotFoundError(
                 f"Can't restore trial from path: File `{metadata_path}` not found."
             )
 
-        json_state = Path(metadata_path).read_text()
+        json_state = metadata_path.read_text()
         return cls.from_json_state(json_state, stub=stub)
 
     def __getstate__(self):

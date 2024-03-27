@@ -47,10 +47,14 @@ export const SearchSelect = ({
   label,
   onChange,
   options,
+  showAllOption,
+  defaultValue,
 }: {
   label: string;
   onChange?: (value: string) => void;
   options: (string | [string, string])[];
+  showAllOption: boolean;
+  defaultValue?: string;
 }) => {
   const classes = useStyles();
   return (
@@ -69,8 +73,9 @@ export const SearchSelect = ({
           width: 100,
         },
       }}
+      defaultValue={defaultValue}
     >
-      <MenuItem value="">All</MenuItem>
+      {showAllOption ?? <MenuItem value="">All</MenuItem>}
       {options.map((e) =>
         typeof e === "string" ? (
           <MenuItem value={e}>{e}</MenuItem>

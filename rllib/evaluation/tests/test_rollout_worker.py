@@ -813,7 +813,6 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
-                sample_async=False,
                 num_rollout_workers=0,
                 observation_filter="ConcurrentMeanStdFilter",
             ),
@@ -833,7 +832,6 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=False,
             ),
         )
         self.sample_and_flush(ev)
@@ -853,7 +851,6 @@ class TestRolloutWorker(unittest.TestCase):
             config=AlgorithmConfig().rollouts(
                 observation_filter="ConcurrentMeanStdFilter",
                 num_rollout_workers=0,
-                sample_async=False,
             ),
         )
         obs_f = self.sample_and_flush(ev)

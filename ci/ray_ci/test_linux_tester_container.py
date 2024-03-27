@@ -8,6 +8,7 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
+from ci.ray_ci.tester_container import PIPELINE_POSTMERGE
 from ci.ray_ci.utils import chunk_into_n
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 
@@ -23,6 +24,33 @@ class MockPopen:
 
     def wait(self) -> int:
         return 1 if "bad_test" in self.test_targets or not self.test_targets else 0
+
+
+@mock.patch("ci.ray_ci.tester_container.TesterContainer._upload_build_info")
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.upload_test_results")
+def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -> None:
+    container = LinuxTesterContainer("team", skip_ray_installation=True)
+    with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "non-master"}):
+        container._persist_test_results("team", "log_dir")
+        assert not mock_upload_build_info.called
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "master",
+            "BUILDKITE_PIPELINE_ID": "non-id",
+        },
+    ):
+        container._persist_test_results("team", "log_dir")
+        assert not mock_upload_build_info.called
+    with mock.patch.dict(
+        os.environ,
+        {
+            "BUILDKITE_BRANCH": "master",
+            "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
+        },
+    ):
+        container._persist_test_results("team", "log_dir")
+        assert mock_upload_build_info.called
 
 
 def test_enough_gpus() -> None:
@@ -110,17 +138,27 @@ def test_ray_installation() -> None:
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
         install_ray_cmds.append(inputs)
 
-    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+    with mock.patch(
+        "subprocess.check_call", side_effect=_mock_subprocess
+    ), mock.patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_PIPELINE_ID": "w00t",
+        },
+    ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
         assert install_ray_cmds[-1] == [
             "docker",
             "build",
             "--pull",
+            "--progress=plain",
             "--build-arg",
             f"BASE_IMAGE={docker_image}",
             "--build-arg",
             "BUILD_TYPE=debug",
+            "--build-arg",
+            "BUILDKITE_PIPELINE_ID=w00t",
             "-t",
             docker_image,
             "-f",
@@ -205,8 +243,7 @@ def test_get_test_results() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "bazel_log"), "w") as f:
             f.write("\n".join(_BAZEL_LOGS))
-        container = LinuxTesterContainer("docker_tag", skip_ray_installation=True)
-        results = container._get_test_and_results("manu", tmp)
+        results = LinuxTesterContainer.get_test_and_results("manu", tmp)
         results.sort(key=lambda x: x[0].get_name())
 
         test, result = results[0]

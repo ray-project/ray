@@ -1,7 +1,6 @@
 import pytest
 
-from ray.serve._private.common import RequestProtocol
-from ray.serve._private.router import RequestMetadata
+from ray.serve._private.common import RequestMetadata, RequestProtocol
 
 
 def test_request_metadata():

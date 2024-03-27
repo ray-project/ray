@@ -235,6 +235,9 @@ export const ServeSystemActorDetail = ({
   );
 };
 
+export const LOG_CONTEXT_KEY_SERVE_CONTROLLER = "serve-entity-controllers";
+export const LOG_CONTEXT_KEY_SERVE_PROXY = "serve-entity-proxies";
+
 type ServeSystemActorLogsProps = {
   type: "controller" | "proxy";
   actor: Pick<ActorDetail, "address" | "actorId" | "pid">;
@@ -259,5 +262,9 @@ const ServeSystemActorLogs = ({
         : systemLogFilePath,
     },
   ];
-  return <MultiTabLogViewer tabs={tabs} />;
+  const contextKey =
+    type === "controller"
+      ? LOG_CONTEXT_KEY_SERVE_CONTROLLER
+      : LOG_CONTEXT_KEY_SERVE_PROXY;
+  return <MultiTabLogViewer tabs={tabs} contextKey={contextKey} />;
 };

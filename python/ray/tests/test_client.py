@@ -2,6 +2,7 @@ import _thread
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -902,6 +903,29 @@ def test_serialize_client_actor_handle(call_ray_start_shared):
         serialized = cloudpickle.dumps(handle)
         deserialized = cloudpickle.loads(serialized)
         assert ray.get(deserialized.get_value.remote()) == 1234
+
+
+def test_actor_streaming_returns_error_message(call_ray_start_shared):
+    """
+    num_returns="streaming" is not supported with Ray Client.
+    """
+
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+
+        @ray.remote
+        class Actor:
+            def stream(self):
+                yield "hi"
+
+        a = Actor.remote()
+        with pytest.raises(
+            RuntimeError,
+            match=re.escape(
+                'Streaming actor methods (num_returns="streaming") are '
+                "not currently supported when using Ray Client."
+            ),
+        ):
+            a.stream.options(num_returns="streaming").remote()
 
 
 def test_get_runtime_context_gcs_client(call_ray_start_shared):

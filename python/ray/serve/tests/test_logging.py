@@ -7,6 +7,9 @@ import string
 import sys
 import time
 from contextlib import redirect_stderr
+from pathlib import Path
+from typing import List, Tuple
+from unittest.mock import patch
 
 import pytest
 import requests
@@ -16,13 +19,29 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ServeComponentType
-from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS
+from ray.serve._private.common import ReplicaID, ServeComponentType
+from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
+    ServeFormatter,
     ServeJSONFormatter,
+    StreamToLogger,
+    configure_component_logger,
     get_component_log_file_name,
     get_serve_logs_dir,
 )
+from ray.serve.context import _get_global_client
+from ray.serve.schema import EncodingType, LoggingConfig
+
+
+class FakeLogger:
+    def __init__(self):
+        self._logs: List[Tuple[int, str]] = []
+
+    def log(self, level: int, message: str, stacklevel: int = 1):
+        self._logs.append((level, message))
+
+    def get_logs(self):
+        return self._logs
 
 
 @pytest.fixture
@@ -37,9 +56,10 @@ def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
 
 
-def _get_expected_replica_log_content(replica_tag: str):
-    app_name, deployment_name, replica_id = replica_tag.split("#")
-    return f"{app_name}_{deployment_name} {replica_id}"
+def _get_expected_replica_log_content(replica_id: ReplicaID):
+    app_name = replica_id.deployment_id.app_name
+    deployment_name = replica_id.deployment_id.name
+    return f"{app_name}_{deployment_name} {replica_id.unique_id}"
 
 
 def test_log_rotation_config(monkeypatch, ray_shutdown):
@@ -75,10 +95,10 @@ def test_handle_access_log(serve_instance):
     @serve.deployment(name=name)
     class Handler:
         def other_method(self, *args):
-            return serve.get_replica_context().replica_tag
+            return serve.get_replica_context().replica_id
 
         def __call__(self, *args):
-            return serve.get_replica_context().replica_tag
+            return serve.get_replica_context().replica_id
 
         def throw(self, *args):
             raise RuntimeError("blah blah blah")
@@ -88,12 +108,12 @@ def test_handle_access_log(serve_instance):
     f = io.StringIO()
     with redirect_stderr(f):
 
-        def check_log(replica_tag: str, method_name: str, fail: bool = False):
+        def check_log(replica_id: ReplicaID, method_name: str, fail: bool = False):
             s = f.getvalue()
             return all(
                 [
                     name in s,
-                    _get_expected_replica_log_content(replica_tag) in s,
+                    _get_expected_replica_log_content(replica_id) in s,
                     method_name.upper() in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
@@ -103,19 +123,17 @@ def test_handle_access_log(serve_instance):
                 ]
             )
 
-        replica_tag = h.remote().result()
-        wait_for_condition(check_log, replica_tag=replica_tag, method_name="__call__")
+        replica_id = h.remote().result()
+        wait_for_condition(check_log, replica_id=replica_id, method_name="__call__")
 
         h.other_method.remote().result()
-        wait_for_condition(
-            check_log, replica_tag=replica_tag, method_name="other_method"
-        )
+        wait_for_condition(check_log, replica_id=replica_id, method_name="other_method")
 
         with pytest.raises(RuntimeError, match="blah blah blah"):
             h.throw.remote().result()
 
         wait_for_condition(
-            check_log, replica_tag=replica_tag, method_name="throw", fail=True
+            check_log, replica_id=replica_id, method_name="throw", fail=True
         )
 
 
@@ -129,43 +147,42 @@ def test_user_logs(serve_instance):
     def fn(*args):
         logger.info(stderr_msg)
         logger.info(log_file_msg, extra={"log_to_stderr": False})
-        return serve.get_replica_context().replica_tag, logger.handlers[1].baseFilename
+        return serve.get_replica_context().replica_id, logger.handlers[1].baseFilename
 
     handle = serve.run(fn.bind())
 
     f = io.StringIO()
     with redirect_stderr(f):
-        replica_tag, log_file_name = handle.remote().result()
+        replica_id, log_file_name = handle.remote().result()
 
-        def check_stderr_log(replica_tag: str):
+        def check_stderr_log(replica_id: ReplicaID):
             s = f.getvalue()
-            app_name, deployment_name, replica_id = replica_tag.split("#")
             return all(
                 [
                     name in s,
-                    _get_expected_replica_log_content(replica_tag) in s,
+                    _get_expected_replica_log_content(replica_id) in s,
                     stderr_msg in s,
                     log_file_msg not in s,
                 ]
             )
 
         # Only the stderr_msg should be logged to stderr.
-        wait_for_condition(check_stderr_log, replica_tag=replica_tag)
+        wait_for_condition(check_stderr_log, replica_id=replica_id)
 
-        def check_log_file(replica_tag: str):
+        def check_log_file(replica_id: str):
             with open(log_file_name, "r") as f:
                 s = f.read()
                 return all(
                     [
                         name in s,
-                        _get_expected_replica_log_content(replica_tag) in s,
+                        _get_expected_replica_log_content(replica_id) in s,
                         stderr_msg in s,
                         log_file_msg in s,
                     ]
                 )
 
         # Both messages should be logged to the file.
-        wait_for_condition(check_log_file, replica_tag=replica_tag)
+        wait_for_condition(check_log_file, replica_id=replica_id)
 
 
 def test_disable_access_log(serve_instance):
@@ -177,17 +194,17 @@ def test_disable_access_log(serve_instance):
             logger.setLevel(logging.ERROR)
 
         def __call__(self, *args):
-            return serve.get_replica_context().replica_tag
+            return serve.get_replica_context().replica_id
 
     handle = serve.run(A.bind())
 
     f = io.StringIO()
     with redirect_stderr(f):
-        replica_tag = handle.remote().result()
+        replica_id = handle.remote().result()
 
         for _ in range(10):
             time.sleep(0.1)
-            assert _get_expected_replica_log_content(replica_tag) not in f.getvalue()
+            assert _get_expected_replica_log_content(replica_id) not in f.getvalue()
 
 
 def test_log_filenames_contain_only_posix_characters(serve_instance):
@@ -229,7 +246,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "route": request_context.route,
             "app_name": request_context.app_name,
             "log_file": logger.handlers[1].baseFilename,
-            "replica": serve.get_replica_context().replica_tag,
+            "replica": serve.get_replica_context().replica_id.unique_id,
+            "actor_id": ray.get_runtime_context().get_actor_id(),
+            "worker_id": ray.get_runtime_context().get_worker_id(),
         }
 
     @serve.deployment(
@@ -244,7 +263,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "route": request_context.route,
                 "app_name": request_context.app_name,
                 "log_file": logger.handlers[1].baseFilename,
-                "replica": serve.get_replica_context().replica_tag,
+                "replica": serve.get_replica_context().replica_id.unique_id,
+                "actor_id": ray.get_runtime_context().get_actor_id(),
+                "worker_id": ray.get_runtime_context().get_worker_id(),
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -288,19 +309,28 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         class_method_replica_id = resp2["replica"].split("#")[-1]
         if json_log_format:
             user_method_log_regex = (
-                f'.*"deployment": "{resp["app_name"]}_fn", '
+                ".*"
+                f'"actor_id": "{resp["actor_id"]}", '
+                f'"worker_id": "{resp["worker_id"]}", '
+                f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
+                f'"component_name": "replica", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
-                f'"application": "{resp["app_name"]}", "message":.* user func.*'
+                f'"application": "{resp["app_name"]}", '
+                '"message":.* user func.*'
             )
             user_class_method_log_regex = (
-                f'.*"deployment": "{resp2["app_name"]}_Model", '
+                ".*"
+                f'"actor_id": "{resp2["actor_id"]}", '
+                f'"worker_id": "{resp2["worker_id"]}", '
+                f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
+                f'"component_name": "replica", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '
-                f'"application": "{resp2["app_name"]}", "message":.* user log '
-                "message from class method.*"
+                f'"application": "{resp2["app_name"]}", '
+                '"message":.* user log message from class method.*'
             )
         else:
             user_method_log_regex = (
@@ -394,7 +424,7 @@ class TestLoggingAPI:
             def __call__(self, req: starlette.requests.Request):
                 return {
                     "log_file": logger.handlers[1].baseFilename,
-                    "replica": serve.get_replica_context().replica_tag,
+                    "replica": serve.get_replica_context().replica_id.unique_id,
                 }
 
         serve.run(Model.bind())
@@ -556,6 +586,12 @@ def test_json_log_formatter(is_replica_type_component):
         expected_json["deployment"] = "component"
         expected_json["replica"] = "component_id"
 
+    # Ensure message exists in the output.
+    # Note that there is no "message" key in the record dict until it has been
+    # formatted. This check should go before other fields are set and checked.
+    expected_json["message"] = "my_path:1 - my_message"
+    format_and_verify_json_output(record, expected_json)
+
     # Set request id
     record.request_id = "request_id"
     expected_json["request_id"] = "request_id"
@@ -570,6 +606,216 @@ def test_json_log_formatter(is_replica_type_component):
     record.application = "application"
     expected_json["application"] = "application"
     format_and_verify_json_output(record, expected_json)
+
+
+@pytest.mark.parametrize(
+    "log_encoding",
+    [
+        [None, None, "TEXT"],
+        [None, "TEXT", "TEXT"],
+        [None, "JSON", "JSON"],
+        ["TEXT", None, "TEXT"],
+        ["TEXT", "TEXT", "TEXT"],
+        ["TEXT", "JSON", "JSON"],
+        ["JSON", None, "JSON"],
+        ["JSON", "TEXT", "TEXT"],
+        ["JSON", "JSON", "JSON"],
+        ["FOOBAR", None, "TEXT"],
+        ["FOOBAR", "TEXT", "TEXT"],
+        ["FOOBAR", "JSON", "JSON"],
+    ],
+)
+def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
+    """Test the configure_component_logger function with different log encoding env.
+
+    When the log encoding env is not set, set to "TEXT" or set to unknon values,
+    the ServeFormatter should be used. When the log encoding env is set to "JSON",
+    the ServeJSONFormatter should be used. Also, the log config should take the
+    precedence it's set.
+    """
+    env_encoding, log_config_encoding, expected_encoding = log_encoding
+
+    with patch("ray.serve.schema.RAY_SERVE_LOG_ENCODING", env_encoding):
+
+        # Clean up logger handlers
+        logger = logging.getLogger(SERVE_LOGGER_NAME)
+        logger.handlers.clear()
+
+        # Ensure there is no logger handlers before calling configure_component_logger
+        assert logger.handlers == []
+
+        if log_config_encoding is None:
+            logging_config = LoggingConfig(logs_dir="/tmp/fake_logs_dir")
+        else:
+            logging_config = LoggingConfig(
+                encoding=log_config_encoding, logs_dir="/tmp/fake_logs_dir"
+            )
+        configure_component_logger(
+            component_name="fake_component_name",
+            component_id="fake_component_id",
+            logging_config=logging_config,
+            component_type=ServeComponentType.REPLICA,
+            max_bytes=100,
+            backup_count=3,
+        )
+
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                if expected_encoding == EncodingType.JSON:
+                    assert isinstance(handler.formatter, ServeJSONFormatter)
+                else:
+                    assert isinstance(handler.formatter, ServeFormatter)
+
+        # Clean up logger handlers
+        logger.handlers.clear()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_LOG_TO_STDERR": "0"},
+    ],
+    indirect=True,
+)
+def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
+    """Test logging when RAY_SERVE_LOG_TO_STDERR is set.
+
+    When RAY_SERVE_LOG_TO_STDERR=0 is set, serve should redirect stdout and stderr to
+    serve logger.
+    """
+    logs_dir = Path(tmp_dir)
+    logging_config = LoggingConfig(encoding="JSON", logs_dir=str(logs_dir))
+    serve_logger = logging.getLogger("ray.serve")
+
+    @serve.deployment(logging_config=logging_config)
+    def disable_stdout():
+        serve_logger.info("from_serve_logger")
+        print("from_print")
+        sys.stdout.write("direct_from_stdout\n")
+        sys.stderr.write("direct_from_stderr\n")
+        print("this\nis\nmultiline\nlog\n")
+        raise RuntimeError("from_error")
+
+    app = disable_stdout.bind()
+    serve.run(app)
+    requests.get("http://127.0.0.1:8000")
+
+    def contain_logging_prefix(message: str, from_replica: bool = False) -> bool:
+        logging_prefix = r"^test_logging.py:" if not from_replica else r"^replica.py:"
+        return len(re.findall(logging_prefix, message)) == 1
+
+    # Check if each of the logs exist in Serve's log files.
+    from_serve_logger_check = False
+    from_print_check = False
+    from_error_check = False
+    direct_from_stdout = False
+    direct_from_stderr = False
+    multiline_log = False
+    for log_file in os.listdir(logs_dir):
+        if log_file.startswith("replica_default_disable_stdout"):
+            with open(logs_dir / log_file) as f:
+                for line in f:
+                    structured_log = json.loads(line)
+                    _message = structured_log["message"]
+                    if "from_serve_logger" in _message and contain_logging_prefix(
+                        _message
+                    ):
+                        from_serve_logger_check = True
+                    elif "from_print" in _message and contain_logging_prefix(_message):
+                        from_print_check = True
+
+                    # Error was logged from replica directly.
+                    elif "from_error" in _message and contain_logging_prefix(
+                        _message, from_replica=True
+                    ):
+                        from_error_check = True
+                    elif "direct_from_stdout" in _message and contain_logging_prefix(
+                        _message
+                    ):
+                        direct_from_stdout = True
+                    elif "direct_from_stderr" in _message and contain_logging_prefix(
+                        _message
+                    ):
+                        direct_from_stderr = True
+                    elif (
+                        "this\nis\nmultiline\nlog\n" in _message
+                        and contain_logging_prefix(_message)
+                    ):
+                        multiline_log = True
+    assert from_serve_logger_check
+    assert from_print_check
+    assert from_error_check
+    assert direct_from_stdout
+    assert direct_from_stderr
+    assert multiline_log
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to look for temp dir.")
+def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
+    """Test to ensure the log file names are correct."""
+    logs_dir = Path("/tmp/ray/session_latest/logs/serve")
+    logging_config = LoggingConfig(encoding="JSON")
+
+    @serve.deployment
+    def app():
+        return "foo"
+
+    app = app.bind()
+    serve.run(app, logging_config=logging_config)
+    requests.get("http://127.0.0.1:8000")
+
+    # Construct serve log file names.
+    client = _get_global_client()
+    controller_id = ray.get(client._controller.get_pid.remote())
+    proxy_id = ray.util.get_node_ip_address()
+    replicas = ray.get(
+        client._controller.get_deployment_details.remote("default", "app")
+    ).replicas
+    replica_id = replicas[0].replica_id
+    controller_log_file_name = f"controller_{controller_id}.log"
+    proxy_log_file_name = f"proxy_{proxy_id}.log"
+    replica_log_file_name = f"replica_default_app_{replica_id}.log"
+
+    # Check if each of the log files exist.
+    controller_log_file_name_correct = False
+    proxy_log_file_name_correct = False
+    replica_log_file_name_correct = False
+    for log_file in os.listdir(logs_dir):
+        if log_file == controller_log_file_name:
+            controller_log_file_name_correct = True
+        elif log_file == proxy_log_file_name:
+            proxy_log_file_name_correct = True
+        elif log_file == replica_log_file_name:
+            replica_log_file_name_correct = True
+
+    assert controller_log_file_name_correct
+    assert proxy_log_file_name_correct
+    assert replica_log_file_name_correct
+
+
+def test_stream_to_logger():
+    """Test calling methods on StreamToLogger."""
+    logger = FakeLogger()
+    stream_to_logger = StreamToLogger(logger, logging.INFO)
+    assert logger.get_logs() == []
+
+    # Calling isatty() should return True.
+    assert stream_to_logger.isatty() is True
+
+    # Logs are buffered and not flushed to logger.
+    stream_to_logger.write("foo")
+    assert logger.get_logs() == []
+
+    # Logs are flushed when the message ends with newline "\n".
+    stream_to_logger.write("bar\n")
+    assert logger.get_logs() == [(20, "foobar")]
+
+    # Calling flush directly can also flush the message to the logger.
+    stream_to_logger.write("baz")
+    assert logger.get_logs() == [(20, "foobar")]
+    stream_to_logger.flush()
+    assert logger.get_logs() == [(20, "foobar"), (20, "baz")]
 
 
 if __name__ == "__main__":

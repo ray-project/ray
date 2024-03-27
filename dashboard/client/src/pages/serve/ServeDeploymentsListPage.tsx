@@ -1,6 +1,5 @@
 import {
   Alert,
-  Autocomplete,
   Box,
   Pagination,
   Table,
@@ -10,25 +9,21 @@ import {
   TableHead,
   TableRow,
   TextField,
-  TextFieldProps,
   Typography,
 } from "@mui/material";
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
-import {
-  MultiTabLogViewer,
-  MultiTabLogViewerTabDetails,
-} from "../../common/MultiTabLogViewer";
-import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
-import { ServeSystemActor } from "../../type/serve";
-import { useFetchActor } from "../actor/hook/useActorDetail";
 import { useServeDeployments } from "./hook/useServeApplications";
-import { ServeDeploymentRow } from "./ServeDeploymentRow";
-import { ServeMetricsSection } from "./ServeMetricsSection";
+import { ServeApplicationRows } from "./ServeApplicationRow";
+import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
+import {
+  APPS_METRICS_CONFIG,
+  ServeMetricsSection,
+} from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
 const useStyles = makeStyles((theme) =>
@@ -55,12 +50,12 @@ const useStyles = makeStyles((theme) =>
 );
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
-  { label: "Deployment name" },
+  { label: "" }, // Empty space for expand button
+  { label: "Name" },
   { label: "Status" },
   { label: "Status message", width: "30%" },
-  { label: "Num replicas" },
+  { label: "Replicas" },
   { label: "Actions" },
-  { label: "Application" },
   { label: "Route prefix" },
   { label: "Last deployed at" },
   { label: "Duration (since last deploy)" },
@@ -70,13 +65,12 @@ export const ServeDeploymentsListPage = () => {
   const classes = useStyles();
   const {
     serveDetails,
-    filteredServeDeployments,
     error,
-    allServeDeployments,
     page,
     setPage,
     proxies,
-    changeFilter,
+    serveApplications,
+    serveDeployments,
   } = useServeDeployments();
 
   if (error) {
@@ -96,79 +90,36 @@ export const ServeDeploymentsListPage = () => {
       ) : (
         <React.Fragment>
           <ServeSystemPreview
-            allDeployments={allServeDeployments}
+            allDeployments={serveDeployments}
+            allApplications={serveApplications}
             proxies={proxies}
             serveDetails={serveDetails}
           />
           <CollapsibleSection
-            title="Deployments"
+            title="Applications / Deployments"
             startExpanded
             className={classes.deploymentsSection}
           >
             <TableContainer>
-              <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(
-                      allServeDeployments.map((e) => (e.name ? e.name : "-")),
-                    ),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter(
-                      "name",
-                      value.trim() !== "-" ? value.trim() : "",
-                    );
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Name" />
-                  )}
-                />
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(allServeDeployments.map((e) => e.status)),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter("status", value.trim());
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Status" />
-                  )}
-                />
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(allServeDeployments.map((e) => e.applicationName)),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter("applicationName", value.trim());
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Application" />
-                  )}
-                />
-                <TextField
-                  style={{ margin: 8, width: 120 }}
-                  label="Page Size"
-                  size="small"
-                  defaultValue={10}
-                  InputProps={{
-                    onChange: ({ target: { value } }) => {
-                      setPage("pageSize", Math.min(Number(value), 500) || 10);
-                    },
-                  }}
-                />
-              </div>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <Pagination
-                  count={Math.ceil(
-                    filteredServeDeployments.length / page.pageSize,
-                  )}
-                  page={page.pageNo}
-                  onChange={(e, pageNo) => setPage("pageNo", pageNo)}
-                />
-              </div>
+              <TextField
+                style={{ margin: 8, width: 120 }}
+                label="Page Size"
+                size="small"
+                defaultValue={10}
+                InputProps={{
+                  onChange: ({ target: { value } }) => {
+                    setPage("pageSize", Math.min(Number(value), 500) || 10);
+                  },
+                  endAdornment: (
+                    <InputAdornment position="end">Per Page</InputAdornment>
+                  ),
+                }}
+              />
+              <Pagination
+                count={Math.ceil(serveApplications.length / page.pageSize)}
+                page={page.pageNo}
+                onChange={(e, pageNo) => setPage("pageNo", pageNo)}
+              />
               <Table className={classes.table}>
                 <TableHead>
                   <TableRow>
@@ -195,16 +146,16 @@ export const ServeDeploymentsListPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredServeDeployments
+                  {serveApplications
                     .slice(
                       (page.pageNo - 1) * page.pageSize,
                       page.pageNo * page.pageSize,
                     )
-                    .map((deployment) => (
-                      <ServeDeploymentRow
-                        key={`${deployment.application.name}-${deployment.name}`}
-                        deployment={deployment}
-                        application={deployment.application}
+                    .map((application) => (
+                      <ServeApplicationRows
+                        key={`${application.name}`}
+                        application={application}
+                        startExpanded
                       />
                     ))}
                 </TableBody>
@@ -216,50 +167,18 @@ export const ServeDeploymentsListPage = () => {
             startExpanded
             className={classes.section}
           >
-            <Section noTopPadding>
-              <ServeControllerLogs controller={serveDetails.controller_info} />
-            </Section>
+            <ServeEntityLogViewer
+              controller={serveDetails.controller_info}
+              proxies={proxies}
+              deployments={serveDeployments}
+            />
           </CollapsibleSection>
         </React.Fragment>
       )}
-      <ServeMetricsSection className={classes.section} />
+      <ServeMetricsSection
+        className={classes.section}
+        metricsConfig={APPS_METRICS_CONFIG}
+      />
     </div>
   );
-};
-
-type ServeControllerLogsProps = {
-  controller: ServeSystemActor;
-};
-
-const ServeControllerLogs = ({
-  controller: { actor_id, log_file_path },
-}: ServeControllerLogsProps) => {
-  const { data: fetchedActor } = useFetchActor(actor_id);
-
-  if (!fetchedActor || !log_file_path) {
-    return <Loading loading={true} />;
-  }
-
-  const tabs: MultiTabLogViewerTabDetails[] = [
-    {
-      title: "Controller logs",
-      nodeId: fetchedActor.address.rayletId,
-      filename: log_file_path.startsWith("/")
-        ? log_file_path.substring(1)
-        : log_file_path,
-    },
-    {
-      title: "Other logs",
-      contents:
-        "Replica logs contain the application logs emitted by each Serve Replica.\n" +
-        "To view replica logs, please click into a Serve application from " +
-        "the table above to enter the Application details page.\nThen, click " +
-        "into a Serve Replica in the Deployments table.\n\n" +
-        "Proxy logs contains HTTP and gRPC access logs for each Proxy.\n" +
-        "To view Proxy logs, click into a Proxy from the Serve System " +
-        "Details page.\nThis page can be accessed via the left tab menu or by " +
-        'clicking "View system status and configuration" link above.',
-    },
-  ];
-  return <MultiTabLogViewer tabs={tabs} />;
 };

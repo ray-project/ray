@@ -328,16 +328,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
            "return values are greater than the remaining capacity.";
     max_task_args_memory = 0;
   }
-  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
-                               const NodeID &owner_node_id) {
-    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
-             failed_nodes_cache_.count(owner_node_id) > 0);
-  };
   local_task_manager_ = std::make_shared<LocalTaskManager>(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
-      is_owner_alive,
+      [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
+        return !this->IsWorkerDead(owner_worker_id, owner_node_id);
+      },
       get_node_info_func,
       worker_pool_,
       leased_workers_,
@@ -387,6 +384,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms(),
                                        "NodeManager.GCTaskFailureReason");
+}
+
+bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {
+  return failed_workers_cache_.count(worker_id) > 0 ||
+         failed_nodes_cache_.count(node_id) > 0;
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -616,26 +618,6 @@ void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
         });
   }
   local_gc_run_time_ns_ = absl::GetCurrentTimeNanos();
-}
-
-void NodeManager::HandleRequestObjectSpillage(
-    rpc::RequestObjectSpillageRequest request,
-    rpc::RequestObjectSpillageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  const auto &object_id = ObjectID::FromBinary(request.object_id());
-  RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_id;
-  local_object_manager_.SpillObjects(
-      {object_id}, [object_id, reply, send_reply_callback](const ray::Status &status) {
-        if (status.ok()) {
-          RAY_LOG(DEBUG) << "Object " << object_id
-                         << " has been spilled, replying to owner";
-          reply->set_success(true);
-          // TODO(Clark): Add spilled URLs and spilled node ID to owner RPC reply here
-          // if OBOD is enabled, instead of relying on automatic raylet spilling path to
-          // send an extra RPC to the owner.
-        }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      });
 }
 
 void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
@@ -916,14 +898,6 @@ void NodeManager::WarnResourceDeadlock() {
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
     RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_task_manager_->DebugStr();
-    if (RayConfig::instance().legacy_scheduler_warnings()) {
-      auto error_data_ptr =
-          gcs::CreateErrorTableData("resource_deadlock",
-                                    error_message_str,
-                                    current_time_ms(),
-                                    exemplar.GetTaskSpecification().JobId());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    }
   }
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
   // tasks are never be scheduled.
@@ -1521,7 +1495,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
-  cluster_task_manager_->CancelTaskForOwner(worker->GetAssignedTaskId());
+  cluster_task_manager_->CancelAllTaskOwnedBy(worker->WorkerId());
 
   client->Close();
 
@@ -1725,6 +1699,23 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(task_message);
+
+  const auto caller_worker =
+      WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
+  const auto caller_node =
+      NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().raylet_id());
+  if (!task.GetTaskSpecification().IsDetachedActor() &&
+      IsWorkerDead(caller_worker, caller_node)) {
+    RAY_LOG(INFO) << "Caller of RequestWorkerLease is dead. worker = " << caller_worker
+                  << ", node = " << caller_node << ". Skip leasing.";
+    reply->set_canceled(true);
+    reply->set_failure_type(rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+    reply->set_scheduling_failure_message(
+        "Cancelled leasing because the caller worker is dead.");
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  };
+
   const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
@@ -1839,10 +1830,12 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  // Return bundle resources.
-  placement_group_resource_manager_->ReturnBundle(bundle_spec);
+  // Return bundle resources. If it fails to return a bundle,
+  // it will return none-ok status. They are transient state,
+  // and GCS should retry.
+  auto status = placement_group_resource_manager_->ReturnBundle(bundle_spec);
   cluster_task_manager_->ScheduleAndDispatchTasks();
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
@@ -1886,24 +1879,29 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                     rpc::DrainRayletReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
-                << request.reason_message();
+  RAY_LOG(INFO) << "Drain raylet RPC has received. Deadline is "
+                << request.deadline_timestamp_ms()
+                << ". Drain reason: " << request.reason_message();
 
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
-      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
+          request.deadline_timestamp_ms());
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
+      reply->set_rejection_reason_message(
+          "The node to be idle terminated is no longer idle.");
     }
   } else {
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
+        request.deadline_timestamp_ms());
     reply->set_is_accepted(true);
   }
 
@@ -2729,14 +2727,6 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
            "resource requirements of the task.";
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
-    if (RayConfig::instance().legacy_scheduler_warnings()) {
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type,
-                                    error_message_str,
-                                    current_time_ms(),
-                                    task.GetTaskSpecification().JobId());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    }
   }
 }
 

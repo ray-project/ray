@@ -26,19 +26,6 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            print("w/o v-trace")
-            config.vtrace = False
-            algo = config.build(env="CartPole-v1")
-            for i in range(num_iterations):
-                results = algo.train()
-                print(results)
-                check_train_results(results)
-
-            check_compute_single_action(algo)
-            algo.stop()
-
-            print("w/ v-trace")
-            config.vtrace = True
             algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()

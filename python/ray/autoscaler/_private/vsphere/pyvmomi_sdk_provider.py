@@ -2,6 +2,7 @@ import atexit
 import logging
 import ssl
 import time
+from collections import OrderedDict
 from enum import Enum
 
 from pyVim.connect import Disconnect, SmartStubAdapter, VimSessionOrientedStub
@@ -78,22 +79,15 @@ class PyvmomiSdkProvider:
         self.timeout = 0
 
         # Add cache to cache all fetched object
-        self.cached = {
-            KeyType.Name: {
-                ObjectType.ResourcePool: {},
-                ObjectType.VirtualMachine: {},
-                ObjectType.Datastore: {},
-                ObjectType.ClusterComputeResource: {},
-                ObjectType.HostSystem: {},
-            },
-            KeyType.ObjectID: {
-                ObjectType.ResourcePool: {},
-                ObjectType.VirtualMachine: {},
-                ObjectType.Datastore: {},
-                ObjectType.ClusterComputeResource: {},
-                ObjectType.HostSystem: {},
-            },
-        }
+        # The format of key is "KeyType.Name-ObjectType-Name"
+        # Or "KeyType.ObjectID-ObjectType-ObjectID"
+        # Two examples as followed:
+        # 1) Name-HostSystem-pek2-hs1-d0202.eng.vmware.com
+        # 2) ObjectID-HostSystem-host-12
+        self.cached = OrderedDict()
+
+        # The max size of self.cached
+        self.cache_size = 500
 
         # Connect using a session oriented connection
         # Ref. https://github.com/vmware/pyvmomi/issues/347
@@ -126,35 +120,42 @@ class PyvmomiSdkProvider:
         """
         object_type = get_object_type(vimtype)
         if name:
-            object_cache = self.cached[KeyType.Name][object_type]
-            obj = object_cache.get(name)
+            key = str(KeyType.Name) + "-" + str(object_type) + "-" + name
+            obj = self.cached.get(key)
             if check_obj_validness(obj):
                 if obj.name != name:
                     # example: If someone has changed the VM name on the vSphere side,
                     # then create another VM with the same name. Then this cache item
                     # will be dirty because it still points to the previous VM obj.
-                    object_cache.pop(name)
-                    object_cache[obj.name] = obj
+                    self.cached.pop(key)
+                    new_key = KeyType.Name + "-" + object_type + "-" + obj.name
+                    self.cached[new_key] = obj
                     return None
                 return obj
             if obj:
-                object_cache.pop(name)
+                self.cached.pop(key)
         elif obj_id:
-            object_cache = self.cached[KeyType.ObjectID][object_type]
-            obj = object_cache.get(obj_id)
+            key = str(KeyType.ObjectID) + "-" + str(object_type) + "-" + obj_id
+            obj = self.cached.get(key)
             if check_obj_validness(obj):
                 return obj
             if obj:
-                object_cache.pop(obj_id)
+                self.cached.pop(key)
         return None
 
     def put_obj_in_cache(self, vimtype, obj):
         """
         The function is used to save pyvmomi object into cache
         """
+        if len(self.cached) + 2 > self.cache_size:
+            self.cached.popitem(last=False)
+            self.cached.popitem(last=False)
+
         object_type = get_object_type(vimtype)
-        self.cached[KeyType.Name][object_type][obj.name] = obj
-        self.cached[KeyType.ObjectID][object_type][obj._moId] = obj
+        key_1 = str(KeyType.Name) + "-" + str(object_type) + "-" + str(obj.name)
+        key_2 = str(KeyType.ObjectID) + "-" + str(object_type) + "-" + obj._moId
+        self.cached[key_1] = obj
+        self.cached[key_2] = obj
 
     def get_pyvmomi_obj(self, vimtype, name=None, obj_id=None):
         """

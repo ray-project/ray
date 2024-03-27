@@ -15,7 +15,6 @@ except ImportError:
 import ray._private.gcs_utils as gcs_utils
 import ray._private.logging_utils as logging_utils
 from ray.core.generated.gcs_pb2 import ErrorTableData
-from ray.core.generated import dependency_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import common_pb2
@@ -37,17 +36,6 @@ class _PublisherBase:
                     channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
                     key_id=job_id.encode() if job_id else None,
                     log_batch_message=logging_utils.log_batch_dict_to_proto(log_json),
-                )
-            ]
-        )
-
-    @staticmethod
-    def _create_function_key_request(key: bytes):
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL,
-                    python_function_message=dependency_pb2.PythonFunction(key=key),
                 )
             ]
         )
@@ -129,13 +117,6 @@ class _SubscriberBase:
             return None
         msg = queue.popleft()
         return logging_utils.log_batch_proto_to_dict(msg.log_batch_message)
-
-    @staticmethod
-    def _pop_function_key(queue):
-        if len(queue) == 0:
-            return None
-        msg = queue.popleft()
-        return msg.python_function_message.key
 
     @staticmethod
     def _pop_resource_usage(queue):

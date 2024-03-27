@@ -194,83 +194,6 @@ Here's a summary of the variations:
 
 * For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instead of ``macosx_10_15``.
 
-.. _ray-install-java:
-
-Install Ray Java with Maven
----------------------------
-Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
-Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
-
-The latest Ray Java release can be found in `central repository <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray Java release in your application, add the following entries in your ``pom.xml``:
-
-.. code-block:: xml
-
-    <dependency>
-      <groupId>io.ray</groupId>
-      <artifactId>ray-api</artifactId>
-      <version>${ray.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.ray</groupId>
-      <artifactId>ray-runtime</artifactId>
-      <version>${ray.version}</version>
-    </dependency>
-
-The latest Ray Java snapshot can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use the latest Ray Java snapshot in your application, add the following entries in your ``pom.xml``:
-
-.. code-block:: xml
-
-  <!-- only needed for snapshot version of ray -->
-  <repositories>
-    <repository>
-      <id>sonatype</id>
-      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
-      <releases>
-        <enabled>false</enabled>
-      </releases>
-      <snapshots>
-        <enabled>true</enabled>
-      </snapshots>
-    </repository>
-  </repositories>
-
-  <dependencies>
-    <dependency>
-      <groupId>io.ray</groupId>
-      <artifactId>ray-api</artifactId>
-      <version>${ray.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.ray</groupId>
-      <artifactId>ray-runtime</artifactId>
-      <version>${ray.version}</version>
-    </dependency>
-  </dependencies>
-
-.. note::
-
-  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local mode.
-
-  If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
-
-.. _ray-install-cpp:
-
-Install Ray C++
----------------
-
-You can install and use Ray C++ API as follows.
-
-.. code-block:: bash
-
-  pip install -U ray[cpp]
-
-  # Create a Ray C++ project template to start with.
-  ray cpp --generate-bazel-project-template-to ray-template
-
-.. note::
-
-  If you build Ray from source, remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
-
 .. _apple-silcon-supprt:
 
 M1 Mac (Apple Silicon) Support
@@ -412,11 +335,9 @@ Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platfor
    * - latest
      - The most recent Ray release.
    * - x.y.z
-     - A specific Ray release, e.g. 1.12.1
+     - A specific Ray release, e.g. 2.10.0
    * - nightly
      - The most recent Ray development build (a recent commit from Github ``master``)
-   * - 6 character Git SHA prefix
-     - A specific development build (uses a SHA from the Github ``master``, e.g. ``8960af``).
 
 The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py38``, ``py39`` and ``py310``. If unspecified, the tag points to an image using ``Python 3.8``.
 
@@ -523,13 +444,99 @@ Docker images for Python 3.9.
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`7b8ec8a <https://github.com/ray-project/ray/commit/7b8ec8acfdd8e5c0e677e9f0b6feaf5144254b7c>`_)
+        Ray version: nightly (`e1d7025 <https://github.com/ray-project/ray/commit/e1d7025b4eb30911739681f33586be01f7dcbf5b>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. tab-item:: ray-ml (Python 3.9)
         :sync: ray-ml (Python 3.9)
 
-        Ray version: nightly (`7b8ec8a <https://github.com/ray-project/ray/commit/7b8ec8acfdd8e5c0e677e9f0b6feaf5144254b7c>`_)
+        Ray version: nightly (`e1d7025 <https://github.com/ray-project/ray/commit/e1d7025b4eb30911739681f33586be01f7dcbf5b>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt
+
+.. _ray-install-java:
+
+Install Ray Java with Maven
+---------------------------
+
+.. note::
+   
+   All Ray Java APIs are experimental and only supported by the community. 
+
+Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
+Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
+
+Find the latest Ray Java release in the `central repository <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray Java release in your application, add the following entries in your ``pom.xml``:
+
+.. code-block:: xml
+
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+
+The latest Ray Java snapshot can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use the latest Ray Java snapshot in your application, add the following entries in your ``pom.xml``:
+
+.. code-block:: xml
+
+  <!-- only needed for snapshot version of ray -->
+  <repositories>
+    <repository>
+      <id>sonatype</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+  </dependencies>
+
+.. note::
+
+  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local mode.
+
+  If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
+
+.. _ray-install-cpp:
+
+Install Ray C++
+---------------
+
+.. note::
+
+  All Ray C++ APIs are experimental and only supported by the community. 
+
+You can install and use Ray C++ API as follows.
+
+.. code-block:: bash
+
+  pip install -U ray[cpp]
+
+  # Create a Ray C++ project template to start with.
+  ray cpp --generate-bazel-project-template-to ray-template
+
+.. note::
+
+  If you build Ray from source, remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.

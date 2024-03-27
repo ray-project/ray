@@ -43,8 +43,8 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-{mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` is now the default handle API.
-You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs using `handle.options(use_new_handle_api=False)` or `export RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, but this support will be removed in a future version.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
+See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}
@@ -56,8 +56,6 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
-   serve.handle.RayServeHandle
-   serve.handle.RayServeSyncHandle
 ```
 
 ### Running Applications
@@ -100,6 +98,7 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.get_app_handle
    serve.get_deployment_handle
    serve.grpc_util.RayServegRPCContext
+   serve.exceptions.BackPressureError
 ```
 
 (serve-cli)=
@@ -237,7 +236,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Translator",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": {
                             "language": "german"
                         },
@@ -275,7 +274,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Summarizer",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": null,
                         "graceful_shutdown_wait_loop_s": 2.0,
                         "graceful_shutdown_timeout_s": 20.0,

@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -U pip \
     bayesian-optimization \
     hyperopt \
     ConfigSpace==0.4.10 \
-    scikit-optimize \
+    nevergrad \
     hpbandster \
     lightgbm \
     xgboost \

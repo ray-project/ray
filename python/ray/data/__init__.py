@@ -13,7 +13,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
-from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -40,6 +39,7 @@ from ray.data.read_api import (  # noqa: F401
     from_torch,
     range,
     range_tensor,
+    read_avro,
     read_bigquery,
     read_binary_files,
     read_csv,
@@ -95,7 +95,6 @@ __all__ = [
     "DatasetContext",  # Backwards compatibility alias.
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
-    "DatasetPipeline",
     "Datasink",
     "Datasource",
     "ExecutionOptions",
@@ -120,6 +119,7 @@ __all__ = [
     "from_huggingface",
     "range",
     "range_tensor",
+    "read_avro",
     "read_text",
     "read_binary_files",
     "read_csv",

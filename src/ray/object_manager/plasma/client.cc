@@ -95,21 +95,6 @@ struct ObjectInUseEntry {
   PlasmaObject object;
   /// A flag representing whether the object has been sealed.
   bool is_sealed;
-
-  /// The below fields are experimental and used to implement
-  /// ray.experimental.channel.
-  /// Whether we are the writer. For now, only the original creator of the
-  /// mutable object may write to it.
-  bool is_writer = false;
-  /// The last version that we read. To read again, we must pass a newer
-  /// version than this.
-  int64_t next_version_to_read = 1;
-  /// Whether we currently have a read lock on the object. If this is true,
-  /// then it is safe to read the value of the object. For immutable objects,
-  /// this will always be true once the object has been sealed. For mutable
-  /// objects, ReadRelease resets this to false, and ReadAcquire resets to
-  /// true.
-  bool read_acquired = false;
 };
 
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
@@ -152,17 +137,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                               fb::ObjectSource source,
                               int device_num);
 
-  Status ExperimentalMutableObjectWriteAcquire(const ObjectID &object_id,
-                                               int64_t data_size,
-                                               const uint8_t *metadata,
-                                               int64_t metadata_size,
-                                               int64_t num_readers,
-                                               std::shared_ptr<Buffer> *data);
-
-  Status ExperimentalMutableObjectWriteRelease(const ObjectID &object_id);
-
-  Status ExperimentalMutableObjectSetError(const ObjectID &object_id);
-
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
@@ -174,9 +148,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              ObjectBuffer *object_buffers,
              bool is_from_worker);
 
-  Status EnsureGetAcquired(std::unique_ptr<ObjectInUseEntry> &object_entry);
-
-  Status ExperimentalMutableObjectReadRelease(const ObjectID &object_id);
+  Status GetExperimentalMutableObject(const ObjectID &object_id,
+                                      std::unique_ptr<MutableObject> *mutable_object);
 
   Status Release(const ObjectID &object_id);
 
@@ -334,6 +307,8 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
   object_entry->second->count += 1;
+  RAY_LOG(DEBUG) << "IncrementObjectCount " << object_id
+                 << " count is now: " << object_entry->second->count;
 }
 
 Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
@@ -398,109 +373,23 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   // not get released before the call to PlasmaClient::Seal happens.
   IncrementObjectCount(object_id);
 
+  if (is_experimental_mutable_object) {
+    // Pin experimental mutable objects when they are first created so that
+    // they are not evicted before the writer has a chance to register the
+    // object.
+    // TODO(swang): GC these once they are deleted by the
+    // ExperimentalMutableObjectManager. This can be done by pinning the object
+    // using the shared_ptr to the memory buffer that is held by the
+    // ExperimentalMutableObjectManager.
+    IncrementObjectCount(object_id);
+  }
+
   // Create IPC was successful.
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
   auto &entry = object_entry->second;
   RAY_CHECK(!entry->is_sealed);
-  entry->is_writer = true;
 
-  return Status::OK();
-}
-
-Status PlasmaClient::Impl::ExperimentalMutableObjectWriteAcquire(
-    const ObjectID &object_id,
-    int64_t data_size,
-    const uint8_t *metadata,
-    int64_t metadata_size,
-    int64_t num_readers,
-    std::shared_ptr<Buffer> *data) {
-#ifdef __linux__
-  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  auto object_entry = objects_in_use_.find(object_id);
-  if (object_entry == objects_in_use_.end()) {
-    return Status::Invalid(
-        "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
-  }
-  if (!object_entry->second->is_writer) {
-    return Status::Invalid(
-        "Mutable objects can only be written by the original creator process.");
-  }
-  RAY_CHECK(object_entry != objects_in_use_.end());
-
-  auto &entry = object_entry->second;
-  RAY_CHECK(entry->object.is_experimental_mutable_object);
-  RAY_CHECK(entry->is_sealed) << "Must Seal before writing again to a mutable object";
-
-  RAY_LOG(DEBUG) << "Write mutable object " << object_id;
-
-  // Wait for no readers.
-  auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  // TODO(swang): Support data + metadata size larger than allocated buffer.
-  if (data_size + metadata_size > entry->object.allocated_size) {
-    return Status::InvalidArgument("Serialized size of mutable data (" +
-                                   std::to_string(data_size) + ") + metadata size (" +
-                                   std::to_string(metadata_size) +
-                                   ") is larger than allocated buffer size " +
-                                   std::to_string(entry->object.allocated_size));
-  }
-  RAY_RETURN_NOT_OK(plasma_header->WriteAcquire(data_size, metadata_size, num_readers));
-
-  // Prepare the data buffer and return to the client instead of sending
-  // the IPC to object store.
-  *data = std::make_shared<PlasmaMutableBuffer>(
-      shared_from_this(),
-      GetStoreFdAndMmap(entry->object.store_fd, entry->object.mmap_size) +
-          entry->object.data_offset,
-      data_size);
-  if (metadata != NULL) {
-    // Copy the metadata to the buffer.
-    memcpy((*data)->Data() + data_size, metadata, metadata_size);
-  }
-
-  entry->is_sealed = false;
-#endif
-  return Status::OK();
-}
-
-Status PlasmaClient::Impl::ExperimentalMutableObjectWriteRelease(
-    const ObjectID &object_id) {
-#ifdef __linux__
-  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  auto object_entry = objects_in_use_.find(object_id);
-  if (object_entry == objects_in_use_.end()) {
-    return Status::Invalid(
-        "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
-  }
-  RAY_CHECK(object_entry != objects_in_use_.end());
-
-  auto &entry = object_entry->second;
-  RAY_CHECK(entry->object.is_experimental_mutable_object);
-  RAY_CHECK(!entry->is_sealed)
-      << "Must WriteAcquire before WriteRelease on a mutable object";
-
-  entry->is_sealed = true;
-  auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  RAY_RETURN_NOT_OK(plasma_header->WriteRelease());
-#endif
-  return Status::OK();
-}
-
-Status PlasmaClient::Impl::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
-#ifdef __linux__
-  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  auto object_entry = objects_in_use_.find(object_id);
-  if (object_entry == objects_in_use_.end()) {
-    return Status::Invalid(
-        "Plasma buffer for mutable object not in scope. Are you sure you're the writer?");
-  }
-  RAY_CHECK(object_entry != objects_in_use_.end());
-
-  auto &entry = object_entry->second;
-  RAY_CHECK(entry->object.is_experimental_mutable_object);
-  auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  plasma_header->SetErrorUnlocked();
-#endif
   return Status::OK();
 }
 
@@ -612,11 +501,6 @@ Status PlasmaClient::Impl::GetBuffers(
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
-      if (object_entry->second->object.is_experimental_mutable_object) {
-        // Wait for the object to become ready to read.
-        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry->second));
-      }
-
       PlasmaObject *object = &object_entry->second->object;
 
       std::shared_ptr<Buffer> physical_buf;
@@ -648,6 +532,9 @@ Status PlasmaClient::Impl::GetBuffers(
 
   // If we get here, then the objects aren't all currently in use by this
   // client, so we need to send a request to the plasma store.
+  for (int64_t i = 0; i < num_objects; i++) {
+    RAY_LOG(DEBUG) << "Sending get request " << object_ids[i];
+  }
   RAY_RETURN_NOT_OK(SendGetRequest(
       store_conn_, &object_ids[0], num_objects, timeout_ms, is_from_worker));
   std::vector<uint8_t> buffer;
@@ -698,10 +585,6 @@ Status PlasmaClient::Impl::GetBuffers(
       }
       auto &object_entry = objects_in_use_[received_object_ids[i]];
 
-      // Wait for the object to become ready to read.
-      if (object_entry->object.is_experimental_mutable_object) {
-        RAY_RETURN_NOT_OK(EnsureGetAcquired(object_entry));
-      }
       std::shared_ptr<Buffer> physical_buf;
       RAY_LOG(DEBUG) << "Plasma Get " << received_object_ids[i]
                      << ", data size: " << object_entry->object.data_size
@@ -733,6 +616,33 @@ Status PlasmaClient::Impl::GetBuffers(
   return Status::OK();
 }
 
+Status PlasmaClient::Impl::GetExperimentalMutableObject(
+    const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::ObjectNotFound("MutableObject must be in use before getting");
+  }
+
+  if (!object_entry->second->object.is_experimental_mutable_object) {
+    return Status::ObjectNotFound("Cannot get normal plasma objects as mutable objects");
+  }
+
+  // Pin experimental mutable object so that it is not evicted before the
+  // caller has a chance to register the object.
+  // TODO(swang): GC once they are deleted by the
+  // ExperimentalMutableObjectManager. This can be done by pinning the object
+  // using the shared_ptr to the memory buffer that is held by the
+  // ExperimentalMutableObjectManager.
+  IncrementObjectCount(object_id);
+
+  const auto &object = object_entry->second->object;
+  *mutable_object = std::unique_ptr<MutableObject>(
+      new MutableObject(LookupMmappedFile(object.store_fd), object));
+  return Status::OK();
+}
+
 Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                                int64_t timeout_ms,
                                std::vector<ObjectBuffer> *out,
@@ -747,74 +657,6 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
   *out = std::vector<ObjectBuffer>(num_objects);
   return GetBuffers(
       &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
-}
-
-Status PlasmaClient::Impl::EnsureGetAcquired(
-    std::unique_ptr<ObjectInUseEntry> &object_entry) {
-#ifdef __linux__
-  PlasmaObject *object = &object_entry->object;
-  RAY_CHECK(object->is_experimental_mutable_object);
-  auto plasma_header = GetPlasmaObjectHeader(*object);
-  if (object_entry->read_acquired) {
-    return Status::OK();
-  }
-
-  int64_t version_read = 0;
-
-  // Need to unlock the client mutex since ReadAcquire() is blocking. This is
-  // thread-safe since mutable plasma object are never deallocated.
-  client_mutex_.unlock();
-  Status status =
-      plasma_header->ReadAcquire(object_entry->next_version_to_read, &version_read);
-  client_mutex_.lock();
-  RAY_RETURN_NOT_OK(status);
-
-  object_entry->read_acquired = true;
-  RAY_CHECK(version_read > 0);
-  object_entry->next_version_to_read = version_read;
-
-  // The data and metadata size may have changed, so update here before we
-  // create the Get buffer to return.
-  object_entry->object.data_size = plasma_header->data_size;
-  object_entry->object.metadata_size = plasma_header->metadata_size;
-  object_entry->object.metadata_offset =
-      object_entry->object.data_offset + object_entry->object.data_size;
-  RAY_CHECK(object_entry->object.data_size + object_entry->object.metadata_size <=
-            object_entry->object.allocated_size);
-#endif
-  return Status::OK();
-}
-
-Status PlasmaClient::Impl::ExperimentalMutableObjectReadRelease(
-    const ObjectID &object_id) {
-#ifdef __linux__
-  RAY_LOG(DEBUG) << "Try to release Get for object " << object_id;
-  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-
-  auto object_entry = objects_in_use_.find(object_id);
-  if (object_entry == objects_in_use_.end()) {
-    return Status::ObjectNotFound(
-        "ray.release() called on an object that is not in scope");
-  }
-
-  auto &entry = object_entry->second;
-  if (!entry->is_sealed) {
-    return Status::ObjectNotFound("ray.release() called on an object that is not sealed");
-  }
-  if (!entry->object.is_experimental_mutable_object) {
-    return Status::ObjectNotFound(
-        "ray.release() called on an object that is not mutable");
-  }
-
-  RAY_RETURN_NOT_OK(EnsureGetAcquired(entry));
-  RAY_LOG(DEBUG) << "Release shared object " << object_id;
-  auto plasma_header = GetPlasmaObjectHeader(entry->object);
-  RAY_RETURN_NOT_OK(plasma_header->ReadRelease(entry->next_version_to_read));
-  // The next read needs to read at least this version.
-  entry->next_version_to_read++;
-  entry->read_acquired = false;
-#endif
-  return Status::OK();
 }
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
@@ -837,14 +679,13 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   const auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
 
-  if (!object_entry->second->object.is_experimental_mutable_object) {
-    // Release only applies to immutable objects.
-    // TODO(swang): Add a delete call to properly clean up mutable objects.
-    object_entry->second->count -= 1;
-    RAY_CHECK(object_entry->second->count >= 0);
-  }
+  object_entry->second->count -= 1;
+  RAY_LOG(DEBUG) << "Decrement object count " << object_id << " count is now "
+                 << object_entry->second->count;
+  RAY_CHECK(object_entry->second->count >= 0);
 
   if (object_entry->second->count == 0) {
+    RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
     // Otherwise, skip the reply to boost performance.
@@ -910,6 +751,7 @@ Status PlasmaClient::Impl::Contains(const ObjectID &object_id, bool *has_object)
 
 Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+  RAY_LOG(DEBUG) << "Seal " << object_id;
 
   // Make sure this client has a reference to the object before sending the
   // request to Plasma.
@@ -1020,6 +862,7 @@ Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaConnectReply, &buffer));
   RAY_RETURN_NOT_OK(ReadConnectReply(buffer.data(), buffer.size(), &store_capacity_));
+
   return Status::OK();
 }
 
@@ -1067,25 +910,6 @@ Status PlasmaClient::Connect(const std::string &store_socket_name,
       store_socket_name, manager_socket_name, release_delay, num_retries);
 }
 
-Status PlasmaClient::ExperimentalMutableObjectWriteAcquire(
-    const ObjectID &object_id,
-    int64_t data_size,
-    const uint8_t *metadata,
-    int64_t metadata_size,
-    int64_t num_readers,
-    std::shared_ptr<Buffer> *data) {
-  return impl_->ExperimentalMutableObjectWriteAcquire(
-      object_id, data_size, metadata, metadata_size, num_readers, data);
-}
-
-Status PlasmaClient::ExperimentalMutableObjectWriteRelease(const ObjectID &object_id) {
-  return impl_->ExperimentalMutableObjectWriteRelease(object_id);
-}
-
-Status PlasmaClient::ExperimentalMutableObjectSetError(const ObjectID &object_id) {
-  return impl_->ExperimentalMutableObjectSetError(object_id);
-}
-
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             const ray::rpc::Address &owner_address,
                                             bool is_experimental_mutable_object,
@@ -1131,8 +955,22 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
 }
 
-Status PlasmaClient::ExperimentalMutableObjectReadRelease(const ObjectID &object_id) {
-  return impl_->ExperimentalMutableObjectReadRelease(object_id);
+Status PlasmaClient::GetExperimentalMutableObject(
+    const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) {
+  // First make sure the object is in scope. The ObjectBuffer will keep the
+  // value pinned in the plasma store.
+  std::vector<ObjectBuffer> object_buffers;
+  RAY_RETURN_NOT_OK(impl_->Get(
+      {object_id}, /*timeout_ms=*/0, &object_buffers, /*is_from_worker=*/true));
+  if (!object_buffers[0].data) {
+    return Status::Invalid(
+        "Experimental mutable object must be in the local object store to register as "
+        "reader or writer");
+  }
+  // Now that the value is pinned, get the object as a MutableObject, which is
+  // used to implement channels. The returned MutableObject will pin the
+  // object in the local object store.
+  return impl_->GetExperimentalMutableObject(object_id, mutable_object);
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {

@@ -194,6 +194,7 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void DrainRaylet(
       const rpc::autoscaler::DrainNodeReason &reason,
       const std::string &reason_message,
+      int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
@@ -384,14 +385,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  /// Ask the raylet to spill an object to external storage.
-  /// \param object_id The ID of the object to be spilled.
-  /// \param callback Callback that will be called after raylet completes the
-  /// object spilling (or it fails).
-  void RequestObjectSpillage(
-      const ObjectID &object_id,
-      const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
-
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   /// Implements WorkerLeaseInterface.
@@ -464,6 +457,7 @@ class RayletClient : public RayletClientInterface {
 
   void DrainRaylet(const rpc::autoscaler::DrainNodeReason &reason,
                    const std::string &reason_message,
+                   int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
 
   void GetSystemConfig(

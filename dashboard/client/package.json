@@ -32,7 +32,8 @@
     "react-window": "^1.8.5",
     "swr": "^2.1.0",
     "typeface-roboto": "0.0.75",
-    "typescript": "^4.8.4"
+    "typescript": "^4.8.4",
+    "usehooks-ts": "^2.9.4"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.5",

@@ -3,6 +3,7 @@ import os
 import platform
 import json
 import time
+from itertools import chain
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 
@@ -126,10 +127,11 @@ class Test(dict):
         """
         bucket = get_global_config()["state_machine_aws_bucket"]
         s3_client = boto3.client("s3")
-        files = s3_client.list_objects_v2(
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
             Bucket=bucket,
             Prefix=f"{AWS_TEST_KEY}/{prefix}",
-        ).get("Contents", [])
+        )
+        files = chain.from_iterable([page.get("Contents", []) for page in pages])
 
         return [
             Test(
@@ -385,11 +387,12 @@ class Test(dict):
             return self.test_results
 
         s3_client = boto3.client("s3")
+        pages = s3_client.get_paginator("list_objects_v2").paginate(
+            Bucket=get_global_config()["state_machine_aws_bucket"],
+            Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
+        )
         files = sorted(
-            s3_client.list_objects_v2(
-                Bucket=get_global_config()["state_machine_aws_bucket"],
-                Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
-            ).get("Contents", []),
+            chain.from_iterable([page.get("Contents", []) for page in pages]),
             key=lambda file: int(file["LastModified"].strftime("%s")),
             reverse=True,
         )[:limit]

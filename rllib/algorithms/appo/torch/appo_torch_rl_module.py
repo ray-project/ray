@@ -4,17 +4,18 @@ from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 
 class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
+    @override(PPOTorchRLModule)
     def setup(self):
         super().setup()
         catalog = self.config.get_catalog()
@@ -34,9 +35,9 @@ class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTorchRLModule)
     def output_specs_train(self) -> List[str]:
         return [
-            SampleBatch.ACTION_DIST_INPUTS,
+            Columns.ACTION_DIST_INPUTS,
             OLD_ACTION_DIST_LOGITS_KEY,
-            SampleBatch.VF_PREDS,
+            Columns.VF_PREDS,
         ]
 
     @override(PPOTorchRLModule)

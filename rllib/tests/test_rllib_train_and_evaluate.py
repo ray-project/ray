@@ -32,7 +32,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "TEST_TMPDIR='{}' python {}/train.py --storage-path={} --run={} "
             "--checkpoint-freq=1 ".format(tmp_dir, rllib_dir, tmp_dir, algo)
             + "--config='{"
             + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
@@ -103,7 +103,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "TEST_TMPDIR='{}' python {}/train.py --storage-path={} --run={} "
             "--checkpoint-freq=1 --checkpoint-at-end ".format(
                 tmp_dir, rllib_dir, tmp_dir, algo
             )
@@ -298,14 +298,14 @@ class TestCLISmokeTests(unittest.TestCase):
 
     def test_yaml_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole-simpleq-test.yaml"
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole-ppo.yaml"
         ).read()
 
     def test_python_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole_simpleq_test.py "
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole_ppo_envrunner.py "
             f"--stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
         ).read()
 
