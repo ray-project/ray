@@ -63,22 +63,11 @@ class RuntimeEnvContext:
 
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
             passthrough_args = class_path_args + passthrough_args
+            passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
         elif sys.platform == "win32":
             executable = []
         else:
             executable = ["exec"]
-
-        # By default, raylet uses the path to default_worker.py on host.
-        # However, the path to default_worker.py inside the container
-        # can be different. We need the user to specify the path to
-        # default_worker.py inside the container.
-        default_worker_path = self.container.get("worker_path")
-        if self.container and default_worker_path:
-            logger.debug(
-                f"Changing the default worker path from {passthrough_args[0]} to "
-                f"{default_worker_path}."
-            )
-            passthrough_args[0] = default_worker_path
 
         if sys.platform == "win32":
             cmd = [*self.command_prefix, *executable, *passthrough_args]
@@ -88,6 +77,36 @@ class RuntimeEnvContext:
             # We use shlex to do the necessary shell escape
             # of special characters in passthrough_args.
             passthrough_args = [shlex.quote(s) for s in passthrough_args]
+
+            # By default, raylet uses the path to default_worker.py on host.
+            # However, the path to default_worker.py inside the container
+            # can be different. We need the user to specify the path to
+            # default_worker.py inside the container.
+            if self.container:
+                worker_path = self.container.get("worker_path")
+                if worker_path:
+                    logger.debug(
+                        f"Changing the default worker path from {passthrough_args[0]} "
+                        f"to {worker_path}."
+                    )
+                    passthrough_cmd = f"python {worker_path} " + " ".join(
+                        passthrough_args[1:]
+                    )
+                else:
+                    get_worker_path = """'
+    import os, ray
+    ray_dir = os.path.dirname(ray.__file__)
+    relative_default_worker_path = \\"_private/workers/default_worker.py\\"
+    print(os.path.join(ray_dir, relative_default_worker_path))
+    '"""
+                    passthrough_cmd = (
+                        "python -c "
+                        + get_worker_path
+                        + " | xargs -I{} python {} "
+                        + " ".join(passthrough_args[1:])
+                    )
+                passthrough_args = ["-c", passthrough_cmd]
+
             cmd = [*self.command_prefix, *executable, *passthrough_args]
             # TODO(SongGuyang): We add this env to command for macOS because it doesn't
             # work for the C++ process of `os.execvp`. We should find a better way to
