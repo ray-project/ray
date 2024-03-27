@@ -46,6 +46,7 @@ from serve_test_cluster_utils import (
 from typing import List, Optional
 
 logger = logging.getLogger(__file__)
+logging.basicConfig(level=logging.INFO)
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
@@ -145,7 +146,7 @@ def main(
     for key, val in aggregated_metrics.items():
         logger.info(f"{key}: {val}")
     save_test_results(
-        aggregated_metrics,
+        {"perf_metrics": aggregated_metrics},
         default_output_file="/tmp/single_deployment_1k_noop_replica.json",
     )
 
