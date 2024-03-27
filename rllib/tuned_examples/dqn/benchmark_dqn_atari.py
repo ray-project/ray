@@ -1,15 +1,14 @@
+import gymnasium as gym
+from gymnasium.wrappers import AtariPreprocessing
+
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
+from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
+from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.tune import Stopper
 from ray import train, tune
 
-# Needs the following packages to be installed on Ubuntu:
-#   sudo apt-get libosmesa-dev
-#   sudo apt-get install patchelf
-#   python -m pip install "gymnasium[mujoco]"
-# Might need to be added to bashsrc:
-#   export MUJOCO_GL=osmesa"
-#   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco200/bin"
+# Might need `gymnasium[atari, other]` to be installed.
 
 # See the following links for becnhmark results of other libraries:
 #   Original paper: https://arxiv.org/abs/1812.05905
@@ -235,6 +234,26 @@ benchmark_envs = {
     },
 }
 
+for env in benchmark_envs.keys():
+    tune.register_env(
+        env,
+        lambda ctx: AtariPreprocessing(
+            gym.make(env, **ctx), grayscale_newaxis=True, screen_size=84, noop_max=0
+        ),
+    )
+
+
+def _make_env_to_module_connector(env):
+    return FrameStackingEnvToModule(
+        num_frames=4,
+    )
+
+
+def _make_learner_connector(input_observation_space, input_action_space):
+    return FrameStackingLearner(
+        num_frames=4,
+    )
+
 
 # Define a `tune.Stopper` that stops the training if the benchmark is reached
 # or the maximum number of timesteps is exceeded.
@@ -264,43 +283,64 @@ class BenchmarkStopper(Stopper):
         return False
 
 
+# See Table 1 in the Rainbow paper for the hyperparameters.
 config = (
     DQNConfig()
-    .environment(env=tune.grid_search(list(benchmark_envs.keys())))
+    .environment(
+        env=tune.grid_search(list(benchmark_envs.keys())),
+        env_config={
+            "max_episode_steps": 108000,
+            "obs_type": "grayscale",
+            # The authors actually use an action repetition of 4.
+            "repeat_action_probability": 0.25,
+        },
+        clip_rewards=True,
+    )
     # Enable new API stack and use EnvRunner.
     .experimental(_enable_new_api_stack=True)
     .rollouts(
-        rollout_fragment_length=1,
+        # Every 4 agent steps a training update is performed.
+        rollout_fragment_length=4,
         env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=0,
+        num_rollout_workers=1,
+        env_to_module_connector=_make_env_to_module_connector,
     )
     # TODO (simon): Adjust to new model_config_dict.
     .training(
-        initial_alpha=1.001,
-        lr=3e-4,
-        target_entropy="auto",
-        n_step=1,
-        tau=0.005,
-        train_batch_size=256,
-        target_network_update_freq=1,
+        # Note, the paper uses also an Adam epsilon of 0.00015.
+        lr=0.0000625,
+        n_step=3,
+        gamma=0.99,
+        tau=1.0,
+        train_batch_size=32,
+        target_network_update_freq=32000,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
             "capacity": 1000000,
-            "alpha": 0.6,
+            "alpha": 0.5,
+            # Note the paper used a linear schedule for beta.
             "beta": 0.4,
         },
-        num_steps_sampled_before_learning_starts=256,
+        # Note, these are frames.
+        num_steps_sampled_before_learning_starts=80000,
+        noisy=True,
+        num_atoms=51,
+        v_min=-10.0,
+        v_max=10.0,
+        double_q=True,
+        dueling=True,
         model={
-            "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
+            "cnn_filter_specifiers": [[32, 8, 4], [64, 4, 2], [64, 3, 1]],
+            "fcnet_activation": "tanh",
+            "post_fcnet_hiddens": [512],
+            "post_fcnet_activation": "relu",
             "post_fcnet_weights_initializer": "orthogonal_",
             "post_fcnet_weights_initializer_config": {"gain": 0.01},
         },
+        learner_connector=_make_learner_connector,
     )
     .reporting(
-        metrics_num_episodes_for_smoothing=5,
+        metrics_num_episodes_for_smoothing=10,
         min_sample_timesteps_per_iteration=1000,
     )
     .evaluation(
@@ -319,7 +359,7 @@ tuner = tune.Tuner(
     param_space=config,
     run_config=train.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
-        name="benchmark_sac_mujoco",
+        name="benchmark_dqn_atari",
     ),
 )
 
