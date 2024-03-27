@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import List, Optional, Callable, Tuple
 import os
+import sys
 from dateutil import parser
 import runfiles
 import platform
@@ -131,6 +132,39 @@ def get_ray_commit(image_name: str) -> str:
             f"Failed to get commit hash from image {image_name}. Output: {output}"
         )
     return match.group(0)
+
+
+def check_image_ray_commit(prefix: str, ray_type: str, expected_commit: str) -> None:
+    if ray_type == RayType.RAY:
+        tags = list_image_tags(
+            prefix, ray_type, PYTHON_VERSIONS_RAY, PLATFORMS_RAY, ARCHITECTURES_RAY
+        )
+    elif ray_type == RayType.RAY_ML:
+        tags = list_image_tags(
+            prefix,
+            ray_type,
+            PYTHON_VERSIONS_RAY_ML,
+            PLATFORMS_RAY_ML,
+            ARCHITECTURES_RAY_ML,
+        )
+    tags = [f"rayproject/{ray_type}:{tag}" for tag in tags]
+
+    for i, tag in enumerate(tags):
+        logger.info(f"{i+1}/{len(tags)} Checking commit for tag {tag} ....")
+
+        pull_image(tag)
+        commit = get_ray_commit(tag)
+
+        if commit != expected_commit:
+            print(f"Ray commit mismatch for tag {tag}!")
+            print("Expected:", expected_commit)
+            print("Actual:", commit)
+            sys.exit(42)  # Not retrying the check on Buildkite jobs
+        else:
+            print(f"Commit {commit} match for tag {tag}!")
+
+        if i != 0:  # Only save first pulled image for caching
+            remove_image(tag)
 
 
 def list_image_tags(

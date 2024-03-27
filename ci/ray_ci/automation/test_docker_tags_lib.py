@@ -16,6 +16,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     _is_release_tag,
     list_image_tags,
     get_ray_commit,
+    check_image_ray_commit,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -574,6 +575,58 @@ def test_get_ray_commit_failure(mock_docker_from_env):
 
     with pytest.raises(Exception):
         get_ray_commit("test_repo/test_image:tag")
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_ray_commit")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.list_image_tags")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.pull_image")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.remove_image")
+def test_check_image_ray_commit(
+    mock_remove_image, mock_pull_image, mock_list_tags, mock_get_commit
+):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+    ray_type = "ray"
+    mock_get_commit.return_value = expected_commit
+    mock_list_tags.return_value = ["test-tag1", "test-tag2", "test-tag3", "test-tag4"]
+
+    check_image_ray_commit(
+        prefix="test", ray_type=ray_type, expected_commit=expected_commit
+    )
+
+    assert mock_pull_image.call_count == len(mock_list_tags.return_value)
+    assert mock_pull_image.call_args_list == [
+        mock.call(f"rayproject/{ray_type}:{tag}") for tag in mock_list_tags.return_value
+    ]
+
+    assert mock_get_commit.call_count == len(mock_list_tags.return_value)
+    assert mock_get_commit.call_args_list == [
+        mock.call(f"rayproject/{ray_type}:{tag}") for tag in mock_list_tags.return_value
+    ]
+
+    # Remove all images except the first one
+    assert mock_remove_image.call_count == len(mock_list_tags.return_value) - 1
+    assert mock_remove_image.call_args_list == [
+        mock.call(f"rayproject/{ray_type}:{tag}")
+        for tag in mock_list_tags.return_value[1:]
+    ]
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_ray_commit")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.list_image_tags")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.pull_image")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.remove_image")
+def test_check_image_ray_commit_failure(
+    mock_remove_image, mock_pull_image, mock_list_tags, mock_get_commit
+):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+    ray_type = "ray"
+    mock_get_commit.return_value = expected_commit
+    mock_list_tags.return_value = ["test-tag1", "test-tag2", "test-tag3", "test-tag4"]
+
+    with pytest.raises(SystemExit):
+        check_image_ray_commit(
+            prefix="test", ray_type=ray_type, expected_commit=expected_commit[::-1]
+        )
 
 
 if __name__ == "__main__":
