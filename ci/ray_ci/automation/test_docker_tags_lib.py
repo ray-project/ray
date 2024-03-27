@@ -14,6 +14,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     query_tags_from_docker_hub,
     query_tags_from_docker_with_oci,
     _is_release_tag,
+    list_image_tags,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -427,6 +428,121 @@ def test_backup_release_tags(
     for i, call_arg in enumerate(mock_copy_tag.call_args_list):
         assert call_arg.kwargs["aws_ecr_repo"] == aws_ecr_repo
         assert call_arg.kwargs["tag"] == f"{namespace}/{repository}:2.0.{i}"
+
+
+@pytest.mark.parametrize(
+    (
+        "prefix",
+        "ray_type",
+        "python_versions",
+        "platforms",
+        "architectures",
+        "expected_tags",
+    ),
+    [
+        (
+            "test",
+            "ray",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64", "aarch64"],
+            [
+                "test",
+                "test-aarch64",
+                "test-cpu",
+                "test-cpu-aarch64",
+                "test-cu118",
+                "test-cu118-aarch64",
+                "test-gpu",
+                "test-gpu-aarch64",
+                "test-py39",
+                "test-py39-aarch64",
+                "test-py39-cpu",
+                "test-py39-cpu-aarch64",
+                "test-py39-cu118",
+                "test-py39-cu118-aarch64",
+                "test-py39-gpu",
+                "test-py39-gpu-aarch64",
+            ],
+        ),
+        (
+            "test",
+            "ray-ml",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64"],
+            [
+                "test",
+                "test-cpu",
+                "test-cu118",
+                "test-gpu",
+                "test-py39",
+                "test-py39-cpu",
+                "test-py39-cu118",
+                "test-py39-gpu",
+            ],
+        ),
+    ],
+)
+def test_list_image_tags(
+    prefix, ray_type, python_versions, platforms, architectures, expected_tags
+):
+    tags = list_image_tags(prefix, ray_type, python_versions, platforms, architectures)
+    assert tags == sorted(expected_tags)
+
+
+@pytest.mark.parametrize(
+    ("prefix", "ray_type", "python_versions", "platforms", "architectures"),
+    [
+        (
+            "test",
+            "ray",
+            ["3.8"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64", "aarch64"],
+        ),  # python version not supported
+        (
+            "test",
+            "ray",
+            ["3.9"],
+            ["cpu", "cu14.0.0"],
+            ["x86_64"],
+        ),  # platform not supported
+        (
+            "test",
+            "ray",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["aarch32"],
+        ),  # architecture not supported
+        (
+            "test",
+            "ray-ml",
+            ["3.9"],
+            ["cpu", "cu11.8.0"],
+            ["aarch64"],
+        ),  # architecture not supported
+        (
+            "test",
+            "ray-ml",
+            ["3.9"],
+            ["cpu", "cu11.5.2"],
+            ["x86_64"],
+        ),  # platform not supported
+        (
+            "test",
+            "not-ray",
+            ["3.8"],
+            ["cpu", "cu11.8.0"],
+            ["x86_64"],
+        ),  # ray type not supported
+    ],
+)
+def test_list_images_tags_failure(
+    prefix, ray_type, python_versions, platforms, architectures
+):
+    with pytest.raises(ValueError):
+        list_image_tags(prefix, ray_type, python_versions, platforms, architectures)
 
 
 if __name__ == "__main__":

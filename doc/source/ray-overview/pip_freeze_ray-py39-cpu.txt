@@ -12,7 +12,7 @@ attrs==21.4.0
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.30.0
+azure-core==1.30.1
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
 azure-mgmt-core==1.4.0
@@ -32,7 +32,7 @@ click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1707843821892/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1708705621174/work
 conda-content-trust @ file:///croot/conda-content-trust_1693490622020/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
@@ -46,16 +46,16 @@ exceptiongroup==1.2.0
 Farama-Notifications==0.0.4
 fastapi==0.109.2
 filelock==3.13.1
-flatbuffers==23.5.26
+flatbuffers==24.3.7
 frozenlist==1.4.0
 fsspec==2023.5.0
-google-api-core==2.14.0
+google-api-core==1.34.0
 google-api-python-client==1.7.8
 google-auth==2.23.4
 google-auth-httplib2==0.2.0
 google-oauth==1.0.1
 googleapis-common-protos==1.61.0
-grpcio==1.59.3
+grpcio==1.60.0
 gymnasium==0.28.1
 h11==0.12.0
 httplib2==0.22.0
@@ -63,7 +63,7 @@ httptools==0.6.1
 humanfriendly==10.0
 idna==3.6
 imageio==2.31.1
-importlib-metadata==4.10.0
+importlib-metadata==6.11.0
 isodate==0.6.1
 jax-jumpy==1.0.0
 jmespath==1.0.1
@@ -82,7 +82,7 @@ msrest==0.7.1
 msrestazure==0.6.4
 multidict==6.0.4
 networkx==3.1
-numpy==1.23.5
+numpy==1.24.4
 oauthlib==3.2.2
 opencensus==0.11.3
 opencensus-context==0.1.3
@@ -96,7 +96,7 @@ packaging==21.3
 pandas==1.5.3
 paramiko==2.12.0
 Pillow==9.2.0
-pkginfo==1.9.6
+pkginfo==1.10.0
 platformdirs==3.11.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
 portalocker==2.8.2
@@ -121,12 +121,12 @@ PySocks @ file:///tmp/build/80754af9/pysocks_1605305812635/work
 python-dateutil==2.8.2
 python-dotenv==1.0.1
 pytz==2022.7.1
-PyWavelets==1.4.1
+PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=c915d3a317600a021219d86f46109f941593e9f56b93db079fcb99ebb67c7265
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=b57426422c34061b387bfacd049036dedb39bf39036803876571ec9058510c47
 redis==3.5.3
 requests @ file:///croot/requests_1707355572290/work
-requests-oauthlib==1.3.1
+requests-oauthlib==1.4.0
 rich==12.6.0
 rsa==4.7.2
 ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work

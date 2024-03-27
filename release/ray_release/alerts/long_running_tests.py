@@ -27,7 +27,6 @@ def handle_result(
         "long_running_apex",
         "long_running_impala",
         "long_running_many_ppo",
-        "long_running_pbt",
     ]:
         # Tune/RLlib style tests
         target_update_diff = 480
