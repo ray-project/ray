@@ -56,6 +56,7 @@ steps:
         python:
           - "3.9"
           - "3.10"
+          - "3.11"
         cuda:
           - "11.8.0"
     env:
@@ -72,5 +73,6 @@ steps:
     matrix:
       - "3.9"
       - "3.10"
+      - "3.11"
     env:
       PYTHON_VERSION: "{{matrix}}"
