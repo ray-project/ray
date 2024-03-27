@@ -72,15 +72,6 @@ if __name__ == "__main__":
             lambda_=0.1,
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
-            model=dict(
-                {
-                    "fcnet_activation": "relu",
-                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                    "fcnet_bias_initializer": torch.nn.init.constant_,
-                    "fcnet_bias_initializer_config": {"val": 0.0},
-                },
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
         )
         # .evaluation(
         #    evaluation_num_workers=1,
@@ -91,6 +82,27 @@ if __name__ == "__main__":
         #    evaluation_config={"explore": False},
         # )
     )
+    if args.enable_new_api_stack:
+        config.rl_module(
+            model_config_dict={
+                "fcnet_activation": "relu",
+                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                "fcnet_bias_initializer": torch.nn.init.constant_,
+                "fcnet_bias_initializer_config": {"val": 0.0},
+                "uses_new_env_runners": True,
+            }
+        )
+    else:
+        config.training(
+            model=dict(
+                {
+                    "fcnet_activation": "relu",
+                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
+                    "fcnet_bias_initializer": torch.nn.init.constant_,
+                    "fcnet_bias_initializer_config": {"val": 0.0},
+                }
+            )
+        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:

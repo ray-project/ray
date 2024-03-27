@@ -10,7 +10,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 """  # noqa: E501
 
 import logging
-from typing import Callable, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 import numpy as np
 import tree
 
@@ -127,6 +127,10 @@ class DQNConfig(AlgorithmConfig):
             "final_epsilon": 0.02,
             "epsilon_timesteps": 10000,
         }
+        # New stack uses `epsilon` as either a constant value or a scheduler
+        # defined like this.
+        # TODO (simon): Ensure that users can understand how to provide epsilon.
+        self.epsilon = [(0, 1.0), (10000, 0.05)]
 
         # `evaluation()`
         self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
@@ -381,23 +385,23 @@ class DQNConfig(AlgorithmConfig):
                 categorical_distribution_temperature
             )
 
-        if self._enable_new_api_stack:
-            # Include the architecture hyperparameters into the model config.
-            # TODO (simon, sven): Find a general way to update the model_config.
-            if "double_q" not in self.model:
-                self.model.update({"double_q": self.double_q})
-            if "dueling" not in self.model:
-                self.model.update({"dueling": self.dueling})
-            if "noisy" not in self.model:
-                self.model.update({"noisy": self.noisy})
-            if "simga0" not in self.model:
-                self.model.update({"sigma0": self.sigma0})
-            if "num_atoms" not in self.model:
-                self.model.update({"num_atoms": self.num_atoms})
-            if "v_max" not in self.model:
-                self.model.update({"v_max": self.v_max})
-            if "v_min" not in self.model:
-                self.model.update({"v_min": self.v_min})
+        # if self._enable_new_api_stack:
+        #     # Include the architecture hyperparameters into the model config.
+        #     # TODO (simon, sven): Find a general way to update the model_config.
+        #     if "double_q" not in self.model:
+        #         self.model.update({"double_q": self.double_q})
+        #     if "dueling" not in self.model:
+        #         self.model.update({"dueling": self.dueling})
+        #     if "noisy" not in self.model:
+        #         self.model.update({"noisy": self.noisy})
+        #     if "simga0" not in self.model:
+        #         self.model.update({"sigma0": self.sigma0})
+        #     if "num_atoms" not in self.model:
+        #         self.model.update({"num_atoms": self.num_atoms})
+        #     if "v_max" not in self.model:
+        #         self.model.update({"v_max": self.v_max})
+        #     if "v_min" not in self.model:
+        #         self.model.update({"v_min": self.v_min})
 
         return self
 
@@ -489,6 +493,7 @@ class DQNConfig(AlgorithmConfig):
             return SingleAgentRLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
+                model_config_dict=self.model_config_dict,
                 # model_config_dict=self.model,
             )
         else:
@@ -496,6 +501,21 @@ class DQNConfig(AlgorithmConfig):
                 f"The framework {self.framework_str} is not supported! "
                 "Use `config.framework('torch')` instead."
             )
+
+    # TODO (sven, simon): We cannot use our `override` decorator here, as the
+    # this only works on an instance not a class. We should refactor this.
+    @property
+    def _model_auto_keys(self) -> Dict[str, Any]:
+        return super()._model_auto_keys | {
+            "double_q": self.double_q,
+            "dueling": self.dueling,
+            "epsilon": [(0, 1.0), (10000, 0.05)],
+            "noisy": self.noisy,
+            "num_atoms": self.num_atoms,
+            "std_init": self.sigma0,
+            "v_max": self.v_max,
+            "v_min": self.v_min,
+        }
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:

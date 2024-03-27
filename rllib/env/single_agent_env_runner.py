@@ -76,7 +76,7 @@ class SingleAgentEnvRunner(EnvRunner):
             #  shape is (1, 1) which brings a problem with the action dists.
             #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
-            module_spec.model_config_dict = self.config.model
+            module_spec.model_config_dict = self.config.model_config_dict
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None
