@@ -96,6 +96,14 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client_builder.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "client_tests", "use_all_core", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_client_proxy.py",
     "test_client_compat.py",
     "test_client_multi.py",
@@ -200,7 +208,6 @@ py_test_module_list(
     "test_streaming_generator_4.py",
     "test_streaming_generator_backpressure.py",
     "test_streaming_generator_regression.py",
-    "test_scheduling_performance.py",
     "test_implicit_resource.py",
   ],
   size = "medium",
@@ -443,6 +450,7 @@ py_test_module_list(
     "test_placement_group_3.py",
     "test_placement_group_5.py",
     "test_cancel.py",
+    "test_scheduling_performance.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
