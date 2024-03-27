@@ -51,9 +51,11 @@ def ray_start_heterogenous_cluster():
             cluster.add_node(
                 num_cpus=4,
                 num_gpus=4,
-                resources={f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 4}
-                if accelerator_type
-                else {},
+                resources=(
+                    {f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 1.0}
+                    if accelerator_type
+                    else {}
+                ),
             )
 
     ray.init(address=cluster.address)

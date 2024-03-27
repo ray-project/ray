@@ -148,7 +148,12 @@ class ObjectRefStream {
   /// Mark that after a given item_index, the stream cannot be written
   /// anymore.
   ///
-  /// \param[in] The last item index that means the end of stream.
+  /// \param[in] item_index The item index for the end of the stream. The
+  /// caller should pass 1 past the highest index that the generator is
+  /// guaranteed to return. The EOF index will be set to the max of this index
+  /// and the next index for the caller to consume.
+  /// \param[out] The ObjectID for the EOF index. If non-nil, then the caller
+  /// should store a sentinel value for this object in the in-memory store.
   void MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
