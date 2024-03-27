@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(
+    self, method_name: str, buffer_size_bytes: int, num_readers: int = 1
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -35,8 +37,11 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
-    return self._output_channel
+    if not hasattr(self, "_method_to_output_channel"):
+        self._method_to_output_channel = {}
+    output_channel = Channel(buffer_size_bytes, num_readers)
+    self._method_to_output_channel[method_name] = output_channel
+    return output_channel
 
 
 @DeveloperAPI
@@ -73,13 +78,22 @@ def do_exec_compiled_task(
             else:
                 resolved_inputs.append(inp)
 
-        self._input_reader: ReaderInterface = SynchronousReader(input_channels)
-        self._output_writer: WriterInterface = SynchronousWriter(self._output_channel)
-        self._input_reader.start()
-        self._output_writer.start()
+        input_reader: ReaderInterface = SynchronousReader(input_channels)
+        output_writer: WriterInterface = SynchronousWriter(
+            self._method_to_output_channel[actor_method_name]
+        )
+        if not hasattr(self, "_method_to_input_reader"):
+            self._method_to_input_reader = {}
+        self._method_to_input_reader[actor_method_name] = input_reader
+        if not hasattr(self, "_method_to_output_writer"):
+            self._method_to_output_writer = {}
+        self._method_to_output_writer[actor_method_name] = output_writer
+
+        input_reader.start()
+        output_writer.start()
 
         while True:
-            res = self._input_reader.begin_read()
+            res = input_reader.begin_read()
 
             for idx, output in zip(input_channel_idxs, res):
                 resolved_inputs[idx] = output
@@ -98,11 +112,11 @@ def do_exec_compiled_task(
                     traceback_str=backtrace,
                     cause=exc,
                 )
-                self._output_writer.write(wrapped)
+                output_writer.write(wrapped)
             else:
-                self._output_writer.write(output_val)
+                output_writer.write(output_val)
             finally:
-                self._input_reader.end_read()
+                input_reader.end_read()
 
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
@@ -110,9 +124,9 @@ def do_exec_compiled_task(
 
 
 @DeveloperAPI
-def do_cancel_compiled_task(self):
-    self._input_reader.close()
-    self._output_writer.close()
+def do_cancel_compiled_task(self, actor_method_name: str) -> None:
+    self._method_to_input_reader[actor_method_name].close()
+    self._method_to_output_writer[actor_method_name].close()
 
 
 @PublicAPI(stability="alpha")
@@ -248,7 +262,7 @@ class CompiledDAG:
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: List["ray.ObjectRef"] = []
         # Set of actors present in the DAG.
-        self.actor_refs = set()
+        self.actor_and_method_name_tuples = set()
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -313,12 +327,12 @@ class CompiledDAG:
                     arg_idx = self.dag_node_to_idx[arg]
                     self.idx_to_task[arg_idx].downstream_node_idxs.add(idx)
 
-        for actor_id, task_count in self.actor_task_count.items():
-            if task_count > 1:
-                raise NotImplementedError(
-                    "Compiled DAGs can contain at most one task per actor handle. "
-                    f"Actor with ID {actor_id} appears {task_count}x."
-                )
+        # for actor_id, task_count in self.actor_task_count.items():
+        #     if task_count > 1:
+        #         raise NotImplementedError(
+        #             "Compiled DAGs can contain at most one task per actor handle. "
+        #             f"Actor with ID {actor_id} appears {task_count}x."
+        #         )
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -388,11 +402,20 @@ class CompiledDAG:
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
+                        task.dag_node.get_method_name(),
                         buffer_size_bytes=self._buffer_size_bytes,
                         num_readers=task.num_readers,
                     )
                 )
-                self.actor_refs.add(task.dag_node._get_actor_handle())
+                logger.info(
+                    f"Allocated output channel for actor: {task.dag_node._get_actor_handle()}, method: {task.dag_node.get_method_name()}"
+                )
+                self.actor_and_method_name_tuples.add(
+                    (task.dag_node._get_actor_handle(), task.dag_node.get_method_name())
+                )
+                logger.info(
+                    f"Actor and method name tuples: {self.actor_and_method_name_tuples}"
+                )
             elif isinstance(task.dag_node, InputNode):
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
@@ -497,10 +520,16 @@ class CompiledDAG:
                 outer._dag_output_fetcher.close()
 
                 self.in_teardown = True
-                for actor in outer.actor_refs:
+                for tuple in outer.actor_and_method_name_tuples:
+                    actor = tuple[0]
+                    method_name = tuple[1]
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
                     try:
-                        ray.get(actor.__ray_call__.remote(do_cancel_compiled_task))
+                        ray.get(
+                            actor.__ray_call__.remote(
+                                do_cancel_compiled_task, method_name
+                            )
+                        )
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass

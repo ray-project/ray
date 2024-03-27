@@ -20,8 +20,8 @@ from ray._private.utils import (
 
 logger = logging.getLogger(__name__)
 
-if sys.platform != "linux":
-    pytest.skip("Skipping, requires Linux.", allow_module_level=True)
+# if sys.platform != "linux":
+# pytest.skip("Skipping, requires Linux.", allow_module_level=True)
 
 
 @ray.remote
@@ -77,6 +77,18 @@ def test_basic(ray_start_regular):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+def test_actor_used_multiple_times(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.echo.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 1
 
 
 def test_regular_args(ray_start_regular):
