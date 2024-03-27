@@ -337,10 +337,11 @@ In the example above, we saved some artifacts within the training loop to the wo
 If you were training a stable diffusion model, you could save
 some sample generated images every so often as a training artifact.
 
-By default, the worker's current working directory is set to the local version of the "trial directory."
-For example, this would be ``~/ray_results/experiment_name/TorchTrainer_46367_00000_0_...`` in the example above.
-See :ref:`below <train-working-directory>` for how to disable this change in the working directory,
-if you want your training workers to keep their original working directories.
+By default, Ray Train changes the current working directory of each worker to be inside the run's
+:ref:`local staging directory <train-local-staging-dir>`.
+This way, all distributed training workers share the same absolute path as the working directory.
+See :ref:`below <train-working-directory>` for how to disable this default behavior,
+which is useful if you want your training workers to keep their original working directories.
 
 If :class:`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then
 all artifacts saved in this directory will be persisted to storage.
@@ -381,28 +382,51 @@ Note that this behavior is off by default.
 Advanced configuration
 ----------------------
 
+.. _train-local-staging-dir:
+
 Setting the local staging directory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Apart from files written to the ``storage_path``, Ray Train also writes to some
-logfiles and metadata files in a *local staging directory* before they get
-persisted (copied/uploaded) to the ``storage_path``.
-By default, this local staging directory is a sub-directory of the temporary Ray session
-directory (``/tmp/ray/session_latest``), which is also where Ray Core logs are dumped.
+.. warning::
 
-Customize the location of the staging directory by customizing the location of the
-temporary Ray session directory. See :ref:`temp-dir-log-files` for how to set this directory.
+    Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable and ``RunConfig(local_dir)``
+    were ways to configure the local staging directory to be outside of the home directory (``~/ray_results``).
+
+    **These configurations no longer used to configure the local staging directory.
+    Please instead use ``RunConfig(storage_path)`` to configure where your
+    run's outputs go.**
+
+
+Apart from files such as checkpoints written directly to the ``storage_path``,
+Ray Train also writes some logfiles and metadata files to an intermediate
+*local staging directory* before they get persisted (copied/uploaded) to the ``storage_path``.
+The current working directory of each worker is set within this local staging directory.
+
+By default, the local staging directory is a sub-directory of the Ray session
+directory (e.g., ``/tmp/ray/session_latest``), which is also where other temporary Ray files are dumped.
+
+Customize the location of the staging directory by :ref:`setting the location of the
+temporary Ray session directory <temp-dir-log-files>`.
+
+Here's an example of what the local staging directory looks like:
+
+.. code-block:: text
+
+    /tmp/ray/session_latest/artifacts/<ray-train-job-timestamp>/
+    └── experiment_name
+        ├── driver_artifacts    <- These are all uploaded to storage periodically
+        │   ├── Experiment state snapshot files needed for resuming training
+        │   └── Metrics logfiles
+        └── working_dirs        <- These are uploaded to storage if `SyncConfig(sync_artifacts=True)`
+            └── Current working directory of training workers, which contains worker artifacts
 
 .. warning::
 
-    Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable was the way to configure
-    the local staging directory to be outside of the home directory (``~/ray_results``).
+    You should not need to look into the local staging directory.
+    The ``storage_path`` should be the only path that you need to interact with.
 
-    ``RunConfig(local_dir)`` was another deprecated alternative to set the local staging directory.
-
-    These options are now deprecated, and you should instead set ``storage_path``.
-    When ``storage_path`` is set, there will no longer be any files written to
-    ``~/ray_results`` starting from Ray 2.10.
+    The structure of the local staging directory is subject to change
+    in future versions of Ray Train -- do not rely on these local staging files in your application.
 
 
 .. _train-working-directory:
@@ -446,9 +470,8 @@ directory you launched the training script from.
         # NOTE: The working directory is copied to each worker and is read only.
         assert os.path.exists("./data.txt"), os.getcwd()
 
-        # If `SyncConfig(sync_artifacts=True)`, write artifacts that you want to
-        # persist in the trial directory.
-        # Artifacts written in the current working directory will NOT be persisted.
+        # To use artifact syncing with `SyncConfig(sync_artifacts=True)`,
+        # write artifacts here, instead of the current working directory:
         ray.train.get_context().get_trial_dir()
 
     trainer = TorchTrainer(
