@@ -6,8 +6,8 @@ from ray_release.test_automation.state_machine import (
 from ray_release.test import Test, TestState
 
 
-CONTINUOUS_FAILURE_TO_FLAKY = 10  # Number of continuous failures before flaky
-CONTINUOUS_PASSING_TO_PASSING = 30  # Number of continuous passing before passing
+CONTINUOUS_FAILURE_TO_FLAKY = 5  # Number of continuous failures before flaky
+CONTINUOUS_PASSING_TO_PASSING = 5  # Number of continuous passing before passing
 FLAKY_PERCENTAGE_THRESHOLD = 5  # Percentage threshold to be considered as flaky
 FAILING_TO_FLAKY_MESSAGE = (
     "This test is now considered as flaky because it has been "

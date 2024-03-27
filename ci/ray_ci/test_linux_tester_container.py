@@ -8,7 +8,7 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.tester_container import PIPELINE_POSTMERGE
+from ci.ray_ci.tester_container import PIPELINE_POSTMERGE, RUN_PER_FLAKY_TEST
 from ci.ray_ci.utils import chunk_into_n
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 
@@ -93,11 +93,12 @@ def test_run_tests_in_docker() -> None:
         )
 
         LinuxTesterContainer("team")._run_tests_in_docker(
-            ["t1", "t2"], [], "/tmp", ["v=k"]
+            ["t1", "t2"], [], "/tmp", ["v=k"], run_flaky_tests=True
         )
         input_str = inputs[-1]
         assert "--env BUILDKITE_BUILD_URL" in input_str
         assert "--gpus" not in input_str
+        assert f"--runs_per_test={RUN_PER_FLAKY_TEST}" in input_str
 
 
 def test_run_script_in_docker() -> None:
@@ -174,6 +175,7 @@ def test_run_tests() -> None:
         bazel_log_dir: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
+        run_flaky_tests: bool = False,
     ) -> MockPopen:
         return MockPopen(test_targets)
 
