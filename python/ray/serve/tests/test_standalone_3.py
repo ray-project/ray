@@ -677,7 +677,7 @@ def test_serve_shut_down_without_duplicated_logs(
 def test_passing_object_ref_to_deployment_not_pinned_to_memory(
     shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
-    """Test passing object ref to deployment not pinned to memory and cause memory leak.
+    """Passing object refs to deployments should not pin the refs in memory.
 
     We had issue that passing object ref to a deployment will result in memory leak
     due to _PyObjScanner/ cloudpickler pinning the object to memory. This test will
