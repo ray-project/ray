@@ -251,7 +251,9 @@ class FileSystemStorage(ExternalStorage):
             spill objects doesn't exist.
     """
 
-    def __init__(self, directory_path, buffer_size=None):
+    def __init__(
+        self, directory_path, node_id=None, use_node_id_subdir=None, buffer_size=None
+    ):
         # -- sub directory name --
         self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
@@ -276,7 +278,10 @@ class FileSystemStorage(ExternalStorage):
 
         # Create directories.
         for path in directory_path:
-            full_dir_path = os.path.join(path, self._spill_dir_name)
+            if use_node_id_subdir and node_id:
+                full_dir_path = os.path.join(path, node_id, self._spill_dir_name)
+            else:
+                full_dir_path = os.path.join(path, self._spill_dir_name)
             os.makedirs(full_dir_path, exist_ok=True)
             if not os.path.exists(full_dir_path):
                 raise ValueError(
@@ -371,6 +376,8 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
     def __init__(
         self,
         session_name: str,
+        node_id: str = None,
+        use_node_id_subdir: bool = False,
         # For remote spilling, at least 1MB is recommended.
         buffer_size=1024 * 1024,
         # Override the storage config for unit tests.
@@ -384,7 +391,12 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
 
         self._fs, storage_prefix = storage._get_filesystem_internal()
         self._buffer_size = buffer_size
-        self._prefix = os.path.join(storage_prefix, "spilled_objects", session_name)
+        if use_node_id_subdir and node_id:
+            self._prefix = os.path.join(
+                storage_prefix, "spilled_objects", node_id, session_name
+            )
+        else:
+            self._prefix = os.path.join(storage_prefix, "spilled_objects", session_name)
         self._fs.create_dir(self._prefix)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
@@ -619,30 +631,30 @@ class SlowFileStorage(FileSystemStorage):
         return super().spill_objects(object_refs, owner_addresses)
 
 
-def setup_external_storage(config, session_name):
+def setup_external_storage(config, session_name, node_id):
     """Setup the external storage according to the config."""
     global _external_storage
     if config:
         storage_type = config["type"]
         if storage_type == "filesystem":
-            _external_storage = FileSystemStorage(**config["params"])
+            _external_storage = FileSystemStorage(node_id=node_id, **config["params"])
         elif storage_type == "ray_storage":
             _external_storage = ExternalStorageRayStorageImpl(
-                session_name, **config["params"]
+                session_name, node_id=node_id, **config["params"]
             )
         elif storage_type == "smart_open":
             _external_storage = ExternalStorageSmartOpenImpl(**config["params"])
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
-            _external_storage = FileSystemStorage(**config["params"])
+            _external_storage = FileSystemStorage(node_id=node_id, **config["params"])
         elif storage_type == "unstable_fs":
             # This storage is used to unit test unstable file system for fault
             # tolerance.
-            _external_storage = UnstableFileStorage(**config["params"])
+            _external_storage = UnstableFileStorage(node_id=node_id, **config["params"])
         elif storage_type == "slow_fs":
             # This storage is used to unit test slow filesystems.
-            _external_storage = SlowFileStorage(**config["params"])
+            _external_storage = SlowFileStorage(node_id=node_id, **config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:
