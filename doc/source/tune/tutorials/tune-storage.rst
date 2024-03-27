@@ -214,3 +214,9 @@ There are a few options for restoring an experiment:
 Please see the documentation of
 :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
 
+
+Advanced configuration
+----------------------
+
+See :ref:`Ray Train's section on advanced storage configuration <train-storage-advanced>`.
+All of the configurations also apply to Ray Tune.

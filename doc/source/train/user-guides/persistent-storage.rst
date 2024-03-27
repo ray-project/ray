@@ -379,6 +379,8 @@ Note that this behavior is off by default.
             ...
 
 
+.. _train-storage-advanced:
+
 Advanced configuration
 ----------------------
 
@@ -496,5 +498,5 @@ environment variable.
 For instance, if you set ``RAY_STORAGE="s3://my_bucket/train_results"``, your
 results will automatically persisted there.
 
-If you manually set a :attr:`RunConfig.storage_path <ray.train.RunConfig.storage_path>`, it
-will take precedence over this environment variable.
+If you manually set a :attr:`RunConfig.storage_path <ray.train.RunConfig.storage_path>`,
+it will take precedence over this environment variable.
