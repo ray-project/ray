@@ -8,9 +8,9 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.tester_container import PIPELINE_POSTMERGE
 from ci.ray_ci.utils import chunk_into_n
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
+from ci.ray_ci.test_base import PIPELINE_POSTMERGE
 
 
 class MockPopen:
@@ -39,6 +39,9 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
             "BUILDKITE_BRANCH": "master",
             "BUILDKITE_PIPELINE_ID": "non-id",
         },
+    ), mock.patch(
+        "ci.ray_ci.tester_container.get_global_config",
+        return_value={"pipeline_postmerge": [PIPELINE_POSTMERGE]},
     ):
         container._persist_test_results("team", "log_dir")
         assert not mock_upload_build_info.called
@@ -48,6 +51,9 @@ def test_persist_test_results(mock_upload_build_info, mock_upload_test_result) -
             "BUILDKITE_BRANCH": "master",
             "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
         },
+    ), mock.patch(
+        "ci.ray_ci.tester_container.get_global_config",
+        return_value={"pipeline_postmerge": [PIPELINE_POSTMERGE]},
     ):
         container._persist_test_results("team", "log_dir")
         assert mock_upload_build_info.called

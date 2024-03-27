@@ -6,6 +6,9 @@ from ci.ray_ci.builder_container import PYTHON_VERSIONS
 from ci.ray_ci.builder import DEFAULT_PYTHON_VERSION
 
 
+PIPELINE_POSTMERGE = "w00tw00t"
+
+
 class RayCITestBase(unittest.TestCase):
     def setUp(self) -> None:
         self.patcher = patch.dict(

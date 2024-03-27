@@ -12,10 +12,7 @@ from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 from ray_release.test import TestResult, Test
-
-
-PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
-PIPELINE_MACOS_POSTMERGE = "018e0f94-ccb6-45c2-b072-1e624fe9a404"
+from ray_release.configs.global_config import get_global_config
 
 
 class TesterContainer(Container):
@@ -111,7 +108,10 @@ class TesterContainer(Container):
         if os.environ.get("BUILDKITE_BRANCH") != "master":
             logger.info("Skip upload test results. We only upload on master branch.")
             return
-        if os.environ.get("BUILDKITE_PIPELINE_ID") != PIPELINE_POSTMERGE:
+        if (
+            os.environ.get("BUILDKITE_PIPELINE_ID")
+            not in get_global_config()["pipeline_postmerge"]
+        ):
             logger.info(
                 "Skip upload test results. We only upload on postmerge pipeline."
             )

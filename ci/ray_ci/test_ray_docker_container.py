@@ -8,8 +8,8 @@ import pytest
 from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.ray_docker_container import RayDockerContainer
-from ci.ray_ci.test_base import RayCITestBase
-from ci.ray_ci.utils import RAY_VERSION, POSTMERGE_PIPELINE
+from ci.ray_ci.test_base import RayCITestBase, PIPELINE_POSTMERGE
+from ci.ray_ci.utils import RAY_VERSION
 
 
 class TestRayDockerContainer(RayCITestBase):
@@ -313,20 +313,24 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cu11.8.0", "ray")
         assert container.get_platform_tag() == "-cu118"
 
-    def test_should_upload(self) -> None:
+    @mock.patch(
+        "ci.ray_ci.ray_docker_container.get_global_config",
+        return_value={"pipeline_postmerge": [PIPELINE_POSTMERGE]},
+    )
+    def test_should_upload(self, mock_config) -> None:
         v = DEFAULT_PYTHON_VERSION
         test_cases = [
             # environment_variables, expected_result (with upload flag on)
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
                     "BUILDKITE_BRANCH": "releases/1.0.0",
                 },
                 True,  # satisfy upload requirements
             ),
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
                     "BUILDKITE_BRANCH": "master",
                     "RAYCI_SCHEDULE": "nightly",
                 },
@@ -342,14 +346,14 @@ class TestRayDockerContainer(RayCITestBase):
             ),
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
                     "BUILDKITE_BRANCH": "non-release/1.2.3",
                 },
                 False,  # not satisfied: branch is not release/master
             ),
             (
                 {
-                    "BUILDKITE_PIPELINE_ID": POSTMERGE_PIPELINE,
+                    "BUILDKITE_PIPELINE_ID": PIPELINE_POSTMERGE,
                     "BUILDKITE_BRANCH": "123",
                     "RAYCI_SCHEDULE": "nightly",
                 },
