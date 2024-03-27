@@ -6,6 +6,7 @@ from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
+from starlette.requests import Request
 
 import ray
 import ray._private.state
@@ -19,6 +20,7 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
@@ -670,6 +672,58 @@ def test_serve_shut_down_without_duplicated_logs(
             all_serve_logs += f.read()
     assert all_serve_logs.count("Controller shutdown started") == 1
     assert all_serve_logs.count("Deleting application 'default'") == 1
+
+
+def test_passing_object_ref_to_deployment_not_pinned_to_memory(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test passing object ref to deployment not pinned to memory and cause memory leak.
+
+    We had issue that passing object ref to a deployment will result in memory leak
+    due to _PyObjScanner/ cloudpickler pinning the object to memory. This test will
+    ensure the object ref is release after the request is done.
+
+    See: https://github.com/ray-project/ray/issues/43248
+    """
+    cluster = Cluster()
+    cluster.add_node(num_cpus=5)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @serve.deployment
+    class Dep1:
+        def multiple_by_two(self, length: int):
+            return length * 2
+
+    @serve.deployment
+    class Gateway:
+        def __init__(self, dep1: DeploymentHandle):
+            self.dep1: DeploymentHandle = dep1
+
+        async def __call__(self, http_request: Request) -> str:
+            _length = int(http_request.query_params.get("length"))
+            length_ref = ray.put(_length)
+            obj_ref_hex = length_ref.hex()
+
+            # Object ref should be in the memory for downstream deployment to access.
+            assert obj_ref_hex in ray._private.internal_api.memory_summary()
+            return {
+                "result": await self.dep1.multiple_by_two.remote(length_ref),
+                "length": _length,
+                "obj_ref_hex": obj_ref_hex,
+            }
+
+    app = Gateway.bind(Dep1.bind())
+    serve.run(target=app)
+
+    length = 10
+    response = requests.get(f"http://localhost:8000?length={length}").json()
+    assert response["result"] == length * 2
+    assert response["length"] == length
+
+    # Ensure the object ref is not in the memory anymore.
+    assert response["obj_ref_hex"] not in ray._private.internal_api.memory_summary()
+    serve.shutdown()
 
 
 if __name__ == "__main__":
