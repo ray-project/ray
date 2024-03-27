@@ -17,7 +17,11 @@ from ray_release.result import (
     Result,
 )
 from ray_release.logger import logger
-from ray_release.util import dict_hash
+from ray_release.util import (
+    dict_hash,
+    get_read_state_machine_aws_bucket,
+    get_write_state_machine_aws_bucket,
+)
 
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
@@ -128,7 +132,7 @@ class Test(dict):
         """
         Obtain all tests whose names start with the given prefix from s3
         """
-        bucket = get_global_config()["state_machine_master_aws_bucket"]
+        bucket = get_read_state_machine_aws_bucket()
         s3_client = boto3.client("s3")
         pages = s3_client.get_paginator("list_objects_v2").paginate(
             Bucket=bucket,
@@ -233,7 +237,7 @@ class Test(dict):
         """
         return self["team"]
 
-    def update_from_s3(self) -> None:
+    def update_from_s3(self, force_branch_bucket: bool = True) -> None:
         """
         Update test object with data fields that exist only on s3
         """
@@ -241,7 +245,7 @@ class Test(dict):
             data = (
                 boto3.client("s3")
                 .get_object(
-                    Bucket=get_global_config()["state_machine_master_aws_bucket"],
+                    Bucket=get_read_state_machine_aws_bucket(),
                     Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
                 )
                 .get("Body")
@@ -391,7 +395,7 @@ class Test(dict):
 
         s3_client = boto3.client("s3")
         pages = s3_client.get_paginator("list_objects_v2").paginate(
-            Bucket=get_global_config()["state_machine_master_aws_bucket"],
+            Bucket=get_read_state_machine_aws_bucket(),
             Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
         )
         files = sorted(
@@ -403,7 +407,7 @@ class Test(dict):
             TestResult.from_dict(
                 json.loads(
                     s3_client.get_object(
-                        Bucket=get_global_config()["state_machine_master_aws_bucket"],
+                        Bucket=get_read_state_machine_aws_bucket(),
                         Key=file["Key"],
                     )
                     .get("Body")
@@ -426,7 +430,7 @@ class Test(dict):
         Persist test result object to s3
         """
         boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_master_aws_bucket"],
+            Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_RESULT_KEY}/"
             f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
             Body=json.dumps(test_result.__dict__),
@@ -437,7 +441,7 @@ class Test(dict):
         Persist test object to s3
         """
         boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_master_aws_bucket"],
+            Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
             Body=json.dumps(self),
         )

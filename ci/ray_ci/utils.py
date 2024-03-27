@@ -13,7 +13,7 @@ from math import ceil
 import ci.ray_ci.bazel_sharding as bazel_sharding
 from ray_release.bazel import bazel_runfile
 from ray_release.test import Test, TestState
-from ray_release.configs.global_config import init_global_config, get_global_config
+from ray_release.configs.global_config import init_global_config
 
 GLOBAL_CONFIG_FILE = (
     os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
@@ -26,21 +26,6 @@ def ci_init() -> None:
     Initialize global config
     """
     init_global_config(bazel_runfile(GLOBAL_CONFIG_FILE))
-
-
-def get_state_machine_aws_bucket() -> Optional[str]:
-    bucket_v1 = get_global_config()["state_machine_aws_bucket"]
-    if bucket_v1:
-        return bucket_v1
-
-    pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
-    branch = os.environ.get("BUILDKITE_BRANCH")
-    if pipeline_id == PREMERGE_PIPELINE:
-        return get_global_config()["state_machine_pr_aws_bucket"]
-    if pipeline_id == POSTMERGE_PIPELINE and branch == "master":
-        return get_global_config()["state_machine_master_aws_bucket"]
-
-    return None
 
 
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:

@@ -9,5 +9,5 @@ release_byod:
 state_machine:
   pr:
     aws_bucket: ray-ci-pr-results
-  master:
+  branch:
     aws_bucket: ray-ci-results
