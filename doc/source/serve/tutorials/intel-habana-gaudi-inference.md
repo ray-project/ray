@@ -18,13 +18,15 @@ This tutorial has two examples:
 
 2. Deployment of [Llama2-70b](https://huggingface.co/meta-llama/Llama-2-70b-chat-hf) using multiple HPUs on a single node:
 
-    * How to use DeepSpeed with HPU
+    * How to initialize distributed backend
 
     * How to load a sharded model onto DeepSpeed workers
 
     * How to stream responses from DeepSpeed workers
 
 This tutorial helps you serve a large language model on HPUs.
+
+Welcome to try out [llm-on-ray](https://github.com/intel/llm-on-ray), where you can find more examples, and get them deployed in a simpler way.
 
 ## Environment setup
 
