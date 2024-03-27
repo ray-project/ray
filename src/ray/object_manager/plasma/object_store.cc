@@ -47,10 +47,12 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   entry->construct_duration = -1;
   entry->source = source;
 
+#if defined(__APPLE__) || defined(__linux__)
   if (object_info.is_mutable) {
     RAY_LOG(DEBUG) << "PlasmaObjectHeader::Init " << object_info.object_id;
     entry->GetPlasmaObjectHeader()->Init();
   }
+#endif
 
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   return entry;
