@@ -39,6 +39,8 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
         # If we use noisy layers.
         self.uses_noisy: bool = self.config.model_config_dict.get("noisy")
+        # If we use a noisy encoder.
+        self.uses_noisy_encoder: bool = False
         # The number of atoms for a distribution support.
         self.num_atoms: int = self.config.model_config_dict.get("num_atoms")
         # If distributional learning is requested configure the support.
@@ -93,7 +95,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return [Columns.OBS, Columns.T]
+        return [Columns.OBS]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:
