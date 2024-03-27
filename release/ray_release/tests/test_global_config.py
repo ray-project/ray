@@ -13,6 +13,7 @@ _TEST_CONFIG = """
 byod:
   ray_ecr: rayproject
   ray_cr_repo: ray
+release_byod:
   ray_ml_cr_repo: ray-ml
   byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com

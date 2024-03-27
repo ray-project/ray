@@ -252,6 +252,10 @@ def cleanup_security_group(ec2_client, id):
 
 
 def cleanup_security_groups(config):
+    provider_type = config.get("provider", {}).get("type")
+    if provider_type != "aws":
+        return
+
     try:
         ec2_client = boto3.client("ec2", region_name="us-west-2")
         response = ec2_client.describe_security_groups(
@@ -268,7 +272,7 @@ def cleanup_security_groups(config):
         )
         for security_group in response["SecurityGroups"]:
             cleanup_security_group(ec2_client, security_group["GroupId"])
-    except botocore.exceptions.ClientError as e:
+    except Exception as e:
         print(f"Error cleaning up security groups: {e}")
 
 

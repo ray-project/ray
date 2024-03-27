@@ -489,6 +489,8 @@ fastapi==0.109.2
     #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   gradio
+fastavro==1.9.4
+    # via -r /home/ubuntu/ray/ci/../python/requirements/ml/data-test-requirements.txt
 fasteners==0.19
     # via
     #   google-apitools
@@ -812,7 +814,7 @@ ipython-genutils==0.2.0
     #   ipywidgets
     #   nbclassic
     #   notebook
-ipywidgets==7.8.1
+ipywidgets==7.7.2
     # via
     #   -r /home/ubuntu/ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /home/ubuntu/ray/ci/../python/requirements/docker/ray-docker-requirements.txt
@@ -1786,7 +1788,7 @@ python-lsp-jsonrpc==1.0.0
     # via semgrep
 python-multipart==0.0.6
     # via gradio
-pytorch-lightning==1.9.5
+pytorch-lightning==1.8.6
     # via -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
 pytorch-ranger==0.1.1
     # via torch-optimizer
@@ -2189,6 +2191,7 @@ tensorboardx==2.6
     # via
     #   -r /home/ubuntu/ray/ci/../python/requirements.txt
     #   -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
+    #   pytorch-lightning
     #   ray
 tensorflow==2.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
