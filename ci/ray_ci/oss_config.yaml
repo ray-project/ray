@@ -7,4 +7,7 @@ release_byod:
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
   aws2gce_credentials: release/aws2gce_iam.json
 state_machine:
-  aws_bucket: ray-ci-results
+  pr:
+    aws_bucket: ray-ci-pr-results
+  branch:
+    aws_bucket: ray-ci-results
