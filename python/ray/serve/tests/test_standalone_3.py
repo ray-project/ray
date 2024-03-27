@@ -681,7 +681,7 @@ def test_passing_object_ref_to_deployment_not_pinned_to_memory(
 
     We had issue that passing object ref to a deployment will result in memory leak
     due to _PyObjScanner/ cloudpickler pinning the object to memory. This test will
-    ensure the object ref is release after the request is done.
+    ensure the object ref is released after the request is done.
 
     See: https://github.com/ray-project/ray/issues/43248
     """
