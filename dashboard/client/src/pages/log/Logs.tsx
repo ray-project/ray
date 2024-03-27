@@ -12,6 +12,7 @@ import { grey } from "@mui/material/colors";
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import React, { useMemo, useState } from "react";
+import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
 import useSWR from "swr";
 import { StateApiLogViewer } from "../../common/MultiTabLogViewer";

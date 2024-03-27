@@ -637,7 +637,6 @@ const ActorTable = ({
                         className={classes.idCol}
                         title={address?.rayletId}
                         arrow
-                        interactive
                       >
                         <div>
                           <Link

@@ -1,11 +1,6 @@
-import {
-  Box,
-  createStyles,
-  makeStyles,
-  MenuItem,
-  TextField,
-  Typography,
-} from "@material-ui/core";
+import { Box, MenuItem, TextField, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import _ from "lodash";
 import React, { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -172,11 +167,11 @@ export const ServeEntityLogViewer = ({
         display="flex"
         flexDirection="row"
         alignItems="center"
-        gridGap={16}
+        gap={2}
         marginTop={4}
       >
         {showEntityGroups && (
-          <Box display="flex" flexDirection="column" gridGap={8}>
+          <Box display="flex" flexDirection="column" gap={1}>
             <Typography>View logs from</Typography>
             <TextField
               select
@@ -200,7 +195,7 @@ export const ServeEntityLogViewer = ({
               }}
             >
               <MenuItem value="controller">
-                <Box display="flex" flexDirection="column" gridGap={4}>
+                <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Controller</span>
                   <Typography variant="caption" className={classes.captionText}>
                     Logs for app initialization, dependency installation, and
@@ -209,7 +204,7 @@ export const ServeEntityLogViewer = ({
                 </Box>
               </MenuItem>
               <MenuItem value="proxies">
-                <Box display="flex" flexDirection="column" gridGap={4}>
+                <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Proxies</span>
                   <Typography variant="caption" className={classes.captionText}>
                     Logs for proxy initialization and HTTP handling.
@@ -217,7 +212,7 @@ export const ServeEntityLogViewer = ({
                 </Box>
               </MenuItem>
               <MenuItem value="deployments">
-                <Box display="flex" flexDirection="column" gridGap={4}>
+                <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Deployments</span>
                   <Typography variant="caption" className={classes.captionText}>
                     Application output and logs.
@@ -228,7 +223,7 @@ export const ServeEntityLogViewer = ({
           </Box>
         )}
         {selectedEntityGroupName === "proxies" && proxies?.length && (
-          <Box display="flex" flexDirection="column" gridGap={8}>
+          <Box display="flex" flexDirection="column" gap={1}>
             <Typography>HTTP Proxy</Typography>
             <TextField
               select
@@ -257,7 +252,7 @@ export const ServeEntityLogViewer = ({
           </Box>
         )}
         {selectedEntityGroupName === "deployments" && deployments.length && (
-          <Box display="flex" flexDirection="column" gridGap={8}>
+          <Box display="flex" flexDirection="column" gap={1}>
             <Typography>Deployment replica</Typography>
             <TextField
               select

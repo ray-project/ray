@@ -1,6 +1,7 @@
 import {
   Alert,
   Box,
+  InputAdornment,
   Pagination,
   Table,
   TableBody,
