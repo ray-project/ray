@@ -128,7 +128,7 @@ class Test(dict):
         """
         Obtain all tests whose names start with the given prefix from s3
         """
-        bucket = get_global_config()["state_machine_aws_bucket"]
+        bucket = get_global_config()["state_machine_master_aws_bucket"]
         s3_client = boto3.client("s3")
         pages = s3_client.get_paginator("list_objects_v2").paginate(
             Bucket=bucket,
@@ -241,7 +241,7 @@ class Test(dict):
             data = (
                 boto3.client("s3")
                 .get_object(
-                    Bucket=get_global_config()["state_machine_aws_bucket"],
+                    Bucket=get_global_config()["state_machine_master_aws_bucket"],
                     Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
                 )
                 .get("Body")
@@ -391,7 +391,7 @@ class Test(dict):
 
         s3_client = boto3.client("s3")
         pages = s3_client.get_paginator("list_objects_v2").paginate(
-            Bucket=get_global_config()["state_machine_aws_bucket"],
+            Bucket=get_global_config()["state_machine_master_aws_bucket"],
             Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name()}-",
         )
         files = sorted(
@@ -403,7 +403,7 @@ class Test(dict):
             TestResult.from_dict(
                 json.loads(
                     s3_client.get_object(
-                        Bucket=get_global_config()["state_machine_aws_bucket"],
+                        Bucket=get_global_config()["state_machine_master_aws_bucket"],
                         Key=file["Key"],
                     )
                     .get("Body")
@@ -426,7 +426,7 @@ class Test(dict):
         Persist test result object to s3
         """
         boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_aws_bucket"],
+            Bucket=get_global_config()["state_machine_master_aws_bucket"],
             Key=f"{AWS_TEST_RESULT_KEY}/"
             f"{self._get_s3_name()}-{int(time.time() * 1000)}.json",
             Body=json.dumps(test_result.__dict__),
@@ -437,7 +437,7 @@ class Test(dict):
         Persist test object to s3
         """
         boto3.client("s3").put_object(
-            Bucket=get_global_config()["state_machine_aws_bucket"],
+            Bucket=get_global_config()["state_machine_master_aws_bucket"],
             Key=f"{AWS_TEST_KEY}/{self._get_s3_name()}.json",
             Body=json.dumps(self),
         )

@@ -20,6 +20,8 @@ class GlobalConfig(TypedDict):
     byod_aws_cr: str
     byod_gcp_cr: str
     state_machine_aws_bucket: str
+    state_machine_pr_aws_bucket: str
+    state_machine_master_aws_bucket: str
     aws2gce_credentials: str
 
 
@@ -77,6 +79,12 @@ def _init_global_config(config_file: str):
             or config_content.get("release_byod", {}).get("aws2gce_credentials")
         ),
         state_machine_aws_bucket=config_content.get("state_machine", {}).get(
+            "aws_bucket",
+        ),
+        state_machine_pr_aws_bucket=config_content.get("state_machine", {}).get("pr", {}).get(
+            "aws_bucket",
+        ),
+        state_machine_master_aws_bucket=config_content.get("state_machine", {}).get("master", {}).get(
             "aws_bucket",
         ),
     )
