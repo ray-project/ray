@@ -3114,7 +3114,7 @@ void CoreWorker::RetryReportGeneratorItemReturns(
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
-        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+        RAY_LOG(DEBUG) << "Total number of objects consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
         int64_t num_objects_consumed;
         if (status.ok()) {
