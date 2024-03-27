@@ -149,7 +149,7 @@ def main(results=None):
     with InputNode() as inp:
         dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     results += timeit(
-        "[unstable] scatter-gather DAG calls, n={n_cpu} actors",
+        f"[unstable] scatter-gather DAG calls, n={n_cpu} actors",
         lambda: ray.get(dag.execute(b"x")),
     )
     dag = dag.experimental_compile()
