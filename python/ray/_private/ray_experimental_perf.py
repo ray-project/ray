@@ -1,7 +1,7 @@
 """This is the script for `ray microbenchmark`."""
 
 import logging
-from ray._private.ray_microbenchmark_helpers import timeit, async_timeit
+from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
 import ray
 
@@ -36,6 +36,7 @@ def check_optimized_build():
 
 def main(results=None):
     results = results or []
+    loop = get_or_create_event_loop()
 
     check_optimized_build()
 
@@ -125,6 +126,18 @@ def main(results=None):
         output_channel.begin_read()
         output_channel.end_read()
 
+    async def exec_async(tag):
+        async def _exec_async():
+            output_channel = await compiled_dag.execute_async(b"x")
+            # Using context manager.
+            async with output_channel as _:
+                pass
+
+        return await asyncio_timeit(
+            tag,
+            _exec_async,
+        )
+
     a = DAGActor.remote()
     with InputNode() as inp:
         dag = a.echo.bind(inp)
@@ -132,8 +145,22 @@ def main(results=None):
     results += timeit(
         "[unstable] single-actor DAG calls", lambda: ray.get(dag.execute(b"x"))
     )
-    dag = dag.experimental_compile()
-    results += timeit("[unstable] compiled single-actor DAG calls", lambda: _exec(dag))
+    compiled_dag = dag.experimental_compile()
+    results += timeit(
+        "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
+    )
+    compiled_dag.teardown()
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+    results += loop.run_until_complete(
+        exec_async(
+            "[unstable] compiled single-actor asyncio DAG calls",
+        )
+    )
+    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
+    # these DAGs create a background thread that can segfault if the CoreWorker
+    # is torn down first.
+    compiled_dag.teardown()
 
     del a
     n_cpu = multiprocessing.cpu_count() // 2
@@ -149,22 +176,14 @@ def main(results=None):
         f"[unstable] compiled scatter-gather DAG calls, n={n_cpu} actors",
         lambda: _exec(compiled_dag),
     )
-    loop = get_or_create_event_loop()
+    compiled_dag.teardown()
+
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
-
-    async def main():
-        async def _exec():
-            output_channel = await compiled_dag.execute_async(b"x")
-            # Using context manager.
-            async with output_channel as _:
-                pass
-
-        return await async_timeit(
+    results += loop.run_until_complete(
+        exec_async(
             f"[unstable] compiled scatter-gather asyncio DAG calls, n={n_cpu} actors",
-            _exec,
         )
-
-    results += loop.run_until_complete(main())
+    )
     # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
     # these DAGs create a background thread that can segfault if the CoreWorker
     # is torn down first.
@@ -179,10 +198,21 @@ def main(results=None):
         f"[unstable] chain DAG calls, n={n_cpu} actors",
         lambda: ray.get(dag.execute(b"x")),
     )
-    dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
     results += timeit(
-        f"[unstable] compiled chain DAG calls, n={n_cpu} actors", lambda: _exec(dag)
+        f"[unstable] compiled chain DAG calls, n={n_cpu} actors",
+        lambda: _exec(compiled_dag),
     )
+    compiled_dag.teardown()
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+    results += loop.run_until_complete(
+        exec_async(f"[unstable] compiled chain asyncio DAG calls, n={n_cpu} actors")
+    )
+    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
+    # these DAGs create a background thread that can segfault if the CoreWorker
+    # is torn down first.
+    compiled_dag.teardown()
 
     ray.shutdown()
 

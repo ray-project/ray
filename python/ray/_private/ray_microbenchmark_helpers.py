@@ -47,7 +47,7 @@ def timeit(
     return [(name, mean, sd)]
 
 
-async def async_timeit(
+async def asyncio_timeit(
     name, async_fn, multiplier=1, warmup_time_sec=10
 ) -> List[Optional[Tuple[str, float, float]]]:
     if filter_pattern and filter_pattern not in name:
