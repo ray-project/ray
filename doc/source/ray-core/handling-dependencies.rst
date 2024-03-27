@@ -118,7 +118,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`, or a :ref:`KubeRay RayJob <kuberay-rayjob-quickstart>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the :ref:`Ray Jobs API <jobs-overview>`, or submitting a :ref:`KubeRay RayJob <kuberay-rayjob-quickstart>`:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
