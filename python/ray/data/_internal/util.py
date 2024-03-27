@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
 # Inclusive minimum pyarrow version.
-MIN_PYARROW_VERSION = "6.0.1"
+MIN_PYARROW_VERSION = "14.0.2"
 RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 _VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
