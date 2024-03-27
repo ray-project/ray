@@ -11,9 +11,10 @@ from aiohttp.web import Request, Response
 from aiohttp.client import ClientResponse
 
 import ray
+import os
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.datacenter import DataOrganizer
+from ray.dashboard.datacenter import DataOrganizer, DataSource
 import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (
     package_exists,
@@ -28,6 +29,7 @@ from ray.dashboard.modules.job.common import (
     JobStopResponse,
     JobLogsResponse,
     JobInfoStorageClient,
+    JOB_ID_METADATA_KEY,
 )
 from ray.dashboard.modules.job.pydantic_models import (
     JobDetails,
@@ -42,6 +44,16 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
+
+
+from ray._private.gcs_pubsub import GcsAioJobSubmissionSubscriber
+from ray.dashboard.modules.job.history_server_storage import (
+    append_job_event,
+    generate_logagent_url,
+)
+from ray._private.gcs_pubsub import GcsAioPublisher
+from ray._private import ray_constants
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -103,10 +115,14 @@ class JobAgentSubmissionClient:
             else:
                 await self._raise_error(resp)
 
-    async def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
-        async with self._session.get(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
-        ) as resp:
+    async def get_job_logs_internal(
+        self, job_id: str, err: bool = False
+    ) -> JobLogsResponse:
+        if err:
+            query_url = f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs?err=1"
+        else:
+            query_url = f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
+        async with self._session.get(query_url) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
                 return JobLogsResponse(**result_json)
@@ -176,6 +192,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # from it unless `JobAgentSubmissionClient` is no
         # longer available (the corresponding agent process is dead)
         self._agents = dict()
+
+        self.gcs_publisher = GcsAioPublisher(address=self._dashboard_head.gcs_address)
 
     async def choose_agent(
         self, choose_head_node: Optional[bool] = False
@@ -501,6 +519,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
+        is_err_log = req.query.get("err") == "1"
         try:
             driver_agent_http_address = job.driver_agent_http_address
             driver_node_id = job.driver_node_id
@@ -512,7 +531,19 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                         driver_agent_http_address
                     )
                 job_agent_client = self._agents[driver_node_id]
-                resp = await job_agent_client.get_job_logs_internal(job.submission_id)
+                resp = await job_agent_client.get_job_logs_internal(
+                    job.submission_id, is_err_log
+                )
+
+                download = req.query.get("download")
+                if download == "1":
+                    if is_err_log:
+                        filename = f"job-driver-{job.submission_id}.err"
+                    else:
+                        filename = f"job-driver-{job.submission_id}.log"
+                    content_disposition = f'attachment; filename="{filename}"'
+                    headers = {"Content-Disposition": content_disposition}
+                    return Response(text=resp.logs, headers=headers)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
@@ -578,6 +609,117 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 self._dashboard_head.gcs_aio_client
             )
 
+        if dashboard_consts.history_server_enabled():
+            await asyncio.gather(self._listen_jobs())
+
+    async def _listen_jobs(self):
+        # Receive jobs from channel.
+        gcs_addr = self._dashboard_head.gcs_address
+        logger.info(f"gcs address {gcs_addr}")
+        subscriber = GcsAioJobSubmissionSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
+
+        while True:
+            logger.info("_listen_jobs from pubsub")
+            msgs = await subscriber.poll(batch_size=200)
+            for msg in msgs:
+                # msg type: src.ray.protobuf.pubsub_pb2.PubMessage
+                # append_job_event(msg['key_id'], msg['job_change_message'])
+                submission_id = msg.key_id.decode("utf-8")
+                job_change_message = json.loads(msg.job_change_message.json)
+                job_change_message = add_history_server_job_fields(
+                    submission_id, job_change_message
+                )
+                # reply = await self._dashboard_head.gcs_aio_client.get_all_job_info()
+                # job_change_message = add_driver_info_fields(
+                #     reply, submission_id, job_change_message
+                # )
+                # logger.info(
+                #     f"_listen_jobs type: {type(job_change_message)} job_change_message: {job_change_message}"
+                # )
+                append_job_event(
+                    self._dashboard_head.history_server_storage,
+                    submission_id,
+                    job_change_message,
+                )
+            await asyncio.sleep(5)
+
     @staticmethod
     def is_minimal_module():
         return False
+
+
+def add_history_server_job_fields(submission_id, job_change_message):
+    logger.info("add_history_server_job_fields")
+    log_dir = os.environ.get("BYTED_RAY_REDIRECT_LOG", "/tmp/ray/session_latest/logs")
+    node_id = job_change_message["driver_node_id"]
+    node = DataSource.nodes.get(node_id)
+    logger.info(f"node: {node}")
+    if node:
+        # Add podname/containername/logname/psm for generating logagent links.
+        node_name = node["nodeName"]
+        job_change_message["nodeName"] = node_name
+        container_name = ""
+        if "-head-" in node_name:
+            container_name = "ray-head"
+        else:
+            container_name = "ray-worker"
+
+        # logname
+        stdout_log_path = f"{log_dir}/job-driver-{submission_id}.log"
+        job_change_message["containerName"] = container_name
+        job_change_message["logName"] = stdout_log_path
+        hostip = node["nodeManagerAddress"]
+        psm = dashboard_consts.get_global_psm()
+        job_change_message["byted_log_url"] = generate_logagent_url(
+            psm, hostip, node_name, container_name, stdout_log_path
+        )
+
+        if (
+            ray_constants.RAY_ENABLE_DRIVER_ERR_LOG_FILE_ENVIRONMENT_VARIABLE
+            in os.environ
+        ):
+            stderr_log_path = f"{log_dir}/job-driver-{submission_id}.err"
+            job_change_message["errLogName"] = stderr_log_path
+            job_change_message["byted_err_log_url"] = generate_logagent_url(
+                psm, hostip, node_name, container_name, stderr_log_path
+            )
+
+    job_change_message["psm"] = dashboard_consts.get_global_psm()
+
+    return job_change_message
+
+
+# Reference to get_driver_jobs()
+# deprecated because this job is not required for jobs
+def add_driver_info_fields(reply, submission_id, job_change_message):
+    from ray.dashboard.modules.job.pydantic_models import DriverInfo
+
+    job_driver = None
+    for job_table_entry in reply.job_info_list:
+        if job_table_entry.config.ray_namespace.startswith(
+            ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
+        ):
+            # Skip jobs in any _ray_internal_ namespace
+            continue
+        job_id = job_table_entry.job_id.hex()
+        metadata = dict(job_table_entry.config.metadata)
+        logger.info(job_table_entry)
+        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+        # Ignore the job has no submission id
+        # if not job_submission_id:
+        #     continue
+        if submission_id == job_submission_id:
+            job_driver = DriverInfo(
+                id=job_id,
+                node_ip_address=job_table_entry.driver_address.ip_address,
+                pid=job_table_entry.driver_pid,
+            )
+            break
+
+    if job_driver:
+        job_change_message["driver_info"] = job_driver.dict()
+    else:
+        logger.error(f"Can not find driver info for submission id: {submission_id}")
+
+    return job_change_message

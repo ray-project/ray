@@ -340,6 +340,10 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal >= 1.0, < 2.0",
         "frozenlist >= 1.1, < 1.4",
         "requests >= 2.25.0, <3.0.0",
+        # BYTEDANCE INTERNAL
+        "bytedance.servicediscovery >= 0.1.0, < 0.17.0; sys_platform != 'darwin'",  # noqa
+        "bytedtos >= 1.1.13, < 2.0.0; sys_platform != 'darwin'",
+        # BYTEDANCE INTERNAL
     ]
 
 

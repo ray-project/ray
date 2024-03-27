@@ -141,6 +141,14 @@ def get_all_modules(module_type):
             continue
         if should_only_load_minimal_modules and not m.is_minimal_module():
             continue
+        # Note(wanxing): Do not load EventHead if current server is history server.
+        if (
+            os.getenv("BYTED_RAY_DASHBOARD_IS_HISTORY_SERVER") == "true"
+            and f"{m.__module__}.{m.__name__}"
+            == "ray.dashboard.modules.event.event_head.EventHead"
+        ):
+            logger.info(f"This is HistoryServer, ignore module {m}")
+            continue
         imported_modules.append(m)
     logger.info(f"Available modules: {imported_modules}")
     return imported_modules

@@ -16,6 +16,11 @@ from ray.core.generated import (
 )
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 from ray.dashboard.modules.actor import actor_consts
+from ray.dashboard.modules.job.history_server_storage import (
+    append_actor_events,
+    generate_logagent_url,
+)
+import ray.dashboard.consts as dashboard_consts
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -81,6 +86,43 @@ def actor_table_data_to_dict(message):
     return light_message
 
 
+def add_history_server_actor_fields(actor_table_data):
+    node_id = actor_table_data["address"]["rayletId"]
+    node = DataSource.nodes.get(node_id)
+    log_dir = os.environ.get("BYTED_RAY_REDIRECT_LOG", "/tmp/ray/session_latest/logs")
+    logger.debug(f"node: {node}")
+    if node:
+        # Add podname/containername/logname/psm for generating logagent links.
+        node_name = node["nodeName"]
+        actor_table_data["nodeName"] = node_name
+        container_name = ""
+        if "-head-" in node_name:
+            container_name = "ray-head"
+        else:
+            container_name = "ray-worker"
+
+        worker_id = actor_table_data["address"]["workerId"]
+        job_id = actor_table_data["jobId"]
+        pid = actor_table_data["pid"]
+        logname = f"{log_dir}/worker-{worker_id}-{job_id}-{pid}"
+        actor_table_data["containerName"] = container_name
+        actor_table_data["logName"] = logname
+        psm = dashboard_consts.get_global_psm()
+        hostip = actor_table_data["address"]["ipAddress"]
+        # TODO move to history server only logic, not in running cluster
+        # which can make ray cluster dont relay on Crypto
+        actor_table_data["bytedLogUrl"] = generate_logagent_url(
+            psm, hostip, node_name, container_name, f"{logname}.out"
+        )
+        actor_table_data["bytedErrUrl"] = generate_logagent_url(
+            psm, hostip, node_name, container_name, f"{logname}.err"
+        )
+
+    actor_table_data["psm"] = dashboard_consts.get_global_psm()
+
+    return actor_table_data
+
+
 class ActorHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -107,6 +149,10 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                     actors = {}
                     for message in reply.actor_table_data:
                         actor_table_data = actor_table_data_to_dict(message)
+                        if dashboard_consts.history_server_enabled():
+                            actor_table_data = add_history_server_actor_fields(
+                                actor_table_data
+                            )
                         actors[actor_table_data["actorId"]] = actor_table_data
                     # Update actors.
                     DataSource.actors.reset(actors)
@@ -158,6 +204,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             node_id = actor_table_data["address"]["rayletId"]
             if actor_table_data["state"] == "DEAD":
                 self.dead_actors_queue.append(actor_id)
+            if dashboard_consts.history_server_enabled():
+                actor_table_data = add_history_server_actor_fields(actor_table_data)
             # Update actors.
             DataSource.actors[actor_id] = actor_table_data
             # Update node actors (only when node_id is not Nil).
@@ -165,6 +213,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 node_actors = DataSource.node_actors.get(node_id, {})
                 node_actors[actor_id] = actor_table_data
                 DataSource.node_actors[node_id] = node_actors
+
+            return actor_table_data
 
         # Receive actors from channel.
         gcs_addr = self._dashboard_head.gcs_address
@@ -175,22 +225,42 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             try:
                 published = await subscriber.poll(batch_size=200)
                 start = time.monotonic()
+                actor_table_data_batch = []
                 for actor_id, actor_table_data in published:
                     if actor_id is not None:
                         # Convert to lower case hex ID.
                         actor_id = actor_id.hex()
-                        process_actor_data_from_pubsub(actor_id, actor_table_data)
+                        actor_table_data = process_actor_data_from_pubsub(
+                            actor_id, actor_table_data
+                        )
+                        actor_table_data_batch.append(actor_table_data)
+
+                # NOTE(wanxing): uploading actor events to history server storage in batches,
+                # which is more efficient than uploading them one by one.
+                if dashboard_consts.history_server_enabled():
+                    logger.info(
+                        f"append_actor_events, events count: {len(actor_table_data_batch)}"
+                    )
+                    elapsed_start = time.monotonic()
+                    append_actor_events(
+                        self._dashboard_head.history_server_storage,
+                        actor_table_data_batch,
+                    )
+                    logger.info(
+                        f"append_actor_events done, elapsed: {time.monotonic() - elapsed_start}."
+                    )
 
                 # Yield so that we can give time for
                 # user-facing APIs to reply to the frontend.
                 elapsed = time.monotonic() - start
-                await asyncio.sleep(elapsed)
+                waited_time_s = min(elapsed, 0.5)
+                await asyncio.sleep(waited_time_s)
 
                 # Update the internal states for debugging.
                 self.accumulative_event_processing_s += elapsed
                 self.total_published_events += len(published)
                 self.subscriber_queue_size = subscriber.queue_size
-                logger.debug(
+                logger.info(
                     f"Processing takes {elapsed}. Total process: " f"{len(published)}"
                 )
                 if self.accumulative_event_processing_s > 0:

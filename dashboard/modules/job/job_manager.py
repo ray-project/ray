@@ -38,11 +38,16 @@ from ray.dashboard.modules.job.common import (
     JobInfo,
     JobInfoStorageClient,
 )
-from ray.dashboard.modules.job.utils import file_tail_iterator
+from ray.dashboard.modules.job.utils import (
+    file_tail_iterator,
+    generate_job_id,
+    encrypt_aes,
+)
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray._private.event.event_logger import get_event_logger
 from ray.core.generated.event_pb2 import Event
+from ray._private.gcs_pubsub import GcsAioPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -87,24 +92,34 @@ class JobLogStorageClient:
     Disk storage for stdout / stderr of driver script logs.
     """
 
+    JOB_LOGS_PATH = "job-driver-{job_id}.log"
+    JOB_ERR_LOGS_PATH = "job-driver-{job_id}.err"
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10
     # Maximum number of characters to print out of the logs to avoid
     # HUGE log outputs that bring down the api server
     MAX_LOG_SIZE = 20000
 
-    def get_logs(self, job_id: str) -> str:
+    def get_logs(self, job_id: str, err_log=False) -> str:
+        job_path = self.get_log_file_path(job_id)
+        if err_log:
+            job_path = self.get_err_file_path(job_id)
+
         try:
-            with open(self.get_log_file_path(job_id), "r") as f:
+            with open(job_path, "r") as f:
                 return f.read()
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str) -> Iterator[List[str]]:
-        return file_tail_iterator(self.get_log_file_path(job_id))
+    def tail_logs(self, job_id: str, err_log=False) -> Iterator[List[str]]:
+        job_path = self.get_log_file_path(job_id)
+        if err_log:
+            job_path = self.get_err_file_path(job_id)
+
+        return file_tail_iterator(job_path)
 
     def get_last_n_log_lines(
-        self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
+        self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR, enable_err_log=False
     ) -> str:
         """
         Returns the last MAX_LOG_SIZE (20000) characters in the last
@@ -114,7 +129,7 @@ class JobLogStorageClient:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
         """
-        log_tail_iter = self.tail_logs(job_id)
+        log_tail_iter = self.tail_logs(job_id, err_log=enable_err_log)
         log_tail_deque = deque(maxlen=num_log_lines)
         for lines in log_tail_iter:
             if lines is None:
@@ -135,6 +150,97 @@ class JobLogStorageClient:
             ray._private.worker._global_node.get_logs_dir_path(),
             JOB_LOGS_PATH_TEMPLATE.format(submission_id=job_id),
         )
+
+    def get_err_file_path(self, job_id: str) -> Tuple[str, str]:
+        """
+        Get the file path to the err logs of a given job. Example:
+            /tmp/ray/session_date/logs/job-driver-{job_id}.err
+        """
+        return os.path.join(
+            ray._private.worker._global_node.get_logs_dir_path(),
+            self.JOB_ERR_LOGS_PATH.format(job_id=job_id),
+        )
+
+    # BYTEDANCE INTERNAL
+    def get_log_agent_file_path(
+        self, job_id: str, log_agent_link: str, encrypt_key: str
+    ) -> Tuple[str, str]:
+        """
+        Get the file path to the logs of a given job. Example:
+            /tmp/ray/session_date/logs/job-driver-{job_id}.log
+        """
+        if log_agent_link is None or encrypt_key is None:
+            return None
+
+        psm = os.environ.get("TCE_PSM")
+        hostip = os.environ.get("BYTED_RAY_POD_IP")
+        podname = os.environ.get("MY_POD_NAME")
+        containername = (
+            "ray-head" if os.environ.get("RAY_IP") == "127.0.0.1" else "worker"
+        )
+        logname = os.path.join(
+            ray._private.worker._global_node.get_logs_dir_path(),
+            self.JOB_LOGS_PATH.format(job_id=job_id),
+        )
+
+        if psm is None or hostip is None or podname is None or containername is None:
+            return None
+
+        if hostip.startswith("[") and hostip.endswith("]"):
+            hostip = hostip[1:-1]
+
+        params = (
+            f"psm={psm}&hostip={hostip}&podname={podname}&containername={containername}"
+        )
+        if logname is not None:
+            params = f"{params}&logname={logname}"
+        params = f"{params}&username=xxx"
+
+        code = encrypt_aes(encrypt_key, params)
+        if code is None:
+            return None
+        return f"{log_agent_link}code={code.decode('utf-8')}"
+
+    def get_err_agent_file_path(
+        self, job_id: str, log_agent_link: str, encrypt_key: str
+    ) -> Tuple[str, str]:
+        """
+        Get the file path to the err logs of a given job. Example:
+            /tmp/ray/session_date/logs/job-driver-{job_id}.err
+        """
+        if log_agent_link is None or encrypt_key is None:
+            return None
+
+        psm = os.environ.get("TCE_PSM")
+        hostip = os.environ.get("BYTED_RAY_POD_IP")
+        podname = os.environ.get("MY_POD_NAME")
+        containername = (
+            "ray-head" if os.environ.get("RAY_IP") == "127.0.0.1" else "worker"
+        )
+        logname = os.path.join(
+            ray._private.worker._global_node.get_logs_dir_path(),
+            self.JOB_ERR_LOGS_PATH.format(job_id=job_id),
+        )
+
+        if psm is None or hostip is None or podname is None or containername is None:
+            return None
+
+        if hostip.startswith("[") and hostip.endswith("]"):
+            hostip = hostip[1:-1]
+
+        params = (
+            f"psm={psm}&hostip={hostip}&podname={podname}&containername={containername}"
+        )
+        if logname is not None:
+            params = f"{params}&logname={logname}"
+        params = f"{params}&username=xxx"
+
+        code = encrypt_aes(encrypt_key, params)
+        if code is None:
+            return None
+        return f"{log_agent_link}code={code.decode('utf-8')}"
+
+    # BYTEDANCE INTERNAL
 
 
 class JobSupervisor:
@@ -174,6 +280,14 @@ class JobSupervisor:
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
 
+        self.log_agent_link = os.environ.get("BYTED_RAY_LOGAGENT_LINK", None)
+        self.encrypt_key = os.environ.get("BYTED_RAY_LOGAGENT_KEY", None)
+        self.enable_driver_err_log_file = (
+            ray_constants.RAY_ENABLE_DRIVER_ERR_LOG_FILE_ENVIRONMENT_VARIABLE
+            in os.environ
+        )
+        self.gcs_publisher = GcsAioPublisher(address=gcs_address)
+
     def _get_driver_runtime_env(
         self, resources_specified: bool = False
     ) -> Dict[str, Any]:
@@ -206,7 +320,7 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, logs_path: str, err_logs_path: str) -> subprocess.Popen:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -226,13 +340,32 @@ class JobSupervisor:
             child_process: Child process that runs the driver command. Can be
                 terminated or killed upon user calling stop().
         """
-        with open(logs_path, "w") as logs_file:
+
+        class FileHandler:
+            def __init__(self, *args):
+                self.files = args
+
+            def __enter__(self):
+                return self.files
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                for file in self.files:
+                    if file:
+                        file.close()
+
+        logs_file = open(logs_path, "w")
+        err_logs_file = (
+            open(err_logs_path, "w") if self.enable_driver_err_log_file else None
+        )
+        with FileHandler(logs_file, err_logs_file) as (logs_file, err_logs_file):
             child_process = subprocess.Popen(
                 self._entrypoint,
                 shell=True,
                 start_new_session=True,
                 stdout=logs_file,
-                stderr=subprocess.STDOUT,
+                stderr=err_logs_file
+                if self.enable_driver_err_log_file
+                else subprocess.STDOUT,
                 # Ray intentionally blocks SIGINT in all processes, so if the user wants
                 # to stop job through SIGINT, we need to unblock it in the child process
                 preexec_fn=lambda: signal.pthread_sigmask(
@@ -392,13 +525,29 @@ class JobSupervisor:
         )
         driver_node_id = ray.worker.global_worker.current_node_id.hex()
 
-        await self._job_info_client.put_status(
+        if not await self._job_info_client.put_status_with_result(
             self._job_id,
             JobStatus.RUNNING,
+            self.gcs_publisher,
             jobinfo_replace_kwargs={
                 "driver_agent_http_address": driver_agent_http_address,
                 "driver_node_id": driver_node_id,
             },
+        ):
+            # The jobsupervisor exits proactively, the job fails.
+            logger.warning("JobSupervisor put status fail, exit.")
+            ray.actor.exit_actor()
+
+        await self._job_info_client.put_log_path(
+            self._job_id,
+            self._log_client.get_log_agent_file_path(
+                self._job_id, self.log_agent_link, self.encrypt_key
+            ),
+            self._log_client.get_err_agent_file_path(
+                self._job_id, self.log_agent_link, self.encrypt_key
+            )
+            if self.enable_driver_err_log_file
+            else None,
         )
 
         try:
@@ -414,7 +563,8 @@ class JobSupervisor:
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = self._exec_entrypoint(log_path)
+            err_log_path = self._log_client.get_err_file_path(self._job_id)
+            child_process = self._exec_entrypoint(log_path, err_log_path)
             child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))
@@ -461,7 +611,9 @@ class JobSupervisor:
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
 
-                await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
+                await self._job_info_client.put_status_with_result(
+                    self._job_id, JobStatus.STOPPED, self.gcs_publisher
+                )
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
@@ -473,28 +625,35 @@ class JobSupervisor:
                     f"exited with code {return_code}"
                 )
                 if return_code == 0:
-                    await self._job_info_client.put_status(
+                    await self._job_info_client.put_status_with_result(
                         self._job_id,
                         JobStatus.SUCCEEDED,
+                        self.gcs_publisher,
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = self._log_client.get_last_n_log_lines(
+                        self._job_id, enable_err_log=self.enable_driver_err_log_file
+                    )
                     if log_tail is not None and log_tail != "":
-                        message = (
-                            "Job entrypoint command "
-                            f"failed with exit code {return_code}, "
-                            "last available logs (truncated to 20,000 chars):\n"
-                            + log_tail
-                        )
+                        if self.enable_driver_err_log_file:
+                            message = log_tail
+                        else:
+                            message = (
+                                "Job entrypoint command "
+                                f"failed with exit code {return_code}, "
+                                "last available logs (truncated to 20,000 chars):\n"
+                                + log_tail
+                            )
                     else:
                         message = (
                             "Job entrypoint command "
                             f"failed with exit code {return_code}. No logs available."
                         )
-                    await self._job_info_client.put_status(
+                    await self._job_info_client.put_status_with_result(
                         self._job_id,
                         JobStatus.FAILED,
+                        self.gcs_publisher,
                         message=message,
                         driver_exit_code=return_code,
                     )
@@ -504,9 +663,10 @@ class JobSupervisor:
                 f"command. {traceback.format_exc()}"
             )
             try:
-                await self._job_info_client.put_status(
+                await self._job_info_client.put_status_with_result(
                     self._job_id,
                     JobStatus.FAILED,
+                    self.gcs_publisher,
                     message=traceback.format_exc(),
                 )
             except Exception:
@@ -556,6 +716,11 @@ class JobManager:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
         except Exception:
             self.event_logger = None
+        self.gcs_publisher = GcsAioPublisher(address=self._gcs_address)
+        self.enable_driver_err_log_file = (
+            ray_constants.RAY_ENABLE_DRIVER_ERR_LOG_FILE_ENVIRONMENT_VARIABLE
+            in os.environ
+        )
 
         self._recover_running_jobs_event = asyncio.Event()
         run_background_task(self._recover_running_jobs())
@@ -660,7 +825,7 @@ class JobManager:
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
                             )
-                        await self._job_info_client.put_status(
+                        await self._job_info_client.put_status_with_result(
                             job_id,
                             JobStatus.FAILED,
                             message=err_msg,
@@ -683,7 +848,7 @@ class JobManager:
                         # actor is not created due to some unexpected errors.
                         # We will set the job status to FAILED.
                         logger.error(f"Failed to get job supervisor for job {job_id}.")
-                        await self._job_info_client.put_status(
+                        await self._job_info_client.put_status_with_result(
                             job_id,
                             JobStatus.FAILED,
                             message=(
@@ -716,9 +881,10 @@ class JobManager:
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
                     job_error_message = f"runtime_env setup failed: {e}"
                     job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
+                    await self._job_info_client.put_status_with_result(
                         job_id,
                         job_status,
+                        self.gcs_publisher,
                         message=job_error_message,
                     )
                 elif isinstance(e, ActorUnschedulableError):
@@ -729,9 +895,10 @@ class JobManager:
                     job_error_message = (
                         f"Job supervisor actor could not be scheduled: {e}"
                     )
-                    await self._job_info_client.put_status(
+                    await self._job_info_client.put_status_with_result(
                         job_id,
                         JobStatus.FAILED,
+                        self.gcs_publisher,
                         message=job_error_message,
                     )
                 else:
@@ -740,9 +907,10 @@ class JobManager:
                     )
                     job_error_message = f"Unexpected error occurred: {e}"
                     job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
+                    await self._job_info_client.put_status_with_result(
                         job_id,
                         job_status,
+                        self.gcs_publisher,
                         message=job_error_message,
                     )
 
@@ -948,9 +1116,13 @@ class JobManager:
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
         )
-        new_key_added = await self._job_info_client.put_info(
-            submission_id, job_info, overwrite=False
+        new_key_added = await self._job_info_client.put_info_with_result(
+            submission_id,
+            job_info,
+            overwrite=False,
+            gcs_publisher=self.gcs_publisher,
         )
+
         if not new_key_added:
             raise ValueError(
                 f"Job with submission_id {submission_id} already exists. "
@@ -1003,9 +1175,10 @@ class JobManager:
             logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
             )
-            await self._job_info_client.put_status(
+            await self._job_info_client.put_status_with_result(
                 submission_id,
                 JobStatus.FAILED,
+                self.gcs_publisher,
                 message=f"Failed to start supervisor actor {submission_id}: '{e}'",
             )
 
@@ -1067,22 +1240,42 @@ class JobManager:
         """Get info for all jobs."""
         return await self._job_info_client.get_all_jobs()
 
-    def get_job_logs(self, job_id: str) -> str:
+    def get_job_logs(self, job_id: str, err: bool = False) -> str:
         """Get all logs produced by a job."""
-        return self._log_client.get_logs(job_id)
+        return self._log_client.get_logs(job_id, err)
+
+    def get_job_err_logs(self, job_id: str) -> str:
+        """Get all logs produced by a job."""
+        return self._log_client.get_logs(job_id, err_log=True)
 
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         """Return an iterator following the logs of a job."""
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
-        for lines in self._log_client.tail_logs(job_id):
+        stdout_iter = self._log_client.tail_logs(job_id)
+        stderr_iter = (
+            self._log_client.tail_logs(job_id, err_log=True)
+            if self.enable_driver_err_log_file
+            else None
+        )
+        for lines in stdout_iter:
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)
                 if status.is_terminal():
                     return
-
+                # Tail err log
+                if stderr_iter:
+                    for lines in stderr_iter:
+                        if lines is None:
+                            break
+                        else:
+                            yield "".join(lines)
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:
                 yield "".join(lines)
+
+    def get_job_log_file_path(self, job_id: str) -> str:
+        """Get driver log file path of the job."""
+        return self._log_client.get_log_file_path(job_id)
