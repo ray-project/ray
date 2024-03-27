@@ -5,7 +5,6 @@ from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
-import pytest
 import requests
 from starlette.requests import Request
 
@@ -375,6 +374,8 @@ def start_telemetry_app():
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
     if test_draining:
@@ -391,6 +392,8 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
 
 
 def ping_grpc_healthz(channel, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.HealthzRequest()
     if test_draining:
@@ -406,6 +409,8 @@ def ping_grpc_healthz(channel, test_draining=False):
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
+    import pytest
+
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)

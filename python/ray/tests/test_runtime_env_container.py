@@ -44,10 +44,19 @@ def test_log_file_exists(podman_docker_cluster):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_ray_env_vars(podman_docker_cluster):
-    """Test ray.put and ray.get."""
+    """Test that env vars with prefix 'RAY_' are propagated to container."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_ray_env_vars.py", "--image", NESTED_IMAGE_NAME]
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_container_with_env_vars(podman_docker_cluster):
+    """Test blah blah."""
+
+    container_id = podman_docker_cluster
+    cmd = ["python", "tests/test_with_env_vars.py", "--image", NESTED_IMAGE_NAME]
     run_in_container([cmd], container_id)
 
 
@@ -82,7 +91,14 @@ def test_serve_basic(podman_docker_cluster):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-@pytest.mark.skip
+def test_job(podman_docker_cluster):
+
+    container_id = podman_docker_cluster
+    cmd = ["python", "tests/test_job.py", "--image", NESTED_IMAGE_NAME]
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_serve_telemetry(podman_docker_cluster):
     """Test Serve deployment telemetry."""
 
@@ -91,28 +107,10 @@ def test_serve_telemetry(podman_docker_cluster):
     run_in_container([cmd], container_id)
 
 
-EXPECTED_ERROR = (
-    "The 'container' field currently cannot be used "
-    "together with other fields of runtime_env."
-)
+EXPECTED_ERROR = "The 'container' field currently cannot be used " "together with"
 
 
 class TestContainerRuntimeEnvWithOtherRuntimeEnv:
-    def test_container_with_env_vars(self):
-        with pytest.raises(ValueError, match=EXPECTED_ERROR):
-
-            @ray.remote(
-                runtime_env={
-                    "container": {
-                        "image": NESTED_IMAGE_NAME,
-                        "worker_path": "/some/path/to/default_worker.py",
-                    },
-                    "env_vars": {"HELLO": "WORLD"},
-                }
-            )
-            def f():
-                return ray.put((1, 10))
-
     def test_container_with_pip(self):
         with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
@@ -173,7 +171,7 @@ class TestContainerRuntimeEnvWithOtherRuntimeEnv:
             def f():
                 return ray.put((1, 10))
 
-    def test_container_with_env_vars_and_working_dir(self):
+    def test_container_with_pip_and_working_dir(self):
         with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
             @ray.remote(
@@ -182,7 +180,7 @@ class TestContainerRuntimeEnvWithOtherRuntimeEnv:
                         "image": NESTED_IMAGE_NAME,
                         "worker_path": "/some/path/to/default_worker.py",
                     },
-                    "env_vars": {"HELLO": "WORLD"},
+                    "pip": ["requests"],
                     "working_dir": ".",
                 }
             )
