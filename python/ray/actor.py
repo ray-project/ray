@@ -488,6 +488,7 @@ class _ActorClassMetadata:
         num_gpus: The default number of GPUs required by the actor creation
             task.
         memory: The heap memory quota for this actor.
+        _gpu_memory: The gpu memory request in bytes for this actor.
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
@@ -514,6 +515,7 @@ class _ActorClassMetadata:
         num_cpus,
         num_gpus,
         memory,
+        _gpu_memory,
         object_store_memory,
         resources,
         accelerator_type,
@@ -532,6 +534,7 @@ class _ActorClassMetadata:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
+        self._gpu_memory = _gpu_memory
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.accelerator_type = accelerator_type
@@ -733,6 +736,8 @@ class ActorClass:
                 See :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
+            _gpu_memory: The gpu memory request in bytes for this task/actor
+                from a single gpu, rounded up to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_restarts: This specifies the maximum
                 number of times that the actor should be restarted when it dies
@@ -861,6 +866,7 @@ class ActorClass:
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
             memory: Restrict the heap memory usage of this actor.
+            _gpu_memory: Restrict the gpu memory usage of this actor.
             resources: The custom resources required by the actor creation
                 task.
             max_concurrency: The max number of concurrent calls to allow for
@@ -1658,6 +1664,12 @@ def _modify_class(cls):
 def _make_actor(cls, actor_options):
     Class = _modify_class(cls)
     _inject_tracing_into_class(Class)
+
+    if actor_options.get("_gpu_memory", None) and actor_options.get("num_gpus", None):
+        raise ValueError(
+            "Specifying both `num_gpus` and `_gpu_memory` is not allowed. "
+            "See more at: (link TBD)"
+        )
 
     if "max_restarts" in actor_options:
         if actor_options["max_restarts"] != -1:  # -1 represents infinite restart

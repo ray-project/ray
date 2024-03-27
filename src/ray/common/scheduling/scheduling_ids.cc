@@ -113,6 +113,25 @@ absl::flat_hash_set<int64_t> &ResourceID::UnitInstanceResources() {
   return set;
 }
 
+absl::flat_hash_set<int64_t> &ResourceID::RequestOnlyResources() {
+  static absl::flat_hash_set<int64_t> set{[]() {
+    absl::flat_hash_set<int64_t> res;
+
+    std::string request_only_resources = RayConfig::instance().request_only_resources();
+    if (!request_only_resources.empty()) {
+      std::vector<std::string> results;
+      boost::split(results, request_only_resources, boost::is_any_of(","));
+      for (std::string &result : results) {
+        int64_t resource_id = ResourceID(result).ToInt();
+        res.insert(resource_id);
+      }
+    }
+
+    return res;
+  }()};
+  return set;
+}
+
 }  // namespace scheduling
 
 }  // namespace ray

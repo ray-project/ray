@@ -740,6 +740,12 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HP
 /// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
+/// The scheduler will treat these resource as resource which can be requested
+/// but not stored as NodeResources. The main reason is the resource is different
+/// representation of other resource stored in NodeResources.
+/// For example: gpu_memory and GPU.
+RAY_CONFIG(std::string, request_only_resources, "gpu_memory")
+
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 

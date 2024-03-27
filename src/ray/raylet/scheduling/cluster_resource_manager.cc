@@ -86,6 +86,7 @@ bool ClusterResourceManager::UpdateNode(
 
   local_view.total = node_resources.total;
   local_view.available = node_resources.available;
+  // might need label transfer here
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
@@ -187,8 +188,10 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
   }
 
   NodeResources *resources = it->second.GetMutableLocalView();
+  const ResourceSet resource_request_adjusted =
+      resources->ConvertRelativeResources(resource_request.GetResourceSet());
 
-  resources->available -= resource_request.GetResourceSet();
+  resources->available -= resource_request_adjusted;
   resources->available.RemoveNegative();
 
   // TODO(swang): We should also subtract object store memory if the task has
@@ -214,7 +217,10 @@ bool ClusterResourceManager::HasSufficientResource(
     return false;
   }
 
-  return resources.available >= resource_request.GetResourceSet();
+  const ResourceSet resource_request_adjusted =
+      resources.ConvertRelativeResources(resource_request.GetResourceSet());
+
+  return resources.available >= resource_request_adjusted;
 }
 
 bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
@@ -223,13 +229,15 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
   if (it == nodes_.end()) {
     return false;
   }
-
   auto node_resources = it->second.GetMutableLocalView();
-  for (auto &resource_id : resource_set.ResourceIds()) {
+  const ResourceSet adjusted_resources =
+      node_resources->ConvertRelativeResources(resource_set);
+
+  for (auto &resource_id : adjusted_resources.ResourceIds()) {
     if (node_resources->total.Has(resource_id)) {
       auto available = node_resources->available.Get(resource_id);
       auto total = node_resources->total.Get(resource_id);
-      auto new_available = available + resource_set.Get(resource_id);
+      auto new_available = available + adjusted_resources.Get(resource_id);
       if (new_available > total) {
         new_available = total;
       }

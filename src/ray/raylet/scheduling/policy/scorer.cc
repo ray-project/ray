@@ -35,8 +35,11 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   }
 
   double node_score = 0.;
-  for (auto &resource_id : required_resources.ResourceIds()) {
-    const auto &request_resource = required_resources.Get(resource_id);
+  const ResourceSet resource_request_adjusted =
+      node_resources_ptr->ConvertRelativeResources(required_resources.GetResourceSet());
+
+  for (auto &resource_id : resource_request_adjusted.ResourceIds()) {
+    const auto &request_resource = resource_request_adjusted.Get(resource_id);
     const auto &node_available_resource = node_resources_ptr->available.Get(resource_id);
     auto score = Calculate(request_resource, node_available_resource);
     if (score < 0.) {

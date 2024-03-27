@@ -20,6 +20,27 @@
 namespace ray {
 using namespace ::ray::scheduling;
 
+NodeResources::NodeResources(const NodeResourceSet &resources) {
+  NodeResourceSet resources_adjusted = resources;
+  absl::flat_hash_map<std::string, std::string> node_labels;
+  if (resources.Has(ResourceID::GPU_Memory())) {
+    // if gpu_memory is set, default GPU value is 1
+    if (!resources.Has(ResourceID::GPU())) {
+      resources_adjusted.Set(ResourceID::GPU(), 1);
+    }
+    node_labels["_gpu_memory_per_gpu"] =
+        std::to_string(resources.Get(ResourceID::GPU_Memory()).Double() /
+                       resources_adjusted.Get(ResourceID::GPU()).Double());
+    resources_adjusted.Set(ResourceID::GPU_Memory(), 0);
+  } else {
+    node_labels["_gpu_memory_per_gpu"] = "0";
+  }
+
+  this->total = resources_adjusted;
+  this->available = resources_adjusted;
+  this->labels = node_labels;
+}
+
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
@@ -54,9 +75,27 @@ NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_available,
     const absl::flat_hash_map<std::string, std::string> &node_labels) {
   NodeResources node_resources;
-  node_resources.total = NodeResourceSet(resource_map_total);
-  node_resources.available = NodeResourceSet(resource_map_available);
-  node_resources.labels = node_labels;
+  auto resource_map_total_copy = resource_map_total;
+  auto resource_map_available_copy = resource_map_available;
+  auto node_labels_copy = node_labels;
+
+  if (resource_map_total.find("gpu_memory") != resource_map_total.end()) {
+    // if gpu_memory is set, default GPU value is 1
+    if (resource_map_total.find("GPU") == resource_map_total.end()) {
+      resource_map_total_copy["GPU"] = 1;
+    }
+    node_labels_copy["_gpu_memory_per_gpu"] = std::to_string(
+        resource_map_total.at("gpu_memory") / resource_map_total_copy.at("GPU"));
+    resource_map_total_copy.erase("gpu_memory");
+    resource_map_available_copy.erase("gpu_memory");
+  } else {
+    node_labels_copy["_gpu_memory_per_gpu"] = "0";
+  }
+
+  node_resources.total = NodeResourceSet(resource_map_total_copy);
+  node_resources.available = NodeResourceSet(resource_map_available_copy);
+  node_resources.labels = node_labels_copy;
+
   return node_resources;
 }
 
@@ -92,17 +131,21 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     RAY_LOG(DEBUG) << "At pull manager capacity";
     return false;
   }
+  const ResourceSet resource_request_adjusted =
+      this->ConvertRelativeResources(resource_request.GetResourceSet());
 
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
-    return available_resources >= resource_request.GetResourceSet();
+    return available_resources >= resource_request_adjusted;
   }
-  return this->available >= resource_request.GetResourceSet();
+  return this->available >= resource_request_adjusted;
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  return this->total >= resource_request.GetResourceSet();
+  const ResourceSet resource_request_adjusted =
+      this->ConvertRelativeResources(resource_request.GetResourceSet());
+  return this->total >= resource_request_adjusted;
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {
@@ -126,6 +169,31 @@ std::string NodeResources::DebugString() const {
   buffer << ", \"draining_deadline_timestamp_ms\": " << draining_deadline_timestamp_ms
          << "}";
   return buffer.str();
+}
+
+const ResourceSet NodeResources::ConvertRelativeResources(
+    const ResourceSet &resource) const {
+  ResourceSet adjusted_resource = resource;
+  // convert gpu_memory to GPU
+  if (resource.Has(ResourceID::GPU_Memory())) {
+    double total_gpu_memory_per_gpu = 0;
+    if (this->labels.find("_gpu_memory_per_gpu") != this->labels.end()) {
+      // TODO: raise exception if this is not true
+      total_gpu_memory_per_gpu = std::stod(this->labels.at("_gpu_memory_per_gpu"));
+    }
+    double num_gpus_request = 0;
+    if (total_gpu_memory_per_gpu > 0) {
+      // round up to closes kResourceUnitScaling
+      num_gpus_request =
+          (resource.Get(ResourceID::GPU_Memory()).Double() / total_gpu_memory_per_gpu) +
+          1 / static_cast<double>(2 * kResourceUnitScaling);
+    } else {
+      return resource;
+    }
+    adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
+    adjusted_resource.Set(ResourceID::GPU_Memory(), 0);
+  }
+  return adjusted_resource;
 }
 
 std::string NodeResources::DictString() const { return DebugString(); }
@@ -153,6 +221,30 @@ const NodeResourceInstanceSet &NodeResourceInstances::GetAvailableResourceInstan
 
 const NodeResourceInstanceSet &NodeResourceInstances::GetTotalResourceInstances() const {
   return this->total;
+};
+
+const ResourceSet NodeResourceInstances::ConvertRelativeResources(
+    const ResourceSet &resource) const {
+  ResourceSet adjusted_resource = resource;
+  // convert gpu_memory to GPU
+  if (resource.Has(ResourceID::GPU_Memory())) {
+    double total_gpu_memory_per_gpu = 0;
+    if (this->labels.find("_gpu_memory_per_gpu") != this->labels.end()) {
+      total_gpu_memory_per_gpu = std::stod(this->labels.at("_gpu_memory_per_gpu"));
+    }
+    double num_gpus_request = 0;
+    if (total_gpu_memory_per_gpu > 0) {
+      // round up to closes kResourceUnitScaling
+      num_gpus_request =
+          (resource.Get(ResourceID::GPU_Memory()).Double() / total_gpu_memory_per_gpu) +
+          1 / static_cast<double>(2 * kResourceUnitScaling);
+    } else {
+      return resource;
+    }
+    adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
+    adjusted_resource.Set(ResourceID::GPU_Memory(), 0);
+  }
+  return adjusted_resource;
 };
 
 }  // namespace ray
