@@ -17,9 +17,9 @@ ln -s /usr/bin/clang-12 /usr/bin/clang
 
 # Install miniconda
 curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-aarch64.sh > /tmp/miniconda.sh
-bash /tmp/miniconda.sh -b -u -p /root/miniconda3
+bash /tmp/miniconda.sh -b -u -p /usr/local/bin/miniconda3
 rm /tmp/miniconda.sh
-/root/miniconda3/bin/conda init bash
+/usr/local/bin/miniconda3/bin/conda init bash
 
 # Install Bazelisk
 curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-arm64 --output /usr/local/bin/bazelisk
