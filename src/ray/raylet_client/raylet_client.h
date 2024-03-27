@@ -385,14 +385,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  /// Ask the raylet to spill an object to external storage.
-  /// \param object_id The ID of the object to be spilled.
-  /// \param callback Callback that will be called after raylet completes the
-  /// object spilling (or it fails).
-  void RequestObjectSpillage(
-      const ObjectID &object_id,
-      const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
-
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   /// Implements WorkerLeaseInterface.

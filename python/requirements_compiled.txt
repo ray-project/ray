@@ -116,7 +116,7 @@ argon2-cffi==23.1.0
     #   notebook
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-array-record==0.5.0 ; sys_platform != 'darwin' and platform_system != "Windows"
+array-record==0.5.0 ; sys_platform != "darwin" and platform_system != "Windows"
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow-datasets
@@ -159,9 +159,7 @@ aws-sam-translator==1.81.0
 aws-xray-sdk==2.12.1
     # via moto
 ax-platform==0.3.2
-    # via
-    #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-    #   ax-platform
+    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.40.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 azure-cli-telemetry==1.0.8
@@ -380,7 +378,6 @@ cython==0.29.32
 dask==2022.10.1
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
-    #   dask
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
@@ -465,15 +462,12 @@ etils==1.3.0
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
-    #   etils
     #   orbax-checkpoint
     #   tensorflow-datasets
 evaluate==0.4.0
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
 everett==3.3.0
-    # via
-    #   comet-ml
-    #   everett
+    # via comet-ml
 exceptiongroup==1.2.0
     # via anyio
 execnet==2.0.2
@@ -492,6 +486,8 @@ fastapi==0.109.2
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   gradio
+fastavro==1.9.4
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 fasteners==0.19
     # via
     #   google-apitools
@@ -891,7 +887,6 @@ joblib==1.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   scikit-learn
-    #   scikit-optimize
 jschema-to-python==1.2.3
     # via cfn-lint
 json5==0.9.14
@@ -1004,8 +999,6 @@ lightgbm==3.3.5
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
     #   hebo
-    #   lightgbm-ray
-    # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 linear-operator==0.4.0
     # via
     #   botorch
@@ -1090,9 +1083,7 @@ monotonic==1.6
 more-itertools==10.1.0
     # via configspace
 moto==4.2.12
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   moto
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 mpmath==1.3.0
     # via sympy
 msal==1.18.0b1
@@ -1297,7 +1288,6 @@ numpy==1.24.4
     #   recsim
     #   scikit-image
     #   scikit-learn
-    #   scikit-optimize
     #   scipy
     #   shimmy
     #   stanio
@@ -1321,8 +1311,8 @@ numpy==1.24.4
     #   triad
     #   tune-sklearn
     #   utilsforecast
+    #   webdataset
     #   xgboost
-    #   xgboost-ray
     #   zoopt
 oauth2client==4.1.3
     # via
@@ -1418,7 +1408,6 @@ packaging==21.3
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
-    #   lightgbm-ray
     #   matplotlib
     #   mlflow
     #   modin
@@ -1440,7 +1429,6 @@ packaging==21.3
     #   torchmetrics
     #   transformers
     #   utilsforecast
-    #   xgboost-ray
 pandas==1.5.3
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1466,7 +1454,6 @@ pandas==1.5.3
     #   statsmodels
     #   triad
     #   utilsforecast
-    #   xgboost-ray
 pandocfilters==1.5.0
     # via nbconvert
 paramiko==2.12.0
@@ -1616,8 +1603,6 @@ py4j==0.10.9.7
     # via
     #   hyperopt
     #   pyspark
-pyaml==23.9.7
-    # via scikit-optimize
 pyarrow==12.0.1
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1788,9 +1773,7 @@ python-dateutil==2.8.2
     #   pandas
     #   segment-analytics-python
 python-jose==3.3.0
-    # via
-    #   moto
-    #   python-jose
+    # via moto
 python-json-logger==2.0.7
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
@@ -1838,7 +1821,6 @@ pyyaml==6.0.1
     #   myst-parser
     #   optuna
     #   orbax-checkpoint
-    #   pyaml
     #   pymars
     #   pytorch-lightning
     #   ray
@@ -1861,7 +1843,6 @@ querystring-parser==1.2.4
     # via
     #   raydp
     #   tune-sklearn
-    #   xgboost-ray
 raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 recsim==0.2.4 ; sys_platform != "darwin" or platform_machine != "arm64"
@@ -1984,7 +1965,6 @@ scikit-learn==1.0.2 ; python_version < "3.11"
     #   lightgbm
     #   mlflow
     #   pymars
-    #   scikit-optimize
     #   torch-geometric
     #   tune-sklearn
 scipy==1.10.1 ; python_version < "3.11"
@@ -2011,7 +1991,6 @@ scipy==1.10.1 ; python_version < "3.11"
     #   recsim
     #   scikit-image
     #   scikit-learn
-    #   scikit-optimize
     #   statsforecast
     #   statsmodels
     #   torch-cluster
@@ -2159,7 +2138,6 @@ stanio==0.3.0
 starlette==0.36.3
     # via
     #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   fastapi
 statsforecast==1.7.0
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
@@ -2527,17 +2505,12 @@ wrapt==1.16.0
     #   deprecated
     #   tensorflow
     #   tensorflow-datasets
-    #   xgboost-ray
 wurlitzer==3.0.3
     # via comet-ml
 xgboost==1.7.6
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
     #   hebo
-    #   xgboost-ray
-    # via
-    #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
-    #   lightgbm-ray
 xlrd==2.0.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 xmltodict==0.13.0

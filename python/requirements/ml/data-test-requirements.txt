@@ -6,6 +6,7 @@ tensorflow-datasets==4.9.0
 datasets
 pytest-repeat
 soundfile
+fastavro
 google-cloud-bigquery
 google-cloud-core==2.4.1
 google-cloud-bigquery-storage==2.24.0

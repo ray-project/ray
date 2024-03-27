@@ -76,6 +76,10 @@ class TorchNoisyMLPEncoder(TorchModel, Encoder):
     def _forward(self, inputs: dict, **kwargs) -> dict:
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
+    def _reset_noise(self):
+        # Reset the noise in the complete network.
+        self.net.reset_noise()
+
 
 class TorchNoisyMLPHead(TorchModel):
     def __init__(self, config: NoisyMLPHeadConfig) -> None:
@@ -120,6 +124,10 @@ class TorchNoisyMLPHead(TorchModel):
     @auto_fold_unfold_time("input_specs")
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.net(inputs)
+
+    def _reset_noise(self) -> None:
+        # Reset the noise in the complete network.
+        self.net.reset_noise()
 
 
 class TorchNoisyMLP(nn.Module):
@@ -293,3 +301,8 @@ class TorchNoisyMLP(nn.Module):
 
     def forward(self, x):
         return self.mlp(x.type(self.expected_input_dtype))
+
+    def _reset_noise(self):
+        # Reset the noise for all modules (layers).
+        for module in self.modules():
+            module.reset_noise()

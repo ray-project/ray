@@ -255,7 +255,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled + ts
+                        to_module, t=self.global_num_env_steps_sampled
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -283,6 +283,7 @@ class SingleAgentEnvRunner(EnvRunner):
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
+            self.global_num_env_steps_sampled += self.num_envs
 
             for env_index in range(self.num_envs):
                 # TODO (simon): This might be unfortunate if a user needs to set a
@@ -451,7 +452,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     to_env = self.module.forward_exploration(
-                        to_module, t=self.global_num_env_steps_sampled + ts
+                        to_module, t=self.global_num_env_steps_sampled
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -541,6 +542,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         "on_episode_step", env_index, episodes
                     )
             ts += self.num_envs
+            self.global_num_env_steps_sampled += self.num_envs
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
