@@ -36,11 +36,11 @@ To understand the following content better, you should understand the difference
     # [...]
     spec:
       runtimeEnvYAML: |
-      pip:
-        - requests==2.26.0
-        - pendulum==2.1.2
-      env_vars:
-        KEY: "VALUE"
+        pip:
+          - requests==2.26.0
+          - pendulum==2.1.2
+        env_vars:
+          KEY: "VALUE"
     ```
 
   See {ref}`Runtime Environments <runtime-environments>` for more details. _(New in KubeRay version 1.0.0)_

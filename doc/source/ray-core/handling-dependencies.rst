@@ -147,11 +147,11 @@ You can specify a runtime environment for your whole job, whether running a scri
     # [...]
     spec:
       runtimeEnvYAML: |
-      pip:
-        - requests==2.26.0
-        - pendulum==2.1.2
-      env_vars:
-        KEY: "VALUE"
+        pip:
+          - requests==2.26.0
+          - pendulum==2.1.2
+        env_vars:
+          KEY: "VALUE"
 
 .. warning::
 
