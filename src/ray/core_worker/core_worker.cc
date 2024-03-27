@@ -1807,7 +1807,9 @@ Status CoreWorker::GetLocationFromOwner(
   auto location_by_id =
   std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
-  for (const auto& [owner_address, owner_object_ids] : objects_by_owner) {
+  for (const auto& pair : objects_by_owner) {
+    const auto& owner_address = pair.first;
+    const auto& owner_object_ids = pair.second;
     auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
     request.set_intended_worker_id(owner_address.worker_id());
@@ -1818,7 +1820,7 @@ Status CoreWorker::GetLocationFromOwner(
     
     client->GetObjectLocationsOwner(
     request,
-    [owner_object_ids, mutex, num_remaining, ready_promise, location_by_id, this, owner_address](
+    [owner_object_ids, mutex, num_remaining, ready_promise, location_by_id, owner_address](
         const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
       absl::MutexLock lock(mutex.get());
       if (status.ok()) {
