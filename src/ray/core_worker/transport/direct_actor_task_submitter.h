@@ -295,7 +295,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// pair key: timestamp in ms when this task should be considered as timeout.
     /// pair value: task specification, and associated task execution status.
     ///
-    /// If we got a actor dead notification, the error_info from that death cause is used.
+    /// If we got an actor dead notification, the error_info from that death cause is used.
     /// If it timed out, it's possible that the Actor is not dead yet, so we use
     /// `timeout_error_info`.
     struct PendingTaskWaitingForDeathInfo {
