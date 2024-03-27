@@ -179,6 +179,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const DeleteSpilledObjectsRequest &request,
       const ClientCallback<DeleteSpilledObjectsReply> &callback) {}
 
+  virtual void DestroyExternalStorage(
+      const DestroyExternalStorageRequest &request,
+      const ClientCallback<DestroyExternalStorageReply> &callback) {}
+
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }

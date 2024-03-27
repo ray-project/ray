@@ -52,6 +52,7 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(SpillObjects)                   \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RestoreSpilledObjects)          \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteSpilledObjects)           \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DestroyExternalStorage)         \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PlasmaObjectReady)              \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(Exit)                           \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner)              \
@@ -77,6 +78,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DestroyExternalStorage)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)              \
