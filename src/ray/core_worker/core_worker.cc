@@ -3812,9 +3812,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   for (int i = 0; i < request.object_id_size(); ++i) {
     auto object_id = ObjectID::FromBinary(request.object_id(i));
     auto object_info = reply->add_object_location_infos();
-    // TODO Assuming FillObjectInformation only returns OK for now
-    // If it can return errors, you need to adjust overall_status based on individual
-    // results Only override the status when it's OK
+    // TODO(zhilong): Need to deal with fail query for each object?
     if (overall_status.ok()) {
       overall_status = reference_counter_->FillObjectInformation(object_id, object_info);
     }
