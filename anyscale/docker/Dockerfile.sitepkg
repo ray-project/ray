@@ -19,13 +19,20 @@ RUN --mount=type=bind,source=$FIND_LINKS_PATH,target=$FIND_LINKS_PATH <<EOF
 
 set -euo pipefail
 
+SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
+
+if [[ -d "${SITE_PKG_DIR}/ray" ]]; then
+    # Needs to uninstall ray first, otherwise pip will not overwrite the
+    # existing files if OSS already published a wheel with the same version.
+    # This step is required only for ray-ml images.
+    $HOME/anaconda3/bin/pip uninstall -y ray
+fi
+
 $HOME/anaconda3/bin/pip --no-cache-dir \
     install -c requirements_compiled.txt "${WHEEL_PATH}"[all] \
     --find-links "${FIND_LINKS_PATH}"
 
 # Now do the packaging.
-
-SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
 
 # When pip install, it will generate the pyc files, but the compilation is not
 # deterministic (even after we fix the timestamp in the pyc file headers).

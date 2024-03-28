@@ -36,6 +36,15 @@ RUN \
 
 set -euo pipefail
 
+SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
+
+if [[ -d "${SITE_PKG_DIR}/ray" ]]; then
+    # Needs to uninstall ray first, otherwise pip will not overwrite the
+    # existing files if OSS already published a wheel with the same version.
+    # This step is required only for ray-ml images.
+    $HOME/anaconda3/bin/pip uninstall -y ray
+fi
+
 # Installs extra runtime requirements.
 $HOME/anaconda3/bin/pip --no-cache-dir \
     install -c requirements_compiled.txt -r runtime-requirements.txt
