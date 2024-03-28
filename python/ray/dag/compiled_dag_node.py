@@ -19,13 +19,16 @@ from ray.experimental.channel import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
-MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+DEFAULT_NUM_BUFFERS = 1
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> Channel:
+def do_allocate_channel(
+    self, buffer_size_bytes: int, num_buffers: int, num_readers: int = 1
+) -> Channel:
     """Generic actor method to allocate an output channel.
 
     Args:
@@ -35,7 +38,7 @@ def do_allocate_channel(self, buffer_size_bytes: int, num_readers: int = 1) -> C
     Returns:
         The allocated channel.
     """
-    self._output_channel = Channel(buffer_size_bytes, num_readers)
+    self._output_channel = Channel(buffer_size_bytes, num_readers, num_buffers)
     return self._output_channel
 
 
@@ -186,6 +189,7 @@ class CompiledDAG:
         buffer_size_bytes: Optional[int],
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
+        _num_buffers: Optional[int] = None,
     ):
         """
         Args:
@@ -203,17 +207,26 @@ class CompiledDAG:
                 caller is responsible for preventing deadlock, i.e. if the
                 input queue is full, another asyncio task is reading from the
                 DAG output.
+            _num_buffers: The number of buffers to allocate for each
+                (intermediate) output of the DAG. Passing N=1 means that
+                executors adjacent in the DAG will be synchronized; the
+                upstream executor may not proceed until the downstream executor
+                has finished reading. Passing N>1 allows the upstream executor
+                to execute up to N tasks past the downstream executor.
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
-            self._buffer_size_bytes = MAX_BUFFER_SIZE
+            self._buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
             raise ValueError(
                 "`buffer_size_bytes` must be a positive integer, found "
                 f"{self._buffer_size_bytes}"
             )
+        self._num_buffers: Optional[int] = _num_buffers
+        if self._num_buffers is None:
+            self._num_buffers = DEFAULT_NUM_BUFFERS
 
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
@@ -390,6 +403,7 @@ class CompiledDAG:
                         do_allocate_channel,
                         buffer_size_bytes=self._buffer_size_bytes,
                         num_readers=task.num_readers,
+                        num_buffers=self._num_buffers,
                     )
                 )
                 self.actor_refs.add(task.dag_node._get_actor_handle())
@@ -397,6 +411,7 @@ class CompiledDAG:
                 task.output_channel = Channel(
                     buffer_size_bytes=self._buffer_size_bytes,
                     num_readers=task.num_readers,
+                    num_buffers=self._num_buffers,
                 )
             else:
                 assert isinstance(task.dag_node, MultiOutputNode)

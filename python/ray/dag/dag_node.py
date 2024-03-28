@@ -110,14 +110,30 @@ class DAGNode(DAGNodeBase):
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
+        _num_buffers: Optional[int] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
         Args:
             buffer_size_bytes: The maximum size of messages that can be passed
                 between tasks in the DAG.
-            max_concurrency: The max number of concurrent executions to allow for
-                the DAG.
+            enable_asyncio: Whether to enable asyncio. If enabled, caller must
+                be running in an event loop and must use `execute_async` to
+                invoke the DAG. Otherwise, the caller should use `execute` to
+                invoke the DAG.
+            async_max_queue_size: Optional parameter to limit how many DAG
+                inputs can be queued at a time. The actual number of concurrent
+                DAG invocations may be higher than this, if there are already
+                inputs being processed by the DAG executors. If used, the
+                caller is responsible for preventing deadlock, i.e. if the
+                input queue is full, another asyncio task is reading from the
+                DAG output.
+            _num_buffers: The number of buffers to allocate for each
+                (intermediate) output of the DAG. Passing N=1 means that
+                executors adjacent in the DAG will be synchronized; the
+                upstream executor may not proceed until the downstream executor
+                has finished reading. Passing N>1 allows the upstream executor
+                to execute up to N tasks past the downstream executor.
 
         Returns:
             A compiled DAG.
@@ -125,8 +141,9 @@ class DAGNode(DAGNodeBase):
         return build_compiled_dag_from_ray_dag(
             self,
             buffer_size_bytes,
-            enable_asyncio,
-            async_max_queue_size,
+            enable_asyncio=enable_asyncio,
+            async_max_queue_size=async_max_queue_size,
+            _num_buffers=_num_buffers,
         )
 
     def execute(
