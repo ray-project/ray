@@ -150,10 +150,13 @@ class MutableObjectNetworkManager {
   std::function<std::shared_ptr<MutableObjectReaderInterface>(const NodeID &node_id)>
       raylet_client_factory_;
 
+  // Object manager for the mutable objects.
+  std::unique_ptr<ray::experimental::MutableObjectManager> object_manager_;
+
+  // Manages RPCs for inter-node communication of mutable objects.
   instrumented_io_context io_service_;
   boost::asio::io_service::work io_work_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-  std::unique_ptr<ray::experimental::MutableObjectManager> object_manager_;
   std::thread io_thread_;
 };
 
