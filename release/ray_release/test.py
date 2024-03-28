@@ -276,6 +276,7 @@ class Test(dict):
         Returns the byod image tag to use for this test.
         """
         byod_image_tag = os.environ.get("RAY_IMAGE_TAG")
+        logger.info(f"In get_byod_base_image_tag and this is RAY_IMAGE_TAG: {byod_image_tag}")
         if byod_image_tag:
             # Use the image tag specified in the environment variable.
             # TODO(can): this is a temporary backdoor that should be removed
@@ -297,6 +298,7 @@ class Test(dict):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
         python_version = f"py{self.get_python_version().replace('.',   '')}"
+        logger.info(f"ray_version={ray_version},python_version={python_version}")
         return f"{ray_version}-{python_version}-{self.get_byod_type()}"
 
     def get_byod_image_tag(self) -> str:

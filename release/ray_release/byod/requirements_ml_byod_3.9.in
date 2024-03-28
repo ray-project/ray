@@ -21,6 +21,7 @@ gsutil
 ipywidgets
 jupytext
 lm_eval
+locust
 matplotlib
 memray
 modin
