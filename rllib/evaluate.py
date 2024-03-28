@@ -219,7 +219,7 @@ def run(
     # Merge with `evaluation_config` (first try from command line, then from
     # pkl file).
     evaluation_config = copy.deepcopy(
-        config_args.get("evaluation_config", config.get("evaluation_config", {}))
+        config_args.get("evaluation_config") or config.get("evaluation_config") or {}
     )
     config = merge_dicts(config, evaluation_config)
     # Merge with command line `--config` settings (if not already the same anyways).
