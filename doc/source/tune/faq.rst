@@ -570,17 +570,7 @@ be automatically fetched and passed to your trainable as a parameter.
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If an upload directory is provided, Tune will automatically sync results from the ``RAY_AIR_LOCAL_CACHE_DIR`` to the given directory,
-natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
-`fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
-
-Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __log_1_start__
-    :end-before: __log_1_end__
+See :ref:`tune-cloud-checkpointing`.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
