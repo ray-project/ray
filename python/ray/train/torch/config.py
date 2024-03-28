@@ -4,15 +4,17 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
 
-import torch
 import torch.distributed as dist
 
 import ray
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+from ray.air._internal.accelerator_utils import try_import_torch
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.util import PublicAPI
+
+torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +126,21 @@ def _shutdown_torch(destroy_process_group=False):
     devices = get_devices()
     if destroy_process_group:
         dist.destroy_process_group()
-    if torch.cuda.is_available():
+
+    from ray.air._internal.accelerator_utils import (
+        get_torch_device_manager_by_runtime_context,
+    )
+
+    device_manager = get_torch_device_manager_by_runtime_context()
+    if device_manager:
+        device_module = device_manager.get_device_module()
+    else:
+        device_module = torch.cuda
+    print(f"========device module: {device_module}=========")
+    if device_module.is_available():
         for device in devices:
-            with torch.cuda.device(device):
-                torch.cuda.empty_cache()
+            with device_module.device(device):
+                device_module.empty_cache()
 
 
 def _set_torch_distributed_env_vars():

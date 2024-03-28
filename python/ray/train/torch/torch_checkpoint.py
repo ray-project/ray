@@ -4,8 +4,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-import torch
-
+from ray.air._internal.accelerator_utils import try_import_torch
 from ray.air._internal.torch_utils import (
     consume_prefix_in_state_dict_if_present_not_in_place,
     load_torch_model,
@@ -16,6 +15,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+torch, _ = try_import_torch()
 ENCODED_DATA_KEY = "torch_encoded_data"
 
 
