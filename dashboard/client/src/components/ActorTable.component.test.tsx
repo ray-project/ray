@@ -348,5 +348,35 @@ describe("ActorTable", () => {
     expect(actor2UptimeRow.compareDocumentPosition(actor1UptimeRow)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear before actor1Row
+
+    // Sort by GPU utilization
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /GPU Utilization/ }));
+    const actor1GPURow = screen.getByRole("row", {
+      name: /ACTOR_1/,
+    });
+    const actor2GPURow = screen.getByRole("row", {
+      name: /ACTOR_2/,
+    });
+    expect(within(actor1GPURow).getByText("ACTOR_1")).toBeInTheDocument();
+    expect(within(actor2GPURow).getByText("ACTOR_2")).toBeInTheDocument();
+    expect(actor1GPURow.compareDocumentPosition(actor2GPURow)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    ); // actor1Row appear before actor2Row
+
+    // Sort by GRAM usage
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /GRAM Usage/ }));
+    const actor1GRAMRow = screen.getByRole("row", {
+      name: /ACTOR_1/,
+    });
+    const actor2GRAMRow = screen.getByRole("row", {
+      name: /ACTOR_2/,
+    });
+    expect(within(actor1GRAMRow).getByText("ACTOR_1")).toBeInTheDocument();
+    expect(within(actor2GRAMRow).getByText("ACTOR_2")).toBeInTheDocument();
+    expect(actor2GRAMRow.compareDocumentPosition(actor1GRAMRow)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    ); // actor2Row appear before actor1Row
   });
 });
