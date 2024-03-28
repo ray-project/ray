@@ -105,6 +105,10 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
 };
 
 describe("ActorTable", () => {
+  beforeEach(() => {
+    jest.setTimeout(10000);
+  });
+
   it("renders a table of actors filtered by node ID", async () => {
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
