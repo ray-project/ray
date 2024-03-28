@@ -263,7 +263,7 @@ class FaultTolerantActorManager:
         self._restored_actors = set()
         self.add_actors(actors or [])
 
-        # Maps outstanding async requests to the ids of the actors that
+        # Maps outstanding async requests to the IDs of the actor IDs that
         # are executing them.
         self._in_flight_req_to_actor_id: Mapping[ray.ObjectRef, int] = {}
 
@@ -566,7 +566,7 @@ class FaultTolerantActorManager:
         *,
         healthy_only=True,
         remote_actor_ids: List[int] = None,
-        timeout_seconds=None,
+        timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
     ) -> RemoteCallResults:
@@ -579,10 +579,9 @@ class FaultTolerantActorManager:
                 of specified remote actors.
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
-            timeout_seconds: Ray.get() timeout. Default is None.
-                Setting this to 0.0 effectively makes all the
-                remote calls fire-and-forget, while setting timeout_seconds to None
-                make them synchronous calls.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of the context of this manager.
@@ -631,8 +630,10 @@ class FaultTolerantActorManager:
         """Calls given functions against each actors without waiting for results.
 
         Args:
-            func: A single, or a list of Callables, that get applied on the list
-                of specified remote actors.
+            func: A single Callable applied to all specified remote actors or a list
+                of Callables, that get applied on the list of specified remote actors.
+                In the latter case, both list of Callables and list of specified actors
+                must have the same length.
             tag: A tag to identify the results from this async call.
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
@@ -707,16 +708,18 @@ class FaultTolerantActorManager:
         return len(remote_calls)
 
     def _filter_calls_by_tag(
-        self, tags
+        self, tags: Union[str, List[str], Tuple[str]]
     ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
-        """Return all the in flight requests that match the given tags.
+        """Return all the in flight requests that match the given tags, if any.
 
         Args:
-            tags: A str or a list of str. If tags is empty, return all the in flight
+            tags: A str or a list/tuple of str. If tags is empty, return all the in
+                flight requests.
 
         Returns:
-            A tuple of corresponding (remote_calls, remote_actor_ids, valid_tags)
-
+            A tuple consisting of a list of the remote calls that match the tag(s),
+            a list of the corresponding remote actor IDs for these calls (same length),
+            and a list of the tags corresponding to these calls (same length).
         """
         if isinstance(tags, str):
             tags = {tags}
@@ -724,24 +727,25 @@ class FaultTolerantActorManager:
             tags = set(tags)
         else:
             raise ValueError(
-                f"tags must be either a str or a list of str, got {type(tags)}."
+                f"tags must be either a str or a list/tuple of str, got {type(tags)}."
             )
         remote_calls = []
         remote_actor_ids = []
         valid_tags = []
         for call, (tag, actor_id) in self._in_flight_req_to_actor_id.items():
             # the default behavior is to return all ready results.
-            if not len(tags) or tag in tags:
+            if len(tags) == 0 or tag in tags:
                 remote_calls.append(call)
                 remote_actor_ids.append(actor_id)
                 valid_tags.append(tag)
+
         return remote_calls, remote_actor_ids, valid_tags
 
     @DeveloperAPI
     def fetch_ready_async_reqs(
         self,
         *,
-        tags: Union[str, List[str]] = (),
+        tags: Union[str, List[str], Tuple[str]] = (),
         timeout_seconds: Union[None, int] = 0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,

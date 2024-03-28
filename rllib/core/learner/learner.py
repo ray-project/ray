@@ -20,6 +20,8 @@ from typing import (
     Union,
 )
 
+import tree  # pip install dm_tree
+
 import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
@@ -283,7 +285,7 @@ class Learner:
 
         # Registered metrics (one sub-dict per module ID) to be returned from
         # `Learner.update()`. These metrics will be "compiled" automatically into
-        # the final results dict in the `self.compile_update_results()` method.
+        # the final results dict in the `self.compile_results()` method.
         self._metrics = defaultdict(dict)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -789,9 +791,6 @@ class Learner:
         # Results will include all registered metrics under the respective module ID
         # top-level key.
         module_learner_stats = defaultdict(dict)
-        # Add the num agent|env steps trained counts for all modules.
-        module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
 
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
@@ -1080,12 +1079,11 @@ class Learner:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        module_ids = (
+        for module_id in (
             module_ids_to_update
             if module_ids_to_update is not None
             else self.module.keys()
-        )
-        for module_id in module_ids:
+        ):
             module_results = self.additional_update_for_module(
                 module_id=module_id,
                 config=self.config.get_config_for_module(module_id),
@@ -1338,15 +1336,21 @@ class Learner:
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         self._check_is_built()
 
-        if num_iters < 1:
-            # We must do at least one pass on the batch for training.
-            raise ValueError("`num_iters` must be >= 1")
+        # Resolve batch/episodes being ray object refs (instead of
+        # actual batch/episodes objects).
+        if isinstance(batch, ray.ObjectRef):
+            batch = ray.get(batch)
+        if isinstance(episodes, ray.ObjectRef) or (
+            isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef)
+        ):
+            episodes = ray.get(episodes)
+            episodes = tree.flatten(episodes)
 
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
             batch = self._learner_connector(
                 rl_module=self.module,
-                data=batch,
+                data=batch or {},
                 episodes=episodes,
                 shared_data={},
             )

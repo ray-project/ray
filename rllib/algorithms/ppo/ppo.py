@@ -401,15 +401,11 @@ class PPO(Algorithm):
 
     @override(Algorithm)
     def training_step(self):
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
-            return self._training_step_new_api_stack()
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
-        else:
+        if not self.config.uses_new_env_runners:
             return self._training_step_old_and_hybrid_api_stacks()
 
-    def _training_step_new_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # Sample in parallel from the workers.

@@ -9,12 +9,9 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
@@ -89,10 +86,6 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             ).type(dtype=torch.float32)
         ) * config.gamma
 
-        # TODO(Artur) Why was there `TorchCategorical if is_multidiscrete else
-        #  dist_class` in the old code torch impala policy?
-        device = behaviour_actions_logp_time_major[0].device
-
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=target_actions_logp_time_major,
@@ -105,24 +98,14 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
         )
 
-        # Sample size is T x B, where T is the trajectory length and B is the batch size
-        # We mean over the batch size for consistency with the pre-RLModule
-        # implementation of IMPALA
-        # TODO(Artur): Mean over trajectory length after migration to RLModules.
-        batch_size = (
-            convert_to_torch_tensor(target_actions_logp_time_major.shape[-1])
-            .float()
-            .to(device)
-        )
-
         # The policy gradients loss.
         pi_loss = -torch.sum(target_actions_logp_time_major * pg_advantages)
-        mean_pi_loss = pi_loss / batch_size
+        mean_pi_loss = torch.mean(pi_loss)
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
         vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
-        mean_vf_loss = vf_loss / batch_size
+        mean_vf_loss = torch.mean(vf_loss)
 
         # The entropy loss.
         mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
@@ -150,21 +133,3 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         )
         # Return the total loss.
         return total_loss
-
-    @override(ImpalaLearner)
-    def _compute_values(self, batch):
-        infos = batch.pop(Columns.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=self._device)
-        # batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
-        if infos is not None:
-            batch[Columns.INFOS] = infos
-
-        # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
-
-        # Shared encoder.
-        encoder_outs = module.encoder(batch)
-        # Value head.
-        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)

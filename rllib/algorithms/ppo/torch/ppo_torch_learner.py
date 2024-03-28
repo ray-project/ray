@@ -153,6 +153,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Update KL coefficient.
         if config.use_kl_loss:
+            assert module_id in sampled_kl_values, "Sampled KL values are empty."
             sampled_kl = sampled_kl_values[module_id]
             curr_var = self.curr_kl_coeffs_per_module[module_id]
             if sampled_kl > 2.0 * config.kl_target:

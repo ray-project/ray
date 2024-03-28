@@ -443,7 +443,7 @@ class WorkerSet:
         from_worker_or_learner_group: Optional[Union[EnvRunner, "LearnerGroup"]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
-        timeout_seconds: Optional[int] = 0,
+        timeout_seconds: Optional[float] = 0.0,
     ) -> None:
         """Syncs model weights from the given weight source to all remote workers.
 
@@ -461,9 +461,10 @@ class WorkerSet:
             global_vars: An optional global vars dict to set this
                 worker to. If None, do not update the global_vars.
             timeout_seconds: Timeout in seconds to wait for the sync weights
-                calls to complete. Default is 0 (sync-and-forget, do not wait
-                for any sync calls to finish). This significantly improves
-                algorithm performance.
+                calls to complete. Default is 0.0 (fire-and-forget, do not wait
+                for any sync calls to finish). Setting this to 0.0 might significantly
+                improve algorithm performance, depending on the algo's `training_step`
+                logic.
         """
         if self.local_worker() is None and from_worker_or_learner_group is None:
             raise TypeError(
@@ -737,7 +738,7 @@ class WorkerSet:
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
-        timeout_seconds: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
     ) -> List[T]:
@@ -748,7 +749,9 @@ class WorkerSet:
             local_worker: Whether apply `func` on local worker too. Default is True.
             healthy_only: Apply `func` on known-to-be healthy workers only.
             remote_worker_ids: Apply `func` on a selected set of remote workers.
-            timeout_seconds: Time to wait for results. Default is None.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this WorkerSet.
@@ -850,7 +853,11 @@ class WorkerSet:
             remote_worker_ids: Apply `func` on a selected set of remote workers.
 
         Returns:
-             The number of async requests that are currently in-flight.
+             The number of async requests that have actually been made. This is the
+             length of `remote_worker_ids` (or self.num_remote_workers()` if
+             `remote_worker_ids` is None) minus the number of requests that were NOT
+             made b/c a remote worker already had its
+             `max_remote_requests_in_flight_per_actor` counter reached.
         """
         return self.__worker_manager.foreach_actor_async(
             func,

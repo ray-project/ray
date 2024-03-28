@@ -619,9 +619,6 @@ class Algorithm(Trainable, AlgorithmBase):
             logdir=self.logdir,
         )
 
-        # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights()
-
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
         self.evaluation_config.validate()
@@ -701,7 +698,6 @@ class Algorithm(Trainable, AlgorithmBase):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
-        self.learner_group = None
         if self.config._enable_new_api_stack:
             local_worker = self.workers.local_worker()
             env = spaces = None
@@ -760,11 +756,17 @@ class Algorithm(Trainable, AlgorithmBase):
                     lambda w: w.set_is_policy_to_train(policies_to_train),
                     healthy_only=True,
                 )
+                # Sync the weights from the learner group to the rollout workers.
+                weights = self.learner_group.get_weights()
+                local_worker.set_weights(weights)
+            # New stack/EnvRunner APIs: Use get/set_state (no more get/set_weights).
+            else:
+                # Sync the weights from the learner group to the rollout workers.
+                weights = self.learner_group.get_weights()
+                local_worker.set_state({"rl_module": weights})
 
-            # Sync the weights from the learner group to the rollout workers.
-            weights = self.learner_group.get_weights()
-            local_worker.set_weights(weights)
-            self.workers.sync_weights()
+        # Ensure remote workers are initially in sync with the local worker.
+        self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -848,7 +850,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
             eval_results = self.evaluation_metrics
 
-        # Sync filters on workers.
+        # Sync EnvRunner workers.
         # TODO (sven): For the new API stack, the common execution pattern for any algo
         #  should be: [sample + get_metrics + get_state] -> send all these in one remote
         #  call down to `training_step` (where episodes are sent as ray object
@@ -856,15 +858,17 @@ class Algorithm(Trainable, AlgorithmBase):
         #  in special key in result dict and perform the connector merge/broadcast
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.uses_new_env_runners:
-            # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
-            # states back to all workers.
-            with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
-                # Merge connector states from all EnvRunners and broadcast updated
-                # states back to all EnvRunners.
-                self.workers.sync_env_runner_states(
-                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
-                    timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
-                )
+            if not self.config._dont_auto_sync_env_runner_states:
+                assert False
+                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
+                # new states back to all workers.
+                with self._timers[SYNCH_ENV_CONNECTOR_STATES_TIMER]:
+                    # Merge connector states from all EnvRunners and broadcast updated
+                    # states back to all EnvRunners.
+                    self.workers.sync_env_runner_states(
+                        env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+                        timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
+                    )
         else:
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
@@ -872,11 +876,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.config,
             )
 
-        episodes_this_iter = collect_episodes(
-            self.workers,
-            self._remote_worker_ids_for_metrics(),
-            timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-        )
+        episodes_this_iter = train_results.pop("_episodes_this_iter", None)
+        if episodes_this_iter is None:
+            assert False
+            episodes_this_iter = collect_episodes(
+                self.workers,
+                self._remote_worker_ids_for_metrics(),
+                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+            )
         results = self._compile_iteration_results(
             episodes_this_iter=episodes_this_iter,
             step_ctx=train_iter_ctx,
@@ -956,7 +963,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 batches,
             ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
         else:
-            # self.evaluation_workers.probe_unhealthy_workers()
             # There is only a local eval EnvRunner -> Run on that.
             if self.evaluation_workers.num_healthy_remote_workers() == 0:
                 (
@@ -3040,19 +3046,43 @@ class Algorithm(Trainable, AlgorithmBase):
             if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            results = None
+            results = {}
+            training_step_results = {}
+            episodes_this_iter = None
             # Create a step context ...
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 # .. so we can query it whether we should stop the iteration loop (e.g.
                 # when we have reached `min_time_s_per_iteration`).
-                while not train_iter_ctx.should_stop(results):
+                while not train_iter_ctx.should_stop(training_step_results):
                     # Before training step, try to bring failed workers back.
                     with self._timers[RESTORE_WORKERS_TIMER]:
                         self.restore_workers(self.workers)
 
                     # Try to train one step.
                     with self._timers[TRAINING_STEP_TIMER]:
-                        results = self.training_step()
+                        # TODO (sven): Add capability to reduce results over different
+                        #  iterations.
+                        training_step_results = self.training_step()
+
+                    # Collect returned episode metrics from each `training_step` call,
+                    # so nothing gets lost (in this mode, we do NOT call get_metrics()
+                    # here automatically, it has already been done by the
+                    # `training_step` method).
+                    if "_episodes_this_training_step" in training_step_results:
+                        if episodes_this_iter is None:
+                            episodes_this_iter = []
+                        episodes_this_iter.extend(
+                            training_step_results.pop("_episodes_this_training_step")
+                        )
+
+                    if training_step_results:
+                        results = training_step_results
+
+        # Publish all episodes collected in this entire iteration (consisting of n
+        # `training_step` calls) to let the algo know, we do NOT have to call
+        # `get_metrics` anymore on all EnvRunners (already done inside `training_step`).
+        if episodes_this_iter is not None:
+            results["_episodes_this_iter"] = episodes_this_iter
 
         return results, train_iter_ctx
 
@@ -3072,7 +3102,6 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the evaluation call.
         """
-
         if self.evaluation_workers is not None:
             with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
                 self.restore_workers(self.evaluation_workers)
@@ -3219,7 +3248,9 @@ class Algorithm(Trainable, AlgorithmBase):
         results.update(results["sampler_results"])
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
-        results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
+        results["num_in_flight_async_sample_reqs"] = (
+            self.workers.num_in_flight_async_reqs()
+        )
         results[
             "num_remote_worker_restarts"
         ] = self.workers.num_remote_worker_restarts()

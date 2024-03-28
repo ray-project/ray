@@ -574,6 +574,10 @@ class MultiAgentEnvRunner(EnvRunner):
             assert eps.is_done
             episode_length = len(eps)
             episode_reward = eps.get_return()
+            agent_steps = defaultdict(
+                int,
+                {aid: len(sa_eps) for aid, sa_eps in eps.agent_episodes.items()},
+            )
             module_rewards = defaultdict(
                 float,
                 {
@@ -586,7 +590,8 @@ class MultiAgentEnvRunner(EnvRunner):
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                     episode_length += len(eps2)
                     episode_reward += eps2.get_return()
-                    for sa_eps in eps2.agent_episodes.values():
+                    for aid, sa_eps in eps2.agent_episodes.items():
+                        agent_steps[aid] += len(sa_eps)
                         module_rewards[
                             (sa_eps.agent_id, sa_eps.module_id)
                         ] += eps2.get_return()
@@ -597,6 +602,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_length=episode_length,
                     episode_reward=episode_reward,
                     agent_rewards=dict(module_rewards),
+                    agent_steps=dict(agent_steps),
                 )
             )
 

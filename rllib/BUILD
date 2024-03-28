@@ -151,6 +151,16 @@ py_test(
 
 # APPO
 py_test(
+    name = "learning_tests_cartpole_appo_w_env_runner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole_appo_envrunner.py"],
+    args = ["--dir=tuned_examples/appo/"]
+)
+
+py_test(
     name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
@@ -311,16 +321,18 @@ py_test(
 )
 
 # IMPALA
-# py_test(
-#    name = "learning_tests_cartpole_impala",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/impala/cartpole-impala.yaml"],
-#    args = ["--dir=tuned_examples/impala"]
-# )
+# w/ new EnvRunner
+py_test(
+    name = "learning_tests_cartpole_impala_envrunner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/impala/cartpole_impala_envrunner.py"],
+    args = ["--dir=tuned_examples/impala/"]
+)
 
+# w/o EnvRunner (using RolloutWorker)
 py_test(
     name = "learning_tests_cartpole_separate_losses_impala",
     main = "tests/run_regression_tests.py",
@@ -600,7 +612,7 @@ py_test(
     srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
 )
 
-# Impala
+# IMPALA
 py_test(
     name = "test_impala",
     tags = ["team:rllib", "algorithms_dir"],
@@ -2871,6 +2883,7 @@ py_test(
 # ----------------------
 
 # Framestacking examples only run in smoke-test mode (a few iters only).
+# PPO
 py_test(
     name = "examples/connectors/connector_v2_frame_stacking_ppo",
     main = "examples/connectors/connector_v2_frame_stacking.py",
@@ -2879,7 +2892,6 @@ py_test(
     srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
     args = ["--enable-new-api-stack", "--stop-iter=2", "--framework=torch", "--algo=PPO"]
 )
-
 py_test(
     name = "examples/connectors/connector_v2_frame_stacking_multi_agent_ppo",
     main = "examples/connectors/connector_v2_frame_stacking.py",
@@ -2888,8 +2900,26 @@ py_test(
     srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
+# IMPALA
+py_test(
+    name = "examples/connectors/connector_v2_frame_stacking_impala",
+    main = "examples/connectors/connector_v2_frame_stacking.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+    args = ["--enable-new-api-stack", "--stop-iter=2", "--framework=torch", "--algo=IMPALA"]
+)
+py_test(
+    name = "examples/connectors/connector_v2_frame_stacking_multi_agent_impala",
+    main = "examples/connectors/connector_v2_frame_stacking.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_frame_stacking.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=IMPALA", "--num-env-runners=4", "--num-cpus=6"]
+)
 
 # Nested observation spaces (flattening).
+# PPO
 py_test(
     name = "examples/connectors/connector_v2_nested_observation_spaces_ppo",
     main = "examples/connectors/connector_v2_nested_observation_spaces.py",
@@ -2898,7 +2928,6 @@ py_test(
     srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
-
 py_test(
     name = "examples/connectors/connector_v2_nested_observation_spaces_multi_agent_ppo",
     main = "examples/connectors/connector_v2_nested_observation_spaces.py",
@@ -2906,6 +2935,23 @@ py_test(
     size = "medium",
     srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
+)
+# IMPALA
+py_test(
+    name = "examples/connectors/connector_v2_nested_observation_spaces_impala",
+    main = "examples/connectors/connector_v2_nested_observation_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=IMPALA"]
+)
+py_test(
+    name = "examples/connectors/connector_v2_nested_observation_spaces_multi_agent_impala",
+    main = "examples/connectors/connector_v2_nested_observation_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_nested_observation_spaces.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=IMPALA"]
 )
 
 # Prev-r/prev actions + LSTM example.
@@ -2928,6 +2974,7 @@ py_test(
 )
 
 # MeanStd filtering example.
+# PPO
 py_test(
     name = "examples/connectors/connector_v2_mean_std_filtering_ppo",
     main = "examples/connectors/connector_v2_mean_std_filtering.py",
@@ -2936,7 +2983,6 @@ py_test(
     srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=PPO", "--num-env-runners=2"]
 )
-
 py_test(
     name = "examples/connectors/connector_v2_mean_std_filtering_multi_agent_ppo",
     main = "examples/connectors/connector_v2_mean_std_filtering.py",
@@ -2944,6 +2990,23 @@ py_test(
     size = "medium",
     srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=6"]
+)
+# IMPALA
+py_test(
+    name = "examples/connectors/connector_v2_mean_std_filtering_impala",
+    main = "examples/connectors/connector_v2_mean_std_filtering.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=2"]
+)
+py_test(
+    name = "examples/connectors/connector_v2_mean_std_filtering_multi_agent_impala",
+    main = "examples/connectors/connector_v2_mean_std_filtering.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/connector_v2_mean_std_filtering.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=5", "--num-cpus=6"]
 )
 
 # ----------------------
