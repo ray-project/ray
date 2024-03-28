@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Type, Union
 
 try:
     from lightning import Callback, Trainer, LightningModule
-else:
+except ModuleNotFoundError:
     from pytorch_lightning import Callback, Trainer, LightningModule
 
 from ray import train
