@@ -26,7 +26,6 @@ from ray.tests.conftest import (
     mock_distributed_fs_object_spilling_config,
 )
 
-
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
 pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]

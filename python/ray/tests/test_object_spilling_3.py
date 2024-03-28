@@ -16,7 +16,6 @@ from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 
-
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
 pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
