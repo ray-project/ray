@@ -747,6 +747,13 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@DeveloperAPI
+class ActorUnavailableError(RayError):
+    """Raised when the actor is temporarily unavailable but may be available later."""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -770,4 +777,5 @@ RAY_EXCEPTION_TYPES = [
     LocalRayletDiedError,
     TaskUnschedulableError,
     ActorUnschedulableError,
+    ActorUnavailableError,
 ]
