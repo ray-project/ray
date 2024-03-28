@@ -100,6 +100,17 @@ def synchronous_parallel_sample(
             # There is no point staying in this loop, since we will not be able to
             # get any new samples if we don't have any healthy remote workers left.
             if not sampled_data or worker_set.num_healthy_remote_workers() <= 0:
+                if not sampled_data:
+                    logger.warning(
+                        "No samples returned from remote workers. If you have a "
+                        "slow environment or model, consider increasing the "
+                        "`sample_timeout_s` or decreasing the "
+                        "`rollout_fragment_length` in `AlgorithmConfig.rollouts()."
+                    )
+                elif worker_set.num_healthy_remote_workers() <= 0:
+                    logger.warning(
+                        "No healthy remote workers left. Trying to restore workers ..."
+                    )
                 break
         # Update our counters for the stopping criterion of the while loop.
         for batch_or_episode in sampled_data:
