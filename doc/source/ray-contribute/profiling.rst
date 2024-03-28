@@ -36,7 +36,7 @@ You may need to install ``graphviz`` for ``pprof`` to generate flame graphs.
   sudo apt-get install graphviz
 
 Launching the CPU Profiling and set to-profile binary file
--------------------------------
+----------------------------------------------------------
 
 If you want to launch Ray in profiling mode and profile raylet, define the following variables:
 
@@ -80,7 +80,7 @@ documentation:
 .. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
 Launching Memory Profiling
-----------------
+--------------------------
 If you want to run memory profiling on Ray core components, you can use Jemalloc (https://github.com/jemalloc/jemalloc).
 Ray supports environment variables to override LD_PRELOAD on core components.
 
@@ -117,7 +117,7 @@ Users are supposed to provide 3 env vars for memory profiling.
   2021-10-20 19:45:08,175	INFO services.py:622 -- Jemalloc profiling will be used for gcs_server. env vars: {'LD_PRELOAD': '/Users/sangbincho/jemalloc-5.2.1/lib/libjemalloc.so', 'MALLOC_CONF': 'prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true'}
 
 Visualizing the Memory profile
----------------------------
+------------------------------
 The output files will be at the path where we call "ray start".
 A example of profile file is "jeprof.15786.0.f.heap", then we can use following commands to generate the .svg plot.
 
