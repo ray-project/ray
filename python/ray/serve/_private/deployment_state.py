@@ -33,6 +33,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
@@ -249,6 +250,7 @@ class ActorReplicaWrapper:
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
+        self._initialization_duration_s = -1
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -651,7 +653,7 @@ class ActorReplicaWrapper:
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
 
-        # Check whether relica initialization has completed.
+        # Check whether replica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
@@ -669,10 +671,12 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
-                    _, self._version = ray.get(self._ready_obj_ref)
+                    _, self._version, self._initialization_duration_s = ray.get(
+                        self._ready_obj_ref
+                    )
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                 # here because the full details of the error is not displayed properly
@@ -680,7 +684,7 @@ class ActorReplicaWrapper:
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except Exception as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, repr(e)
 
@@ -975,7 +979,9 @@ class DeploymentReplica(VersionedReplica):
         self.update_actor_details(start_time_s=self._start_time)
         return True
 
-    def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
+    def check_started(
+        self,
+    ) -> Tuple[ReplicaStartupStatus, Optional[str], Optional[float]]:
         """Check if the replica has started. If so, transition to RUNNING.
 
         Should handle the case where the replica has already stopped.
@@ -993,6 +999,7 @@ class DeploymentReplica(VersionedReplica):
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
         )
+
         return is_ready
 
     def stop(self, graceful: bool = True) -> None:
@@ -1255,6 +1262,22 @@ class DeploymentState:
             ),
             tag_keys=("deployment", "replica", "application"),
         )
+
+        self.replica_scheduling_latency_histogram = metrics.Histogram(
+            "serve_replica_scheduling_latency_s",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            description="Tracks how long replicas take to be scheduled.",
+            tag_keys=("application", "deployment"),
+        ).set_default_tags({"application": id.app_name, "deployment": id.name})
+
+        self.replica_initialization_latency_histogram = metrics.Histogram(
+            "serve_replica_initialization_latency_s",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            description=(
+                "Tracks how long replicas take to start after being scheduled."
+            ),
+            tag_keys=("application", "deployment"),
+        ).set_default_tags({"application": id.app_name, "deployment": id.name})
 
         # Whether the multiplexed model ids have been updated since the last
         # time we checked.
@@ -2044,10 +2067,22 @@ class DeploymentState:
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
                 )
+                full_replica_startup_duration = time.time() - replica._start_time
+                scheduling_duration_s = (
+                    full_replica_startup_duration - replica._initialization_duration_s
+                )
                 logger.info(
                     f"{replica.replica_id} started successfully "
-                    f"on node '{replica.actor_node_id}'.",
+                    f"on node '{replica.actor_node_id}' after "
+                    f"{full_replica_startup_duration:.1f}s. "
+                    f"Scheduling duration: {scheduling_duration_s:.1f}s.",
+                    "Initialization duration: "
+                    f"{replica._initialization_duration_s:.1f}s.",
                     extra={"log_to_stderr": False},
+                )
+                self.replica_scheduling_latency_histogram.observe(scheduling_duration_s)
+                self.replica_initialization_latency_histogram.observe(
+                    replica._initialization_duration_s
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed

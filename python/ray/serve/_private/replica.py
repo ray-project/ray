@@ -583,13 +583,21 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, float]:
+        """Handles initializing the replica.
+
+        Returns: 3-tuple containing
+            1. DeploymentConfig of the replica
+            2. DeploymentVersion of the replica
+            3. Initialization duration in seconds
+        """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
+                initialization_start_time = time.time()
                 if not self._user_callable_initialized:
                     await self._user_callable_wrapper.initialize_callable()
                     self._user_callable_initialized = True
@@ -605,7 +613,7 @@ class ReplicaActor:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
-            return self._get_metadata()
+            return (*self._get_metadata(), time.time() - initialization_start_time)
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
