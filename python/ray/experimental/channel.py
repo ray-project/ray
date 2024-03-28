@@ -58,8 +58,7 @@ class Channel:
         self,
         buffer_size_bytes: Optional[int] = None,
         num_readers: int = 1,
-        # TODO(swang): CHANGE BACK BEFORE MERGE.
-        num_buffers: int = 2,
+        num_buffers: int = 1,
         _base_refs: Optional[List["ray.ObjectRef"]] = None,
     ):
         """
