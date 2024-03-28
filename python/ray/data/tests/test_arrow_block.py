@@ -19,6 +19,18 @@ def test_append_column(ray_start_regular_shared):
     assert actual_block.equals(expected_block)
 
 
+def test_random_shuffle(ray_start_regular_shared):
+
+    random_seed = 1234
+    n_legs = pa.array([2, 4, 5, 100])
+    animals = pa.array(["Flamingo", "Horse", "Brittle stars", "Centipede"])
+    names = ["n_legs", "animals"]
+
+    table = pa.Table.from_arrays([n_legs, animals], names=names)
+    actual_block = ArrowBlockAccessor.random_shuffle(table, random_seed)
+    assert actual_block.column(0) != n_legs
+
+
 def test_register_arrow_types(tmp_path):
     # Test that our custom arrow extension types are registered on initialization.
     ds = ray.data.from_items(np.zeros((8, 8, 8), dtype=np.int64))

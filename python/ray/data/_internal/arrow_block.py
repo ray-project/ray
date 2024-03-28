@@ -252,7 +252,21 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # random shuffling in place to reduce memory pressure.
         # See https://github.com/ray-project/ray/issues/42146.
         random = np.random.RandomState(random_seed)
-        return self.take(random.permutation(self.num_rows()))
+
+        if self.num_rows < np.iinfo(np.uint8).max:
+            idx = np.arange(self.num_rows, dtype=np.uint8)
+            random.shuffle(idx)
+            return self.take(idx)
+        elif self.num_rows < np.iinfo(np.uint16).max:
+            idx = np.arange(self.num_rows, dtype=np.uint16)
+            random.shuffle(idx)
+            return self.take(idx)
+        elif self.num_rows < np.iinfo(np.uint32).max:
+            idx = np.arange(self.num_rows, dtype=np.uint32)
+            random.shuffle(idx)
+        else:
+            idx = random.permutation(self.num_rows())
+        return self.take(idx)
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
