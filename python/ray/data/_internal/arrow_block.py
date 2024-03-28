@@ -144,7 +144,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
                     columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
                 except Exception as e:
                     raise Exception(
-                        f"Failed to convert column "{col_name}" to ArrowTensorArray, column data: {col}"
+                        f"Failed to convert column '{col_name}' to ArrowTensorArray, column data: {col}"
                     ) from e
         return pyarrow.Table.from_pydict(columns)
 
