@@ -2,12 +2,13 @@ import logging
 import os
 import time
 
-from ray import data
+import ray
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_writer import _to_json_dict
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.io import is_remote_path
 from typing import Dict, List
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,12 @@ class DatasetWriter(OutputWriter):
         ), "output_config.path must be specified when using Dataset output."
 
         self.format = output_config["format"]
-        self.path = os.path.abspath(os.path.expanduser(output_config["path"]))
+
+        output_path = output_config["path"]
+        if is_remote_path(output_path):
+            self.path = output_path
+        else:
+            self.path = os.path.abspath(os.path.expanduser(output_config["path"]))
         self.max_num_samples_per_file = (
             output_config["max_num_samples_per_file"]
             if "max_num_samples_per_file" in output_config
@@ -71,12 +77,29 @@ class DatasetWriter(OutputWriter):
         # Todo: We should flush at the end of sampling even if this
         # condition was not reached.
         if len(self.samples) >= self.max_num_samples_per_file:
-            ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
-            if self.format == "json":
-                ds.write_json(self.path, try_create_dir=True)
-            elif self.format == "parquet":
-                ds.write_parquet(self.path, try_create_dir=True)
-            else:
-                raise ValueError("Unknown output type: ", self.format)
-            self.samples = []
+            self._write_samples_to_file()
             logger.debug("Wrote dataset in {}s".format(time.time() - start))
+
+    def close(self):
+        if self.samples:
+            self._write_samples_to_file()
+
+    def _write_samples_to_file(self):
+        ds = ray.data.from_items(self.samples, output_arrow_format=True).repartition(
+            num_blocks=1, shuffle=False
+        )
+        if self.format == "json":
+            ds.write_json(self.path, try_create_dir=True)
+        elif self.format == "parquet":
+            ds.write_parquet(self.path, try_create_dir=True)
+        else:
+            raise ValueError("Unknown output type: ", self.format)
+        self.samples = []
+
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
