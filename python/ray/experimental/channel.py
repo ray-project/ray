@@ -58,7 +58,9 @@ class Channel:
         self,
         buffer_size_bytes: Optional[int] = None,
         num_readers: int = 1,
-        _base_ref: Optional["ray.ObjectRef"] = None,
+        # TODO(swang): CHANGE BACK BEFORE MERGE.
+        num_buffers: int = 2,
+        _base_refs: Optional[List["ray.ObjectRef"]] = None,
     ):
         """
         Create a channel that can be read and written by co-located Ray processes.
@@ -75,19 +77,24 @@ class Channel:
             Channel: A wrapper around ray.ObjectRef.
         """
         if buffer_size_bytes is None:
-            if _base_ref is None:
+            if _base_refs is None:
                 raise ValueError(
-                    "One of `buffer_size_bytes` or `_base_ref` must be provided"
+                    "One of `buffer_size_bytes` or `_base_refs` must be provided"
                 )
-            self._base_ref = _base_ref
+            self._base_refs = _base_refs
         else:
             if not isinstance(buffer_size_bytes, int):
                 raise ValueError("buffer_size_bytes must be an integer")
-            self._base_ref = _create_channel_ref(buffer_size_bytes)
+            self._base_refs = [
+                _create_channel_ref(buffer_size_bytes) for _ in range(num_buffers)
+            ]
 
         if not isinstance(num_readers, int):
             raise ValueError("num_readers must be an integer")
 
+        self._begin_read_ref_idx = 0
+        self._end_read_ref_idx = 0
+        self._write_ref_idx = 0
         self._num_readers = num_readers
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
@@ -99,22 +106,32 @@ class Channel:
         if self._writer_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_writer(self._base_ref)
+        for ref in self._base_refs:
+            self._worker.core_worker.experimental_channel_register_writer(ref)
         self._writer_registered = True
 
     def _ensure_registered_as_reader(self):
         if self._reader_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_reader(self._base_ref)
+        for ref in self._base_refs:
+            self._worker.core_worker.experimental_channel_register_reader(ref)
         self._reader_registered = True
 
     @staticmethod
-    def _from_base_ref(base_ref: "ray.ObjectRef", num_readers: int) -> "Channel":
-        return Channel(num_readers=num_readers, _base_ref=base_ref)
+    def _from_base_refs(
+        base_refs: List["ray.ObjectRef"], num_readers: int
+    ) -> "Channel":
+        return Channel(num_readers=num_readers, _base_refs=base_refs)
 
     def __reduce__(self):
-        return self._from_base_ref, (self._base_ref, self._num_readers)
+        return self._from_base_refs, (self._base_refs, self._num_readers)
+
+    def _get_next_ref(self) -> "ray.ObjectRef":
+        ref = self._base_refs[self._next_ref_idx]
+        self._next_ref_idx += 1
+        self._next_ref_idx %= len(self._base_refs)
+        return ref
 
     def write(self, value: Any, num_readers: Optional[int] = None):
         """
@@ -150,9 +167,12 @@ class Channel:
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
-            self._base_ref,
+            self._base_refs[self._write_ref_idx],
             num_readers,
         )
+
+        self._write_ref_idx += 1
+        self._write_ref_idx %= len(self._base_refs)
 
     def begin_read(self) -> Any:
         """
@@ -166,7 +186,19 @@ class Channel:
             Any: The deserialized value.
         """
         self._ensure_registered_as_reader()
-        return ray.get(self._base_ref)
+        exc = None
+        try:
+            val = ray.get(self._base_refs[self._begin_read_ref_idx])
+        except Exception as e:
+            exc = e
+
+        self._begin_read_ref_idx += 1
+        self._begin_read_ref_idx %= len(self._base_refs)
+
+        if exc is not None:
+            raise exc
+
+        return val
 
     def end_read(self):
         """
@@ -176,7 +208,11 @@ class Channel:
         value is written, then drop the value.
         """
         self._ensure_registered_as_reader()
-        self._worker.core_worker.experimental_channel_read_release([self._base_ref])
+        self._worker.core_worker.experimental_channel_read_release(
+            [self._base_refs[self._end_read_ref_idx]]
+        )
+        self._end_read_ref_idx += 1
+        self._end_read_ref_idx %= len(self._base_refs)
 
     def close(self) -> None:
         """
@@ -185,9 +221,10 @@ class Channel:
         Does not block. Any existing values in the channel may be lost after the
         channel is closed.
         """
-        logger.debug(f"Setting error bit on channel: {self._base_ref}")
+        logger.debug(f"Setting error bit on channels: {self._base_refs}")
         self._ensure_registered_as_writer()
-        self._worker.core_worker.experimental_channel_set_error(self._base_ref)
+        for base_ref in self._base_refs:
+            self._worker.core_worker.experimental_channel_set_error(base_ref)
 
 
 # Interfaces for channel I/O.
