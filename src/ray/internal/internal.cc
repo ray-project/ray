@@ -18,6 +18,9 @@
 
 namespace ray {
 namespace internal {
+// NOTE(lingxuan.zlx): This internal module is designed to export ray symbols
+// to other thirdparty outside project, which makes they can access internal
+// function of core worker library or native function and reduce symbols racing.
 
 using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
@@ -69,6 +72,8 @@ std::vector<rpc::ObjectReference> SendInternal(
 const ray::stats::TagKeyType TagRegister(const std::string tag_name) {
   return ray::stats::TagKeyType::Register(tag_name);
 }
+
+const std::string TagKeyName(stats::TagKeyType &tagkey) { return tagkey.name(); }
 
 const ActorID &GetCurrentActorID() {
   return CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();

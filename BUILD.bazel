@@ -776,16 +776,14 @@ ray_cc_library(
 # symbols export.
 ray_cc_library(
     name = "exported_internal",
-    srcs = glob(
+    srcs =
         [
             "src/ray/internal/internal.cc",
         ],
-    ),
-    hdrs = glob(
+    hdrs =
         [
             "src/ray/internal/internal.h",
         ],
-    ),
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
@@ -1236,14 +1234,14 @@ ray_cc_test(
         "no_windows",
         "team:core",
     ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
     deps = [
         ":plasma_store_server_lib",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
-    ],
-    target_compatible_with = [
-        "@platforms//os:linux",
     ],
 )
 
