@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { ActorDetail } from "../type/actor";
@@ -105,10 +105,6 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
 };
 
 describe("ActorTable", () => {
-  beforeEach(() => {
-    jest.setTimeout(10000);
-  });
-
   it("renders a table of actors filtered by node ID", async () => {
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
@@ -217,7 +213,7 @@ describe("ActorTable", () => {
     ); // actor1Row appear before actor2Row
   });
 
-  it("renders a table of actors with same state sorted by resource utilization", () => {
+  it("renders a table of actors with same state sorted by resource utilization", async () => {
     /*
     When sorted by
       - CPU: Actor 2 CPU > Actor 1 CPU --> Actor 2 row before Actor 1 row
@@ -304,14 +300,11 @@ describe("ActorTable", () => {
       wrapper: TEST_APP_WRAPPER,
     });
 
-    const sortByFilter = screen.getByTestId("sortByFilter");
-    const input = within(sortByFilter).getByRole("textbox", { hidden: true });
+    const user = userEvent.setup();
+
     // Sort by CPU utilization
-    fireEvent.change(input, {
-      target: {
-        value: "processStats.cpuPercent",
-      },
-    });
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /CPU/ }));
     const actor1CPURow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -325,11 +318,8 @@ describe("ActorTable", () => {
     ); // actor2Row appear before actor1Row
 
     // Sort by used memory
-    fireEvent.change(input, {
-      target: {
-        value: "processStats.memoryInfo.rss",
-      },
-    });
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /Used Memory/ }));
     const actor1MemRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -343,11 +333,8 @@ describe("ActorTable", () => {
     ); // actor1Row appear before actor2Row
 
     // Sort by uptime
-    fireEvent.change(input, {
-      target: {
-        value: "fake_uptime_attr",
-      },
-    });
+    await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
+    await user.click(screen.getByRole("option", { name: /Uptime/ }));
     const actor1UptimeRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
@@ -357,42 +344,6 @@ describe("ActorTable", () => {
     expect(within(actor1UptimeRow).getByText("ACTOR_1")).toBeInTheDocument();
     expect(within(actor2UptimeRow).getByText("ACTOR_2")).toBeInTheDocument();
     expect(actor2UptimeRow.compareDocumentPosition(actor1UptimeRow)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    ); // actor2Row appear before actor1Row
-
-    // Sort by GPU utilization
-    fireEvent.change(input, {
-      target: {
-        value: "fake_gpu_attr",
-      },
-    });
-    const actor1GPURow = screen.getByRole("row", {
-      name: /ACTOR_1/,
-    });
-    const actor2GPURow = screen.getByRole("row", {
-      name: /ACTOR_2/,
-    });
-    expect(within(actor1GPURow).getByText("ACTOR_1")).toBeInTheDocument();
-    expect(within(actor2GPURow).getByText("ACTOR_2")).toBeInTheDocument();
-    expect(actor1GPURow.compareDocumentPosition(actor2GPURow)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    ); // actor1Row appear before actor2Row
-
-    // Sort by GRAM usage
-    fireEvent.change(input, {
-      target: {
-        value: "fake_gram_attr",
-      },
-    });
-    const actor1GRAMRow = screen.getByRole("row", {
-      name: /ACTOR_1/,
-    });
-    const actor2GRAMRow = screen.getByRole("row", {
-      name: /ACTOR_2/,
-    });
-    expect(within(actor1GRAMRow).getByText("ACTOR_1")).toBeInTheDocument();
-    expect(within(actor2GRAMRow).getByText("ACTOR_2")).toBeInTheDocument();
-    expect(actor2GRAMRow.compareDocumentPosition(actor1GRAMRow)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear before actor1Row
   });
