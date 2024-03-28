@@ -91,11 +91,11 @@ using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
 ObjectLocation CreateObjectLocation(
-    const rpc::WorkerObjectLocationsPubMessage& object_info) {
+    const rpc::WorkerObjectLocationsPubMessage &object_info) {
   std::vector<NodeID> node_ids;
   node_ids.reserve(object_info.node_ids_size());
   for (int i = 0; i < object_info.node_ids_size(); ++i) {
-      node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
+    node_ids.push_back(NodeID::FromBinary(object_info.node_ids(i)));
   }
   bool is_spilled = !object_info.spilled_url().empty();
   return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
@@ -112,8 +112,8 @@ std::vector<ObjectLocation> CreateObjectLocations(
     const rpc::GetObjectLocationsOwnerReply &reply) {
   std::vector<ObjectLocation> locations;
   locations.reserve(reply.object_location_infos_size());
-  for (const auto& object_info : reply.object_location_infos()) {
-      locations.push_back(CreateObjectLocation(object_info));
+  for (const auto &object_info : reply.object_location_infos()) {
+    locations.push_back(CreateObjectLocation(object_info));
   }
   return locations;
 }
@@ -1805,41 +1805,46 @@ Status CoreWorker::GetLocationFromOwner(
   auto num_remaining = std::make_shared<size_t>(objects_by_owner.size());
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
-  std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
+      std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
-  for (const auto& pair : objects_by_owner) {
-    const auto& owner_address = pair.first;
-    const auto& owner_object_ids = pair.second;
+  for (const auto &pair : objects_by_owner) {
+    const auto &owner_address = pair.first;
+    const auto &owner_object_ids = pair.second;
     auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
     request.set_intended_worker_id(owner_address.worker_id());
     // add multi object address and id into one request
-    for (const auto& object_id : owner_object_ids) {
-        request.add_object_id(object_id.Binary()); // Add each object ID to the request
+    for (const auto &object_id : owner_object_ids) {
+      request.add_object_id(object_id.Binary());  // Add each object ID to the request
     }
-    
+
     client->GetObjectLocationsOwner(
-    request,
-    [owner_object_ids, mutex, num_remaining, ready_promise, location_by_id, owner_address](
-        const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
-      absl::MutexLock lock(mutex.get());
-      if (status.ok()) {
-          auto locations = CreateObjectLocations(reply);
-          for (size_t i = 0; i < owner_object_ids.size(); ++i) {
+        request,
+        [owner_object_ids,
+         mutex,
+         num_remaining,
+         ready_promise,
+         location_by_id,
+         owner_address](const Status &status,
+                        const rpc::GetObjectLocationsOwnerReply &reply) {
+          absl::MutexLock lock(mutex.get());
+          if (status.ok()) {
+            auto locations = CreateObjectLocations(reply);
+            for (size_t i = 0; i < owner_object_ids.size(); ++i) {
               // Assuming successful query, emplace the result
-              location_by_id->emplace(
-                  owner_object_ids[i], std::make_shared<ObjectLocation>(locations[i]));
+              location_by_id->emplace(owner_object_ids[i],
+                                      std::make_shared<ObjectLocation>(locations[i]));
+            }
+          } else {
+            RAY_LOG(WARNING)
+                << "Failed to query location information for objects owned by "
+                << owner_address.worker_id() << " with error: " << status.ToString();
           }
-      } else {
-          RAY_LOG(WARNING) << "Failed to query location information for objects owned by "
-                           << owner_address.worker_id()
-                           << " with error: " << status.ToString();
-      }
-      (*num_remaining)--;
-      if (*num_remaining == 0) {
-        ready_promise->set_value();
-      }
-    });
+          (*num_remaining)--;
+          if (*num_remaining == 0) {
+            ready_promise->set_value();
+          }
+        });
   }
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
@@ -3799,25 +3804,23 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(
-          WorkerID::FromBinary(request.intended_worker_id()),
-          send_reply_callback)) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
     return;
   }
-  Status overall_status = Status::OK(); // Assume success initially
+  Status overall_status = Status::OK();  // Assume success initially
   for (int i = 0; i < request.object_id_size(); ++i) {
     auto object_id = ObjectID::FromBinary(request.object_id(i));
     auto object_info = reply->add_object_location_infos();
     // TODO Assuming FillObjectInformation only returns OK for now
-    // If it can return errors, you need to adjust overall_status based on individual results
-    // Only override the status when it's OK
-    if(overall_status.ok()){
+    // If it can return errors, you need to adjust overall_status based on individual
+    // results Only override the status when it's OK
+    if (overall_status.ok()) {
       overall_status = reference_counter_->FillObjectInformation(object_id, object_info);
     }
   }
   send_reply_callback(overall_status, nullptr, nullptr);
 }
-
 
 void CoreWorker::ProcessSubscribeForRefRemoved(
     const rpc::WorkerRefRemovedSubMessage &message) {
