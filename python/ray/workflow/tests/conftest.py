@@ -4,6 +4,7 @@ import pytest
 import ray
 
 from ray.tests.conftest import get_default_fixture_ray_kwargs
+from ray._private import net
 from ray._private.test_utils import simulate_storage
 from ray.cluster_utils import Cluster
 
@@ -39,7 +40,7 @@ def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
     assert use_ray_client in {"no_ray_client", "ray_client"}
     with _init_cluster(storage_url, **kwargs) as cluster:
         if use_ray_client == "ray_client":
-            address = f"ray://{cluster.address.split(':')[0]}:10001"
+            address = f"ray://{net._parse_ip_port(cluster.address)[0]}:10001"
         else:
             address = cluster.address
 

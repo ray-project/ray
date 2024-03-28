@@ -6,6 +6,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private import net
 from ray._private.test_utils import (
     Semaphore,
     enable_external_redis,
@@ -381,7 +382,7 @@ def test_redis_full(ray_start_cluster_head):
 
     gcs_address = ray_start_cluster_head.gcs_address
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
-    host, port = redis_addr.split(":")
+    host, port = net._parse_ip_port(redis_addr)
     if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
         cli = redis.RedisCluster(host, int(port))
     else:

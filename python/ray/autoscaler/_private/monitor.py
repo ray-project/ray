@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
+from ray._private import net
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
@@ -158,7 +159,7 @@ class Monitor:
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
-        head_node_ip = self.gcs_address.split(":")[0]
+        head_node_ip = net._parse_ip_port(self.gcs_address)[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None

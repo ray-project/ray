@@ -28,6 +28,7 @@ import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
 from prometheus_client.core import REGISTRY
+from ray._private import net
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
@@ -307,7 +308,7 @@ class ReporterAgent(
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == net._parse_ip_port(dashboard_agent.gcs_address)[0]
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}

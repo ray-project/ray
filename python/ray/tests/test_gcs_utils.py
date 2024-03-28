@@ -9,6 +9,7 @@ import async_timeout
 import pytest
 import ray
 import redis
+from ray._private import net
 from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
@@ -287,7 +288,7 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     gcs_client.internal_kv_put(b"ABC", b"XYZ", True, None)
     ray.shutdown()
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
-    host, port = redis_addr.split(":")
+    host, port = net._parse_ip_port(redis_addr)
     if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
         cli = redis.RedisCluster(host, int(port))
     else:

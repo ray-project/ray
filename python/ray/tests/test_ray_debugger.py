@@ -10,7 +10,7 @@ import pexpect
 import pytest
 
 import ray
-from ray._private import ray_constants, services
+from ray._private import net, ray_constants, services
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 
@@ -44,7 +44,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
             active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB
         )
     )
-    host, port = session["pdb_address"].split(":")
+    host, port = net._parse_ip_port(session["pdb_address"])
     assert host == "localhost"  # Should be private by default.
 
     tn = Telnet(host, int(port))
@@ -253,7 +253,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_ext
         )
     )
 
-    host, port = session["pdb_address"].split(":")
+    host, port = net._parse_ip_port(session["pdb_address"])
     if ray_debugger_external:
         assert host == services.get_node_ip_address(), host
     else:
@@ -316,13 +316,13 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         )
     )
 
-    host1, port1 = session1["pdb_address"].split(":")
+    host1, port1 = net._parse_ip_port(session1["pdb_address"])
     if ray_debugger_external:
         assert host1 == services.get_node_ip_address(), host1
     else:
         assert host1 == "localhost", host1
 
-    host2, port2 = session2["pdb_address"].split(":")
+    host2, port2 = net._parse_ip_port(session2["pdb_address"])
     if ray_debugger_external:
         assert host2 == services.get_node_ip_address(), host2
     else:

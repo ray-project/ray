@@ -1,6 +1,7 @@
 import datetime
 import os
 import socket
+from ray._private import net
 
 
 def generate_self_signed_tls_certs():
@@ -33,19 +34,26 @@ def generate_self_signed_tls_certs():
     # private/interal IP address to listen on. If we just use localhost +
     # 127.0.0.1 then we won't be able to connect to the GCS and will get
     # an error like "No match found for server name: 192.168.X.Y"
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    private_ip_address = s.getsockname()[0]
-    s.close()
+    private_dns_addresses = []
+    # connect to the internet to determine private IP addresses
+    for private_ip in net._get_private_ip_addresses():
+        private_dns_addresses.append(x509.DNSName(private_ip))
+    try:
+        # The following sometimes fails due to non-routable hostnames
+        private_dns_addresses.append(
+            x509.DNSName(socket.gethostbyname(socket.gethostname()))
+        )
+    except Exception as ignored:  # noqa: F841
+        # fall back to friendly name of the host
+        private_dns_addresses.append(
+            x509.DNSName(os.uname()[1])
+        )
     altnames = x509.SubjectAlternativeName(
         [
-            x509.DNSName(
-                socket.gethostbyname(socket.gethostname())
-            ),  # Probably 127.0.0.1
             x509.DNSName("127.0.0.1"),
-            x509.DNSName(private_ip_address),  # 192.168.*.*
+            x509.DNSName("::1"),
             x509.DNSName("localhost"),
-        ]
+        ] + private_dns_addresses
     )
     now = datetime.datetime.utcnow()
     cert = (
