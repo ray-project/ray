@@ -636,7 +636,7 @@ class ActorReplicaWrapper:
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
-                    f"Exception in {self._replica_id}, " "the replica will be stopped."
+                    f"Exception in {self._replica_id}, the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
             except RuntimeEnvSetupError as e:
@@ -2051,12 +2051,8 @@ class DeploymentState:
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
-                if self._replica_constructor_retry_counter >= 0:
-                    # Increase startup failure counter if we're tracking it
-                    self._replica_constructor_retry_counter += 1
-                    self._replica_constructor_error_msg = error_msg
-
                 replicas_failed = True
+                self.record_replica_startup_failure(error_msg)
                 self._stop_replica(replica)
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
@@ -2073,6 +2069,25 @@ class DeploymentState:
                 else:
                     self._replicas.add(original_state, replica)
 
+        if replicas_failed:
+            self.update_replica_startup_backoff_time()
+
+        return slow_replicas
+
+    def record_replica_startup_failure(self, error_msg: str):
+        """Record the error message for a replica startup failure.
+
+        Updates internal replica startup failure counter.
+        """
+
+        if self._replica_constructor_retry_counter >= 0:
+            # Increase startup failure counter if we're tracking it
+            self._replica_constructor_retry_counter += 1
+            self._replica_constructor_error_msg = error_msg
+
+    def update_replica_startup_backoff_time(self):
+        """Updates the replica startup backoff time."""
+
         # If replicas have failed enough times, execute exponential backoff
         # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
         # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
@@ -2080,15 +2095,10 @@ class DeploymentState:
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
             self._target_state.target_num_replicas * 3,
         )
-        if (
-            replicas_failed
-            and self._replica_constructor_retry_counter > failed_to_start_threshold
-        ):
+        if self._replica_constructor_retry_counter > failed_to_start_threshold:
             self._backoff_time_s = min(
                 EXPONENTIAL_BACKOFF_FACTOR * self._backoff_time_s, MAX_BACKOFF_TIME_S
             )
-
-        return slow_replicas
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
@@ -2733,8 +2743,8 @@ class DeploymentStateManager:
 
         deleted_ids = []
         any_recovering = False
-        upscales = {}
-        downscales = {}
+        upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
+        downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
@@ -2797,6 +2807,8 @@ class DeploymentStateManager:
         )
         for deployment_id, replicas_to_stop in deployment_to_replicas_to_stop.items():
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
+        for deployment_id, scheduling_requests in upscales.items():
+            self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
         # STEP 7: Broadcast long poll information
         for deployment_state in self._deployment_states.values():
@@ -2812,6 +2824,26 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return any_recovering
+
+    def _handle_scheduling_request_failures(
+        self,
+        deployment_id: DeploymentID,
+        scheduling_requests: List[ReplicaSchedulingRequest],
+    ):
+        """Updates internal datastructures when replicas fail to be scheduled."""
+        failed_replicas: List[ReplicaID] = []
+        for scheduling_request in scheduling_requests:
+            if scheduling_request.scheduling_failed:
+                failed_replicas.append(scheduling_request.replica_id)
+                error_msg = "Replica scheduling failed."
+                if scheduling_request.scheduling_failed_reason:
+                    error_msg += f" {scheduling_request.scheduling_failed_reason}"
+                self._deployment_states[deployment_id].record_replica_startup_failure(
+                    error_msg
+                )
+        if failed_replicas:
+            self._deployment_states[deployment_id].stop_replicas(failed_replicas)
+            self._deployment_states[deployment_id].update_replica_startup_backoff_time()
 
     def _record_deployment_usage(self):
         ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))
