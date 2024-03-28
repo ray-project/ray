@@ -1,11 +1,6 @@
-import {
-  createStyles,
-  Link,
-  makeStyles,
-  TableCell,
-  TableRow,
-  Tooltip,
-} from "@material-ui/core";
+import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { StatusChip } from "../../components/StatusChip";
@@ -110,7 +105,7 @@ const ServeSystemActorRow = ({
       </TableCell>
       <TableCell align="center">
         {node_id ? (
-          <Tooltip className={classes.idCol} title={node_id} arrow interactive>
+          <Tooltip className={classes.idCol} title={node_id} arrow>
             <Link component={RouterLink} to={`/cluster/nodes/${node_id}`}>
               {node_id}
             </Link>
@@ -121,7 +116,7 @@ const ServeSystemActorRow = ({
       </TableCell>
       <TableCell align="center">
         {actor_id ? (
-          <Tooltip className={classes.idCol} title={actor_id} arrow interactive>
+          <Tooltip className={classes.idCol} title={actor_id} arrow>
             <Link component={RouterLink} to={`/actors/${actor_id}`}>
               {actor_id}
             </Link>

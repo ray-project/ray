@@ -1,10 +1,6 @@
-import {
-  InputAdornment,
-  makeStyles,
-  MenuItem,
-  TextField,
-} from "@material-ui/core";
-import { SearchOutlined } from "@material-ui/icons";
+import { SearchOutlined } from "@mui/icons-material";
+import { InputAdornment, MenuItem, TextField } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 
 const useStyles = makeStyles((theme) => ({
@@ -82,9 +78,13 @@ export const SearchSelect = ({
       {showAllOption ?? <MenuItem value="">All</MenuItem>}
       {options.map((e) =>
         typeof e === "string" ? (
-          <MenuItem value={e}>{e}</MenuItem>
+          <MenuItem key={e} value={e}>
+            {e}
+          </MenuItem>
         ) : (
-          <MenuItem value={e[0]}>{e[1]}</MenuItem>
+          <MenuItem key={e[0]} value={e[0]}>
+            {e[1]}
+          </MenuItem>
         ),
       )}
     </TextField>

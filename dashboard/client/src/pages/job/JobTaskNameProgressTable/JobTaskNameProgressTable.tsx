@@ -1,15 +1,15 @@
 import {
   Box,
-  createStyles,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-} from "@material-ui/core";
-import { Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { ClassNameProps } from "../../../common/props";
 import { HelpInfo } from "../../../components/Tooltip";

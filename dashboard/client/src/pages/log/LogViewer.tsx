@@ -1,13 +1,13 @@
+import { SearchOutlined } from "@mui/icons-material";
 import {
   Button,
-  createStyles,
   InputAdornment,
   LinearProgress,
-  makeStyles,
   Switch,
   TextField,
-} from "@material-ui/core";
-import { SearchOutlined } from "@material-ui/icons";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useState } from "react";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 

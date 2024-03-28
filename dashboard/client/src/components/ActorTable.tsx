@@ -1,3 +1,4 @@
+import { SearchOutlined } from "@mui/icons-material";
 import {
   Box,
   InputAdornment,
@@ -12,11 +13,10 @@ import {
   TextFieldProps,
   Tooltip,
   Typography,
-} from "@material-ui/core";
-import { orange } from "@material-ui/core/colors";
-import { SearchOutlined } from "@material-ui/icons";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import { orange } from "@mui/material/colors";
+import Pagination from "@mui/material/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
@@ -327,7 +327,7 @@ const ActorTable = ({
 
   return (
     <React.Fragment>
-      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "end" }}>
         <Autocomplete
           style={{ margin: 8, width: 120 }}
           options={Array.from(
@@ -463,32 +463,27 @@ const ActorTable = ({
             onChange: ({ target: { value } }) => {
               setPageSize(Math.min(Number(value), 500) || 10);
             },
-            endAdornment: (
-              <InputAdornment position="end">Per Page</InputAdornment>
-            ),
           }}
         />
         <div data-testid="sortByFilter">
-          <span style={{ margin: 8, marginTop: 16 }}>
-            <SearchSelect
-              label="Sort By"
-              options={[
-                [uptimeSorterKey, "Uptime"],
-                ["processStats.memoryInfo.rss", "Used Memory"],
-                ["mem[0]", "Total Memory"],
-                ["processStats.cpuPercent", "CPU"],
-                // Fake attribute key used when sorting by GPU utilization and
-                // GRAM usage because aggregate function required on actor key before sorting.
-                [gpuUtilizationSorterKey, "GPU Utilization"],
-                [gramUsageSorterKey, "GRAM Usage"],
-              ]}
-              onChange={(val) => setSortKey(val)}
-              showAllOption={false}
-              defaultValue={defaultSorterKey}
-            />
-          </span>
+          <SearchSelect
+            label="Sort By"
+            options={[
+              [uptimeSorterKey, "Uptime"],
+              ["processStats.memoryInfo.rss", "Used Memory"],
+              ["mem[0]", "Total Memory"],
+              ["processStats.cpuPercent", "CPU"],
+              // Fake attribute key used when sorting by GPU utilization and
+              // GRAM usage because aggregate function required on actor key before sorting.
+              [gpuUtilizationSorterKey, "GPU Utilization"],
+              [gramUsageSorterKey, "GRAM Usage"],
+            ]}
+            onChange={(val) => setSortKey(val)}
+            showAllOption={false}
+            defaultValue={defaultSorterKey}
+          />
         </div>
-        <span style={{ margin: 8, marginTop: 20 }}>
+        <span>
           Reverse:
           <Switch onChange={(_, checked) => setOrderDesc(checked)} />
         </span>
@@ -570,12 +565,7 @@ const ActorTable = ({
                   key={actorId}
                 >
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.idCol}
-                      title={actorId}
-                      arrow
-                      interactive
-                    >
+                    <Tooltip className={classes.idCol} title={actorId} arrow>
                       <div>
                         <ActorLink
                           actorId={actorId}
@@ -645,7 +635,6 @@ const ActorTable = ({
                         className={classes.idCol}
                         title={address?.rayletId}
                         arrow
-                        interactive
                       >
                         <div>
                           <Link
@@ -703,7 +692,6 @@ const ActorTable = ({
                       className={classes.idCol}
                       title={placementGroupId ? placementGroupId : "-"}
                       arrow
-                      interactive
                     >
                       <div>{placementGroupId ? placementGroupId : "-"}</div>
                     </Tooltip>
@@ -719,7 +707,6 @@ const ActorTable = ({
                         ),
                       )}
                       arrow
-                      interactive
                     >
                       <div>
                         {Object.entries(requiredResources || {})
@@ -733,7 +720,6 @@ const ActorTable = ({
                       className={classes.OverflowCol}
                       title={exitDetail}
                       arrow
-                      interactive
                     >
                       <div>{exitDetail}</div>
                     </Tooltip>

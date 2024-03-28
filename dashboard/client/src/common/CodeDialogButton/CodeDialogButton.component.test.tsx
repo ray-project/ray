@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
+import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import {
   CodeDialogButton,
   CodeDialogButtonWithPreview,
@@ -12,6 +13,7 @@ describe("CodeDialogButton", () => {
 
     render(
       <CodeDialogButton title="Test title" code={{ foo: 1, bar: "bar" }} />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     const user = userEvent.setup();
@@ -35,6 +37,7 @@ describe("CodeDialogButton", () => {
         buttonText="CustomButton"
         code="import ray\nray.init()"
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     const user = userEvent.setup();
@@ -59,6 +62,7 @@ describe("CodeDialogButtonWithPreview", () => {
         title="Test title"
         code={{ foo: 1, bar: "bar" }}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     const user = userEvent.setup();

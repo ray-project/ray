@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import React, { PropsWithChildren } from "react";
 import { GlobalContext } from "../../App";
+import { STYLE_WRAPPER } from "../../util/test-utils";
 import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
@@ -23,7 +24,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         dashboardDatasource: "Prometheus",
       }}
     >
-      {children}
+      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
     </GlobalContext.Provider>
   );
 };
@@ -48,7 +49,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         dashboardDatasource: "Prometheus",
       }}
     >
-      {children}
+      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
     </GlobalContext.Provider>
   );
 };

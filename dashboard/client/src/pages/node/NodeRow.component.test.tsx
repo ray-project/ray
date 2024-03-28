@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { noop } from "lodash";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { NodeDetail } from "../../type/node";
 import { CoreWorkerStats, Worker } from "../../type/worker";
+import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { NodeRow, WorkerRow } from "./NodeRow";
 
 const NODE: NodeDetail = {
@@ -71,15 +71,7 @@ describe("NodeRow", () => {
           /* purposefully empty */
         }}
       />,
-      {
-        wrapper: ({ children }) => (
-          <MemoryRouter>
-            <table>
-              <tbody>{children}</tbody>
-            </table>
-          </MemoryRouter>
-        ),
-      },
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     await screen.findByText("test-hostname");
@@ -102,15 +94,7 @@ describe("NodeRow", () => {
   it("Disable actions for Dead node", async () => {
     render(
       <NodeRow node={DEAD_NODE} expanded={false} onExpandButtonClick={noop} />,
-      {
-        wrapper: ({ children }) => (
-          <MemoryRouter>
-            <table>
-              <tbody>{children}</tbody>
-            </table>
-          </MemoryRouter>
-        ),
-      },
+      { wrapper: TEST_APP_WRAPPER },
     );
     await screen.findByText("test-hostname");
     // Could not access logs for Dead nodes(the log is hidden)
@@ -123,13 +107,7 @@ describe("NodeRow", () => {
 describe("WorkerRow", () => {
   it("renders", async () => {
     render(<WorkerRow node={NODE} worker={WORKER} />, {
-      wrapper: ({ children }) => (
-        <MemoryRouter>
-          <table>
-            <tbody>{children}</tbody>
-          </table>
-        </MemoryRouter>
-      ),
+      wrapper: TEST_APP_WRAPPER,
     });
 
     await screen.findByText("echo hi");

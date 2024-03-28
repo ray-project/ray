@@ -1,16 +1,16 @@
 import {
   Box,
   Button,
-  createStyles,
   IconButton,
   Link,
   List,
   ListItem,
-  makeStyles,
   Paper,
   Typography,
-} from "@material-ui/core";
-import { grey } from "@material-ui/core/colors";
+} from "@mui/material";
+import { grey } from "@mui/material/colors";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useMemo, useState } from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";

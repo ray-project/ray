@@ -1,12 +1,6 @@
-import {
-  Box,
-  createStyles,
-  IconButton,
-  makeStyles,
-  Tab,
-  Tabs,
-  Typography,
-} from "@material-ui/core";
+import { Box, IconButton, Tab, Tabs, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useEffect, useState } from "react";
 import { RiExternalLinkLine, RiSortAsc, RiSortDesc } from "react-icons/ri";
 import { Link } from "react-router-dom";
@@ -147,6 +141,7 @@ export const MultiTabLogViewer = ({
           onClick={() => {
             setExpanded(!expanded);
           }}
+          size="large"
         >
           {expanded ? <RiSortAsc /> : <RiSortDesc />}
         </IconButton>

@@ -1,7 +1,6 @@
-import { ThemeProvider } from "@material-ui/core";
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { lightTheme } from "../../../theme";
+import { STYLE_WRAPPER } from "../../../util/test-utils";
 import { useJobProgressByTaskName } from "../hook/useJobProgress";
 import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 
@@ -34,9 +33,9 @@ describe("JobTaskNameProgressTable", () => {
     } as any);
 
     render(
-      <ThemeProvider theme={lightTheme}>
+      <STYLE_WRAPPER>
         <JobTaskNameProgressTable jobId="01000000" />
-      </ThemeProvider>,
+      </STYLE_WRAPPER>,
     );
 
     await screen.findByText("Task name");

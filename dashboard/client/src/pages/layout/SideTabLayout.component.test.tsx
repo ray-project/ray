@@ -3,40 +3,43 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
+import { STYLE_WRAPPER } from "../../util/test-utils";
 import { SideTabLayout, SideTabPage, SideTabRouteLink } from "./SideTabLayout";
 
 const TestApp = ({ location = "/" }: { location?: string }) => {
   return (
-    <MemoryRouter initialEntries={[location]}>
-      <Routes>
-        <Route
-          element={
-            <SideTabLayout>
-              <SideTabRouteLink tabId="tab-a" title="Tab A" to="tab-a" />
-              <SideTabRouteLink tabId="tab-b" title="Tab B" to="tab-b" />
-            </SideTabLayout>
-          }
-        >
+    <STYLE_WRAPPER>
+      <MemoryRouter initialEntries={[location]}>
+        <Routes>
           <Route
             element={
-              <SideTabPage tabId="tab-a">
-                <div>Page Contents A</div>
-              </SideTabPage>
+              <SideTabLayout>
+                <SideTabRouteLink tabId="tab-a" title="Tab A" to="tab-a" />
+                <SideTabRouteLink tabId="tab-b" title="Tab B" to="tab-b" />
+              </SideTabLayout>
             }
-            path="tab-a"
-          />
-          <Route
-            element={
-              <SideTabPage tabId="tab-b">
-                <div>Page Contents B</div>
-              </SideTabPage>
-            }
-            path="tab-b"
-          />
-          <Route element={<div>Not a tabbed page</div>} path="page-c" />
-        </Route>
-      </Routes>
-    </MemoryRouter>
+          >
+            <Route
+              element={
+                <SideTabPage tabId="tab-a">
+                  <div>Page Contents A</div>
+                </SideTabPage>
+              }
+              path="tab-a"
+            />
+            <Route
+              element={
+                <SideTabPage tabId="tab-b">
+                  <div>Page Contents B</div>
+                </SideTabPage>
+              }
+              path="tab-b"
+            />
+            <Route element={<div>Not a tabbed page</div>} path="page-c" />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </STYLE_WRAPPER>
   );
 };
 

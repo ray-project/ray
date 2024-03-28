@@ -1,4 +1,4 @@
-import { Grid } from "@material-ui/core";
+import { Grid } from "@mui/material";
 import dayjs from "dayjs";
 import React, { useState } from "react";
 import PlacementGroupTable from "../../components/PlacementGroupTable";

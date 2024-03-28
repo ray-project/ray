@@ -1,7 +1,5 @@
 import {
   Box,
-  createStyles,
-  makeStyles,
   Table,
   TableBody,
   TableCell,
@@ -11,9 +9,11 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";

@@ -1,6 +1,5 @@
 import {
   Box,
-  InputAdornment,
   Link,
   Table,
   TableBody,
@@ -11,9 +10,9 @@ import {
   TextFieldProps,
   Tooltip,
   Typography,
-} from "@material-ui/core";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButton } from "../common/CodeDialogButton";
@@ -171,9 +170,6 @@ const TaskTable = ({
             onChange: ({ target: { value } }) => {
               setPageSize(Math.min(Number(value), 500) || 10);
             },
-            endAdornment: (
-              <InputAdornment position="end">Per Page</InputAdornment>
-            ),
           }}
         />
       </div>
@@ -231,12 +227,7 @@ const TaskTable = ({
               return (
                 <TableRow key={task_id}>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.idCol}
-                      title={task_id}
-                      arrow
-                      interactive
-                    >
+                    <Tooltip className={classes.idCol} title={task_id} arrow>
                       <Link component={RouterLink} to={`tasks/${task_id}`}>
                         {task_id}
                       </Link>
@@ -266,7 +257,6 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={node_id ? node_id : "-"}
                       arrow
-                      interactive
                     >
                       {node_id ? <NodeLink nodeId={node_id} /> : <div>-</div>}
                     </Tooltip>
@@ -276,7 +266,6 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={actor_id ? actor_id : "-"}
                       arrow
-                      interactive
                     >
                       {actor_id ? (
                         <ActorLink actorId={actor_id} />
@@ -290,7 +279,6 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={worker_id ? worker_id : "-"}
                       arrow
-                      interactive
                     >
                       <div>{worker_id ? worker_id : "-"}</div>
                     </Tooltip>
@@ -301,7 +289,6 @@ const TaskTable = ({
                       className={classes.idCol}
                       title={placement_group_id ? placement_group_id : "-"}
                       arrow
-                      interactive
                     >
                       <div>{placement_group_id ? placement_group_id : "-"}</div>
                     </Tooltip>

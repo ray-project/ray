@@ -1,4 +1,4 @@
-import { Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
 import React from "react";
 import { Outlet, useParams } from "react-router-dom";
 import Loading from "../../components/Loading";

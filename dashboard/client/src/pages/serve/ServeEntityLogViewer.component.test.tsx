@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import {
@@ -19,7 +19,7 @@ describe("ServeEntityLogViewer", () => {
         return (
           <div>
             {tabs.map((tab) => (
-              <div>
+              <div key={tab.title}>
                 {Object.entries(tab).map(([key, value]) => (
                   <span key={key}>
                     {key}: {value}
@@ -100,7 +100,7 @@ describe("ServeEntityLogViewer", () => {
 
     // Verify dropdowns are rendered
     expect(screen.getByText("View logs from")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Controller" })).toBeVisible();
+    expect(screen.getByTestId("entity-group-select")).toBeVisible();
     expect(screen.queryByText("HTTP Proxy")).not.toBeInTheDocument();
     expect(screen.queryByText("Deployment replicas")).not.toBeInTheDocument();
 
@@ -117,16 +117,14 @@ describe("ServeEntityLogViewer", () => {
     ).not.toBeInTheDocument();
 
     // Verify HTTP Proxy logs are rendered
-    await user.click(screen.getByRole("button", { name: "Controller" }));
+    await user.click(
+      within(screen.getByTestId("entity-group-select")).getByRole("combobox"),
+    );
     await screen.findByText(/Proxies/);
     await user.click(screen.getByRole("option", { name: /Proxies/ }));
     await screen.findByText("HTTP Proxy");
 
-    expect(
-      screen.getByRole("button", {
-        name: "HTTPProxyActor:test-actor-id-for-proxy-1",
-      }),
-    ).toBeVisible();
+    expect(screen.getByTestId("proxies-select")).toBeVisible();
 
     expect(screen.getByText("title: HTTP Proxy logs")).toBeVisible();
     expect(screen.getByText("nodeId: test-node-id-for-proxy-1")).toBeVisible();
@@ -136,9 +134,7 @@ describe("ServeEntityLogViewer", () => {
 
     // Switch to proxy 2
     await user.click(
-      screen.getByRole("button", {
-        name: "HTTPProxyActor:test-actor-id-for-proxy-1",
-      }),
+      within(screen.getByTestId("proxies-select")).getByRole("combobox"),
     );
     await screen.findByText("HTTPProxyActor:test-actor-id-for-proxy-2");
     await user.click(
@@ -155,15 +151,15 @@ describe("ServeEntityLogViewer", () => {
     ).toBeVisible();
 
     // Verify Deployment logs are rendered
-    await user.click(screen.getByRole("button", { name: "Proxies" }));
+    await user.click(
+      within(screen.getByTestId("entity-group-select")).getByRole("combobox"),
+    );
     await screen.findByText(/Deployments/);
     await user.click(screen.getByRole("option", { name: /Deployments/ }));
     await screen.findByText("Deployment replica");
 
     expect(
-      screen.getByRole("button", {
-        name: "test-replica-id-for-deployment-1",
-      }),
+      within(screen.getByTestId("replicas-select")).getByRole("combobox"),
     ).toBeVisible();
 
     expect(screen.getByText("title: Serve logger")).toBeVisible();
@@ -186,9 +182,7 @@ describe("ServeEntityLogViewer", () => {
 
     // Switch to replica 2
     await user.click(
-      screen.getByRole("button", {
-        name: "test-replica-id-for-deployment-1",
-      }),
+      within(screen.getByTestId("replicas-select")).getByRole("combobox"),
     );
     await screen.findByText("test-replica-id-2-for-deployment-1");
     await user.click(
@@ -218,9 +212,7 @@ describe("ServeEntityLogViewer", () => {
 
     // Switch to replica 3
     await user.click(
-      screen.getByRole("button", {
-        name: "test-replica-id-2-for-deployment-1",
-      }),
+      within(screen.getByTestId("replicas-select")).getByRole("combobox"),
     );
     await screen.findByText("test-replica-id-for-deployment-2");
     await user.click(
@@ -294,13 +286,9 @@ describe("ServeEntityLogViewer", () => {
 
     // Verify dropdowns are rendered
     expect(screen.queryByText("View logs from")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Controller" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Controller")).not.toBeInTheDocument();
     expect(screen.queryByText("HTTP Proxy")).not.toBeInTheDocument();
     expect(screen.getByText("Deployment replica")).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "test-replica-id-for-deployment-1" }),
-    ).toBeVisible();
+    expect(screen.getByTestId("replicas-select")).toBeVisible();
   });
 });

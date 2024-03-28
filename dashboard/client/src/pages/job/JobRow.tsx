@@ -1,5 +1,5 @@
-import { Link, TableCell, TableRow, Tooltip } from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
+import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
@@ -82,12 +82,7 @@ export const JobRow = ({ job }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
-        <Tooltip
-          className={classes.overflowCell}
-          title={entrypoint}
-          arrow
-          interactive
-        >
+        <Tooltip className={classes.overflowCell} title={entrypoint} arrow>
           <div>{entrypoint}</div>
         </Tooltip>
       </TableCell>
