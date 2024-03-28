@@ -48,10 +48,10 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/core_worker/experimental_mutable_object_network_manager.h"
 // clang-format on
 
 namespace ray {
-
 namespace raylet {
 
 using rpc::ErrorType;
@@ -591,6 +591,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                  rpc::GetTaskFailureCauseReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleRegisterMutableObject(rpc::RegisterMutableObjectRequest request,
+                                   rpc::RegisterMutableObjectReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePushMutableObject(rpc::PushMutableObjectRequest request,
+                               rpc::PushMutableObjectReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
                             rpc::GetObjectsInfoReply *reply,
@@ -719,7 +727,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
@@ -866,8 +874,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  std::unique_ptr<core::experimental::MutableObjectNetworkManager<plasma::PlasmaClient>>
+      mutable_obj_network_manager_;
 };
 
 }  // namespace raylet
-
 }  // namespace ray
