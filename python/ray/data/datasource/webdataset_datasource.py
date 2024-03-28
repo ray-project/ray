@@ -3,17 +3,27 @@
 
 import fnmatch
 import io
+import logging
 import re
 import tarfile
+import time
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+import ray
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.progress_tracker import (
+    CACHED_PROGRESS_TRACKERS,
+    ProgressTracker,
+)
 from ray.util.annotations import PublicAPI
+from ray.util.queue import Full
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = logging.getLogger(__name__)
 
 
 def _base_plus_ext(path: str):
@@ -101,6 +111,7 @@ def _tar_file_iterator(
     fileselect: Optional[Union[bool, callable, list]] = None,
     filerename: Optional[Union[bool, callable, list]] = None,
     verbose_open: bool = False,
+    skip_files: Optional[set[str]] = None,
     meta: dict = None,
 ):
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
@@ -118,6 +129,9 @@ def _tar_file_iterator(
     for tarinfo in stream:
         fname = tarinfo.name
         if not tarinfo.isreg() or fname is None:
+            continue
+        if skip_files and fname in skip_files:
+            logger.debug(f"Skipping {fname}")
             continue
         data = stream.extractfile(tarinfo).read()
         fname = _apply_list(filerename, fname)
@@ -314,6 +328,8 @@ class WebDatasetDatasource(FileBasedDatasource):
         filerename: Optional[Union[bool, callable, list]] = None,
         suffixes: Optional[Union[bool, callable, list]] = None,
         verbose_open: bool = False,
+        progress_path: str | None = None,
+        progress_save_interval: int = 10_000,
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -323,6 +339,27 @@ class WebDatasetDatasource(FileBasedDatasource):
         self.filerename = filerename
         self.suffixes = suffixes
         self.verbose_open = verbose_open
+
+        if progress_path and not progress_path.endswith(".progress"):
+            raise ValueError("Progress path must end with .progress")
+
+        self.progress_tracker, self.progress, self.pending_queue = None, None, None
+        if progress_path:
+            self.progress_tracker = ProgressTracker.options(
+                name=f"ProgressTracker:{progress_path}"
+            ).remote(progress_path, save_interval=progress_save_interval)
+            CACHED_PROGRESS_TRACKERS[progress_path] = self.progress_tracker
+
+            self.pending_queue = ray.get(
+                self.progress_tracker.get_pending_queue.remote()
+            )
+            logger.debug("Got pending queue from progress tracker.")
+
+            self.progress = ray.get(self.progress_tracker.get_initial_progress.remote())
+
+            logger.debug(
+                f"Found {len(self.progress.skip_keys)} completed keys across {len(self.progress.skip_files)} files."
+            )
 
     def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
@@ -349,9 +386,29 @@ class WebDatasetDatasource(FileBasedDatasource):
             fileselect=self.fileselect,
             filerename=self.filerename,
             verbose_open=self.verbose_open,
+            skip_files=self.progress.skip_files if self.progress else None,
         )
         samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)
+
+        keys = []
         for sample in samples:
+            if self.progress is not None:
+                if sample["__key__"] in self.progress.skip_keys:
+                    continue
+
+                keys.append(sample["__key__"])
+
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=_default_decoder)
             yield pd.DataFrame({k: [v] for k, v in sample.items()})
+
+        if self.pending_queue is not None:
+            sleep = 1
+            while True:
+                try:
+                    self.pending_queue.put_nowait_batch([(path, key) for key in keys])
+                    break
+                except Full:
+                    logger.debug(f"Pending queue is full, retrying in {sleep} seconds.")
+                    time.sleep(sleep)
+                    sleep *= 2
