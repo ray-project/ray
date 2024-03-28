@@ -14,7 +14,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     DeploymentID,
-    EndpointInfo,
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
@@ -25,6 +24,7 @@ from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -33,7 +33,6 @@ from ray.serve._private.constants import (
     SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
@@ -54,12 +53,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
-from ray.serve.generated.serve_pb2 import (
-    ActorNameList,
-    DeploymentArgs,
-    DeploymentRoute,
-    DeploymentRouteList,
-)
+from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
@@ -215,12 +209,6 @@ class ServeController:
         self._proxy_nodes = set()
         self._update_proxy_nodes()
 
-        # Track the number of times the controller has started
-        metrics.Counter(
-            "serve_controller_num_starts",
-            description="The number of times that controller has started.",
-        ).inc()
-
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
             self.global_logging_config
@@ -240,6 +228,11 @@ class ServeController:
             component_name="controller",
             component_id=str(os.getpid()),
             logging_config=global_logging_config,
+        )
+
+        logger.info(
+            f"Controller starting (version='{ray.__version__}').",
+            extra={"log_to_stderr": False},
         )
         logger.debug(
             "Configure the serve controller logger "
@@ -400,11 +393,13 @@ class ServeController:
                 )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
-                    logger.info(
-                        "Finished recovering deployments after "
-                        f"{(time.time() - start_time):.2f}s.",
-                        extra={"log_to_stderr": False},
-                    )
+                    if num_loops > 0:
+                        # Only log if we actually needed to recover anything.
+                        logger.info(
+                            "Finished recovering deployments after "
+                            f"{(time.time() - start_time):.2f}s.",
+                            extra={"log_to_stderr": False},
+                        )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
@@ -701,54 +696,6 @@ class ServeController:
                     extra={"log_to_stderr": False},
                 )
 
-    def deploy(
-        self,
-        name: str,
-        deployment_config_proto_bytes: bytes,
-        replica_config_proto_bytes: bytes,
-        route_prefix: Optional[str],
-        deployer_job_id: Union[str, bytes],
-        docs_path: Optional[str] = None,
-        # TODO(edoakes): this is a hack because the deployment_language doesn't seem
-        # to get set properly from Java.
-        is_deployed_from_python: bool = False,
-    ) -> bool:
-        """Deploys a deployment. This should only be used for 1.x deployments."""
-        if route_prefix is not None:
-            assert route_prefix.startswith("/")
-        if docs_path is not None:
-            assert docs_path.startswith("/")
-
-        deployment_info = deploy_args_to_deployment_info(
-            deployment_name=name,
-            deployment_config_proto_bytes=deployment_config_proto_bytes,
-            replica_config_proto_bytes=replica_config_proto_bytes,
-            deployer_job_id=deployer_job_id,
-            route_prefix=route_prefix,
-            docs_path=docs_path,
-            app_name="",
-        )
-
-        # TODO(architkulkarni): When a deployment is redeployed, even if
-        # the only change was num_replicas, the start_time_ms is refreshed.
-        # Is this the desired behaviour?
-        updating = self.deployment_state_manager.deploy(
-            DeploymentID(name=name, app_name=""), deployment_info
-        )
-
-        if route_prefix is not None:
-            endpoint_info = EndpointInfo(
-                route=route_prefix,
-                app_is_cross_language=not is_deployed_from_python,
-            )
-            self.endpoint_state.update_endpoint(
-                DeploymentID(name=name, app_name=""), endpoint_info
-            )
-        else:
-            self.endpoint_state.delete_endpoint(DeploymentID(name=name, app_name=""))
-
-        return updating
-
     def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
@@ -859,19 +806,6 @@ class ServeController:
         new_applications = {app_config.name for app_config in config.applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
-    def delete_deployment(self, name: str):
-        """Should only be used for 1.x deployments."""
-
-        id = DeploymentID(name=name, app_name="")
-        self.endpoint_state.delete_endpoint(id)
-        return self.deployment_state_manager.delete_deployment(id)
-
-    def delete_deployments(self, names: Iterable[str]) -> None:
-        """Should only be used for 1.x deployments."""
-
-        for name in names:
-            self.delete_deployment(name)
-
     def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
 
@@ -908,40 +842,6 @@ class ServeController:
         return {
             id: (info, self.endpoint_state.get_endpoint_route(id))
             for id, info in self.deployment_state_manager.get_deployment_infos().items()
-        }
-
-    def list_deployments_v1(self) -> bytes:
-        """Gets the current information about all 1.x deployments.
-
-        Returns:
-            DeploymentRouteList's protobuf serialized bytes
-        """
-        deployment_route_list = DeploymentRouteList()
-        for deployment_id, (
-            deployment_info,
-            route_prefix,
-        ) in self.list_deployments_internal().items():
-            # Only list 1.x deployments, which should have app=""
-            if deployment_id.app_name:
-                continue
-
-            deployment_info_proto = deployment_info.to_proto()
-            deployment_info_proto.name = deployment_id.name
-            deployment_route_list.deployment_routes.append(
-                DeploymentRoute(
-                    deployment_info=deployment_info_proto, route=route_prefix
-                )
-            )
-        return deployment_route_list.SerializeToString()
-
-    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
-        """Gets the current information about all deployments (1.x and 2.x)"""
-        return {
-            deployment_id: deployment_info
-            for deployment_id, (
-                deployment_info,
-                _,
-            ) in self.list_deployments_internal().items()
         }
 
     def list_deployment_ids(self) -> List[DeploymentID]:
@@ -1247,6 +1147,7 @@ class ServeControllerAvatar:
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
                 namespace=SERVE_NAMESPACE,
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
                 http_config=http_config,
                 global_logging_config=logging_config,

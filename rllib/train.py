@@ -12,17 +12,18 @@ import yaml
 
 import ray
 from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.common import CLIArguments as cli
+from ray.rllib.common import FrameworkEnum, SupportedFileType
+from ray.rllib.common import _download_example_file, _get_file_type
 from ray.train.constants import _DEPRECATED_VALUE
 from ray.tune.resources import resources_to_json, json_to_resources
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.common import CLIArguments as cli
-from ray.rllib.common import FrameworkEnum, SupportedFileType
-from ray.rllib.common import download_example_file, get_file_type
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
-def import_backends():
+def _import_backends():
     """Try to import both backends for flag checking/warnings."""
     tf1, tf, tfv = try_import_tf()
     torch, _ = try_import_torch()
@@ -57,6 +58,7 @@ def _patch_path(path: str):
         return path
 
 
+@PublicAPI(stability="beta")
 def load_experiments_from_file(
     config_file: str,
     file_type: SupportedFileType,
@@ -109,7 +111,7 @@ def load_experiments_from_file(
             stop = json.loads(stop)
 
         # Note: we do this gymnastics to support the old format that
-        # "run_rllib_experiments" expects. Ideally, we'd just build the config and
+        # "_run_rllib_experiments" expects. Ideally, we'd just build the config and
         # run the algo.
         config = algo_config.to_dict()
         experiments = {
@@ -127,6 +129,7 @@ def load_experiments_from_file(
     return experiments
 
 
+@DeveloperAPI
 @train_app.command()
 def file(
     # File-based arguments.
@@ -173,11 +176,11 @@ def file(
       master/rllib/tuned_examples/ppo/cartpole-ppo.yaml
     """
     # Attempt to download the file if it's not found locally.
-    config_file, temp_file = download_example_file(
+    config_file, temp_file = _download_example_file(
         example_file=config_file, base_url=None
     )
 
-    import_backends()
+    _import_backends()
     framework = framework.value if framework else None
 
     checkpoint_config = {
@@ -187,7 +190,7 @@ def file(
         "checkpoint_score_attribute": checkpoint_score_attr,
     }
 
-    file_type = get_file_type(config_file)
+    file_type = _get_file_type(config_file)
 
     experiments = load_experiments_from_file(
         config_file, file_type, stop, checkpoint_config
@@ -220,7 +223,7 @@ def file(
     if temp_file:
         temp_file.close()
 
-    run_rllib_experiments(
+    _run_rllib_experiments(
         experiments=experiments,
         v=v,
         vv=vv,
@@ -241,6 +244,7 @@ def file(
     )
 
 
+@DeveloperAPI
 @train_app.callback(invoke_without_command=True)
 def run(
     # Context object for subcommands
@@ -292,7 +296,7 @@ def run(
     if ctx.invoked_subcommand is None:
         # we only check for backends when actually running the command. otherwise the
         # start-up time is too slow.
-        import_backends()
+        _import_backends()
 
         framework = framework.value if framework else None
 
@@ -329,7 +333,7 @@ def run(
             }
         }
 
-        run_rllib_experiments(
+        _run_rllib_experiments(
             experiments=experiments,
             v=v,
             vv=vv,
@@ -349,7 +353,7 @@ def run(
         )
 
 
-def run_rllib_experiments(
+def _run_rllib_experiments(
     experiments: dict,
     v: cli.V,
     vv: cli.VV,
@@ -458,6 +462,7 @@ def run_rllib_experiments(
         print(Panel(f"[green]  rllib evaluate {checkpoints[0].path} --algo {algo}"))
 
 
+@DeveloperAPI
 def main():
     """Run the CLI."""
     train_app()

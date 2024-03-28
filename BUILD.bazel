@@ -582,12 +582,10 @@ ray_cc_library(
     name = "stats_lib",
     srcs = [
         "src/ray/stats/metric_exporter.cc",
-        "src/ray/stats/metric_exporter_client.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
         "src/ray/stats/metric_exporter.h",
-        "src/ray/stats/metric_exporter_client.h",
         "src/ray/stats/stats.h",
         "src/ray/stats/tag_defs.h",
     ],
@@ -1219,6 +1217,9 @@ ray_cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
 )
 
 ray_cc_test(
@@ -1437,21 +1438,6 @@ ray_cc_test(
     name = "stats_test",
     size = "small",
     srcs = ["src/ray/stats/stats_test.cc"],
-    tags = [
-        "stats",
-        "team:core",
-        "no_tsan",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "metric_exporter_client_test",
-    size = "small",
-    srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
     tags = [
         "stats",
         "team:core",

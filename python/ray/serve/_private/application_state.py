@@ -22,7 +22,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    NEW_DEFAULT_MAX_CONCURRENT_QUERIES,
+    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deploy_utils import (
@@ -416,7 +417,8 @@ class ApplicationState:
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
-                runtime_env=config.runtime_env
+                runtime_env=config.runtime_env,
+                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
                 config.import_path,
                 config.deployment_names,
@@ -1035,21 +1037,27 @@ def override_deployment_info(
 
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
+        if "max_concurrent_queries" in options or "max_ongoing_requests" in options:
+            options["max_ongoing_requests"] = options.get(
+                "max_ongoing_requests"
+            ) or options.get("max_concurrent_queries")
+
         deployment_name = options["name"]
         info = deployment_infos[deployment_name]
         original_options = info.deployment_config.dict()
         original_options["user_configured_option_names"].update(set(options))
 
-        # Override `max_concurrent_queries` and `autoscaling_config` if
+        # Override `max_ongoing_requests` and `autoscaling_config` if
         # `num_replicas="auto"`
         if options.get("num_replicas") == "auto":
             options["num_replicas"] = None
             if (
-                "max_concurrent_queries"
+                "max_ongoing_requests"
                 not in original_options["user_configured_option_names"]
             ):
-                options["max_concurrent_queries"] = NEW_DEFAULT_MAX_CONCURRENT_QUERIES
+                options["max_ongoing_requests"] = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
+            new_config = AutoscalingConfig.default().dict()
             # If `autoscaling_config` is specified, its values override
             # the default `num_replicas="auto"` configuration
             autoscaling_config = (
@@ -1057,9 +1065,9 @@ def override_deployment_info(
                 or info.deployment_config.autoscaling_config
             )
             if autoscaling_config:
-                new_config = AutoscalingConfig.default().dict()
                 new_config.update(autoscaling_config)
-                options["autoscaling_config"] = AutoscalingConfig(**new_config)
+
+            options["autoscaling_config"] = AutoscalingConfig(**new_config)
 
         # What to pass to info.update
         override_options = dict()
@@ -1101,11 +1109,13 @@ def override_deployment_info(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
         override_actor_options.update({"runtime_env": merged_env})
-        replica_config.update_ray_actor_options(override_actor_options)
-        replica_config.update_placement_group_options(
-            override_placement_group_bundles, override_placement_group_strategy
+
+        replica_config.update(
+            ray_actor_options=override_actor_options,
+            placement_group_bundles=override_placement_group_bundles,
+            placement_group_strategy=override_placement_group_strategy,
+            max_replicas_per_node=override_max_replicas_per_node,
         )
-        replica_config.update_max_replicas_per_node(override_max_replicas_per_node)
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
@@ -1117,13 +1127,13 @@ def override_deployment_info(
         deployment_config = deployment_infos[deployment_name].deployment_config
         if (
             deployment_config.autoscaling_config is not None
-            and deployment_config.max_concurrent_queries
-            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
+            and deployment_config.max_ongoing_requests
+            < deployment_config.autoscaling_config.get_target_ongoing_requests()
         ):
             logger.warning(
                 "Autoscaling will never happen, "
-                "because 'max_concurrent_queries' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
+                "because 'max_ongoing_requests' is less than "
+                "'target_ongoing_requests' now."
             )
 
     # Overwrite ingress route prefix

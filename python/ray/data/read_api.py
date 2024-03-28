@@ -45,6 +45,7 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
+    AvroDatasource,
     BaseFileMetadataProvider,
     BigQueryDatasource,
     BinaryDatasource,
@@ -78,6 +79,7 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.tfrecords_datasource import TFXReadOptions
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -467,7 +469,7 @@ def read_mongo(
         ...     collection="my_collection",
         ...     pipeline=[{"$match": {"col2": {"$gte": 0, "$lt": 100}}}, {"$sort": "sort_field"}], # noqa: E501
         ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}),
-        ...     parallelism=10,
+        ...     override_num_blocks=10,
         ... )
 
     Args:
@@ -1470,6 +1472,112 @@ def read_text(
 
 
 @PublicAPI
+def read_avro(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from records stored in Avro files.
+
+    Examples:
+        Read an Avro file in remote storage or local storage.
+
+        >>> import ray
+        >>> ds = ray.data.read_avro("s3://anonymous@ray-example-data/mnist.avro")
+        >>> ds.schema()
+        Column    Type
+        ------    ----
+        features  list<item: int64>
+        label     int64
+        dataType  string
+
+        >>> ray.data.read_avro( # doctest: +SKIP
+        ...    ["local:///path/to/file1", "local:///path/to/file2"])
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
+            in the subsequent text decoding map task.
+        arrow_open_stream_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.fs.FileSystem.html\
+                    #pyarrow.fs.FileSystem.open_input_stream>`_.
+            when opening input files to read.
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases, you do not need to set this. If ``None``, this
+            function uses a system-chosen implementation.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
+            Use with a custom callback to read only selected partitions of a
+            dataset. By default, no files are filtered.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` holding records from the Avro files.
+    """
+    if meta_provider is None:
+        meta_provider = get_generic_metadata_provider(AvroDatasource._FILE_EXTENSIONS)
+
+    datasource = AvroDatasource(
+        paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI
 def read_numpy(
     paths: Union[str, List[str]],
     *,
@@ -1580,10 +1688,19 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    tfx_read_options: Optional[TFXReadOptions] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
+
+    .. info:
+        Using tfx-bsl for reading tfrecord files is prefered, When reading large
+        datasets in production use cases. To use this implementation you should
+        install tfx-bsl with:
+            1. `pip install tfx_bsl --no-dependencies`
+            2. Pass tfx_read_options to read_tfrecords, for example:
+                `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -1654,13 +1771,33 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        tfx_read_options: Specifies read options when reading TFRecord files with TFX.
+            When no options are provided, the default version without tfx-bsl will
+            be used to read the tfrecords.
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
+    import platform
+
+    tfx_read = False
+
+    if tfx_read_options and platform.processor() != "arm":
+        try:
+            import tfx_bsl  # noqa: F401
+
+            tfx_read = True
+        except ModuleNotFoundError:
+            # override the tfx_read_options given that tfx-bsl is not installed
+            tfx_read_options = None
+            logger.warning(
+                "Please install tfx-bsl package with"
+                " `pip install tfx_bsl --no-dependencies`."
+                " This can help speed up the reading of large TFRecord files."
+            )
+
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(
             TFRecordDatasource._FILE_EXTENSIONS
@@ -1677,13 +1814,26 @@ def read_tfrecords(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        tfx_read_options=tfx_read_options,
     )
-    return read_datasource(
+    ds = read_datasource(
         datasource,
         parallelism=parallelism,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+    if (
+        tfx_read_options
+        and tfx_read_options.auto_infer_schema
+        and tfx_read
+        and not tf_schema
+    ):
+        from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
+
+        return _infer_schema_and_transform(ds)
+
+    return ds
 
 
 @PublicAPI(stability="alpha")
@@ -1912,10 +2062,10 @@ def read_sql(
         ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
         databases, ``OFFSET`` is slow.
 
-        As a workaround, set ``parallelism=1`` to directly fetch all rows in a single
-        task. Note that this approach requires all result rows to fit in the memory of
-        single task. If the rows don't fit, your program may raise an out of memory
-        error.
+        As a workaround, set ``override_num_blocks=1`` to directly fetch all rows in a
+        single task. Note that this approach requires all result rows to fit in the
+        memory of single task. If the rows don't fit, your program may raise an out of
+        memory error.
 
     Examples:
 

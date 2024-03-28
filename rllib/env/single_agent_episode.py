@@ -7,11 +7,14 @@ import gymnasium as gym
 from gymnasium.core import ActType, ObsType
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, ModuleID
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SingleAgentEpisode:
     """A class representing RL environment episodes for individual agents.
 
@@ -146,6 +149,7 @@ class SingleAgentEpisode:
         "id_",
         "agent_id",
         "module_id",
+        "multi_agent_episode_id",
         "_observation_space",
         "_action_space",
         "observations",
@@ -178,6 +182,7 @@ class SingleAgentEpisode:
         len_lookback_buffer: Union[int, str] = "auto",
         agent_id: Optional[AgentID] = None,
         module_id: Optional[ModuleID] = None,
+        multi_agent_episode_id: Optional[int] = None,
     ):
         """Initializes a SingleAgentEpisode instance.
 
@@ -245,11 +250,14 @@ class SingleAgentEpisode:
                 belongs to. Normally, this information is obtained by querying an
                 `agent_to_module_mapping_fn` with a given agent ID. This information
                 is stored under `self.module_id` and only serves reference purposes.
+            multi_agent_episode_id: An optional EpisodeID of the encapsulating
+                `MultiAgentEpisode` that this `SingleAgentEpisode` belongs to.
         """
         self.id_ = id_ or uuid.uuid4().hex
 
         self.agent_id = agent_id
         self.module_id = module_id
+        self.multi_agent_episode_id = multi_agent_episode_id
 
         # Lookback buffer length is not provided. Interpret already given data as
         # lookback buffer lengths for all data types.
@@ -558,7 +566,7 @@ class SingleAgentEpisode:
         structs, whose leafs are now numpy arrays. Each of these leaf numpy arrays will
         have the same length (batch dimension) as the length of the original lists.
 
-        Note that SampleBatch.INFOS are NEVER numpy'ized and will remain a list
+        Note that Columns.INFOS are NEVER numpy'ized and will remain a list
         (normally, a list of the original, env-returned dicts). This is due to the
         herterogenous nature of INFOS returned by envs, which would make it unwieldy to
         convert this information to numpy arrays.
@@ -748,7 +756,10 @@ class SingleAgentEpisode:
 
         .. testcode::
 
+            import gymnasium as gym
+
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            from ray.rllib.utils.test_utils import check
 
             episode = SingleAgentEpisode(
                 # Discrete(4) observations (ints between 0 and 4 (excl.))
@@ -758,29 +769,29 @@ class SingleAgentEpisode:
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Plain usage (`indices` arg only).
-            episode.get_observations(-1)  # 3
-            episode.get_observations(0)  # 0
-            episode.get_observations([0, 2])  # [0, 2]
-            episode.get_observations([-1, 0])  # [3, 0]
-            episode.get_observations(slice(None, 2))  # [0, 1]
-            episode.get_observations(slice(-2, None))  # [2, 3]
+            check(episode.get_observations(-1), 3)
+            check(episode.get_observations(0), 0)
+            check(episode.get_observations([0, 2]), [0, 2])
+            check(episode.get_observations([-1, 0]), [3, 0])
+            check(episode.get_observations(slice(None, 2)), [0, 1])
+            check(episode.get_observations(slice(-2, None)), [2, 3])
             # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_observations(slice(-6, -2), fill=-9)  # [-9, -9, 0, 1]
-            episode.get_observations(slice(2, 5), fill=-7)  # [2, 3, -7]
+            check(episode.get_observations(slice(-6, -2), fill=-9), [-9, -9, 0, 1])
+            check(episode.get_observations(slice(2, 5), fill=-7), [2, 3, -7])
             # Using `one_hot_discrete=True`.
-            episode.get_observations(2, one_hot_discrete=True)  # [0 0 1 0]
-            episode.get_observations(3, one_hot_discrete=True)  # [0 0 0 1]
-            episode.get_observations(
+            check(episode.get_observations(2, one_hot_discrete=True), [0, 0, 1, 0])
+            check(episode.get_observations(3, one_hot_discrete=True), [0, 0, 0, 1])
+            check(episode.get_observations(
                 slice(0, 3),
                 one_hot_discrete=True,
-            )   # [[1 0 0 0], [0 1 0 0], [0 0 1 0]]
+            ), [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
             # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
-            episode.get_observations(
+            check(episode.get_observations(
                 -1,
                 neg_indices_left_of_zero=True,  # -1 means one left of ts=0
                 fill=0.0,
                 one_hot_discrete=True,
-            )  # [0 0 0 0]  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
+            ), [0, 0, 0, 0])  # <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
 
         Returns:
             The collected observations.
@@ -1461,7 +1472,7 @@ class SingleAgentEpisode:
         """Converts a SingleAgentEpisode into a data dict mapping str keys to data.
 
         The keys used are:
-        SampleBatch.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,
+        Columns.EPS_ID, T, OBS, INFOS, ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS,
         and those in `self.extra_model_outputs`.
 
         Returns:
@@ -1481,18 +1492,18 @@ class SingleAgentEpisode:
         return dict(
             {
                 # Trivial 1D data (compiled above).
-                SampleBatch.TERMINATEDS: terminateds,
-                SampleBatch.TRUNCATEDS: truncateds,
-                SampleBatch.T: t,
-                SampleBatch.EPS_ID: eps_id,
+                Columns.TERMINATEDS: terminateds,
+                Columns.TRUNCATEDS: truncateds,
+                Columns.T: t,
+                Columns.EPS_ID: eps_id,
                 # Retrieve obs, infos, actions, rewards using our get_... APIs,
                 # which return all relevant timesteps (excluding the lookback
                 # buffer!). Slice off last obs and infos to have the same number
                 # of them as we have actions and rewards.
-                SampleBatch.OBS: self.get_observations(slice(None, -1)),
-                SampleBatch.INFOS: self.get_infos(slice(None, -1)),
-                SampleBatch.ACTIONS: self.get_actions(),
-                SampleBatch.REWARDS: self.get_rewards(),
+                Columns.OBS: self.get_observations(slice(None, -1)),
+                Columns.INFOS: self.get_infos(slice(None, -1)),
+                Columns.ACTIONS: self.get_actions(),
+                Columns.REWARDS: self.get_rewards(),
             },
             # All `extra_model_outs`: Same as obs: Use get_... API.
             **{

@@ -146,6 +146,14 @@ py_test(
 )
 
 py_test(
+    name = "test_avro",
+    size = "small",
+    srcs = ["tests/test_avro.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_all_to_all",
     size = "large",
     srcs = ["tests/test_all_to_all.py"],
@@ -317,7 +325,7 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/test_tfrecords.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "tfxbsl"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -363,7 +371,7 @@ py_test(
 
 py_test(
     name = "test_huggingface",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_huggingface.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -534,6 +542,14 @@ py_test(
     name = "test_webdataset",
     size = "medium",
     srcs = ["tests/test_webdataset.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_zip",
+    size = "small",
+    srcs = ["tests/test_zip.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
