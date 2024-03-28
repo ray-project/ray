@@ -143,6 +143,7 @@ You can specify a runtime environment for your whole job, whether running a scri
     $ ray job submit --address="http://<head-node-ip>:8265" --runtime-env-json='{"working_dir": "/data/my_files", "pip": ["emoji"]}' -- python my_ray_script.py
 
 .. code-block:: yaml
+
     # Option 4: Using KubeRay RayJob. You can specify the runtime environment in the RayJob YAML manifest.
     # [...]
     spec:
