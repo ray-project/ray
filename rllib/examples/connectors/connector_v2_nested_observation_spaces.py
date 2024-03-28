@@ -4,8 +4,6 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
@@ -46,32 +44,11 @@ if __name__ == "__main__":
         register_env("env", lambda _: CartPoleWithDictObservationSpace())
 
     # Define the AlgorithmConfig used.
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        # Use new API stack for PPO only.
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
         .environment("env")
-        .framework(args.framework)
-        .resources(
-            num_gpus=args.num_gpus,  # old stack
-            num_learner_workers=args.num_gpus,  # new stack
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
-            num_cpus_for_local_worker=1,
-        )
-        .rollouts(
-            env_to_module_connector=_env_to_module_pipeline,
-            num_rollout_workers=args.num_env_runners,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
-            ),
-        )
+        .rollouts(env_to_module_connector=_env_to_module_pipeline)
         .training(
             gamma=0.99,
             lr=0.0003,
@@ -92,17 +69,17 @@ if __name__ == "__main__":
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
     # Fix some PPO-specific settings.
     if args.algo == "PPO":
-        config.training(
+        base_config.training(
             num_sgd_iter=6,
             vf_loss_coeff=0.01,
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)

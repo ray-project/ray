@@ -2,8 +2,6 @@ import gymnasium as gym
 
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.env.multi_agent import make_multi_agent
 from ray.rllib.utils.test_utils import (
@@ -87,12 +85,9 @@ if __name__ == "__main__":
     else:
         tune.register_env("env", _env_creator)
 
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        # Use new API stack ...
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
-        .framework(args.framework)
         .environment(
             "env",
             env_config={
@@ -110,23 +105,7 @@ if __name__ == "__main__":
                 if args.use_gym_wrapper_framestacking
                 else _make_env_to_module_connector
             ),
-            num_rollout_workers=args.num_env_runners,
             num_envs_per_worker=1 if args.num_agents > 0 else 2,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
-            ),
-        )
-        .resources(
-            num_gpus=args.num_gpus,  # old stack
-            num_learner_workers=args.num_gpus,  # new stack
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
-            num_cpus_for_local_worker=1,
         )
         .training(
             # Use our frame stacking learner connector.
@@ -157,10 +136,10 @@ if __name__ == "__main__":
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)

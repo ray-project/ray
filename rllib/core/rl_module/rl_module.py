@@ -147,19 +147,34 @@ class SingleAgentRLModuleSpec:
         )
         return spec
 
-    def update(self, other) -> None:
-        """Updates this spec with the given other spec. Works like dict.update()."""
+    def update(self, other, override: bool = True) -> None:
+        """Updates this spec with the given other spec. Works like dict.update().
+
+        Args:
+            other: The other SingleAgentRLModule spec to update this one from.
+            override: Whether to update all properties in `self` with those of `other.
+                If False, only update those properties in `self` that are not None.
+        """
         if not isinstance(other, SingleAgentRLModuleSpec):
             raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
-        self.module_class = other.module_class or self.module_class
-        self.observation_space = other.observation_space or self.observation_space
-        self.action_space = other.action_space or self.action_space
-        self.model_config_dict = other.model_config_dict or self.model_config_dict
-        self.catalog_class = other.catalog_class or self.catalog_class
-        self.load_state_path = other.load_state_path or self.load_state_path
+        if override:
+            self.module_class = other.module_class or self.module_class
+            self.observation_space = other.observation_space or self.observation_space
+            self.action_space = other.action_space or self.action_space
+            self.model_config_dict = other.model_config_dict or self.model_config_dict
+            self.catalog_class = other.catalog_class or self.catalog_class
+            self.load_state_path = other.load_state_path or self.load_state_path
+        # Only override, if the field is None in `self`.
+        else:
+            self.module_class = self.module_class or other.module_class
+            self.observation_space = self.observation_space or other.observation_space
+            self.action_space = self.action_space or other.action_space
+            self.model_config_dict = self.model_config_dict or other.model_config_dict
+            self.catalog_class = self.catalog_class or other.catalog_class
+            self.load_state_path = self.load_state_path or other.load_state_path
 
     def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
         """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""

@@ -106,17 +106,6 @@ steps:
         --test-env=RLLIB_NUM_GPUS=1
     depends_on: rllibgpubuild
 
-  - label: ":brain: rllib: rlmodule tests"
-    tags: rllib_directly
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --parallelism-per-worker 3
-        --only-tags rlm
-        --test-env RLLIB_ENABLE_RL_MODULE=1
-        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-    depends_on: rllibbuild
-
   - label: ":brain: rllib: data tests"
     if: build.branch != "master"
     tags: data
