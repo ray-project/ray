@@ -399,12 +399,14 @@ class RuntimeEnvAgent:
                     )
                     if isinstance(e, asyncio.TimeoutError):
                         hint = (
-                            f"Failed due to timeout; check runtime_env setup logs"
-                            " and consider increasing `setup_timeout_seconds` beyond "
-                            f"the default of {DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS}."
+                            f"Failed to install runtime_env within the "
+                            f"timeout of {setup_timeout_seconds} seconds. Consider "
+                            "increasing the timeout in the runtime_env config. "
                             "For example: \n"
                             '    runtime_env={"config": {"setup_timeout_seconds":'
                             " 1800}, ...}\n"
+                            "If not provided, the default timeout is "
+                            f"{DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS} seconds. "
                         )
                         error_message = hint + error_message
                     await asyncio.sleep(
