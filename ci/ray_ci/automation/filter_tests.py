@@ -1,9 +1,7 @@
 import sys
 import click
 
-from ci.ray_ci.utils import filter_tests
-from ray_release.configs.global_config import init_global_config
-from ray_release.bazel import bazel_runfile
+from ci.ray_ci.utils import filter_tests, ci_init
 
 
 @click.command()
@@ -22,7 +20,7 @@ def main(prefix: str, state_filter: str) -> None:
         state_filter: Options on what test to filter: "flaky" or "-flaky".
     """
     # Initialize global config
-    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+    ci_init()
 
     filter_tests(sys.stdin, sys.stdout, prefix, state_filter)
 

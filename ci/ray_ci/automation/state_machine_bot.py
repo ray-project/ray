@@ -2,11 +2,9 @@ from typing import List
 
 import click
 
-from ci.ray_ci.utils import logger
+from ci.ray_ci.utils import logger, ci_init
 from ray_release.test import Test
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
-from ray_release.configs.global_config import init_global_config
-from ray_release.bazel import bazel_runfile
 
 
 ALL_TEST_PREFIXES = ["linux:", "windows:", "darwin:"]
@@ -34,7 +32,7 @@ def main(production: bool, test_prefix: List[str]) -> None:
     Run state machine on all CI tests.
     """
     logger.info("Starting state machine bot ...")
-    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+    ci_init()
     test_prefix = test_prefix or ALL_TEST_PREFIXES
     tests = _get_ci_tests(test_prefix)
     for test in tests:
