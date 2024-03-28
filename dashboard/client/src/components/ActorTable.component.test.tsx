@@ -104,6 +104,9 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
   },
 };
 
+// For some reason these tests are really slow, so we need to increase the timeout
+jest.setTimeout(20000);
+
 describe("ActorTable", () => {
   it("renders a table of actors filtered by node ID", async () => {
     const RUNNING_ACTORS = {
@@ -119,10 +122,10 @@ describe("ActorTable", () => {
       },
     };
 
+    const user = userEvent.setup();
     render(<ActorTable actors={RUNNING_ACTORS} />, {
       wrapper: TEST_APP_WRAPPER,
     });
-    const user = userEvent.setup();
 
     const nodeIdFilter = screen.getByTestId("nodeIdFilter");
     const input = within(nodeIdFilter).getByRole("combobox");
@@ -296,11 +299,10 @@ describe("ActorTable", () => {
       },
     };
 
+    const user = userEvent.setup();
     render(<ActorTable actors={RUNNING_ACTORS} />, {
       wrapper: TEST_APP_WRAPPER,
     });
-
-    const user = userEvent.setup();
 
     // Sort by CPU utilization
     await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
