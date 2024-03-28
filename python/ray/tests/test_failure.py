@@ -496,14 +496,14 @@ def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
         def f(self):
             import time
 
-            time.sleep(1)
+            time.sleep(1000)
 
     @ray.remote(num_cpus=1)
     class AsyncFoo:
         async def f(self):
             import asyncio
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(1000)
 
     Foo = SyncFoo if sync else AsyncFoo
     a = Foo.remote()
