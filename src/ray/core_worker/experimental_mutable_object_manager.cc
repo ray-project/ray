@@ -323,7 +323,7 @@ ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {}
 
 Status ExperimentalMutableObjectManager::RegisterWriterChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
@@ -351,36 +351,36 @@ Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                                       int64_t metadata_size,
                                                       int64_t num_readers,
                                                       std::shared_ptr<Buffer> *data) {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id) {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 Status ExperimentalMutableObjectManager::RegisterReaderChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 bool ExperimentalMutableObjectManager::ReaderChannelRegistered(
     const ObjectID &object_id) const {
-  return true;
+  return false;
 }
 
 Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                                      std::shared_ptr<RayObject> *result)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 #endif

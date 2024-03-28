@@ -202,7 +202,7 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
 #else  // defined(__APPLE__) || defined(__linux__)
 
 Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {}
@@ -211,15 +211,17 @@ Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
                                         uint64_t write_data_size,
                                         uint64_t write_metadata_size,
                                         int64_t write_num_readers) {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) { return Status::OK(); }
+Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
+  return Status::NotImplemented("Not supported on Windows.");
+}
 
 Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
                                        int64_t version_to_read,
                                        int64_t *version_read) {
-  return Status::OK();
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 #endif
