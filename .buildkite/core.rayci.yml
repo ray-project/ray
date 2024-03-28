@@ -38,17 +38,17 @@ steps:
     parallelism: 4
     commands:
       - |
-      for i in {1..30}
-      do
-        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core || break
-      done
+        for i in {1..30}
+        do
+          bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+          --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+          --test-env=TEST_EXTERNAL_REDIS=1
+          --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core || break
+        done
       - |
-      for i in {1..30}
-      do
-        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --only-tags use_all_core --skip-ray-installation
-      done
+        for i in {1..30}
+        do
+          bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+          --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+          --only-tags use_all_core --skip-ray-installation
+        done
