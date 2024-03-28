@@ -238,11 +238,6 @@ class Node:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
 
-        # If it is a head node, try validating if
-        # external storage is configurable.
-        if head:
-            self.validate_external_storage()
-
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
@@ -1365,7 +1360,6 @@ class Node:
                 f" GCS system config: {new_config}"
             )
             self._config = new_config
-        self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
@@ -1680,18 +1674,18 @@ class Node:
         """
         return not any(self.dead_processes())
 
-    def destroy_external_storage(self):
+    def destroy_external_storage(self, node_id=None):
         object_spilling_config = self._config.get("object_spilling_config", {})
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self._session_name
+                object_spilling_config, self._session_name, node_id
             )
             storage.destroy_external_storage()
 
-    def validate_external_storage(self):
+    def validate_external_storage(self, node_id):
         """Make sure we can setup the object spilling external storage.
         This will also fill up the default setting for object spilling
         if not specified.
@@ -1731,8 +1725,17 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(deserialized_config, self._session_name)
+        external_storage.setup_external_storage(
+            deserialized_config, self._session_name, node_id
+        )
         external_storage.reset_external_storage()
+
+    def prepare_external_storage(self, node_id):
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if self.is_head:
+            self.validate_external_storage(node_id)
+        self.destroy_external_storage(node_id)
 
     def _record_stats(self):
         # This is only called when a new node is started.
