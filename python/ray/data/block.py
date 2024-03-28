@@ -105,15 +105,7 @@ def _apply_batch_format(given_batch_format: Optional[str]) -> str:
 def _apply_batch_size(
     given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
 ) -> Optional[int]:
-    if use_gpu and (not given_batch_size or given_batch_size == "default"):
-        raise ValueError(
-            "`batch_size` must be provided to `map_batches` when requesting GPUs. "
-            "The optimal batch size depends on the model, data, and GPU used. "
-            "It is recommended to use the largest batch size that doesn't result "
-            "in your GPU device running out of memory. You can view the GPU memory "
-            "usage via the Ray dashboard."
-        )
-    elif given_batch_size == "default":
+    if given_batch_size == "default":
         return ray.data.context.DEFAULT_BATCH_SIZE
     else:
         return given_batch_size
