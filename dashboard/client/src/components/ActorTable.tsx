@@ -327,7 +327,7 @@ const ActorTable = ({
 
   return (
     <React.Fragment>
-      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "end" }}>
         <Autocomplete
           style={{ margin: 8, width: 120 }}
           options={Array.from(
@@ -466,26 +466,24 @@ const ActorTable = ({
           }}
         />
         <div data-testid="sortByFilter">
-          <span style={{ margin: 8, marginTop: 16 }}>
-            <SearchSelect
-              label="Sort By"
-              options={[
-                [uptimeSorterKey, "Uptime"],
-                ["processStats.memoryInfo.rss", "Used Memory"],
-                ["mem[0]", "Total Memory"],
-                ["processStats.cpuPercent", "CPU"],
-                // Fake attribute key used when sorting by GPU utilization and
-                // GRAM usage because aggregate function required on actor key before sorting.
-                [gpuUtilizationSorterKey, "GPU Utilization"],
-                [gramUsageSorterKey, "GRAM Usage"],
-              ]}
-              onChange={(val) => setSortKey(val)}
-              showAllOption={false}
-              defaultValue={defaultSorterKey}
-            />
-          </span>
+          <SearchSelect
+            label="Sort By"
+            options={[
+              [uptimeSorterKey, "Uptime"],
+              ["processStats.memoryInfo.rss", "Used Memory"],
+              ["mem[0]", "Total Memory"],
+              ["processStats.cpuPercent", "CPU"],
+              // Fake attribute key used when sorting by GPU utilization and
+              // GRAM usage because aggregate function required on actor key before sorting.
+              [gpuUtilizationSorterKey, "GPU Utilization"],
+              [gramUsageSorterKey, "GRAM Usage"],
+            ]}
+            onChange={(val) => setSortKey(val)}
+            showAllOption={false}
+            defaultValue={defaultSorterKey}
+          />
         </div>
-        <span style={{ margin: 8, marginTop: 20 }}>
+        <span>
           Reverse:
           <Switch onChange={(_, checked) => setOrderDesc(checked)} />
         </span>
