@@ -27,6 +27,11 @@ from ray.tests.conftest import (
 )
 
 
+# Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
+# increase the timeout.
+pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
+
+
 def run_basic_workload():
     """Run the workload that requires spilling."""
     arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
