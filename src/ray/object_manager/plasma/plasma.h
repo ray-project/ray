@@ -16,7 +16,9 @@
 // under the License.
 
 #pragma once
+
 #include <stddef.h>
+#include <string.h>
 
 #include <memory>
 #include <string>
@@ -60,11 +62,7 @@ struct PlasmaObject {
   bool is_experimental_mutable_object = false;
 
   bool operator==(const PlasmaObject &other) const {
-    return ((store_fd == other.store_fd) && (data_offset == other.data_offset) &&
-            (metadata_offset == other.metadata_offset) &&
-            (data_size == other.data_size) && (metadata_size == other.metadata_size) &&
-            (device_num == other.device_num) &&
-            (fallback_allocated == other.fallback_allocated));
+    return !memcmp(this, &other, sizeof(other));
   }
 };
 
