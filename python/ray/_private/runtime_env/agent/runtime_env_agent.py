@@ -399,7 +399,7 @@ class RuntimeEnvAgent:
                     )
                     if isinstance(e, asyncio.TimeoutError):
                         hint = (
-                            f"Failed to install runtime_env within the provided "
+                            f"Failed to install runtime_env within the "
                             f"timeout of {setup_timeout_seconds} seconds. Consider "
                             "increasing the timeout in the runtime_env config. "
                             "For example: \n"
