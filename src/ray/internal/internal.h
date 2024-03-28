@@ -44,6 +44,8 @@ std::vector<rpc::ObjectReference> SendInternal(
 
 const stats::TagKeyType TagRegister(const std::string tag_name);
 
+const std::string TagKeyName(stats::TagKeyType &tagkey);
+
 /// Get current actor id via internal.
 const ActorID &GetCurrentActorID();
 
