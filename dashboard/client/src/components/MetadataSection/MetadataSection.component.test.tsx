@@ -37,6 +37,7 @@ describe("MetadataContentField", () => {
         content={{ value: CONTENT_VALUE, link: undefined }}
         label="test-label"
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     expect(screen.getByText(CONTENT_VALUE)).toBeInTheDocument();

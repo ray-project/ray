@@ -179,6 +179,7 @@ export const ServeEntityLogViewer = ({
               size="small"
               style={{ minWidth: 120 }}
               value={selectedEntityGroupName}
+              data-testid="entity-group-select"
               SelectProps={{
                 renderValue: (value) => _.capitalize(value as string),
               }}
@@ -231,6 +232,7 @@ export const ServeEntityLogViewer = ({
               size="small"
               style={{ minWidth: 240 }}
               value={selectedProxyId}
+              data-testid="proxies-select"
               onChange={({ target: { value } }) => {
                 setParams(
                   (params) => {
@@ -260,6 +262,7 @@ export const ServeEntityLogViewer = ({
               size="small"
               style={{ minWidth: 240 }}
               value={selectedReplicaId}
+              data-testid="replicas-select"
               onChange={({ target: { value } }) => {
                 setParams(
                   (params) => {

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { ActorDetail } from "../type/actor";
 import { TEST_APP_WRAPPER } from "../util/test-utils";
 import ActorTable from "./ActorTable";
@@ -103,6 +103,7 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
     },
   },
 };
+
 describe("ActorTable", () => {
   it("renders a table of actors filtered by node ID", async () => {
     const RUNNING_ACTORS = {
@@ -118,21 +119,20 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByTestId } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
-
-    const nodeIdFilter = getByTestId("nodeIdFilter");
-    const input = within(nodeIdFilter).getByRole("textbox");
-    // Filter by node ID of ACTOR_2
-    fireEvent.change(input, {
-      target: {
-        value: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
-      },
+    render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
     });
-    await screen.findByText("Actor ID");
+    const user = userEvent.setup();
+
+    const nodeIdFilter = screen.getByTestId("nodeIdFilter");
+    const input = within(nodeIdFilter).getByRole("combobox");
+
+    // Filter by node ID of ACTOR_2
+    await user.type(
+      input,
+      "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+    );
+    await screen.findAllByText("Actor ID");
 
     expect(screen.queryByText("ACTOR_1")).not.toBeInTheDocument();
     expect(screen.queryByText("ACTOR_2")).toBeInTheDocument();
@@ -296,11 +296,10 @@ describe("ActorTable", () => {
       },
     };
 
-    const { getByRole } = render(
-      <MemoryRouter>
-        <ActorTable actors={RUNNING_ACTORS} />
-      </MemoryRouter>,
-    );
+    render(<ActorTable actors={RUNNING_ACTORS} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
     const sortByFilter = screen.getByTestId("sortByFilter");
     const input = within(sortByFilter).getByRole("textbox", { hidden: true });
     // Sort by CPU utilization
@@ -309,10 +308,10 @@ describe("ActorTable", () => {
         value: "processStats.cpuPercent",
       },
     });
-    const actor1CPURow = getByRole("row", {
+    const actor1CPURow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2CPURow = getByRole("row", {
+    const actor2CPURow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1CPURow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -327,10 +326,10 @@ describe("ActorTable", () => {
         value: "processStats.memoryInfo.rss",
       },
     });
-    const actor1MemRow = getByRole("row", {
+    const actor1MemRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2MemRow = getByRole("row", {
+    const actor2MemRow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1MemRow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -345,10 +344,10 @@ describe("ActorTable", () => {
         value: "fake_uptime_attr",
       },
     });
-    const actor1UptimeRow = getByRole("row", {
+    const actor1UptimeRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2UptimeRow = getByRole("row", {
+    const actor2UptimeRow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1UptimeRow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -363,10 +362,10 @@ describe("ActorTable", () => {
         value: "fake_gpu_attr",
       },
     });
-    const actor1GPURow = getByRole("row", {
+    const actor1GPURow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2GPURow = getByRole("row", {
+    const actor2GPURow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1GPURow).getByText("ACTOR_1")).toBeInTheDocument();
@@ -381,10 +380,10 @@ describe("ActorTable", () => {
         value: "fake_gram_attr",
       },
     });
-    const actor1GRAMRow = getByRole("row", {
+    const actor1GRAMRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2GRAMRow = getByRole("row", {
+    const actor2GRAMRow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
     expect(within(actor1GRAMRow).getByText("ACTOR_1")).toBeInTheDocument();

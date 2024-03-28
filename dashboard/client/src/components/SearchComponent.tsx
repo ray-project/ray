@@ -78,9 +78,13 @@ export const SearchSelect = ({
       {showAllOption ?? <MenuItem value="">All</MenuItem>}
       {options.map((e) =>
         typeof e === "string" ? (
-          <MenuItem value={e}>{e}</MenuItem>
+          <MenuItem key={e} value={e}>
+            {e}
+          </MenuItem>
         ) : (
-          <MenuItem value={e[0]}>{e[1]}</MenuItem>
+          <MenuItem key={e[0]} value={e[0]}>
+            {e[1]}
+          </MenuItem>
         ),
       )}
     </TextField>
