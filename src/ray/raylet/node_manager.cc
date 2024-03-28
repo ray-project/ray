@@ -386,11 +386,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                                        RayConfig::instance().task_failure_entry_ttl_ms(),
                                        "NodeManager.GCTaskFailureReason");
 
-  auto fn = ray::core::ExperimentalMutableObjectNetworkManager<
+  // TODO(jhumphri): Implement factory.
+  auto fn = ray::core::experimental::MutableObjectNetworkManager<
       plasma::PlasmaClient>::RayletFactory();
   mutable_obj_network_manager_ = std::make_unique<
-      core::ExperimentalMutableObjectNetworkManager<plasma::PlasmaClient>>(store_client_,
-                                                                           fn);
+      core::experimental::MutableObjectNetworkManager<plasma::PlasmaClient>>(
+      store_client_, fn);
 }
 
 bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {

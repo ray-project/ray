@@ -22,24 +22,24 @@
 
 namespace ray {
 namespace core {
+namespace experimental {
 
 template <typename T>
-class ExperimentalMutableObjectNetworkManager {
+class MutableObjectNetworkManager {
  public:
   typedef std::function<std::shared_ptr<MutableObjectReaderInterface>(
       const NodeID &node_id)>
       RayletFactory;
 
-  ExperimentalMutableObjectNetworkManager(std::shared_ptr<T> plasma,
-                                          const RayletFactory &factory)
+  MutableObjectNetworkManager(std::shared_ptr<T> plasma, const RayletFactory &factory)
       : plasma_(plasma),
         raylet_client_factory_(factory),
         io_work_(io_service_),
         client_call_manager_(std::make_unique<rpc::ClientCallManager>(io_service_)),
-        object_manager_(std::make_unique<ExperimentalMutableObjectManager>()),
+        object_manager_(std::make_unique<ray::experimental::MutableObjectManager>()),
         io_thread_([this]() { RunIOService(); }) {}
 
-  ~ExperimentalMutableObjectNetworkManager() {
+  ~MutableObjectNetworkManager() {
     io_service_.stop();
 
     RAY_CHECK(io_thread_.joinable());
@@ -71,7 +71,7 @@ class ExperimentalMutableObjectNetworkManager {
     // one thread per channel because the thread blocks on the channel semaphore.
     io_service_.post(
         [this, object_id, reader]() { PollWriterClosure(object_id, reader); },
-        "ExperimentalMutableObjectNetworkManager.PollWriter");
+        "experimental::MutableObjectNetworkManager.PollWriter");
   }
 
   /// Registers a reader channel for `object_id` on this node.
@@ -143,16 +143,20 @@ class ExperimentalMutableObjectNetworkManager {
     RAY_LOG(INFO) << "Core worker channel io service stopped.";
   }
 
+  // The plasma store.
   std::shared_ptr<T> plasma_;
+  // Creates a function for each object. This object waits for changes on the object and
+  // then sends those changes to a remote node via RPC.
   std::function<std::shared_ptr<MutableObjectReaderInterface>(const NodeID &node_id)>
       raylet_client_factory_;
 
   instrumented_io_context io_service_;
   boost::asio::io_service::work io_work_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-  std::unique_ptr<ExperimentalMutableObjectManager> object_manager_;
+  std::unique_ptr<ray::experimental::MutableObjectManager> object_manager_;
   std::thread io_thread_;
 };
 
+}  // namespace experimental
 }  // namespace core
 }  // namespace ray

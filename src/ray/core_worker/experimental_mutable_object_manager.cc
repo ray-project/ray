@@ -18,6 +18,7 @@
 #include "ray/object_manager/common.h"
 
 namespace ray {
+namespace experimental {
 
 #if defined(__APPLE__) || defined(__linux__)
 
@@ -38,7 +39,7 @@ std::string GetSemaphoreHeaderName(const std::string &name) {
 }  // namespace
 
 template <typename T>
-Status ExperimentalMutableObjectManager::RegisterChannel(
+Status MutableObjectManager::RegisterChannel(
     absl::flat_hash_map<ObjectID, T> &channels,
     const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> &mutable_object) {
@@ -53,17 +54,17 @@ Status ExperimentalMutableObjectManager::RegisterChannel(
   return Status::OK();
 }
 
-Status ExperimentalMutableObjectManager::RegisterWriterChannel(
+Status MutableObjectManager::RegisterWriterChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
   return RegisterChannel<WriterChannel>(writer_channels_, object_id, mutable_object);
 }
 
-Status ExperimentalMutableObjectManager::RegisterReaderChannel(
+Status MutableObjectManager::RegisterReaderChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
   return RegisterChannel<ReaderChannel>(reader_channels_, object_id, mutable_object);
 }
 
-ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {
+MutableObjectManager::~MutableObjectManager() {
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
@@ -71,8 +72,7 @@ ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {
   }
 }
 
-PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
-    const ObjectID &object_id) {
+PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
   {
     auto it = writer_channels_.find(object_id);
     if (it != writer_channels_.end()) {
@@ -89,14 +89,13 @@ PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
   return nullptr;
 }
 
-std::string ExperimentalMutableObjectManager::GetSemaphoreName(
-    const ObjectID &object_id) {
+std::string MutableObjectManager::GetSemaphoreName(const ObjectID &object_id) {
   std::string name = std::string(GetHeader(object_id)->unique_name);
   RAY_CHECK_LE(name.size(), PSEMNAMLEN);
   return name;
 }
 
-PlasmaObjectHeader::Semaphores ExperimentalMutableObjectManager::GetSemaphores(
+PlasmaObjectHeader::Semaphores MutableObjectManager::GetSemaphores(
     const ObjectID &object_id) {
   auto it = semaphores_.find(object_id);
   RAY_CHECK(it != semaphores_.end());
@@ -106,7 +105,7 @@ PlasmaObjectHeader::Semaphores ExperimentalMutableObjectManager::GetSemaphores(
   return it->second;
 }
 
-void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id) {
+void MutableObjectManager::OpenSemaphores(const ObjectID &object_id) {
   if (semaphores_.count(object_id)) {
     // The semaphore already exists.
     return;
@@ -161,7 +160,7 @@ void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id)
   semaphores_[object_id] = semaphores;
 }
 
-void ExperimentalMutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
+void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   PlasmaObjectHeader::Semaphores semaphores = GetSemaphores(object_id);
   RAY_CHECK_EQ(sem_close(semaphores.header_sem), 0);
   RAY_CHECK_EQ(sem_close(semaphores.object_sem), 0);
@@ -173,12 +172,12 @@ void ExperimentalMutableObjectManager::DestroySemaphores(const ObjectID &object_
   semaphores_.erase(object_id);
 }
 
-Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
-                                                      int64_t data_size,
-                                                      const uint8_t *metadata,
-                                                      int64_t metadata_size,
-                                                      int64_t num_readers,
-                                                      std::shared_ptr<Buffer> &data) {
+Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
+                                          int64_t data_size,
+                                          const uint8_t *metadata,
+                                          int64_t metadata_size,
+                                          int64_t num_readers,
+                                          std::shared_ptr<Buffer> &data) {
   WriterChannel *channel = GetChannel<WriterChannel>(writer_channels_, object_id);
   if (!channel) {
     return Status::ObjectNotFound("Writer channel has not been registered");
@@ -210,7 +209,7 @@ Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id) {
+Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   WriterChannel *channel = GetChannel<WriterChannel>(writer_channels_, object_id);
   if (!channel) {
     return Status::ObjectNotFound("Writer channel has not been registered");
@@ -226,8 +225,8 @@ Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id)
   return Status::OK();
 }
 
-Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                                     std::shared_ptr<RayObject> &result)
+Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
+                                         std::shared_ptr<RayObject> &result)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   ReaderChannel *channel = GetChannel<ReaderChannel>(reader_channels_, object_id);
   if (!channel) {
@@ -263,7 +262,7 @@ Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id)
+Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   ReaderChannel *channel = GetChannel<ReaderChannel>(reader_channels_, object_id);
   if (!channel) {
@@ -280,7 +279,7 @@ Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id)
   return Status::OK();
 }
 
-Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
+Status MutableObjectManager::SetError(const ObjectID &object_id) {
   Channel *reader = GetChannel<ReaderChannel>(reader_channels_, object_id);
   Channel *writer = GetChannel<WriterChannel>(writer_channels_, object_id);
   PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
@@ -300,82 +299,81 @@ Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
 #else  // defined(__APPLE__) || defined(__linux__)
 
 template <typename T>
-Status ExperimentalMutableObjectManager::RegisterChannel(
+Status MutableObjectManager::RegisterChannel(
     absl::flat_hash_map<ObjectID, T> &channels,
     const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> &mutable_object) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::RegisterWriterChannel(
+Status MutableObjectManager::RegisterWriterChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::RegisterReaderChannel(
+Status MutableObjectManager::RegisterReaderChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {}
+MutableObjectManager::~MutableObjectManager() {}
 
-Status ExperimentalMutableObjectManager::RegisterWriterChannel(
+Status MutableObjectManager::RegisterWriterChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
-    const ObjectID &object_id) {
+PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
   return nullptr;
 }
 
-std::string ExperimentalMutableObjectManager::GetSemaphoreName(
-    const ObjectID &object_id) {
+std::string MutableObjectManager::GetSemaphoreName(const ObjectID &object_id) {
   return "";
 }
 
-PlasmaObjectHeader::Semaphores ExperimentalMutableObjectManager::GetSemaphores(
+PlasmaObjectHeader::Semaphores MutableObjectManager::GetSemaphores(
     const ObjectID &object_id) {
   return {};
 }
 
-void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id) {}
+void MutableObjectManager::OpenSemaphores(const ObjectID &object_id) {}
 
-void ExperimentalMutableObjectManager::DestroySemaphores(const ObjectID &object_id) {}
+void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {}
 
-Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
-                                                      int64_t data_size,
-                                                      const uint8_t *metadata,
-                                                      int64_t metadata_size,
-                                                      int64_t num_readers,
-                                                      std::shared_ptr<Buffer> *data) {
+Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
+                                          int64_t data_size,
+                                          const uint8_t *metadata,
+                                          int64_t metadata_size,
+                                          int64_t num_readers,
+                                          std::shared_ptr<Buffer> *data) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id) {
+Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::RegisterReaderChannel(
+Status MutableObjectManager::RegisterReaderChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                                     std::shared_ptr<RayObject> *result)
+Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
+                                         std::shared_ptr<RayObject> *result)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id)
+Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
+Status MutableObjectManager::SetError(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
 #endif
 
+}  // namespace experimental
 }  // namespace ray

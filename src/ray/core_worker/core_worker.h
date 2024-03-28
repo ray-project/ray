@@ -1761,11 +1761,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// Manages mutable objects on the local node.
-  std::shared_ptr<ExperimentalMutableObjectManager> experimental_mutable_object_manager_;
-
-  /// Coordinates communcation of mutable objects between nodes.
-  std::shared_ptr<ExperimentalMutableObjectNetworkManager<CoreWorkerPlasmaStoreProvider>>
-      mutable_obj_network_manager_;
+  std::shared_ptr<ray::experimental::MutableObjectManager>
+      experimental_mutable_object_manager_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
 

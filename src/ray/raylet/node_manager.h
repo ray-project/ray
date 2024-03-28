@@ -875,7 +875,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
-  std::unique_ptr<core::ExperimentalMutableObjectNetworkManager<plasma::PlasmaClient>>
+  std::unique_ptr<core::experimental::MutableObjectNetworkManager<plasma::PlasmaClient>>
       mutable_obj_network_manager_;
 };
 

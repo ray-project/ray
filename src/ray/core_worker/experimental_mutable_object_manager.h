@@ -30,8 +30,9 @@
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+namespace experimental {
 
-class ExperimentalMutableObjectManager {
+class MutableObjectManager {
  public:
   struct Channel {
     Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
@@ -57,8 +58,8 @@ class ExperimentalMutableObjectManager {
     int64_t next_version_to_read = 1;
   };
 
-  ExperimentalMutableObjectManager() = default;
-  ~ExperimentalMutableObjectManager();
+  MutableObjectManager() = default;
+  ~MutableObjectManager();
 
   /// Registers the caller as a writer for the channel.
   ///
@@ -218,4 +219,5 @@ class ExperimentalMutableObjectManager {
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> semaphores_;
 };
 
+}  // namespace experimental
 }  // namespace ray

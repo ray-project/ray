@@ -385,7 +385,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
 #if defined(__APPLE__) || defined(__linux__)
   experimental_mutable_object_manager_ =
-      std::make_shared<ExperimentalMutableObjectManager>();
+      std::make_shared<ray::experimental::MutableObjectManager>();
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
