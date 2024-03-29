@@ -27,7 +27,7 @@ examples:
   - title: Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
     link: tutorials/aws-neuron-core-inference-stable-diffusion
-  - title: Serve a model on Intel Habana Gaudi
+  - title: Serve Llama2-7B using a single Intel Gaudi HPU
     skill_level: intermediate
     frameworks:
       - pytorch
