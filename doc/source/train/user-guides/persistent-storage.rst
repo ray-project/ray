@@ -394,8 +394,8 @@ Setting the local staging directory
     Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable and ``RunConfig(local_dir)``
     were ways to configure the local staging directory to be outside of the home directory (``~/ray_results``).
 
-    **These configurations no longer used to configure the local staging directory.
-    Please instead use ``RunConfig(storage_path)`` to configure where your
+    **These configurations are no longer used to configure the local staging directory.
+    Please instead use** ``RunConfig(storage_path)`` **to configure where your
     run's outputs go.**
 
 
