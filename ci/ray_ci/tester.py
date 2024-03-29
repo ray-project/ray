@@ -16,9 +16,7 @@ from ci.ray_ci.builder_container import (
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login
-from ray_release.configs.global_config import init_global_config
-from ray_release.bazel import bazel_runfile
+from ci.ray_ci.utils import docker_login, ci_init
 from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
@@ -185,7 +183,7 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
-    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+    ci_init()
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
@@ -368,13 +366,17 @@ def _get_flaky_test_targets(
     with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
         # load flaky tests from yaml
         yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
-        s3_flaky_tests = {
-            # remove "linux:" prefix for linux tests to be consistent with the
-            # interface supported in the yaml file
-            test.get_name().lstrip("linux:")
-            for test in Test.gen_from_s3(prefix=f"{operating_system}:")
-            if test.get_oncall() == team and test.get_state() == TestState.FLAKY
-        }
+        # load flaky tests from DB
+        if os.environ.get("RAYCI_DISABLE_TEST_DB") == "true":
+            s3_flaky_tests = set()
+        else:
+            s3_flaky_tests = {
+                # remove "linux:" prefix for linux tests to be consistent with the
+                # interface supported in the yaml file
+                test.get_name().lstrip("linux:")
+                for test in Test.gen_from_s3(prefix=f"{operating_system}:")
+                if test.get_oncall() == team and test.get_state() == TestState.FLAKY
+            }
         all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
 
         # linux tests are prefixed with "//"

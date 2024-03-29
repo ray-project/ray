@@ -1,4 +1,5 @@
 autoscaler
+[Aa]vro
 [Bb]ackpressure
 Dask
 Data('s)?
