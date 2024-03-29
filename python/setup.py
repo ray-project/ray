@@ -246,9 +246,10 @@ if setup_spec.type == SetupType.RAY:
             "py-spy >= 0.2.0, < 0.5.0",
             "requests >= 2.25.0, <3.0.0",
             "grpcio >= 1.32.0, < 1.60.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0, < 1.60.0; python_version >= '3.10'",  # noqa:E501
             "opencensus >= 0.8.0, < 1.0.0",
             "pydantic >= 1.7.0, < 1.12.0",
+            "typing_extensions >= 4.1.0, < 4.6.0",
             "prometheus_client >= 0.7.1",
             "smart_open >= 4.0.0, < 7.0.0",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -258,7 +259,7 @@ if setup_spec.type == SetupType.RAY:
             "requests >= 2.25.0, < 3.0.0",
             "starlette >= 0.14.0, < 1.0.0",
             "fastapi >= 0.40, < 0.99",
-            "watchfiles >= 1.0.0, < 2.0.0",
+            "watchfiles >= 0.11.0, < 0.30.0",
         ],
         "tune": [pandas_dep, "tensorboardX>=1.9, <3.0", "requests >= 2.25.0, < 3.0.0", pyarrow_dep, "fsspec >= 2021.0, < 2025.0"],
         "observability": [
