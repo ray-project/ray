@@ -6,11 +6,11 @@ orphan: true
 
 [Habana Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Habana Labs. For more information, see [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/).
 
-This tutorial has two examples:
+This tutorial walks through two examples:
 
 1. Deployment of [Llama2-7b](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf) using a single HPU:
 
-    * How to load a model in an HPU
+    * How to load a model onto an HPU
 
     * How to perform generation on an HPU
 
@@ -18,7 +18,7 @@ This tutorial has two examples:
 
 2. Deployment of [Llama2-70b](https://huggingface.co/meta-llama/Llama-2-70b-chat-hf) using multiple HPUs on a single node:
 
-    * How to initialize distributed backend
+    * How to initialize a distributed backend
 
     * How to load a sharded model onto DeepSpeed workers
 
@@ -192,7 +192,7 @@ snapshot_download(
 )
 ```
 
-In this example, the deployment replica sends prompts to the Deepspeed workers, which are running in Ray actors:
+In this example, the deployment replica sends prompts to the DeepSpeed workers, which are running in Ray actors:
 
 ```{literalinclude} ../doc_code/hpu_inference_serve_deepspeed.py
 :language: python

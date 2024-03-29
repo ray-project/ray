@@ -15,9 +15,10 @@ from ray.runtime_env import RuntimeEnv
 @ray.remote(num_cpus=8, resources={"HPU": 1})
 class DeepSpeedInferenceWorker(TorchDistributedWorker):
     def __init__(self, model_id_or_path: str, world_size: int, local_rank: int):
-        """A worker process of DeepSpeed inference engine.
+        """An actor that runs a DeepSpeed inference engine.
+        
         Arguments:
-            model_id_or_path: Either an HuggingFace model ID
+            model_id_or_path: Either a HuggingFace model ID
                 or a path to a cached model.
             world_size: Total number of worker processes.
             local_rank: Rank of this worker process.
@@ -75,7 +76,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
         model = model.eval()
 
         # Create a file to indicate where the checkpoint is
-        checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="+w")
+        checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="w+")
         write_checkpoints_json(
             self.model_id_or_path, self._local_rank, checkpoints_json, token=""
         )
@@ -84,7 +85,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
         kwargs = {"dtype": torch.bfloat16}
         kwargs["checkpoint"] = checkpoints_json.name
         kwargs["tensor_parallel"] = {"tp_size": self._world_size}
-        # enable hpu graph, similar to cuda graph
+        # Enable hpu graph, similar to cuda graph
         kwargs["enable_cuda_graph"] = True
         # Specify injection policy, required by DeepSpeed tensor parallelism
         kwargs["injection_policy"] = get_ds_injection_policy(self.model_config)
@@ -113,6 +114,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
 
     def get_streamer(self):
         """Return a streamer.
+        
         Only the rank 0 worker's result is needed.
         Other workers return a fake streamer.
         """
@@ -199,6 +201,7 @@ class DeepSpeedLlamaModel:
 
     def generate(self, prompt: str, **config: Dict[str, Any]):
         """Send the prompt to workers for generation.
+        
         Return after all workers have finished generation.
         Only return the rank 0 worker's result.
         """
@@ -211,6 +214,7 @@ class DeepSpeedLlamaModel:
 
     def streaming_generate(self, prompt: str, **config: Dict[str, Any]):
         """Send the prompt to workers for streaming generation.
+        
         Only use the rank 0 worker's result.
         """
 
@@ -251,7 +255,7 @@ class DeepSpeedLlamaModel:
         if not streaming_response:
             return self.generate(prompts, **config)
 
-        # streaming case
+        # Streaming case
         self.streaming_generate(prompts, **config)
         return StreamingResponse(
             self.consume_streamer(self.streamers[0]),
