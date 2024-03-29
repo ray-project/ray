@@ -945,6 +945,12 @@ class DeploymentReplica(VersionedReplica):
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
 
+    @property
+    def initialization_duration_s(self) -> float:
+        """Returns how long the replica took to initialize."""
+
+        return self._actor._initialization_duration_s
+
     def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -2069,7 +2075,7 @@ class DeploymentState:
                 )
                 full_replica_startup_duration = time.time() - replica._start_time
                 scheduling_duration_s = (
-                    full_replica_startup_duration - replica._initialization_duration_s
+                    full_replica_startup_duration - replica.initialization_duration_s
                 )
                 logger.info(
                     f"{replica.replica_id} started successfully "
@@ -2077,12 +2083,12 @@ class DeploymentState:
                     f"{full_replica_startup_duration:.1f}s. "
                     f"Scheduling duration: {scheduling_duration_s:.1f}s.",
                     "Initialization duration: "
-                    f"{replica._initialization_duration_s:.1f}s.",
+                    f"{replica.initialization_duration_s:.1f}s.",
                     extra={"log_to_stderr": False},
                 )
                 self.replica_scheduling_latency_histogram.observe(scheduling_duration_s)
                 self.replica_initialization_latency_histogram.observe(
-                    replica._initialization_duration_s
+                    replica.initialization_duration_s
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
