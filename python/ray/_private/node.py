@@ -238,6 +238,11 @@ class Node:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
 
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if self.is_head:
+            self.validate_external_storage()
+
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
@@ -334,6 +339,7 @@ class Node:
             print(f"L332 node_id: {self._node_id}")
 
         print(f"L334 node_id: {self._node_id}")
+        self.destroy_external_storage(self._node_id)
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
@@ -1694,7 +1700,7 @@ class Node:
             )
             storage.destroy_external_storage()
 
-    def validate_external_storage(self, node_id):
+    def validate_external_storage(self):
         """Make sure we can setup the object spilling external storage.
         This will also fill up the default setting for object spilling
         if not specified.
@@ -1731,7 +1737,7 @@ class Node:
         ] = is_external_storage_type_fs
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
         if "params" in deserialized_config:
-            deserialized_config["params"]["node_id"] = node_id
+            deserialized_config["params"]["node_id"] = "dummy_node_id"
 
         # Validate external storage usage.
         from ray._private import external_storage
@@ -1739,12 +1745,12 @@ class Node:
         external_storage.setup_external_storage(deserialized_config, self._session_name)
         external_storage.reset_external_storage()
 
-    def prepare_external_storage(self, node_id):
+    def prepare_external_storage(self):
         # If it is a head node, try validating if
         # external storage is configurable.
         if self.is_head:
-            self.validate_external_storage(node_id)
-        self.destroy_external_storage(node_id)
+            self.validate_external_storage(self._node_id)
+        self.destroy_external_storage(self._node_id)
 
     def _record_stats(self):
         # This is only called when a new node is started.

@@ -237,7 +237,8 @@ if __name__ == "__main__":
         if args.object_spilling_config:
             object_spilling_config = base64.b64decode(args.object_spilling_config)
             object_spilling_config = json.loads(object_spilling_config)
-            object_spilling_config["params"]["node_id"] = None
+            print(f"node_id from Node: {node._node_id}")
+            object_spilling_config["params"]["node_id"] = node._node_id
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(

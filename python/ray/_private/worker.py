@@ -1781,7 +1781,7 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    _global_node.prepare_external_storage(node_id.hex())
+    # _global_node.prepare_external_storage(node_id.hex())
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
     return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
@@ -1836,6 +1836,7 @@ def shutdown(_exiting_interpreter: bool = False):
 
     # Shut down the Ray processes.
     global _global_node
+    print(f"Shutting down Ray, global node: {_global_node}")
     if _global_node is not None:
         if _global_node.is_head():
             _global_node.destroy_external_storage()
