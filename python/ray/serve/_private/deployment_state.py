@@ -2075,7 +2075,7 @@ class DeploymentState:
         return slow_replicas
 
     def record_replica_startup_failure(self, error_msg: str):
-        """Record a replica failed to start."""
+        """Record that a replica failed to start."""
 
         if self._replica_constructor_retry_counter >= 0:
             # Increase startup failure counter if we're tracking it
