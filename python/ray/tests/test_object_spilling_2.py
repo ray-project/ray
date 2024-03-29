@@ -297,16 +297,16 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
         assert np.array_equal(sample, solution)
 
     is_test_passing = False
-    # Since we'd like to see the temp directory that stores the files,
-    # we need to append this directory.
-    temp_folder = temp_folder / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
-        file_size = path.stat().st_size
-        # Make sure there are at least one
-        # file_size that exceeds the min_spilling_size.
-        # If we don't fusion correctly, this cannot happen.
-        if file_size >= min_spilling_size:
-            is_test_passing = True
+        # Under the temp_folder, there should be a folder called "ray_spilled_objects[_<node_id>]",
+        # which contains the spilled objects.
+        for spilled_objects_path in path.iterdir():
+            file_size = spilled_objects_path.stat().st_size
+            # Make sure there are at least one
+            # file_size that exceeds the min_spilling_size.
+            # If we don't fusion correctly, this cannot happen.
+            if file_size >= min_spilling_size:
+                is_test_passing = True
     assert is_test_passing
     assert_no_thrashing(address["address"])
 
@@ -452,6 +452,7 @@ os.kill(os.getpid(), sig)
     print("Sending sigint...")
     with pytest.raises(subprocess.CalledProcessError):
         print(run_string_as_driver(driver.format(temp_dir=str(temp_folder), signum=2)))
+    print(f"Waiting for {temp_folder} to be empty...")
     wait_for_condition(lambda: is_dir_empty(temp_folder, append_path=""))
 
 

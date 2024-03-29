@@ -277,7 +277,7 @@ class FileSystemStorage(ExternalStorage):
         # Create directories.
         for path in directory_path:
             if node_id:
-                full_dir_path = os.path.join(path, node_id, self._spill_dir_name)
+                full_dir_path = os.path.join(path, f"{self._spill_dir_name}_{node_id}")
             else:
                 full_dir_path = os.path.join(path, self._spill_dir_name)
             os.makedirs(full_dir_path, exist_ok=True)
@@ -345,6 +345,7 @@ class FileSystemStorage(ExternalStorage):
 
     def destroy_external_storage(self):
         for directory_path in self._directory_paths:
+            logger.info(f"Cleaning up {directory_path}")
             self._destroy_external_storage(directory_path)
 
     def _destroy_external_storage(self, directory_path):
