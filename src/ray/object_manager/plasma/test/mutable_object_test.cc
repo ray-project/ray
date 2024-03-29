@@ -79,7 +79,7 @@ void Read(PlasmaObjectHeader *header,
   int64_t version_to_read = 1;
   for (size_t i = 0; i < num_reads; i++) {
     int64_t version_read = 0;
-    if (!header->ReadAcquire(sem, version_to_read, &version_read).ok()) {
+    if (!header->ReadAcquire(sem, version_to_read, version_read).ok()) {
       data_results.push_back("error");
       metadata_results.push_back("error");
       return;
@@ -113,6 +113,7 @@ std::unique_ptr<plasma::MutableObject> MakeObject() {
   info.allocated_size = kPayloadSize;
 
   uint8_t *ptr = static_cast<uint8_t *>(malloc(kSize));
+  RAY_CHECK(ptr);
   auto ret = std::make_unique<plasma::MutableObject>(ptr, info);
   ret->header->Init();
   return ret;
@@ -122,7 +123,7 @@ std::unique_ptr<plasma::MutableObject> MakeObject() {
 
 // Tests that a single reader can read from a single writer.
 TEST(MutableObjectTest, TestBasic) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -167,7 +168,7 @@ TEST(MutableObjectTest, TestBasic) {
 
 // Tests that multiple readers can read from a single writer.
 TEST(MutableObjectTest, TestMultipleReaders) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -222,7 +223,7 @@ TEST(MutableObjectTest, TestMultipleReaders) {
 
 // Tests that multiple readers can detect a failure initiated by the writer.
 TEST(MutableObjectTest, TestWriterFails) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -287,7 +288,7 @@ TEST(MutableObjectTest, TestWriterFails) {
 // Tests that multiple readers can detect a failure initiated by the writer after
 // `WriteAcquire()` is called.
 TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -354,7 +355,7 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
 
 // Tests that multiple readers can detect a failure initiated by another reader.
 TEST(MutableObjectTest, TestReaderFails) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -425,7 +426,7 @@ TEST(MutableObjectTest, TestReaderFails) {
 
 // Tests that a writer can detect a failure while it is in `WriteAcquire()`.
 TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -459,7 +460,7 @@ TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
 
 // Tests that a reader can detect a failure while it is in `ReadAcquire()`.
 TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
@@ -519,7 +520,7 @@ TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
 
 // Tests that multiple readers can detect a failure while they are in `ReadAcquire()`.
 TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {

@@ -170,11 +170,28 @@ class ResourceTrackingInterface {
   virtual ~ResourceTrackingInterface(){};
 };
 
+class MutableObjectReaderInterface {
+ public:
+  virtual void RegisterMutableObject(
+      const ObjectID &object_id,
+      int64_t num_readers,
+      const ObjectID &local_reader_object_id,
+      const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) = 0;
+
+  virtual void PushMutableObject(
+      const ObjectID &object_id,
+      uint64_t data_size,
+      uint64_t metadata_size,
+      void *data,
+      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
+};
+
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
-                              public ResourceTrackingInterface {
+                              public ResourceTrackingInterface,
+                              public MutableObjectReaderInterface {
  public:
   virtual ~RayletClientInterface(){};
 
@@ -411,6 +428,20 @@ class RayletClient : public RayletClientInterface {
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override;
+
+  void RegisterMutableObject(
+      const ObjectID &object_id,
+      int64_t num_readers,
+      const ObjectID &local_reader_object_id,
+      const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback)
+      override;
+
+  void PushMutableObject(const ObjectID &object_id,
+                         uint64_t data_size,
+                         uint64_t metadata_size,
+                         void *data,
+                         const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
+                             &callback) override;
 
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(

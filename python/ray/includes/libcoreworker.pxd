@@ -268,7 +268,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalChannelReadRelease(
                     const c_vector[CObjectID] &object_ids)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                       c_vector[shared_ptr[CRayObject]] *results)
+                       c_vector[shared_ptr[CRayObject]] results)
         CRayStatus GetIfLocal(
             const c_vector[CObjectID] &ids,
             c_vector[shared_ptr[CRayObject]] *results)

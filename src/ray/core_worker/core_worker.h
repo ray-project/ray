@@ -738,7 +738,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
              const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -1634,9 +1634,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  Status ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
-                                                   bool is_writer);
-
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1686,7 +1683,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status GetObjects(const std::vector<ObjectID> &ids,
                     const int64_t timeout_ms,
-                    std::vector<std::shared_ptr<RayObject>> *results);
+                    std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Helper for Get, used only to read experimental mutable objects.
   ///
@@ -1694,7 +1691,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
-                                       std::vector<std::shared_ptr<RayObject>> *results);
+                                       std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
@@ -1765,7 +1762,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
-  /// Used to read and write experimental channels.
+  /// Manages mutable objects on the local node.
   std::shared_ptr<experimental::MutableObjectManager>
       experimental_mutable_object_manager_;
 

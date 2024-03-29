@@ -1,4 +1,3 @@
-
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1441,56 +1440,48 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
 Status CoreWorker::ExperimentalChannelReadRelease(
     const std::vector<ObjectID> &object_ids) {
-  RAY_CHECK(object_ids.size() == 1);
+  RAY_CHECK_EQ(object_ids.size(), 1UL);
   return experimental_mutable_object_manager_->ReadRelease(object_ids[0]);
 }
 
 Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
-  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/false);
-}
-
-Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
-  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/true);
-}
-
-Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
-                                                             bool is_writer) {
-  std::unique_ptr<plasma::MutableObject> object = nullptr;
+  std::unique_ptr<plasma::MutableObject> object;
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK(object) << "Mutable object must be local to be registered";
-  if (is_writer) {
-    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterWriterChannel(
-        object_id, std::move(object)));
-  } else {
-    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterReaderChannel(
-        object_id, std::move(object)));
-  }
-  return Status::OK();
+  return experimental_mutable_object_manager_->RegisterReaderChannel(object_id,
+                                                                     std::move(object));
+}
+
+Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
+  std::unique_ptr<plasma::MutableObject> object;
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
+  RAY_CHECK(object) << "Mutable object must be local to be registered";
+  return experimental_mutable_object_manager_->RegisterWriterChannel(object_id,
+                                                                     std::move(object));
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
-                       std::vector<std::shared_ptr<RayObject>> *results) {
+                       std::vector<std::shared_ptr<RayObject>> &results) {
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
     // We track the state change only from workers.
     state = std::make_unique<ScopedTaskMetricSetter>(
         worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   }
-  results->resize(ids.size(), nullptr);
+  results.resize(ids.size(), nullptr);
 
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
-  for (const auto &id : ids) {
+  for (const ObjectID &id : ids) {
     if (experimental_mutable_object_manager_->ReaderChannelRegistered(id)) {
       is_experimental_channel = true;
-    } else {
-      if (is_experimental_channel) {
-        return Status::NotImplemented(
-            "ray.get can only be called on all normal objects, or all "
-            "experimental.Channel objects");
-      }
+    } else if (is_experimental_channel) {
+      return Status::NotImplemented(
+          "ray.get can only be called on all normal objects, or all "
+          "experimental.Channel objects");
     }
   }
 
@@ -1501,23 +1492,23 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
           "non-infinity timeout_ms not supported for experimental channels");
     }
     return GetExperimentalMutableObjects(ids, results);
-  } else {
-    return GetObjects(ids, timeout_ms, results);
   }
+
+  return GetObjects(ids, timeout_ms, results);
 }
 
 Status CoreWorker::GetExperimentalMutableObjects(
-    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
+    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> &results) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_RETURN_NOT_OK(
-        experimental_mutable_object_manager_->ReadAcquire(ids[i], (*results)[i]));
+        experimental_mutable_object_manager_->ReadAcquire(ids[i], results[i]));
   }
   return Status::OK();
 }
 
 Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                               const int64_t timeout_ms,
-                              std::vector<std::shared_ptr<RayObject>> *results) {
+                              std::vector<std::shared_ptr<RayObject>> &results) {
   // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
@@ -1591,7 +1582,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   for (size_t i = 0; i < ids.size(); i++) {
     const auto pair = result_map.find(ids[i]);
     if (pair != result_map.end()) {
-      (*results)[i] = pair->second;
+      results[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());
       if (pair->second->IsException()) {
         // The language bindings should throw an exception if they see this
@@ -4360,7 +4351,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
+    if (Get(std::vector<ObjectID>{object_id}, 0, vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);
