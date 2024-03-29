@@ -2627,7 +2627,7 @@ def get(
     worker.check_connected()
 
     if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
-        global blocking_get_insisde_async_warned
+        global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
             logger.warning(
                 "Using blocking ray.get inside async actor. "

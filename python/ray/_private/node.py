@@ -1732,7 +1732,10 @@ class Node:
             "object_spilling_config"
         ] = object_spilling_config
         self._config["object_spilling_config"] = object_spilling_config
-        logger.info("Setting self._config['object_spilling_config'] to %s", object_spilling_config)
+        logger.info(
+            "Setting self._config['object_spilling_config'] to %s",
+            object_spilling_config,
+        )
 
         is_external_storage_type_fs = deserialized_config["type"] == "filesystem"
         self._ray_params._system_config[
