@@ -2962,11 +2962,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     # All replicas have failed to initialize 3 times. The deployment should
     # stop trying to initialize replicas.
     assert ds1.curr_status_info.status == DeploymentStatus.UNHEALTHY
-    check_counts(
-        ds1,
-        total=0,
-        by_state=[(ReplicaState.STARTING, 0, None), (ReplicaState.STOPPING, 0, None)],
-    )
+    check_counts(ds1, total=0)
     assert ds1._replica_constructor_retry_counter == 9
     assert "Replica scheduling failed" in ds1.curr_status_info.message
 
