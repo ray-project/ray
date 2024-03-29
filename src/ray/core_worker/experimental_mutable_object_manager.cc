@@ -14,9 +14,11 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
+#include "absl/strings/str_format.h"
 #include "ray/object_manager/common.h"
 
 namespace ray {
+namespace experimental {
 
 #if defined(__APPLE__) || defined(__linux__)
 
@@ -36,7 +38,34 @@ std::string GetSemaphoreHeaderName(const std::string &name) {
 
 }  // namespace
 
-ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {
+template <typename T>
+Status MutableObjectManager::RegisterChannel(
+    absl::flat_hash_map<ObjectID, T> &channels,
+    const ObjectID &object_id,
+    std::unique_ptr<plasma::MutableObject> &mutable_object) {
+  const auto &[channel_pair, success] =
+      channels.emplace(object_id, T(std::move(mutable_object)));
+  if (!success) {
+    return Status::Invalid("Channel already registered");
+  }
+  const T &channel = channel_pair->second;
+  RAY_CHECK(channel.mutable_object);
+
+  OpenSemaphores(object_id);
+  return Status::OK();
+}
+
+Status MutableObjectManager::RegisterWriterChannel(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
+  return RegisterChannel<WriterChannel>(writer_channels_, object_id, mutable_object);
+}
+
+Status MutableObjectManager::RegisterReaderChannel(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
+  return RegisterChannel<ReaderChannel>(reader_channels_, object_id, mutable_object);
+}
+
+MutableObjectManager::~MutableObjectManager() {
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
@@ -44,21 +73,7 @@ ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {
   }
 }
 
-Status ExperimentalMutableObjectManager::RegisterWriterChannel(
-    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
-  auto inserted =
-      writer_channels_.emplace(object_id, WriterChannel(std::move(mutable_object)));
-  if (!inserted.second) {
-    return Status::Invalid("Writer channel already registered");
-  }
-  RAY_CHECK(inserted.first->second.mutable_object);
-  OpenSemaphores(object_id);
-  RAY_LOG(DEBUG) << "Registered writer channel " << object_id;
-  return Status::OK();
-}
-
-PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
-    const ObjectID &object_id) {
+PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
   {
     auto it = writer_channels_.find(object_id);
     if (it != writer_channels_.end()) {
@@ -75,14 +90,13 @@ PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
   return nullptr;
 }
 
-std::string ExperimentalMutableObjectManager::GetSemaphoreName(
-    const ObjectID &object_id) {
+std::string MutableObjectManager::GetSemaphoreName(const ObjectID &object_id) {
   std::string name = std::string(GetHeader(object_id)->unique_name);
   RAY_CHECK_LE(name.size(), PSEMNAMLEN);
   return name;
 }
 
-PlasmaObjectHeader::Semaphores ExperimentalMutableObjectManager::GetSemaphores(
+PlasmaObjectHeader::Semaphores MutableObjectManager::GetSemaphores(
     const ObjectID &object_id) {
   auto it = semaphores_.find(object_id);
   RAY_CHECK(it != semaphores_.end());
@@ -92,7 +106,7 @@ PlasmaObjectHeader::Semaphores ExperimentalMutableObjectManager::GetSemaphores(
   return it->second;
 }
 
-void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id) {
+void MutableObjectManager::OpenSemaphores(const ObjectID &object_id) {
   if (semaphores_.count(object_id)) {
     // The semaphore already exists.
     return;
@@ -132,7 +146,6 @@ void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id)
     header->semaphores_created.store(PlasmaObjectHeader::SemaphoresCreationLevel::kDone,
                                      std::memory_order_release);
   } else {
-    // This is a reader initializing the channel.
     // Wait for another thread to initialize the channel.
     while (GetHeader(object_id)->semaphores_created.load(std::memory_order_acquire) !=
            PlasmaObjectHeader::SemaphoresCreationLevel::kDone) {
@@ -147,7 +160,7 @@ void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id)
   semaphores_[object_id] = semaphores;
 }
 
-void ExperimentalMutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
+void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   PlasmaObjectHeader::Semaphores semaphores = GetSemaphores(object_id);
   RAY_CHECK_EQ(sem_close(semaphores.header_sem), 0);
   RAY_CHECK_EQ(sem_close(semaphores.object_sem), 0);
@@ -159,230 +172,191 @@ void ExperimentalMutableObjectManager::DestroySemaphores(const ObjectID &object_
   semaphores_.erase(object_id);
 }
 
-Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
-                                                      int64_t data_size,
-                                                      const uint8_t *metadata,
-                                                      int64_t metadata_size,
-                                                      int64_t num_readers,
-                                                      std::shared_ptr<Buffer> *data) {
-  auto writer_channel_entry = writer_channels_.find(object_id);
-  if (writer_channel_entry == writer_channels_.end()) {
+Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
+                                          int64_t data_size,
+                                          const uint8_t *metadata,
+                                          int64_t metadata_size,
+                                          int64_t num_readers,
+                                          std::shared_ptr<Buffer> &data) {
+  WriterChannel *channel = GetChannel<WriterChannel>(writer_channels_, object_id);
+  if (!channel) {
     return Status::ObjectNotFound("Writer channel has not been registered");
   }
+  RAY_CHECK(!channel->written);
 
-  auto &channel = writer_channel_entry->second;
-  if (!channel.is_sealed) {
-    return Status::Invalid("Must WriteRelease before writing again to a mutable object");
-  }
-
-  if (data_size + metadata_size > channel.mutable_object->allocated_size) {
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  int64_t total_size = data_size + metadata_size;
+  if (total_size > object->allocated_size) {
     return Status::InvalidArgument(
-        "Serialized size of mutable data (" + std::to_string(data_size) +
-        ") + metadata size (" + std::to_string(metadata_size) +
-        ") is larger than allocated buffer size " +
-        std::to_string(channel.mutable_object->allocated_size));
+        absl::StrFormat("Serialized size of mutable data (%ld) + metadata size (%ld) "
+                        "is larger than allocated buffer size (%ld)",
+                        data_size,
+                        metadata_size,
+                        object->allocated_size));
   }
-
-  RAY_LOG(DEBUG) << "Write mutable object " << object_id;
-  PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
-  RAY_RETURN_NOT_OK(channel.mutable_object->header->WriteAcquire(
-      sem, data_size, metadata_size, num_readers));
-  channel.is_sealed = false;
-
-  *data = SharedMemoryBuffer::Slice(
-      channel.mutable_object->buffer, 0, channel.mutable_object->header->data_size);
-  if (metadata != NULL) {
-    // Copy the metadata to the buffer.
-    memcpy((*data)->Data() + channel.mutable_object->header->data_size,
-           metadata,
-           metadata_size);
-  }
-  return Status::OK();
-}
-
-Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id) {
-  auto writer_channel_entry = writer_channels_.find(object_id);
-  if (writer_channel_entry == writer_channels_.end()) {
-    return Status::ObjectNotFound("Writer channel has not been registered");
-  }
-
-  auto &channel = writer_channel_entry->second;
-  if (channel.is_sealed) {
-    return Status::Invalid("Must WriteAcquire before WriteRelease on a mutable object");
-  }
-
-  PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
-  RAY_RETURN_NOT_OK(channel.mutable_object->header->WriteRelease(sem));
-  channel.is_sealed = true;
-
-  return Status::OK();
-}
-
-Status ExperimentalMutableObjectManager::RegisterReaderChannel(
-    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
-  auto inserted =
-      reader_channels_.emplace(object_id, ReaderChannel(std::move(mutable_object)));
-  if (!inserted.second) {
-    return Status::Invalid("Reader channel already registered");
-  }
-  OpenSemaphores(object_id);
-  RAY_LOG(DEBUG) << "Registered reader channel " << object_id;
-  return Status::OK();
-}
-
-bool ExperimentalMutableObjectManager::ReaderChannelRegistered(
-    const ObjectID &object_id) const {
-  return reader_channels_.count(object_id);
-}
-
-Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                                     std::shared_ptr<RayObject> *result)
-    ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  RAY_LOG(DEBUG) << "ReadAcquire  " << object_id;
-  auto reader_channel_entry = reader_channels_.find(object_id);
-  if (reader_channel_entry == reader_channels_.end()) {
-    return Status::ObjectNotFound("Reader channel has not been registered");
-  }
-  auto &channel = reader_channel_entry->second;
-
-  // This lock ensures that there is only one reader at a time. The lock is released in
-  // `ReadRelease()`.
-  channel.lock->Lock();
-
-  int64_t version_read = 0;
-  RAY_LOG(DEBUG) << "ReadAcquire " << object_id
-                 << " version: " << channel.next_version_to_read;
-  PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
-  RAY_RETURN_NOT_OK(channel.mutable_object->header->ReadAcquire(
-      sem, channel.next_version_to_read, &version_read));
-  RAY_CHECK(version_read > 0);
-  channel.next_version_to_read = version_read;
-
-  RAY_CHECK(static_cast<int64_t>(channel.mutable_object->header->data_size +
-                                 channel.mutable_object->header->metadata_size) <=
-            channel.mutable_object->allocated_size);
-  auto data_buf = SharedMemoryBuffer::Slice(
-      channel.mutable_object->buffer, 0, channel.mutable_object->header->data_size);
-  auto metadata_buf =
-      SharedMemoryBuffer::Slice(channel.mutable_object->buffer,
-                                channel.mutable_object->header->data_size,
-                                channel.mutable_object->header->metadata_size);
-
-  *result = std::make_shared<RayObject>(
-      std::move(data_buf), std::move(metadata_buf), std::vector<rpc::ObjectReference>());
-
-  return Status::OK();
-}
-
-Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id)
-    ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  auto reader_channel_entry = reader_channels_.find(object_id);
-  if (reader_channel_entry == reader_channels_.end()) {
-    return Status::ObjectNotFound("Reader channel has not been registered");
-  }
-
-  auto &channel = reader_channel_entry->second;
-  channel.lock->AssertHeld();
 
   PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
   RAY_RETURN_NOT_OK(
-      channel.mutable_object->header->ReadRelease(sem, channel.next_version_to_read));
-  // The next read needs to read at least this version.
-  channel.next_version_to_read++;
-  // This lock ensures that there is only one reader at a time. The lock is acquired in
-  // `ReadAcquire()`.
-  channel.lock->Unlock();
-
+      object->header->WriteAcquire(sem, data_size, metadata_size, num_readers));
+  data = SharedMemoryBuffer::Slice(object->buffer, 0, data_size);
+  if (metadata) {
+    // Copy the metadata to the buffer.
+    memcpy(data->Data() + data_size, metadata, metadata_size);
+  }
+  channel->written = true;
   return Status::OK();
 }
 
-Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
-  PlasmaObjectHeader *header = nullptr;
-  auto reader_channel_entry = reader_channels_.find(object_id);
-  if (reader_channel_entry != reader_channels_.end()) {
-    header = reader_channel_entry->second.mutable_object->header;
-  } else {
-    auto writer_channel_entry = writer_channels_.find(object_id);
-    if (writer_channel_entry != writer_channels_.end()) {
-      header = writer_channel_entry->second.mutable_object->header;
-    }
+Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
+  WriterChannel *channel = GetChannel<WriterChannel>(writer_channels_, object_id);
+  if (!channel) {
+    return Status::ObjectNotFound("Writer channel has not been registered");
+  }
+  RAY_CHECK(channel->written);
+
+  PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  RAY_RETURN_NOT_OK(object->header->WriteRelease(sem));
+  channel->written = false;
+  return Status::OK();
+}
+
+Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
+                                         std::shared_ptr<RayObject> &result)
+    ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  ReaderChannel *channel = GetChannel<ReaderChannel>(reader_channels_, object_id);
+  if (!channel) {
+    return Status::ObjectNotFound("Reader channel has not been registered");
   }
 
-  if (!header) {
-    return Status::ObjectNotFound("Writer or reader channel has not been registered");
+  channel->lock->Lock();
+
+  PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
+  int64_t version_read = 0;
+  RAY_RETURN_NOT_OK(channel->mutable_object->header->ReadAcquire(
+      sem, channel->next_version_to_read, &version_read));
+  RAY_CHECK_GT(version_read, 0);
+  channel->next_version_to_read = version_read;
+
+  size_t total_size = channel->mutable_object->header->data_size +
+                      channel->mutable_object->header->metadata_size;
+  RAY_CHECK_LE(static_cast<int64_t>(total_size), channel->mutable_object->allocated_size);
+  std::shared_ptr<SharedMemoryBuffer> data_buf =
+      SharedMemoryBuffer::Slice(channel->mutable_object->buffer,
+                                /*offset=*/0,
+                                /*size=*/channel->mutable_object->header->data_size);
+  std::shared_ptr<SharedMemoryBuffer> metadata_buf =
+      SharedMemoryBuffer::Slice(channel->mutable_object->buffer,
+                                /*offset=*/channel->mutable_object->header->data_size,
+                                /*size=*/channel->mutable_object->header->metadata_size);
+
+  result = std::make_shared<RayObject>(
+      std::move(data_buf), std::move(metadata_buf), std::vector<rpc::ObjectReference>());
+  return Status::OK();
+}
+
+Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
+    ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  ReaderChannel *channel = GetChannel<ReaderChannel>(reader_channels_, object_id);
+  if (!channel) {
+    return Status::ObjectNotFound("Reader channel has not been registered");
   }
 
   PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
-  header->SetErrorUnlocked(sem);
+  RAY_RETURN_NOT_OK(
+      channel->mutable_object->header->ReadRelease(sem, channel->next_version_to_read));
+  // The next read needs to read at least this version.
+  channel->next_version_to_read++;
+
+  channel->lock->Unlock();
+  return Status::OK();
+}
+
+Status MutableObjectManager::SetError(const ObjectID &object_id) {
+  Channel *reader = GetChannel<ReaderChannel>(reader_channels_, object_id);
+  Channel *writer = GetChannel<WriterChannel>(writer_channels_, object_id);
+  PlasmaObjectHeader::Semaphores sem = GetSemaphores(object_id);
+  if (reader) {
+    reader->mutable_object->header->SetErrorUnlocked(sem);
+  }
+  if (writer) {
+    writer->mutable_object->header->SetErrorUnlocked(sem);
+  }
+
+  if (!reader && !writer) {
+    return Status::ObjectNotFound("Writer or reader channel has not been registered");
+  }
   return Status::OK();
 }
 
 #else  // defined(__APPLE__) || defined(__linux__)
 
-ExperimentalMutableObjectManager::~ExperimentalMutableObjectManager() {}
+MutableObjectManager::~MutableObjectManager() {}
 
-Status ExperimentalMutableObjectManager::RegisterWriterChannel(
+template <typename T>
+Status MutableObjectManager::RegisterChannel(
+    absl::flat_hash_map<ObjectID, T> &channels,
+    const ObjectID &object_id,
+    std::unique_ptr<plasma::MutableObject> &mutable_object) {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+Status MutableObjectManager::RegisterWriterChannel(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-PlasmaObjectHeader *ExperimentalMutableObjectManager::GetHeader(
-    const ObjectID &object_id) {
+Status MutableObjectManager::RegisterReaderChannel(
+    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
   return nullptr;
 }
 
-std::string ExperimentalMutableObjectManager::GetSemaphoreName(
-    const ObjectID &object_id) {
+std::string MutableObjectManager::GetSemaphoreName(const ObjectID &object_id) {
   return "";
 }
 
-PlasmaObjectHeader::Semaphores ExperimentalMutableObjectManager::GetSemaphores(
+PlasmaObjectHeader::Semaphores MutableObjectManager::GetSemaphores(
     const ObjectID &object_id) {
   return {};
 }
 
-void ExperimentalMutableObjectManager::OpenSemaphores(const ObjectID &object_id) {}
+void MutableObjectManager::OpenSemaphores(const ObjectID &object_id) {}
 
-void ExperimentalMutableObjectManager::DestroySemaphores(const ObjectID &object_id) {}
+void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {}
 
-Status ExperimentalMutableObjectManager::WriteAcquire(const ObjectID &object_id,
-                                                      int64_t data_size,
-                                                      const uint8_t *metadata,
-                                                      int64_t metadata_size,
-                                                      int64_t num_readers,
-                                                      std::shared_ptr<Buffer> *data) {
+Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
+                                          int64_t data_size,
+                                          const uint8_t *metadata,
+                                          int64_t metadata_size,
+                                          int64_t num_readers,
+                                          std::shared_ptr<Buffer> &data) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::WriteRelease(const ObjectID &object_id) {
+Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::RegisterReaderChannel(
-    const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> mutable_object) {
-  return Status::NotImplemented("Not supported on Windows.");
-}
-
-bool ExperimentalMutableObjectManager::ReaderChannelRegistered(
-    const ObjectID &object_id) const {
-  return false;
-}
-
-Status ExperimentalMutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                                     std::shared_ptr<RayObject> *result)
+Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
+                                         std::shared_ptr<RayObject> &result)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::ReadRelease(const ObjectID &object_id)
+Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status ExperimentalMutableObjectManager::SetError(const ObjectID &object_id) {
+Status MutableObjectManager::SetError(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
 #endif
 
+}  // namespace experimental
 }  // namespace ray

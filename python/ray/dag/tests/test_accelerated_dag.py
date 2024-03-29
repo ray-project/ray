@@ -20,8 +20,8 @@ from ray._private.utils import (
 
 logger = logging.getLogger(__name__)
 
-if sys.platform != "linux":
-    pytest.skip("Skipping, requires Linux.", allow_module_level=True)
+if sys.platform != "linux" and sys.platform != "darwin":
+    pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
 
 @ray.remote
