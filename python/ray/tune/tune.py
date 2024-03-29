@@ -576,15 +576,18 @@ def run(
 
     del remote_run_kwargs
 
-    # TODO(justinvyu): [Deprecated] Raise in 2.11.
-    if os.environ.get("TUNE_RESULT_DIR") or os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
-        warnings.warn(
-            "The environment variables "
-            "`RAY_AIR_LOCAL_CACHE_DIR` and `TUNE_RESULT_DIR` "
-            "are deprecated and will be removed in the future. "
-            "They are no longer used and will not have any effect. "
-            "You should set the `storage_path` instead. "
-        )
+    # TODO(justinvyu): [Deprecated] Raise in 2.20
+    ENV_VAR_DEPRECATION_MESSAGE = (
+        "The environment variable "
+        "`{}` is deprecated and will be removed in the future. "
+        "They are no longer used and will not have any effect. "
+        "You should set the `storage_path` instead. "
+    )
+    if os.environ.get("TUNE_RESULT_DIR"):
+        warnings.warn(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
+
+    if os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
+        warnings.warn(ENV_VAR_DEPRECATION_MESSAGE.format("RAY_AIR_LOCAL_CACHE_DIR"))
 
     if local_dir is not None:
         warnings.warn(
