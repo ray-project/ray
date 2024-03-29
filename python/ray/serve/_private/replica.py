@@ -983,7 +983,7 @@ class UserCallableWrapper:
 
     async def _handle_user_method_result(
         self,
-        result: Any,
+        result_ref: Any,
         user_method_name: str,
         request_metadata: RequestMetadata,
         *,
@@ -1003,6 +1003,8 @@ class UserCallableWrapper:
         but for ASGI apps (like FastAPI), the actual method will be a regular function
         implementing the ASGI `__call__` protocol.
         """
+
+        result = await result_ref
         result_is_gen = inspect.isgenerator(result)
         result_is_async_gen = inspect.isasyncgen(result)
         if request_metadata.is_streaming:
@@ -1105,16 +1107,19 @@ class UserCallableWrapper:
                     request_args[0], request_metadata, user_method_params
                 )
 
-            result = await self._handle_user_method_result(
-                await self._call_func_or_gen(
-                    user_method, *request_args, **request_kwargs
-                ),
+            user_func_call_ref = self._call_func_or_gen(
+                user_method, *request_args, **request_kwargs
+            )
+            handle_user_func_call_ref = self._handle_user_method_result(
+                user_func_call_ref,
                 user_method_name,
                 request_metadata,
                 generator_result_callback=generator_result_callback,
                 is_asgi_app=is_asgi_app,
                 asgi_args=asgi_args,
             )
+
+            result = await handle_user_func_call_ref
 
         except Exception as e:
             e = wrap_to_ray_error(user_method_name, e)
