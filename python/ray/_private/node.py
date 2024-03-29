@@ -243,6 +243,12 @@ class Node:
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
             self._raylet_socket_name = ray_params.raylet_socket_name
 
+            node_info = ray._private.services.get_node_to_connect_for_driver(
+                self.gcs_address,
+                self._raylet_ip_address,
+            )
+            self._node_id = node_info["node_id"]
+
             # If user does not provide the socket name, get it from Redis.
             if (
                 self._plasma_store_socket_name is None
@@ -251,14 +257,10 @@ class Node:
             ):
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
-                node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.gcs_address,
-                    self._raylet_ip_address,
-                )
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
-                # self._node_id = node_info["node_id"]
+
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -325,13 +327,13 @@ class Node:
                 self.gcs_address,
                 self._raylet_ip_address,
             )
-            # self._node_id = node_info["node_id"]
-            # print(f"L329 node_id: {self._node_id}")
+            self._node_id = node_info["node_id"]
+            print(f"L329 node_id: {self._node_id}")
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
-            # print(f"L332 node_id: {self._node_id}")
+            print(f"L332 node_id: {self._node_id}")
 
-        #print(f"node_id: {self._node_id}")
+        print(f"L334 node_id: {self._node_id}")
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
@@ -1683,7 +1685,8 @@ class Node:
         object_spilling_config = self._config.get("object_spilling_config", {})
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
-            object_spilling_config["params"]["node_id"] = node_id
+            if "params" in object_spilling_config:
+                object_spilling_config["params"]["node_id"] = node_id
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
@@ -1727,7 +1730,8 @@ class Node:
             "is_external_storage_type_fs"
         ] = is_external_storage_type_fs
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
-        deserialized_config["params"]["node_id"] = node_id
+        if "params" in deserialized_config:
+            deserialized_config["params"]["node_id"] = node_id
 
         # Validate external storage usage.
         from ray._private import external_storage
