@@ -79,8 +79,8 @@ documentation:
 
 .. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
-Launching Memory Profiling
---------------------------
+Memory Profiling
+----------------
 
 If you want to run memory profiling on Ray core components, you can use Jemalloc (https://github.com/jemalloc/jemalloc).
 Ray supports environment variables to override LD_PRELOAD on core components.
