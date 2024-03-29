@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import inspect
 import logging
 import os
@@ -151,10 +152,9 @@ class FunctionTrainable(Trainable):
         # so `_last_training_result.checkpoint` holds onto the latest ckpt.
         return self._last_training_result
 
-    def _create_checkpoint_dir(
-        self, checkpoint_dir: Optional[str] = None
-    ) -> Optional[str]:
-        return None
+    @contextmanager
+    def _create_checkpoint_dir(self, checkpoint_dir: Optional[str] = None):
+        yield None
 
     def load_checkpoint(self, checkpoint_result: _TrainingResult):
         # TODO(justinvyu): This currently breaks the `load_checkpoint` interface.

@@ -1,4 +1,5 @@
 import copy
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
 import logging
 import os
@@ -7,7 +8,6 @@ import platform
 import sys
 import tempfile
 import time
-from contextlib import redirect_stderr, redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
@@ -411,16 +411,73 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def _create_checkpoint_dir(
-        self, checkpoint_dir: Optional[str] = None
-    ) -> Optional[str]:
-        # NOTE: There's no need to supply the checkpoint directory inside
-        # the local trial dir, since it'll get persisted to the right location.
+    @contextmanager
+    def _create_checkpoint_dir(self, checkpoint_dir: Optional[str] = None):
+        """Creates a directory for the user to save checkpoint contents.
+        This is a temporary directory that gets auto-cleaned up, unless a
+        path is explicitly provided as an argument."""
         if checkpoint_dir:
             os.makedirs(checkpoint_dir, exist_ok=True)
-            return checkpoint_dir
+            yield checkpoint_dir
         else:
-            return tempfile.mkdtemp()
+            with tempfile.TemporaryDirectory() as tmpdir:
+                yield tmpdir
+
+    def _report_class_trainable_checkpoint(
+        self, checkpoint_dir: str, checkpoint_dict_or_path: Union[str, Dict]
+    ) -> _TrainingResult:
+        """Report a checkpoint saved via Trainable.save_checkpoint.
+
+        Need to handle both dict or path checkpoint returned by the user's
+        `save_checkpoint` method.
+
+        This is to get class trainables to work with storage backend used by
+        function trainables.
+        This basically re-implements `train.report` for class trainables,
+        making sure to persist the checkpoint to storage.
+        """
+        if isinstance(checkpoint_dict_or_path, dict):
+            with Path(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME).open("wb") as f:
+                ray_pickle.dump(checkpoint_dict_or_path, f)
+        elif isinstance(checkpoint_dict_or_path, str):
+            if checkpoint_dict_or_path != checkpoint_dir:
+                raise ValueError(
+                    "The returned checkpoint path from `save_checkpoint` "
+                    "must be None or the same as the provided path argument."
+                    f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
+                )
+
+        local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
+        metrics = self._last_result.copy() if self._last_result else {}
+
+        if self._storage:
+            # The checkpoint index is updated with the current result.
+            # NOTE: This is no longer using "iteration" as the folder indexing
+            # to be consistent with fn trainables.
+            self._storage._update_checkpoint_index(metrics)
+
+            persisted_checkpoint = self._storage.persist_current_checkpoint(
+                local_checkpoint
+            )
+
+            checkpoint_result = _TrainingResult(
+                checkpoint=persisted_checkpoint, metrics=metrics
+            )
+            # Persist trial artifacts to storage.
+            self._storage.persist_artifacts(
+                force=self._storage.sync_config.sync_artifacts_on_checkpoint
+            )
+        else:
+            # `storage=None` only happens when initializing the
+            # Trainable manually, outside of Tune/Train.
+            # In this case, no storage is set, so the default behavior
+            # is to just not upload anything and report a local checkpoint.
+            # This is fine for the main use case of local debugging.
+            checkpoint_result = _TrainingResult(
+                checkpoint=local_checkpoint, metrics=metrics
+            )
+        return checkpoint_result
 
     @DeveloperAPI
     def save(self, checkpoint_dir: Optional[str] = None) -> _TrainingResult:
@@ -436,65 +493,24 @@ class Trainable:
 
         Note the return value matches up with what is expected of `restore()`.
         """
-        checkpoint_dir = self._create_checkpoint_dir(checkpoint_dir=checkpoint_dir)
+        with self._create_checkpoint_dir(
+            checkpoint_dir=checkpoint_dir
+        ) as checkpoint_staging_dir:
+            # User saves checkpoint
+            checkpoint_dict_or_path = self.save_checkpoint(checkpoint_staging_dir)
 
-        # User saves checkpoint
-        checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
-
-        if not isinstance(self, ray.tune.trainable.FunctionTrainable):
-            # TODO(justinvyu): [cls_trainable_support]
-            # This is to get class Trainables to work in the new persistence mode.
-            # Need to handle checkpoint_dict_or_path == path, dict, or None
-            # Also need to upload to cloud, since `train.report` never gets called.
-            if isinstance(checkpoint_dict_or_path, dict):
-                with Path(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME).open("wb") as f:
-                    ray_pickle.dump(checkpoint_dict_or_path, f)
-            elif isinstance(checkpoint_dict_or_path, str):
-                if checkpoint_dict_or_path != checkpoint_dir:
-                    raise ValueError(
-                        "The returned checkpoint path from `save_checkpoint` "
-                        "must be None or the same as the provided path argument."
-                        f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
-                    )
-
-            local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
-
-            metrics = self._last_result.copy() if self._last_result else {}
-
-            if self._storage:
-                # The checkpoint index is updated with the current result.
-                # NOTE: This is no longer using "iteration" as the folder indexing
-                # to be consistent with fn trainables.
-                self._storage._update_checkpoint_index(metrics)
-
-                persisted_checkpoint = self._storage.persist_current_checkpoint(
-                    local_checkpoint
-                )
-
-                checkpoint_result = _TrainingResult(
-                    checkpoint=persisted_checkpoint, metrics=metrics
-                )
-                # Persist trial artifacts to storage.
-                self._storage.persist_artifacts(
-                    force=self._storage.sync_config.sync_artifacts_on_checkpoint
+            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
+                checkpoint_result = self._report_class_trainable_checkpoint(
+                    checkpoint_staging_dir, checkpoint_dict_or_path
                 )
             else:
-                # `storage=None` only happens when initializing the
-                # Trainable manually, outside of Tune/Train.
-                # In this case, no storage is set, so the default behavior
-                # is to just not upload anything and report a local checkpoint.
-                # This is fine for the main use case of local debugging.
-                checkpoint_result = _TrainingResult(
-                    checkpoint=local_checkpoint, metrics=metrics
-                )
-        else:
-            checkpoint_result: _TrainingResult = checkpoint_dict_or_path
-            assert self._last_result
-            # Update the checkpoint result to include auto-filled metrics.
-            checkpoint_result.metrics.update(self._last_result)
+                checkpoint_result: _TrainingResult = checkpoint_dict_or_path
+                assert self._last_result
+                # Update the checkpoint result to include auto-filled metrics.
+                checkpoint_result.metrics.update(self._last_result)
 
-        assert isinstance(checkpoint_result, _TrainingResult)
-        return checkpoint_result
+            assert isinstance(checkpoint_result, _TrainingResult)
+            return checkpoint_result
 
     @DeveloperAPI
     def restore(self, checkpoint_path: Union[str, Checkpoint, _TrainingResult]):
