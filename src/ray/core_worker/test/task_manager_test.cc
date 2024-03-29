@@ -1294,13 +1294,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
         req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   }
 
-  // Finish the task.
-  rpc::PushTaskReply reply;
-  auto return_object = reply.add_return_objects();
-  return_object->set_object_id(generator_id.Binary());
-  auto data = GenerateRandomBuffer();
-  return_object->set_data(data->Data(), data->Size());
-  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
+  CompletePendingStreamingTask(spec, caller_address, last_idx);
 
   // Verify PeekObjectRefStream is idempotent and doesn't consume indexes.
   for (auto i = 0; i < 10; i++) {
@@ -1319,6 +1313,125 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
   // DELETE
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamCancellation) {
+  /**
+   * Test streaming generator task cancelled during execution. The caller
+   * should receive an EOF error the next time it tries to read from the stream
+   * after the task has been marked cancelled, even if we already received a
+   * value for that return index.
+   */
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto last_idx = 2;
+  std::vector<ObjectID> dynamic_return_ids;
+  std::vector<std::shared_ptr<Buffer>> datas;
+  for (auto i = 0; i < last_idx; i++) {
+    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+    dynamic_return_ids.push_back(dynamic_return_id);
+    auto data = GenerateRandomBuffer();
+    datas.push_back(data);
+
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ i,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false);
+    // WRITE * 2
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+  }
+
+  // Read first object.
+  {
+    ObjectID obj_id;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(obj_id, dynamic_return_ids[0]);
+  }
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  auto error = rpc::ErrorType::WORKER_DIED;
+  ASSERT_FALSE(manager_.FailOrRetryPendingTask(spec.TaskId(), error));
+
+  // Next object should return EOS error, even though we have a value stored
+  // for the object.
+  {
+    ObjectID obj_id;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.IsObjectRefEndOfStream());
+    ASSERT_EQ(obj_id, dynamic_return_ids[1]);
+  }
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamCancellationOutOfOrderReports) {
+  /**
+   * Test streaming generator task cancelled during execution, and the caller
+   * receives out-of-order item reports. The caller should receive an EOF error
+   * the next time it tries to read from the stream after the task has been
+   * marked cancelled, instead of hanging waiting for that index to be
+   * reported.
+   */
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  std::vector<int64_t> idx_to_report = {0, 3};
+  std::vector<ObjectID> dynamic_return_ids;
+  std::vector<std::shared_ptr<Buffer>> datas;
+  for (auto idx : idx_to_report) {
+    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), idx + 2);
+    dynamic_return_ids.push_back(dynamic_return_id);
+    auto data = GenerateRandomBuffer();
+    datas.push_back(data);
+
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ idx,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false);
+    // WRITE * 2
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+  }
+
+  // Read first object.
+  {
+    ObjectID obj_id;
+    int64_t idx_expected = 0;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
+  }
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  auto error = rpc::ErrorType::WORKER_DIED;
+  ASSERT_FALSE(manager_.FailOrRetryPendingTask(spec.TaskId(), error));
+
+  // Next object should return EOS error instead of blocking the caller to wait
+  // for the index to be reported.
+  {
+    ObjectID obj_id;
+    int64_t idx_expected = 1;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.IsObjectRefEndOfStream());
+    ASSERT_EQ(obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
+  }
+
   manager_.TryDelObjectRefStream(generator_id);
 }
 

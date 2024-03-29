@@ -3,6 +3,14 @@ import os
 import yaml
 from typing_extensions import TypedDict
 
+PR_PIPELINES = [
+    "0189942e-0876-4b8f-80a4-617f988ec59b",  # premerge
+]
+BRANCH_PIPELINES = [
+    "0189e759-8c96-4302-b6b5-b4274406bf89",  # postmerge
+    "018e0f94-ccb6-45c2-b072-1e624fe9a404",  # postmerge-macos
+]
+
 
 class GlobalConfig(TypedDict):
     byod_ray_ecr: str
@@ -40,14 +48,37 @@ def _init_global_config(config_file: str):
     global config
     config_content = yaml.safe_load(open(config_file, "rt"))
     config = GlobalConfig(
-        byod_ray_ecr=config_content["byod"]["ray_ecr"],
-        byod_ray_cr_repo=config_content["byod"]["ray_cr_repo"],
-        byod_ray_ml_cr_repo=config_content["byod"]["ray_ml_cr_repo"],
-        byod_ecr=config_content["byod"]["byod_ecr"],
-        byod_aws_cr=config_content["byod"].get("aws_cr"),
-        byod_gcp_cr=config_content["byod"].get("gcp_cr"),
-        state_machine_aws_bucket=config_content["state_machine"]["aws_bucket"],
-        aws2gce_credentials=config_content.get("credentials", {}).get("aws2gce"),
+        byod_ray_ecr=(
+            config_content.get("byod", {}).get("ray_ecr")
+            or config_content.get("release_byod", {}).get("ray_ecr")
+        ),
+        byod_ray_cr_repo=(
+            config_content.get("byod", {}).get("ray_cr_repo")
+            or config_content.get("release_byod", {}).get("ray_cr_repo")
+        ),
+        byod_ray_ml_cr_repo=(
+            config_content.get("byod", {}).get("ray_ml_cr_repo")
+            or config_content.get("release_byod", {}).get("ray_ml_cr_repo")
+        ),
+        byod_ecr=(
+            config_content.get("byod", {}).get("byod_ecr")
+            or config_content.get("release_byod", {}).get("byod_ecr")
+        ),
+        byod_aws_cr=(
+            config_content.get("byod", {}).get("aws_cr")
+            or config_content.get("release_byod", {}).get("aws_cr")
+        ),
+        byod_gcp_cr=(
+            config_content.get("byod", {}).get("gcp_cr")
+            or config_content.get("release_byod", {}).get("gcp_cr")
+        ),
+        aws2gce_credentials=(
+            config_content.get("credentials", {}).get("aws2gce")
+            or config_content.get("release_byod", {}).get("aws2gce_credentials")
+        ),
+        state_machine_aws_bucket=config_content.get("state_machine", {}).get(
+            "aws_bucket",
+        ),
     )
     # setup GCP workload identity federation
     os.environ[
