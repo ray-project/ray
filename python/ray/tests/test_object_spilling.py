@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import platform
 import random
 import sys
@@ -22,7 +23,6 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClientOptions
 from ray.tests.conftest import (
     buffer_object_spilling_config,
-    node_id_subdir_config,
     file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
@@ -221,16 +221,17 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
-def test_node_id_subdir_config(shutdown_only):
+def test_node_id_part_of_spill_path(shutdown_only):
     ray_context = ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _system_config={"object_spilling_config": (json.dumps(node_id_subdir_config))},
+        _system_config={
+            "object_spilling_config": (json.dumps(file_system_object_spilling_config))
+        },
     )
     config = json.loads(
         ray._private.worker._global_node._config["object_spilling_config"]
     )
-    assert config["type"] == buffer_object_spilling_config["type"]
-    assert config["params"]["use_node_id_subdir"] == True
+    assert config["type"] == file_system_object_spilling_config["type"]
     for path in ray._private.external_storage._external_storage._directory_paths:
         # expected path structure: {spill_dir}/node_id/_spill_dir_name
         path_components = os.path.normpath(path).split(os.sep)

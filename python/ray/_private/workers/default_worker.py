@@ -239,8 +239,9 @@ if __name__ == "__main__":
             object_spilling_config = json.loads(object_spilling_config)
         else:
             object_spilling_config = {}
+        object_spilling_config["params"]["node_id"] = node._node_id
         external_storage.setup_external_storage(
-            object_spilling_config, node.session_name, node_id=node._node_id
+            object_spilling_config, node.session_name
         )
 
     ray._private.worker._global_node = node

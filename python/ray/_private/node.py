@@ -1678,10 +1678,11 @@ class Node:
         object_spilling_config = self._config.get("object_spilling_config", {})
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
+            object_spilling_config["params"]["node_id"] = node_id
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self._session_name, node_id
+                object_spilling_config, self._session_name
             )
             storage.destroy_external_storage()
 
@@ -1721,13 +1722,12 @@ class Node:
             "is_external_storage_type_fs"
         ] = is_external_storage_type_fs
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
+        deserialized_config["params"]["node_id"] = node_id
 
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(
-            deserialized_config, self._session_name, node_id
-        )
+        external_storage.setup_external_storage(deserialized_config, self._session_name)
         external_storage.reset_external_storage()
 
     def prepare_external_storage(self, node_id):
