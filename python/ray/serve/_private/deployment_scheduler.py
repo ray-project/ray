@@ -557,7 +557,8 @@ class DeploymentScheduler(ABC):
                 scheduling_request.scheduling_failed = True
                 scheduling_request.scheduling_failed_reason = (
                     "Failed to create a placement group for replica "
-                    f"{replica_id.unique_id}. See logs for more details."
+                    f"{replica_id.unique_id}. See Serve controller logs "
+                    "for more details."
                 )
                 return
             scheduling_strategy = PlacementGroupSchedulingStrategy(
