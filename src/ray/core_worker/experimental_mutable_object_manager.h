@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "gtest/gtest_prod.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
@@ -32,7 +33,8 @@ namespace ray {
 
 class ExperimentalMutableObjectManager {
  public:
-  ExperimentalMutableObjectManager() {}
+  ExperimentalMutableObjectManager() = default;
+  ~ExperimentalMutableObjectManager();
 
   /// Register the caller as a writer for the channel.
   ///
@@ -115,7 +117,6 @@ class ExperimentalMutableObjectManager {
 
  private:
   struct WriterChannel {
-#ifdef __linux__
     WriterChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : mutable_object(std::move(mutable_object_ptr)) {}
 
@@ -123,36 +124,63 @@ class ExperimentalMutableObjectManager {
     /// to call WriteRelease.
     bool is_sealed = true;
     std::unique_ptr<plasma::MutableObject> mutable_object;
-#endif
   };
 
   // Thread-safe for multiple ReadAcquire threads and one ReadRelease thread.
   struct ReaderChannel {
-#ifdef __linux__
     ReaderChannel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : mutable_object(std::move(mutable_object_ptr)) {
-      RAY_CHECK(sem_init(&reader_semaphore, /*pshared=*/0, /*value=*/1) == 0);
-    }
+        : lock(std::make_unique<absl::Mutex>()),
+          mutable_object(std::move(mutable_object_ptr)) {}
 
     /// The last version that we read. To read again, we must pass a newer
     /// version than this.
     int64_t next_version_to_read = 1;
-    /// Use a semaphore to protect next_version_to_read. This is necessary if
-    /// begin_read and end_read are called from different threads.
-    sem_t reader_semaphore;
-    /// Whether we currently have a read lock on the object. If this is true,
-    /// then it is safe to read the value of the object.
-    bool read_acquired = false;
+    /// Use a lock to protect next_version_to_read. This is necessary if begin_read and
+    /// end_read are called from different threads.
+    std::unique_ptr<absl::Mutex> lock;
     std::unique_ptr<plasma::MutableObject> mutable_object;
-#endif
   };
+
+  // Returns the plasma object header for the object.
+  PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
+
+  // Returns the unique semaphore name for the object. This name is intended to be used
+  // for the object's named sempahores.
+  std::string GetSemaphoreName(const ObjectID &object_id);
+
+  // Returns the named semaphores for the object. `OpenSemaphores()` must be called
+  // before this method.
+  PlasmaObjectHeader::Semaphores GetSemaphores(const ObjectID &object_id);
+
+  // Opens named semaphores for the object. This method must be called before
+  // `GetSemaphores()`.
+  void OpenSemaphores(const ObjectID &object_id);
+
+  // Closes, unlinks, and destroys the named semaphores for the object. Note that the
+  // destructor calls this method for all remaining objects.
+  void DestroySemaphores(const ObjectID &object_id);
+
+  FRIEND_TEST(MutableObjectTest, TestBasic);
+  FRIEND_TEST(MutableObjectTest, TestMultipleReaders);
+  FRIEND_TEST(MutableObjectTest, TestWriterFails);
+  FRIEND_TEST(MutableObjectTest, TestWriterFailsAfterAcquire);
+  FRIEND_TEST(MutableObjectTest, TestReaderFails);
+  FRIEND_TEST(MutableObjectTest, TestWriteAcquireDuringFailure);
+  FRIEND_TEST(MutableObjectTest, TestReadAcquireDuringFailure);
+  FRIEND_TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure);
 
   // TODO(swang): Access to these maps is not threadsafe. This is fine in the
   // case that all channels are initialized before any reads and writes are
   // issued, but may not work if channels are added/removed during run time
   // (i.e., if there are multiple DAGs).
-  absl::flat_hash_map<ObjectID, WriterChannel> writer_channels_;
+  // These two maps hold the channels for readers and writers of mutable objects.
   absl::flat_hash_map<ObjectID, ReaderChannel> reader_channels_;
+  absl::flat_hash_map<ObjectID, WriterChannel> writer_channels_;
+
+  // This maps holds the semaphores for each mutable object. The semaphores are used to
+  // (1) synchronize accesses to the object header and (2) synchronize readers and writers
+  // of the mutable object.
+  absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> semaphores_;
 };
 
 }  // namespace ray

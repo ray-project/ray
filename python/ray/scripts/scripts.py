@@ -1161,7 +1161,7 @@ def stop(force: bool, grace_period: int):
     # they are still alive, send sigkill.
     processes_to_kill = RAY_PROCESSES
     # Raylet should exit before all other processes exit.
-    # Otherwise, fate-sharing agents will complain and suicide.
+    # Otherwise, fate-sharing agents will complain and exit.
     assert processes_to_kill[0][0] == "raylet"
 
     # GCS should exit after all other processes exit.
@@ -2593,7 +2593,7 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=True)
+    add_command_alias(job_cli_group, name="job", hidden=False)
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 

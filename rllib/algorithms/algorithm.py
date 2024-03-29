@@ -99,6 +99,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
+    RESTORE_WORKERS_TIMER,
+    RESTORE_EVAL_WORKERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
@@ -847,6 +849,12 @@ class Algorithm(Trainable, AlgorithmBase):
             eval_results = self.evaluation_metrics
 
         # Sync filters on workers.
+        # TODO (sven): For the new API stack, the common execution pattern for any algo
+        #  should be: [sample + get_metrics + get_state] -> send all these in one remote
+        #  call down to `training_step` (where episodes are sent as ray object
+        #  references). Then distribute the episode refs to the learners, store metrics
+        #  in special key in result dict and perform the connector merge/broadcast
+        #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.uses_new_env_runners:
             # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
             # states back to all workers.
@@ -854,7 +862,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Merge connector states from all EnvRunners and broadcast updated
                 # states back to all EnvRunners.
                 self.workers.sync_env_runner_states(
-                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED]
+                    env_steps_sampled=self._counters[NUM_ENV_STEPS_SAMPLED],
+                    timeout_s=self.config.sync_filters_on_rollout_workers_timeout_s,
                 )
         else:
             self._sync_filters_if_needed(
@@ -947,7 +956,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 batches,
             ) = self._evaluate_on_local_env_runner(self.workers.local_worker())
         else:
-            self.evaluation_workers.probe_unhealthy_workers()
+            # self.evaluation_workers.probe_unhealthy_workers()
             # There is only a local eval EnvRunner -> Run on that.
             if self.evaluation_workers.num_healthy_remote_workers() == 0:
                 (
@@ -1450,6 +1459,11 @@ class Algorithm(Trainable, AlgorithmBase):
             from_worker = workers.local_worker() or self.workers.local_worker()
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the main WorkerSet.
+            # TODO (sven): EnvRunners currently return an empty dict from `get_state()`.
+            #  Once this API has been implemented properly (and replaced the
+            #  `get/set_weights()` APIs), re-visit the test cases that check, whether
+            #  all single-agent RLModules added on-the-fly are properly restored as
+            #  well.
             state_ref = ray.put(from_worker.get_state())
 
             # By default, entire local worker state is synced after restoration
@@ -3032,12 +3046,13 @@ class Algorithm(Trainable, AlgorithmBase):
                 # .. so we can query it whether we should stop the iteration loop (e.g.
                 # when we have reached `min_time_s_per_iteration`).
                 while not train_iter_ctx.should_stop(results):
+                    # Before training step, try to bring failed workers back.
+                    with self._timers[RESTORE_WORKERS_TIMER]:
+                        self.restore_workers(self.workers)
+
                     # Try to train one step.
                     with self._timers[TRAINING_STEP_TIMER]:
                         results = self.training_step()
-
-            # With training step done. Try to bring failed workers back.
-            self.restore_workers(self.workers)
 
         return results, train_iter_ctx
 
@@ -3057,6 +3072,11 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the evaluation call.
         """
+
+        if self.evaluation_workers is not None:
+            with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
+                self.restore_workers(self.evaluation_workers)
+
         # Run `self.evaluate()` only once per training iteration.
         with self._timers[EVALUATION_ITERATION_TIMER]:
             eval_results = self.evaluate(parallel_train_future=parallel_train_future)
@@ -3067,8 +3087,6 @@ class Algorithm(Trainable, AlgorithmBase):
         # After evaluation, do a round of health check on remote eval workers to see if
         # any of the failed workers are back.
         if self.evaluation_workers is not None:
-            self.restore_workers(self.evaluation_workers)
-
             # Add number of healthy evaluation workers after this iteration.
             eval_results["evaluation"][
                 "num_healthy_workers"

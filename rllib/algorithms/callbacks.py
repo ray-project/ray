@@ -505,7 +505,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self,
         *,
         env_runner: Optional["EnvRunner"] = None,
-        samples: SampleBatch,
+        samples: Union[SampleBatch, List[EpisodeType]],
         # TODO (sven): Replace with `env_runner` arg.
         worker: Optional["EnvRunner"] = None,
         **kwargs,
@@ -945,10 +945,18 @@ def make_multi_callbacks(
 
         @override(DefaultCallbacks)
         def on_sample_end(
-            self, *, worker: "EnvRunner", samples: SampleBatch, **kwargs
+            self,
+            *,
+            env_runner: Optional["EnvRunner"] = None,
+            samples: Union[SampleBatch, List[EpisodeType]],
+            # TODO (sven): Replace with `env_runner` arg.
+            worker: Optional["EnvRunner"] = None,
+            **kwargs,
         ) -> None:
             for callback in self._callback_list:
-                callback.on_sample_end(worker=worker, samples=samples, **kwargs)
+                callback.on_sample_end(
+                    env_runner=env_runner, samples=samples, worker=worker, **kwargs
+                )
 
         @OldAPIStack
         @override(DefaultCallbacks)
