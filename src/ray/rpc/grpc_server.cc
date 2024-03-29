@@ -61,6 +61,9 @@ void GrpcServer::Run() {
   std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
                              std::to_string(port_));
   grpc::ServerBuilder builder;
+  if (enable_gzip_) {
+    builder.SetDefaultCompressionAlgorithm(GRPC_COMPRESS_GZIP);
+  }
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
   // the requests sent to this port may be handled by any of the workers.

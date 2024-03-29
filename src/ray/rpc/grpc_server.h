@@ -95,14 +95,16 @@ class GrpcServer {
              bool listen_to_localhost_only,
              const ClusterID &cluster_id = ClusterID::Nil(),
              int num_threads = 1,
-             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
+             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/,
+             bool enable_gzip = false)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
         cluster_id_(ClusterID::Nil()),
         is_closed_(true),
         num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms) {
+        keepalive_time_ms_(keepalive_time_ms),
+        enable_gzip_(enable_gzip) {
     Init();
   }
 
@@ -179,6 +181,8 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
+
+  bool enable_gzip_;
 };
 
 /// Base class that represents an abstract gRPC service.

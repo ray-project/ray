@@ -112,9 +112,13 @@ class GrpcClient {
              const int port,
              ClientCallManager &call_manager,
              int num_threads,
-             bool use_tls = false)
+             bool use_tls = false,
+             bool use_compression = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     grpc::ChannelArguments argument = CreateDefaultChannelArguments();
+    if (use_compression) {
+      argument.SetCompressionAlgorithm(GRPC_COMPRESS_GZIP);
+    }
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
     argument.SetResourceQuota(quota);
