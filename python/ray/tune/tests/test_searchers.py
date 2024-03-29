@@ -17,8 +17,7 @@ from ray.tune.search import ConcurrencyLimiter
 
 
 def _invalid_objective(config):
-    # DragonFly uses `point`
-    metric = "point" if "point" in config else "report"
+    metric = "report"
 
     if config[metric] > 4:
         train.report({"_metric": float("inf")})
@@ -78,7 +77,7 @@ class InvalidValuesTest(unittest.TestCase):
             yield
 
         assert not any(
-            "Trial Runner checkpointing failed: Can't pickle local object" in x
+            "Experiment state snapshotting failed: Can't pickle local object" in x
             for x in buffer
         ), "Searcher checkpointing failed (unable to serialize)."
 
@@ -146,28 +145,6 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
-    def testBlendSearch(self):
-        from ray.tune.search.flaml import BlendSearch
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=BlendSearch(
-                    points_to_evaluate=[
-                        {"report": 1.0},
-                        {"report": 2.1},
-                        {"report": 3.1},
-                        {"report": 4.1},
-                    ]
-                ),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=16,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -175,49 +152,6 @@ class InvalidValuesTest(unittest.TestCase):
             out = tune.run(
                 _invalid_objective,
                 search_alg=TuneBOHB(seed=1000),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=8,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
-    def testCFO(self):
-        self.skipTest(
-            "Broken in FLAML, reenable once "
-            "https://github.com/microsoft/FLAML/pull/263 is merged"
-        )
-        from ray.tune.search.flaml import CFO
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=CFO(
-                    points_to_evaluate=[
-                        {"report": 1.0},
-                        {"report": 2.1},
-                        {"report": 3.1},
-                        {"report": 4.1},
-                    ]
-                ),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=16,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        np.random.seed(1000)  # At least one nan, inf, -inf and float
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=DragonflySearch(domain="euclidean", optimizer="random"),
                 config=self.config,
                 metric="_metric",
                 mode="max",
@@ -321,23 +255,6 @@ class InvalidValuesTest(unittest.TestCase):
 
         searcher.on_trial_complete("trial_1", {"training_iteration": 4, "metric": 1})
 
-    def testSkopt(self):
-        from ray.tune.search.skopt import SkOptSearch
-
-        np.random.seed(1234)  # At least one nan, inf, -inf and float
-
-        with self.check_searcher_checkpoint_errors_scope():
-            out = tune.run(
-                _invalid_objective,
-                search_alg=SkOptSearch(),
-                config=self.config,
-                metric="_metric",
-                mode="max",
-                num_samples=8,
-                reuse_actors=False,
-            )
-        self.assertCorrectExperimentOutput(out)
-
     def testZOOpt(self):
         self.skipTest(
             "Recent ZOOpt versions fail handling invalid values gracefully. "
@@ -426,27 +343,6 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.assertEqual(get_len_y(searcher_copy), 1)
         searcher_copy.suggest("1")
 
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        searcher = DragonflySearch(
-            space=self.space,
-            metric="metric",
-            mode="max",
-            domain="euclidean",
-            optimizer="bandit",
-        )
-
-        point = {
-            self.param_name: self.valid_value,
-        }
-
-        get_len_X = lambda s: len(s._opt.history.curr_opt_points)  # noqa E731
-        get_len_y = lambda s: len(s._opt.history.curr_opt_vals)  # noqa E731
-
-        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
-        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
-
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
         from optuna.trial import TrialState
@@ -530,25 +426,6 @@ class AddEvaluatedPointTest(unittest.TestCase):
 
         get_len_X = lambda s: len(s._opt.X)  # noqa E731
         get_len_y = lambda s: len(s._opt.y)  # noqa E731
-
-        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
-        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
-
-    def testSkOpt(self):
-        from ray.tune.search.skopt import SkOptSearch
-
-        searcher = SkOptSearch(
-            space=self.space,
-            metric="metric",
-            mode="max",
-        )
-
-        point = {
-            self.param_name: self.valid_value,
-        }
-
-        get_len_X = lambda s: len(s._skopt_opt.Xi)  # noqa E731
-        get_len_y = lambda s: len(s._skopt_opt.yi)  # noqa E731
 
         self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
         self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
@@ -644,16 +521,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = BayesOptSearch()
         self._restore(searcher)
 
-    def testBlendSearch(self):
-        from ray.tune.search.flaml import BlendSearch
-
-        searcher = BlendSearch(space=self.config, metric=self.metric_name, mode="max")
-
-        self._save(searcher)
-
-        searcher = BlendSearch()
-        self._restore(searcher)
-
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -665,32 +532,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
         assert "not_completed" in searcher.trial_to_params
-
-    def testCFO(self):
-        from ray.tune.search.flaml import CFO
-
-        searcher = CFO(space=self.config, metric=self.metric_name, mode="max")
-
-        self._save(searcher)
-
-        searcher = CFO()
-        self._restore(searcher)
-
-    def testDragonfly(self):
-        from ray.tune.search.dragonfly import DragonflySearch
-
-        searcher = DragonflySearch(
-            space=self.config,
-            metric=self.metric_name,
-            mode="max",
-            domain="euclidean",
-            optimizer="random",
-        )
-
-        self._save(searcher)
-
-        searcher = DragonflySearch()
-        self._restore(searcher)
 
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
@@ -749,15 +590,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
         assert "not_completed" in searcher._ot_trials
-
-    def testSkopt(self):
-        from ray.tune.search.skopt import SkOptSearch
-
-        searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
-        self._save(searcher)
-
-        searcher = SkOptSearch()
-        self._restore(searcher)
 
     def testZOOpt(self):
         from ray.tune.search.zoopt import ZOOptSearch

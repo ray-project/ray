@@ -12,6 +12,7 @@ PyTorch Ecosystem
 -----------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.torch.TorchTrainer
@@ -23,9 +24,11 @@ PyTorch
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.torch.get_device
+    ~train.torch.get_devices
     ~train.torch.prepare_model
     ~train.torch.prepare_data_loader
     ~train.torch.enable_reproducibility
@@ -36,6 +39,7 @@ PyTorch Lightning
 ~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.lightning.prepare_trainer
@@ -51,6 +55,7 @@ Hugging Face Transformers
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.huggingface.transformers.prepare_trainer
@@ -64,6 +69,7 @@ Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.tensorflow.TensorflowTrainer
@@ -75,6 +81,7 @@ Horovod
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.horovod.HorovodTrainer
@@ -85,18 +92,22 @@ XGBoost
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
+    ~train.xgboost.RayTrainReportCallback
 
 
 LightGBM
 ~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.RayTrainReportCallback
 
 
 .. _ray-train-configs-api:
@@ -105,6 +116,7 @@ Ray Train Configuration
 -----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.CheckpointConfig
@@ -122,6 +134,7 @@ Ray Train Utilities
 **Classes**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.Checkpoint
@@ -130,6 +143,7 @@ Ray Train Utilities
 **Functions**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
     
     ~train.get_checkpoint
@@ -142,6 +156,7 @@ Ray Train Output
 ----------------
 
 .. autosummary::
+    :nosignatures:
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
@@ -157,11 +172,11 @@ Trainer Base Classes
 ~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.gbdt_trainer.GBDTTrainer
 
 
 Train Backend Base Classes
@@ -171,6 +186,7 @@ Train Backend Base Classes
 .. _train-backend-config:
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
     :template: autosummary/class_without_autosummary.rst
 

@@ -139,16 +139,15 @@ ray_client.connect("localhost:10001")
     assert "ConnectionError" in exc_info.value.output.decode("utf-8")
 
     # Attempt to connect with TLS
-    out = run_string_as_driver(
+    run_string_as_driver(
         """
 import ray
 from ray.util.client import ray as ray_client
 ray_client.connect("localhost:10001")
-print(ray.is_initialized())
+assert ray.is_initialized()
      """,
         env=tls_env,
     )
-    assert out.strip() == "True"
 
 
 if __name__ == "__main__":

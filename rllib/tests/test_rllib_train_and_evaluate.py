@@ -21,13 +21,6 @@ rllib_dir = str(Path(__file__).parent.parent.absolute())
 
 def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
     extra_config = ""
-    if algo == "ARS":
-        extra_config = ',"train_batch_size": 10, "noise_size": 250000'
-    elif algo == "ES":
-        extra_config = (
-            ',"episodes_per_batch": 1,"train_batch_size": 10, ' '"noise_size": 250000'
-        )
-
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', "framework": "{}"'.format(fw)
 
@@ -39,7 +32,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "TEST_TMPDIR='{}' python {}/train.py --storage-path={} --run={} "
             "--checkpoint-freq=1 ".format(tmp_dir, rllib_dir, tmp_dir, algo)
             + "--config='{"
             + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
@@ -103,14 +96,14 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         # call rllib train here to see if the RLModule API is enabled.
         algo_cls = get_trainable_cls(algo)
         config = algo_cls.get_default_config()
-        if config._enable_rl_module_api:
+        if config._enable_new_api_stack:
             eval_ = ', \\"evaluation_config\\": {}'
         else:
             eval_ = ', \\"evaluation_config\\": {\\"explore\\": false}'
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "TEST_TMPDIR='{}' python {}/train.py --storage-path={} --run={} "
             "--checkpoint-freq=1 --checkpoint-at-end ".format(
                 tmp_dir, rllib_dir, tmp_dir, algo
             )
@@ -260,22 +253,11 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
 
 class TestEvaluate1(unittest.TestCase):
-    def test_a3c(self):
-        evaluate_test("A3C")
-
-    def test_ddpg(self):
-        evaluate_test("DDPG", env="Pendulum-v1")
-
-
-class TestEvaluate2(unittest.TestCase):
     def test_dqn(self):
         evaluate_test("DQN")
 
-    def test_es(self):
-        evaluate_test("ES")
 
-
-class TestEvaluate3(unittest.TestCase):
+class TestEvaluate2(unittest.TestCase):
     def test_impala(self):
         evaluate_test("IMPALA", env="CartPole-v1")
 
@@ -283,7 +265,7 @@ class TestEvaluate3(unittest.TestCase):
         evaluate_test("PPO", env="CartPole-v1", test_episode_rollout=True)
 
 
-class TestEvaluate4(unittest.TestCase):
+class TestEvaluate3(unittest.TestCase):
     def test_sac(self):
         evaluate_test("SAC", env="Pendulum-v1")
 
@@ -316,14 +298,14 @@ class TestCLISmokeTests(unittest.TestCase):
 
     def test_yaml_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole-simpleq-test.yaml"
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole-ppo.yaml"
         ).read()
 
     def test_python_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole_simpleq_test.py "
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole_ppo_envrunner.py "
             f"--stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
         ).read()
 

@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
-    if config._enable_learner_api:
+    if config._enable_new_api_stack:
         policy_loss_key = "info/learner/default_policy/policy_loss"
     else:
         policy_loss_key = "info/learner/default_policy/learner_stats/policy_loss"
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     print("Lowest pol-loss: {}".format(ckpt))
 
     # Checkpoint with the highest value-function loss:
-    if config._enable_learner_api:
+    if config._enable_new_api_stack:
         vf_loss_key = "info/learner/default_policy/vf_loss"
     else:
         vf_loss_key = "info/learner/default_policy/learner_stats/vf_loss"

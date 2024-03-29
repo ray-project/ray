@@ -204,11 +204,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_data_key_to_indices[job_data_key].push_back(i);
       }
 
+      WorkerID worker_id = WorkerID::FromBinary(data.second.driver_address().worker_id());
+
       // If job is not dead, get is_running_tasks from the core worker for the driver.
       if (data.second.is_dead()) {
         reply->mutable_job_info_list(i)->set_is_running_tasks(false);
-        WorkerID worker_id =
-            WorkerID::FromBinary(data.second.driver_address().worker_id());
         core_worker_clients_.Disconnect(worker_id);
         (*num_processed_jobs)++;
         ;
@@ -218,11 +218,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
         std::unique_ptr<rpc::NumPendingTasksRequest> request(
             new rpc::NumPendingTasksRequest());
+        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id;
         client->NumPendingTasks(
             std::move(request),
-            [reply, i, num_processed_jobs, try_send_reply](
+            [worker_id, reply, i, num_processed_jobs, try_send_reply](
                 const Status &status,
                 const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+              RAY_LOG(DEBUG) << "Received NumPendingTasksReply from worker " << worker_id;
               if (!status.ok()) {
                 RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
                                  << status.ToString();
@@ -295,6 +297,29 @@ std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id)
   auto it = cached_job_configs_.find(job_id);
   RAY_CHECK(it != cached_job_configs_.end()) << "Couldn't find job with id: " << job_id;
   return it->second;
+}
+
+void GcsJobManager::OnNodeDead(const NodeID &node_id) {
+  RAY_LOG(INFO) << "Node " << node_id
+                << " failed, mark all jobs from this node as finished";
+
+  auto on_done = [this, node_id](const absl::flat_hash_map<JobID, JobTableData> &result) {
+    // If job is not dead and from driver in current node, then mark it as finished
+    for (auto &data : result) {
+      if (!data.second.is_dead() &&
+          NodeID::FromBinary(data.second.driver_address().raylet_id()) == node_id) {
+        RAY_LOG(DEBUG) << "Marking job: " << data.first << " as finished";
+        MarkJobAsFinished(data.second, [data](Status status) {
+          if (!status.ok()) {
+            RAY_LOG(WARNING) << "Failed to mark job as finished. Status: " << status;
+          }
+        });
+      }
+    }
+  };
+
+  // make all jobs in current node to finished
+  RAY_CHECK_OK(gcs_table_storage_->JobTable().GetAll(on_done));
 }
 
 }  // namespace gcs

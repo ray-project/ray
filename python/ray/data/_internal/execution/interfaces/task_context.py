@@ -36,3 +36,6 @@ class TaskContext:
     # The Ray remote arguments of the fused upstream MapOperator.
     # This should be set if upstream_map_transformer is set.
     upstream_map_ray_remote_args: Optional[Dict[str, Any]] = None
+
+    # The target maximum number of bytes to include in the task's output block.
+    target_max_block_size: Optional[int] = None

@@ -35,13 +35,11 @@ app2 = TextGenerationModel.bind("distilgpt2")
 # __doc_gradio_server_begin__
 @serve.deployment
 class MyGradioServer(GradioIngress):
-    def __init__(self, downstream_model_1, downstream_model_2):
-        self._d1: DeploymentHandle = downstream_model_1.options(
-            use_new_handle_api=True,
-        )
-        self._d2: DeploymentHandle = downstream_model_2.options(
-            use_new_handle_api=True,
-        )
+    def __init__(
+        self, downstream_model_1: DeploymentHandle, downstream_model_2: DeploymentHandle
+    ):
+        self._d1 = downstream_model_1
+        self._d2 = downstream_model_2
 
         super().__init__(lambda: gr.Interface(self.fanout, "textbox", "textbox"))
 

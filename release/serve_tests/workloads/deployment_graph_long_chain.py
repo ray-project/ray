@@ -10,11 +10,10 @@ import asyncio
 import click
 
 from typing import Optional
+import starlette.requests
 
-import ray
 from ray import serve
-from ray.dag import InputNode
-from ray.serve.drivers import DAGDriver
+from ray.serve.handle import DeploymentHandle
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -32,14 +31,25 @@ DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS = 10
 
 @serve.deployment
 class Node:
-    def __init__(self, id: int, init_delay_secs=0):
+    def __init__(
+        self, handle: DeploymentHandle, id: int, init_delay_secs=0, compute_delay_secs=0
+    ):
+        self.handle = handle
+        self.compute_delay_secs = compute_delay_secs
         time.sleep(init_delay_secs)
         self.id = id
 
-    async def compute(self, prev_val, compute_delay_secs=0):
-        await asyncio.sleep(compute_delay_secs)
+    async def compute(self, val):
+        await asyncio.sleep(self.compute_delay_secs)
+        if self.handle:
+            res = await self.handle.compute.remote(val) + 1
+            return res
+        else:
+            return 1
 
-        return prev_val + 1
+    async def __call__(self, request: starlette.requests.Request):
+        inp = await request.json()
+        return self.compute(inp)
 
 
 def test_long_chain_deployment_graph(
@@ -53,23 +63,28 @@ def test_long_chain_deployment_graph(
     3) Init time can be long / short
     """
 
-    nodes = [Node.bind(i, init_delay_secs=init_delay_secs) for i in range(chain_length)]
-    prev_outputs = [None for _ in range(chain_length)]
-
-    with InputNode() as user_input:
-        for i in range(chain_length):
-            if i == 0:
-                prev_outputs[i] = nodes[i].compute.bind(
-                    user_input, compute_delay_secs=compute_delay_secs
+    nodes = []
+    for i in range(chain_length):
+        if i == 0:
+            nodes.append(
+                Node.bind(
+                    None,
+                    i,
+                    init_delay_secs=init_delay_secs,
+                    compute_delay_secs=compute_delay_secs,
                 )
-            else:
-                prev_outputs[i] = nodes[i].compute.bind(
-                    prev_outputs[i - 1], compute_delay_secs=compute_delay_secs
+            )
+        else:
+            nodes.append(
+                Node.bind(
+                    nodes[i - 1],
+                    i,
+                    init_delay_secs=init_delay_secs,
+                    compute_delay_secs=compute_delay_secs,
                 )
+            )
 
-        serve_dag = DAGDriver.bind(prev_outputs[-1])
-
-    return serve_dag
+    return nodes[-1]
 
 
 @click.command()
@@ -108,11 +123,11 @@ def main(
         compute_delay_secs=compute_delay_secs,
     )
     dag_handle = serve.run(serve_dag)
-    assert ray.get(dag_handle.predict.remote(0)) == chain_length
+    assert dag_handle.compute.remote(0).result() == chain_length
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
-            dag_handle,
+            dag_handle.compute.remote,
             chain_length,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
@@ -120,7 +135,7 @@ def main(
     )
     latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
-            dag_handle,
+            dag_handle.compute.remote,
             chain_length,
             num_requests=num_requests_per_client,
             num_clients=num_clients,

@@ -44,6 +44,8 @@ enum WorkFootprint {
 // WorkFootprints are not, such as leased workers on a node.
 using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 
+using rpc::autoscaler::DrainNodeReason;
+
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
@@ -131,11 +133,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Get the number of cpus on this node.
   uint64_t GetNumCpus() const;
 
-  /// Replace the local resources by the provided value.
-  ///
-  /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(const NodeResources &replacement);
-
   /// Check whether the specific resource exists or not in local node.
   ///
   /// \param resource_name: the specific resource name.
@@ -146,6 +143,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
+  void PopulateResourceViewSyncMessage(
+      syncer::ResourceViewSyncMessage &resource_view_sync_message) const;
+
   /// Record the metrics.
   void RecordMetrics() const;
 
@@ -153,7 +153,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining();
+  void SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms);
 
   bool IsLocalNodeDraining() const { return is_local_node_draining_; }
 
@@ -211,8 +211,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// A map storing when the resource was last idle.
   absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> last_idle_times_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
@@ -225,6 +223,10 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   // Whether the local node is being drained or not.
   bool is_local_node_draining_ = false;
+  // The value is the timestamp when
+  // the node will be force killed.
+  // 0 if there is no deadline.
+  int64_t local_node_draining_deadline_timestamp_ms_ = -1;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

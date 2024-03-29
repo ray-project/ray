@@ -376,7 +376,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     _check_if_element_multi_agent_dict(env, reward, "step, reward")
     _check_if_element_multi_agent_dict(env, done, "step, done")
     _check_if_element_multi_agent_dict(env, truncated, "step, truncated")
-    _check_if_element_multi_agent_dict(env, info, "step, info")
+    _check_if_element_multi_agent_dict(env, info, "step, info", allow_common=True)
     _check_reward(
         {"dummy_env_id": reward}, base_env=True, agent_ids=env.get_agent_ids()
     )
@@ -699,10 +699,14 @@ def _check_info(info, base_env=False, agent_ids=None):
                         "Your step function must return infos that are a dict. "
                         f"instead was a {type(inf)}: element: {inf}"
                     )
-                if not (agent_id in agent_ids or agent_id == "__all__"):
+                if not (
+                    agent_id in agent_ids
+                    or agent_id == "__all__"
+                    or agent_id == "__common__"
+                ):
                     error = (
                         f"Your dones dictionary must have agent ids that belong to "
-                        f"the environment. Agent_ids recieved from "
+                        f"the environment. Agent_ids received from "
                         f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
@@ -745,7 +749,13 @@ def _check_if_multi_env_dict(env, element, function_string):
         )
 
 
-def _check_if_element_multi_agent_dict(env, element, function_string, base_env=False):
+def _check_if_element_multi_agent_dict(
+    env,
+    element,
+    function_string,
+    base_env=False,
+    allow_common=False,
+):
     if not isinstance(element, dict):
         if base_env:
             error = (
@@ -762,6 +772,8 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
         raise ValueError(error)
     agent_ids: Set = copy(env.get_agent_ids())
     agent_ids.add("__all__")
+    if allow_common:
+        agent_ids.add("__common__")
 
     if not all(k in agent_ids for k in element):
         if base_env:
@@ -811,13 +823,14 @@ def _find_offending_sub_space(space, value):
         3) the offending sub-space's dtype, 4) the offending sub-value, 5) the offending
         sub-value's dtype.
 
-    Examples:
-         >>> path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
-         ...     gym.spaces.Dict({
-         ...    -2.0, 1.5, (2, ), np.int8), np.array([-1.5, 3.0])
-         ... )
-         >>> print(path)
-         ...
+    .. testcode::
+        :skipif: True
+
+        path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
+            gym.spaces.Dict({
+           -2.0, 1.5, (2, ), np.int8), np.array([-1.5, 3.0])
+        )
+
     """
     if not isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
         return None, space, space.dtype, value, _get_type(value)

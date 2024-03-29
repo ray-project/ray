@@ -30,13 +30,11 @@ def export_test(
     cls = get_trainable_cls(alg_name)
     config = cls.get_default_config()
     if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.rl_module(_enable_rl_module_api=False).training(
-            _enable_learner_api=False
-        )
+        config = config.experimental(_enable_new_api_stack=False)
     config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
     config.checkpointing(export_native_model_files=True)
-    if "DDPG" in alg_name or "SAC" in alg_name:
+    if "SAC" in alg_name:
         algo = config.build(env="Pendulum-v1")
         test_obs = np.array([[0.1, 0.2, 0.3]])
     else:
@@ -156,10 +154,6 @@ class TestExportCheckpointAndModel(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
-
-    def test_export_a3c(self):
-        for fw in framework_iterator():
-            export_test("A3C", fw)
 
     def test_export_appo(self):
         for fw in framework_iterator():

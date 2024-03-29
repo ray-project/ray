@@ -30,7 +30,8 @@ class ActionMaskEnv(RandomEnv):
         # Check whether action is valid.
         if not self.valid_actions[action]:
             raise ValueError(
-                f"Invalid action sent to env! " f"valid_actions={self.valid_actions}"
+                f"Invalid action ({action}) sent to env! "
+                f"valid_actions={self.valid_actions}"
             )
         obs, rew, done, truncated, info = super().step(action)
         self._fix_action_mask(obs)

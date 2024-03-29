@@ -14,69 +14,6 @@
 
 namespace ray {
 namespace pubsub {
-namespace pub_internal {
-
-class MockSubscriptionIndex : public SubscriptionIndex {
- public:
-};
-
-}  // namespace pub_internal
-}  // namespace pubsub
-}  // namespace ray
-
-namespace ray {
-namespace pubsub {
-namespace pub_internal {
-
-class MockLongPollConnection : public LongPollConnection {
- public:
-};
-
-}  // namespace pub_internal
-}  // namespace pubsub
-}  // namespace ray
-
-namespace ray {
-namespace pubsub {
-namespace pub_internal {
-
-class MockSubscriberState : public SubscriberState {
- public:
-};
-
-}  // namespace pub_internal
-}  // namespace pubsub
-}  // namespace ray
-
-namespace ray {
-namespace pubsub {
-
-class MockPublisherInterface : public PublisherInterface {
- public:
-  MOCK_METHOD(bool,
-              RegisterSubscription,
-              (const rpc::ChannelType channel_type,
-               const SubscriberID &subscriber_id,
-               const std::optional<std::string> &key_id),
-              (override));
-  MOCK_METHOD(void, Publish, (rpc::PubMessage pub_message), (override));
-  MOCK_METHOD(void,
-              PublishFailure,
-              (const rpc::ChannelType channel_type, const std::string &key_id),
-              (override));
-  MOCK_METHOD(bool,
-              UnregisterSubscription,
-              (const rpc::ChannelType channel_type,
-               const SubscriberID &subscriber_id,
-               const std::optional<std::string> &key_id),
-              (override));
-};
-
-}  // namespace pubsub
-}  // namespace ray
-
-namespace ray {
-namespace pubsub {
 
 class MockPublisher : public Publisher {
  public:
@@ -97,8 +34,6 @@ class MockPublisher : public Publisher {
                const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
-
- private:
 };
 
 }  // namespace pubsub

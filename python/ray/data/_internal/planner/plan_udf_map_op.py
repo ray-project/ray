@@ -30,7 +30,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.numpy_support import is_valid_udf_return
-from ray.data._internal.util import _truncated_repr, validate_compute
+from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -39,6 +39,7 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
+from ray.data.exceptions import UserCodeException
 
 
 def plan_udf_map_op(
@@ -51,7 +52,6 @@ def plan_udf_map_op(
     """
 
     compute = get_compute(op._compute)
-    validate_compute(op._fn, compute)
     fn, init_fn = _parse_op_fn(op)
 
     if isinstance(op, MapBatches):
@@ -81,8 +81,9 @@ def plan_udf_map_op(
         map_transformer,
         input_physical_dag,
         name=op.name,
+        target_max_block_size=None,
         compute_strategy=compute,
-        min_rows_per_bundle=op._target_block_size,
+        min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args=op._ray_remote_args,
     )
 
@@ -104,7 +105,10 @@ def _parse_op_fn(op: AbstractUDFMap):
         def fn(item: Any) -> Any:
             assert ray.data._cached_fn is not None
             assert ray.data._cached_cls == op_fn
-            return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+            try:
+                return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+            except Exception as e:
+                raise UserCodeException() from e
 
         def init_fn():
             if ray.data._cached_fn is None:
@@ -116,7 +120,10 @@ def _parse_op_fn(op: AbstractUDFMap):
     else:
 
         def fn(item: Any) -> Any:
-            return op_fn(item, *fn_args, **fn_kwargs)
+            try:
+                return op_fn(item, *fn_args, **fn_kwargs)
+            except Exception as e:
+                raise UserCodeException() from e
 
         def init_fn():
             pass
@@ -279,7 +286,7 @@ def _create_map_transformer_for_map_batches_op(
             zero_copy_batch=zero_copy_batch,
         ),
         # Apply the UDF.
-        BatchMapTransformFn(batch_fn),
+        BatchMapTransformFn(batch_fn, is_udf=True),
         # Convert output batches to blocks.
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
@@ -296,7 +303,7 @@ def _create_map_transformer_for_row_based_map_op(
         # Convert input blocks to rows.
         BlocksToRowsMapTransformFn.instance(),
         # Apply the UDF.
-        RowMapTransformFn(row_fn),
+        RowMapTransformFn(row_fn, is_udf=True),
         # Convert output rows to blocks.
         BuildOutputBlocksMapTransformFn.for_rows(),
     ]
@@ -306,26 +313,29 @@ def _create_map_transformer_for_row_based_map_op(
 # Following are util functions for the legacy code path.
 
 
-def generate_map_rows_fn() -> (
-    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
-):
+def generate_map_rows_fn(
+    target_max_block_size: int,
+) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
     """Generate function to apply the UDF to each record of blocks."""
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: UserDefinedFunction
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_map_rows(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        map_transformer.set_target_max_block_size(target_max_block_size)
         yield from map_transformer.apply_transform(blocks, ctx)
 
     return fn
 
 
-def generate_flat_map_fn() -> (
-    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
-):
+def generate_flat_map_fn(
+    target_max_block_size: int,
+) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
     """Generate function to apply the UDF to each record of blocks,
     and then flatten results.
     """
@@ -333,19 +343,22 @@ def generate_flat_map_fn() -> (
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: UserDefinedFunction
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_flat_map(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        map_transformer.set_target_max_block_size(target_max_block_size)
         yield from map_transformer.apply_transform(blocks, ctx)
 
     return fn
 
 
-def generate_filter_fn() -> (
-    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
-):
+def generate_filter_fn(
+    target_max_block_size: int,
+) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
     """Generate function to apply the UDF to each record of blocks,
     and filter out records that do not satisfy the given predicate.
     """
@@ -353,17 +366,21 @@ def generate_filter_fn() -> (
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: UserDefinedFunction
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_filter(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        map_transformer.set_target_max_block_size(target_max_block_size)
         yield from map_transformer.apply_transform(blocks, ctx)
 
     return fn
 
 
 def generate_map_batches_fn(
+    target_max_block_size: int,
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
@@ -390,6 +407,7 @@ def generate_map_batches_fn(
             batch_format,
             zero_copy_batch,
         )
+        map_transformer.set_target_max_block_size(target_max_block_size)
         yield from map_transformer.apply_transform(blocks, ctx)
 
     return fn

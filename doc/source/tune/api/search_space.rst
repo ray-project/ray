@@ -84,6 +84,7 @@ Random Distributions API
 ------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.uniform
@@ -103,6 +104,7 @@ Grid Search and Custom Function APIs
 ------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.grid_search

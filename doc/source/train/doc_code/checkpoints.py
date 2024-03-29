@@ -62,7 +62,6 @@ trainer = TorchTrainer(
 result = trainer.fit()
 # __pytorch_save_end__
 
-
 # __pytorch_restore_start__
 import os
 import tempfile
@@ -90,12 +89,19 @@ def train_func(config):
     optimizer = Adam(model.parameters(), lr=3e-4)
     criterion = nn.MSELoss()
 
+    # Wrap the model in DDP and move it to GPU.
+    model = ray.train.torch.prepare_model(model)
+
     # ====== Resume training state from the checkpoint. ======
     start_epoch = 0
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            model.load_state_dict(torch.load(os.path.join(checkpoint_dir, "model.pt")))
+            model_state_dict = torch.load(
+                os.path.join(checkpoint_dir, "model.pt"),
+                # map_location=...,  # Load onto a different device if needed.
+            )
+            model.module.load_state_dict(model_state_dict)
             optimizer.load_state_dict(
                 torch.load(os.path.join(checkpoint_dir, "optimizer.pt"))
             )
@@ -103,9 +109,6 @@ def train_func(config):
                 torch.load(os.path.join(checkpoint_dir, "extra_state.pt"))["epoch"] + 1
             )
     # ========================================================
-
-    # Wrap the model in DDP
-    model = ray.train.torch.prepare_model(model)
 
     for epoch in range(start_epoch, config["num_epochs"]):
         y = model.forward(X)
@@ -162,7 +165,6 @@ trainer = TorchTrainer(
 )
 # __pytorch_restore_end__
 
-
 # __checkpoint_from_single_worker_start__
 import tempfile
 
@@ -205,7 +207,7 @@ class MyLightningModule(pl.LightningModule):
         self.log("mean_accuracy", mean_acc, sync_dist=True)
 
 
-def train_func_per_worker():
+def train_func():
     ...
     model = MyLightningModule(...)
     datamodule = MyLightningDataModule(...)
@@ -218,7 +220,7 @@ def train_func_per_worker():
 
 
 ray_trainer = TorchTrainer(
-    train_func_per_worker,
+    train_func,
     scaling_config=train.ScalingConfig(num_workers=2),
     run_config=train.RunConfig(
         checkpoint_config=train.CheckpointConfig(
@@ -279,7 +281,7 @@ from ray.train.torch import TorchTrainer
 from ray.train.lightning import RayTrainReportCallback
 
 
-def train_func_per_worker():
+def train_func():
     model = MyLightningModule(...)
     datamodule = MyLightningDataModule(...)
     trainer = pl.Trainer(..., callbacks=[RayTrainReportCallback()])
@@ -299,7 +301,7 @@ checkpoint = Checkpoint("s3://bucket/ckpt_dir")
 
 # Resume training from checkpoint file
 ray_trainer = TorchTrainer(
-    train_func_per_worker,
+    train_func,
     scaling_config=train.ScalingConfig(num_workers=2),
     resume_from_checkpoint=checkpoint,
 )
@@ -415,15 +417,32 @@ from pathlib import Path
 
 from ray.train import Checkpoint
 
-# Create a sample locally available checkpoint
+# For demonstration, create a locally available directory with a `model.pt` file.
 example_checkpoint_dir = Path("/tmp/test-checkpoint")
 example_checkpoint_dir.mkdir()
 example_checkpoint_dir.joinpath("model.pt").touch()
+
+# Create the checkpoint, which is a reference to the directory.
 checkpoint = Checkpoint.from_directory(example_checkpoint_dir)
 
+# Inspect the checkpoint's contents with either `as_directory` or `to_directory`:
 with checkpoint.as_directory() as checkpoint_dir:
     assert Path(checkpoint_dir).joinpath("model.pt").exists()
 
 checkpoint_dir = checkpoint.to_directory()
 assert Path(checkpoint_dir).joinpath("model.pt").exists()
 # __inspect_checkpoint_example_end__
+
+# __inspect_transformers_checkpoint_example_start__
+# After training finished
+checkpoint = result.checkpoint
+with checkpoint.as_directory() as checkpoint_dir:
+    hf_checkpoint_path = f"{checkpoint_dir}/checkpoint/"
+# __inspect_transformers_checkpoint_example_end__
+
+# __inspect_lightning_checkpoint_example_start__
+# After training finished
+checkpoint = result.checkpoint
+with checkpoint.as_directory() as checkpoint_dir:
+    lightning_checkpoint_path = f"{checkpoint_dir}/checkpoint.ckpt"
+# __inspect_lightning_checkpoint_example_end__

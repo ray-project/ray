@@ -6,34 +6,36 @@ from parquet_data_generator import generate_data
 
 import shutil
 import tempfile
+from typing import Optional
 
 
 def read_parquet(
     root: str,
-    parallelism: int = -1,
+    override_num_blocks: Optional[int] = None,
     use_threads: bool = False,
     filter=None,
     columns=None,
 ) -> Dataset:
     return ray.data.read_parquet(
         paths=root,
-        parallelism=parallelism,
+        override_num_blocks=override_num_blocks,
         use_threads=use_threads,
         filter=filter,
         columns=columns,
-    ).materialize()
+    )
 
 
 def run_read_parquet_benchmark(benchmark: Benchmark):
-    # Test with different parallelism (multi-processing for single node) and threading.
-    for parallelism in [1, 2, 4]:
+    # Test with different override_num_blocks (multi-processing for single node)
+    # and threading.
+    for override_num_blocks in [1, 2, 4]:
         for use_threads in [True, False]:
-            test_name = f"read-parquet-downsampled-nyc-taxi-2009-{parallelism}-{use_threads}"  # noqa: E501
-            benchmark.run(
+            test_name = f"read-parquet-downsampled-nyc-taxi-2009-{override_num_blocks}-{use_threads}"  # noqa: E501
+            benchmark.run_materialize_ds(
                 test_name,
                 read_parquet,
                 root="s3://anonymous@air-example-data/ursa-labs-taxi-data/downsampled_2009_full_year_data.parquet",  # noqa: E501
-                parallelism=parallelism,
+                override_num_blocks=override_num_blocks,
                 use_threads=use_threads,
             )
 
@@ -75,11 +77,11 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
                 data_dir=data_dirs[-1],
             )
             test_name = f"read-parquet-random-data-{num_files}-{compression}"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 read_parquet,
                 root=data_dirs[-1],
-                parallelism=1,  # We are testing one task to handle N files
+                override_num_blocks=1,  # We are testing one task to handle N files
             )
     for dir in data_dirs:
         shutil.rmtree(dir)
@@ -101,7 +103,7 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
     #     data_dir=many_files_dir,
     # )
     test_name = f"read-many-parquet-files-s3-{num_files}-{compression}"
-    benchmark.run(
+    benchmark.run_materialize_ds(
         test_name,
         read_parquet,
         root=many_files_dir,

@@ -112,12 +112,13 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  pip-compile --resolver=backtracking -q \
+  pip-compile --verbose --resolver=backtracking \
      --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
@@ -128,8 +129,7 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
@@ -144,11 +144,11 @@ compile_pip_dependencies() {
   # pip install will complain about irresolvable constraints.
   sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
-  # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
+  # Add python_version < 3.11 to scikit-image, scipy, networkx
   # as they need more recent versions in python 3.11.
   # These will be automatically resolved. Remove as
   # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -i -E 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
+  sed -i -E 's/((scikit-image|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
@@ -164,7 +164,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:core_worker_test
         -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
@@ -177,50 +176,43 @@ test_core() {
   bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
 }
 
-prepare_docker() {
-    rm "${WORKSPACE_DIR}"/python/dist/* ||:
-    pushd "${WORKSPACE_DIR}/python"
-    pip install -e . --verbose
-    python setup.py bdist_wheel
-    tmp_dir="/tmp/prepare_docker_$RANDOM"
-    mkdir -p $tmp_dir
-    cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
-    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
-    base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
-    echo "
-    FROM $base_image
-
-    ENV LC_ALL=C.UTF-8
-    ENV LANG=C.UTF-8
-    COPY ./*.whl /
-    EXPOSE 8000
-    EXPOSE 10001
-    RUN pip install /${wheel}[serve]
-    RUN (sudo apt update || true) && sudo apt install curl -y
-    " > $tmp_dir/Dockerfile
-
-    pushd $tmp_dir
-    docker build . -t ray_ci:v1
-    popd
-
-    popd
-}
-
-# For running Python tests on Windows.
-test_python() {
-  local pathsep=":" args=()
+# For running Serve tests on Windows.
+test_serve() {
   if [ "${OSTYPE}" = msys ]; then
-    pathsep=";"
     args+=(
       python/ray/serve/...
+      -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
+      -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
+      -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
+      -python/ray/serve/tests:test_gradio
+      -python/ray/serve/tests:test_fastapi
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${test_shard_selection};
+  fi
+}
+
+# For running Python tests on Windows (excluding Serve).
+test_python() {
+  if [ "${OSTYPE}" = msys ]; then
+    args+=(
       python/ray/tests/...
-      -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
-      -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
-      -python/ray/serve:test_gradio
-      -python/ray/serve:test_gradio_visualization
-      -python/ray/serve:test_air_integrations_gpu
-      -python/ray/serve:test_fastapi
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -229,12 +221,10 @@ test_python() {
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcs_fault_tolerance # flaky
-      -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multiprocessing_client_mode # Flaky on Windows
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
@@ -242,10 +232,10 @@ test_python() {
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
       -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_sdk_provider # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )
@@ -258,14 +248,36 @@ test_python() {
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
     test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
-    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
-    # It's unclear to me if this should be necessary, but this is to make tests run for now.
-    # Check why this issue doesn't arise on Linux/Mac.
-    # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046,SC2086
     bazel test --config=ci \
       --build_tests_only $(./ci/run/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${test_shard_selection};
+  fi
+}
+
+# For running Python tests on Windows (excluding Serve).
+test_train_windows() {
+  if [ "${OSTYPE}" = msys ]; then
+    args+=(
+      python/ray/train:test_windows
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
@@ -355,7 +367,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      make html
       pip install datasets==2.0.0
     fi
   )
@@ -367,7 +379,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make linkcheck
+      make linkcheck
     fi
   )
 }
@@ -437,7 +449,7 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    WHL_COMMIT=$(unzip -p "$whl" "*ray/__init__.py" | grep "^__commit__" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" "*ray/_version.py" | grep "^commit" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
       echo "Wheel ${basename} has incorrect commit: (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."

@@ -23,10 +23,15 @@ class Combiner:
 
 @serve.deployment
 class Ingress:
-    def __init__(self, adder1, adder2, combiner):
-        self._adder1: DeploymentHandle = adder1.options(use_new_handle_api=True)
-        self._adder2: DeploymentHandle = adder2.options(use_new_handle_api=True)
-        self._combiner: DeploymentHandle = combiner.options(use_new_handle_api=True)
+    def __init__(
+        self,
+        adder1: DeploymentHandle,
+        adder2: DeploymentHandle,
+        combiner: DeploymentHandle,
+    ):
+        self._adder1 = adder1
+        self._adder2 = adder2
+        self._combiner = combiner
 
     async def __call__(self, request: starlette.requests.Request) -> Dict[str, float]:
         input_json = await request.json()

@@ -28,7 +28,9 @@ class ReverseAndDupEachWord:
             rev = word[::-1]
             for _ in range(self.dup_times):
                 await asyncio.sleep(0.001)
-                yield rev
+                # Ideally we want to do " ".join(words), but for the sake of
+                # simplicity we also have an extra trailing space.
+                yield rev + " "
 
 
 @serve.deployment(
@@ -42,17 +44,7 @@ class Textbot:
     @fastapi_app.post("/")
     async def handle_request(self, prompt: str) -> StreamingResponse:
         logger.info(f'Got prompt with size "{len(prompt)}"')
-        remote_async_gen = await self.llm.remote(prompt)
-        return StreamingResponse(
-            self.local_async_gen(remote_async_gen), media_type="text/plain"
-        )
-
-    async def local_async_gen(self, iterable):
-        async for i in iterable:
-            yield await i
-            # Ideally we want to do " ".join(words), but for the sake of simplicity we
-            # also have an extra trailing space.
-            yield " "
+        return StreamingResponse(self.llm.remote(prompt), media_type="text/plain")
 
 
 @ray.remote(num_cpus=0.1, memory=10 * 1024 * 1024)

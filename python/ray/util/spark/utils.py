@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+import time
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
@@ -21,6 +22,19 @@ def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
         f"Command {cmd_str} failed with return code {return_code}, tail output are "
         f"included below.\n{tail_output}\n"
     )
+
+
+def get_configured_spark_executor_memory_bytes(spark):
+    value_str = spark.conf.get("spark.executor.memory", "1g").lower()
+    value_num = int(value_str[:-1])
+    value_unit = value_str[-1]
+    unit_map = {
+        "k": 1024,
+        "m": 1024 * 1024,
+        "g": 1024 * 1024 * 1024,
+        "t": 1024 * 1024 * 1024 * 1024,
+    }
+    return value_num * unit_map[value_unit]
 
 
 def exec_cmd(
@@ -87,6 +101,17 @@ def is_port_in_use(host, port):
 
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
+
+
+def _wait_service_up(host, port, timeout):
+    beg_time = time.time()
+
+    while time.time() - beg_time < timeout:
+        if is_port_in_use(host, port):
+            return True
+        time.sleep(1)
+
+    return False
 
 
 def get_random_unused_port(
@@ -172,8 +197,9 @@ _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
 
 
-def calc_mem_ray_head_node(configured_object_store_bytes):
+def calc_mem_ray_head_node(configured_heap_memory_bytes, configured_object_store_bytes):
     import psutil
+    import shutil
 
     if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
         available_physical_mem = int(
@@ -182,13 +208,24 @@ def calc_mem_ray_head_node(configured_object_store_bytes):
     else:
         available_physical_mem = psutil.virtual_memory().total
 
+    available_physical_mem = (
+        available_physical_mem * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+
     if RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES in os.environ:
         available_shared_mem = int(os.environ[RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES])
     else:
-        available_shared_mem = psutil.virtual_memory().total
+        available_shared_mem = shutil.disk_usage("/dev/shm").total
+
+    available_shared_mem = (
+        available_shared_mem * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
 
     heap_mem_bytes, object_store_bytes, warning_msg = _calc_mem_per_ray_node(
-        available_physical_mem, available_shared_mem, configured_object_store_bytes
+        available_physical_mem,
+        available_shared_mem,
+        configured_heap_memory_bytes,
+        configured_object_store_bytes,
     )
 
     if warning_msg is not None:
@@ -198,7 +235,11 @@ def calc_mem_ray_head_node(configured_object_store_bytes):
 
 
 def _calc_mem_per_ray_worker_node(
-    num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
+    num_task_slots,
+    physical_mem_bytes,
+    shared_mem_bytes,
+    configured_heap_memory_bytes,
+    configured_object_store_bytes,
 ):
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
@@ -209,6 +250,7 @@ def _calc_mem_per_ray_worker_node(
     return _calc_mem_per_ray_node(
         available_physical_mem_per_node,
         available_shared_mem_per_node,
+        configured_heap_memory_bytes,
         configured_object_store_bytes,
     )
 
@@ -216,6 +258,7 @@ def _calc_mem_per_ray_worker_node(
 def _calc_mem_per_ray_node(
     available_physical_mem_per_node,
     available_shared_mem_per_node,
+    configured_heap_memory_bytes,
     configured_object_store_bytes,
 ):
     from ray._private.ray_constants import (
@@ -256,7 +299,11 @@ def _calc_mem_per_ray_node(
 
     object_store_bytes = int(object_store_bytes)
 
-    heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
+    if configured_heap_memory_bytes is None:
+        heap_mem_bytes = int(available_physical_mem_per_node - object_store_bytes)
+    else:
+        heap_mem_bytes = int(configured_heap_memory_bytes)
+
     return heap_mem_bytes, object_store_bytes, warning_msg
 
 
@@ -314,18 +361,57 @@ def _get_num_physical_gpus():
     return len(completed_proc.stdout.strip().split("\n"))
 
 
+def _get_local_ray_node_slots(
+    num_cpus,
+    num_gpus,
+    num_cpus_per_node,
+    num_gpus_per_node,
+):
+    if num_cpus_per_node > num_cpus:
+        raise ValueError(
+            "cpu number per Ray worker node should be <= spark worker node CPU cores, "
+            f"you set cpu number per Ray worker node to {num_cpus_per_node} but "
+            f"spark worker node CPU core number is {num_cpus}."
+        )
+    num_ray_node_slots = num_cpus // num_cpus_per_node
+
+    if num_gpus_per_node > 0:
+        if num_gpus_per_node > num_gpus:
+            raise ValueError(
+                "gpu number per Ray worker node should be <= spark worker node "
+                "GPU number, you set cpu number per Ray worker node to "
+                f"{num_cpus_per_node} but spark worker node CPU core number "
+                f"is {num_cpus}."
+            )
+        if num_ray_node_slots > num_gpus // num_gpus_per_node:
+            num_ray_node_slots = num_gpus // num_gpus_per_node
+
+    return num_ray_node_slots
+
+
 def _get_avail_mem_per_ray_worker_node(
     num_cpus_per_node,
     num_gpus_per_node,
+    heap_memory_per_node,
     object_store_memory_per_node,
 ):
+    """
+    Returns tuple of (
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_bytes,
+        error_message, # always None
+        warning_message,
+    )
+    """
     num_cpus = _get_cpu_cores()
-    num_task_slots = num_cpus // num_cpus_per_node
-
     if num_gpus_per_node > 0:
         num_gpus = _get_num_physical_gpus()
-        if num_task_slots > num_gpus // num_gpus_per_node:
-            num_task_slots = num_gpus // num_gpus_per_node
+    else:
+        num_gpus = 0
+
+    num_ray_node_slots = _get_local_ray_node_slots(
+        num_cpus, num_gpus, num_cpus_per_node, num_gpus_per_node
+    )
 
     physical_mem_bytes = _get_spark_worker_total_physical_memory()
     shared_mem_bytes = _get_spark_worker_total_shared_memory()
@@ -335,9 +421,10 @@ def _get_avail_mem_per_ray_worker_node(
         ray_worker_node_object_store_bytes,
         warning_msg,
     ) = _calc_mem_per_ray_worker_node(
-        num_task_slots,
+        num_ray_node_slots,
         physical_mem_bytes,
         shared_mem_bytes,
+        heap_memory_per_node,
         object_store_memory_per_node,
     )
     return (
@@ -350,6 +437,7 @@ def _get_avail_mem_per_ray_worker_node(
 
 def get_avail_mem_per_ray_worker_node(
     spark,
+    heap_memory_per_node,
     object_store_memory_per_node,
     num_cpus_per_node,
     num_gpus_per_node,
@@ -368,10 +456,14 @@ def get_avail_mem_per_ray_worker_node(
             return _get_avail_mem_per_ray_worker_node(
                 num_cpus_per_node,
                 num_gpus_per_node,
+                heap_memory_per_node,
                 object_store_memory_per_node,
             )
         except Exception as e:
-            return -1, -1, repr(e), None
+            import traceback
+
+            trace_msg = "\n".join(traceback.format_tb(e.__traceback__))
+            return -1, -1, repr(e) + trace_msg, None
 
     # Running memory inference routine on spark executor side since the spark worker
     # nodes may have a different machine configuration compared to the spark driver
@@ -410,19 +502,3 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
-
-
-def setup_sigterm_on_parent_death():
-    """
-    Uses prctl to automatically send SIGTERM to the child process when its parent is
-    dead. The child process itself should handle SIGTERM properly.
-    """
-    try:
-        import ctypes
-        import signal
-
-        libc = ctypes.CDLL("libc.so.6")
-        # Set the parent process death signal of the command process to SIGTERM.
-        libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
-    except OSError as e:
-        _logger.warning(f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}.")

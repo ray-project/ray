@@ -31,11 +31,7 @@ pip install --upgrade pip
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
-if [[ $(uname -m) == 'arm64' ]] && [[ $OSTYPE == "darwin"* ]]; then
-  PYTHON_VERSIONS=( "3.8" "3.9" "3.10" "3.11" )
-else
-  PYTHON_VERSIONS=( "3.7" "3.8" "3.9" "3.10" "3.11" )
-fi
+PYTHON_VERSIONS=( "3.8" "3.9" "3.10" "3.11" )
 
 for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}"
 do
@@ -50,11 +46,6 @@ do
     echo "========================================================="
     printf "\n\n\n"
 
-    # TODO (Alex): Get rid of this once grpc adds working PyPI wheels for M1 macs.
-    if [[ $(uname -m) == 'arm64' ]] && [[ $OSTYPE == "darwin"* ]]; then
-        conda install -y grpcio
-    fi
-
     # shellcheck disable=SC2102
     pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
 
@@ -62,7 +53,7 @@ do
     cpp_failed=false
     printf "\n\n\n"
     echo "========================================================="
-    if python sanity_check.py; then
+    if python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$RAY_HASH"; then
         echo "PYTHON ${PYTHON_VERSION} succeed sanity check."
     else
         failed=true

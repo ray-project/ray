@@ -243,6 +243,14 @@ bool TaskSpecification::IsStreamingGenerator() const {
   return message_->streaming_generator();
 }
 
+int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
+  auto result = message_->generator_backpressure_num_objects();
+  // generator_backpressure_num_objects == 0 makes no sense.
+  // it means it pauses the generator even before it starts.
+  RAY_CHECK_NE(result, 0);
+  return result;
+}
+
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
   std::vector<ObjectID> dynamic_return_ids;
@@ -374,6 +382,10 @@ const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() cons
   return message_->serialized_retry_exception_allowlist();
 }
 
+bool TaskSpecification::EnableTaskEvents() const {
+  return message_->enable_task_events();
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -477,13 +489,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
-         << ", attempt_number=" << AttemptNumber();
+         << ", num_returns=" << NumReturns() << ", max_retries=" << MaxRetries()
+         << ", depth=" << GetDepth() << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -491,9 +503,7 @@ std::string TaskSpecification::DebugString() const {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
-           << "}";
-  } else if (IsNormalTask()) {
-    stream << ", max_retries=" << MaxRetries();
+           << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
   // Print non-sensitive runtime env info.

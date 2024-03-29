@@ -49,6 +49,7 @@ class ActorPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -63,6 +64,8 @@ class ActorPoolMapOperator(MapOperator):
             autoscaling_policy: A policy controlling when the actor pool should be
                 scaled up and scaled down.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -70,9 +73,26 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            map_transformer, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer,
+            input_op,
+            name,
+            target_max_block_size,
+            min_rows_per_bundle,
+            ray_remote_args,
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        self._ray_actor_task_remote_args = {}
+        actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
+        if actor_task_errors:
+            self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        data_context = DataContext.get_current()
+        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
+                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+            )
         self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
@@ -103,10 +123,17 @@ class ActorPoolMapOperator(MapOperator):
         # situations where the scheduler is unable to schedule downstream operators
         # due to lack of available actors, causing an initial "pileup" of objects on
         # upstream operators, leading to a spike in memory usage prior to steady state.
-        logger.get_logger().info(
+        logger.get_logger(log_to_stdout=False).info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
-        ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+        try:
+            ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+        except ray.exceptions.GetTimeoutError:
+            raise ray.exceptions.GetTimeoutError(
+                "Timed out while starting actors. "
+                "This may mean that the cluster does not have "
+                "enough resources for the requested actor pool."
+            )
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
@@ -152,6 +179,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def _add_bundled_input(self, bundle: RefBundle):
         self._bundle_queue.append(bundle)
+        self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
 
@@ -174,11 +202,17 @@ class ActorPoolMapOperator(MapOperator):
                 break
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
+            self._metrics.on_input_dequeued(bundle)
             input_blocks = [block for block, _ in bundle.blocks]
-            ctx = TaskContext(task_idx=self._next_data_task_idx)
-            gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
-                DataContext.get_current(), ctx, *input_blocks
+            ctx = TaskContext(
+                task_idx=self._next_data_task_idx,
+                target_max_block_size=self.actual_target_max_block_size,
             )
+            gen = actor.submit.options(
+                num_returns="streaming",
+                name=self.name,
+                **self._ray_actor_task_remote_args,
+            ).remote(DataContext.get_current(), ctx, *input_blocks)
 
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
@@ -284,19 +318,20 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
         )
 
-    def current_resource_usage(self) -> ExecutionResources:
+    def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.num_total_actors()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self._metrics.cur,
         )
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(
+        self, consider_autoscaling=True
+    ) -> ExecutionResources:
         # We would only have nonzero incremental CPU/GPU resources if a new task would
         # require scale-up to run.
-        if self._autoscaling_policy.should_scale_up(
+        if consider_autoscaling and self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_running_workers=self._actor_pool.num_running_actors(),
         ):
@@ -309,14 +344,19 @@ class ActorPoolMapOperator(MapOperator):
             # compute resources to be 0.
             num_cpus = 0
             num_gpus = 0
-        return ExecutionResources(cpu=num_cpus, gpu=num_gpus)
+        return ExecutionResources(
+            cpu=num_cpus,
+            gpu=num_gpus,
+            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            or 0,
+        )
 
-    def get_metrics(self) -> Dict[str, int]:
-        parent = super().get_metrics()
+    def _extra_metrics(self) -> Dict[str, Any]:
+        res = {}
         if self._actor_locality_enabled:
-            parent["locality_hits"] = self._actor_pool._locality_hits
-            parent["locality_misses"] = self._actor_pool._locality_misses
-        return parent
+            res["locality_hits"] = self._actor_pool._locality_hits
+            res["locality_misses"] = self._actor_pool._locality_misses
+        return res
 
     @staticmethod
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
@@ -334,7 +374,7 @@ class ActorPoolMapOperator(MapOperator):
             "max_task_retries" not in ray_remote_args
             and ray_remote_args.get("max_restarts") != 0
         ):
-            ray_remote_args["max_task_retries"] = 5
+            ray_remote_args["max_task_retries"] = -1
         return ray_remote_args
 
 
@@ -342,7 +382,10 @@ class _MapWorker:
     """An actor worker for MapOperator."""
 
     def __init__(
-        self, ctx: DataContext, src_fn_name: str, map_transformer: MapTransformer
+        self,
+        ctx: DataContext,
+        src_fn_name: str,
+        map_transformer: MapTransformer,
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
@@ -359,7 +402,12 @@ class _MapWorker:
         ctx: TaskContext,
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(self._map_transformer, data_context, ctx, *blocks)
+        yield from _map_task(
+            self._map_transformer,
+            data_context,
+            ctx,
+            *blocks,
+        )
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"

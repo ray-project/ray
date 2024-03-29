@@ -25,8 +25,6 @@ on `Github`_.
     logging.rst
     callbacks.rst
     env.rst
-    sklearn.rst
     integration.rst
     internals.rst
-    client.rst
     cli.rst

@@ -49,10 +49,17 @@ def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
 def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
-    Example:
-        >>> grad_info = worker.learn_on_batch(samples)
-        {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
-        >>> print(get_stats(grad_info))
+    .. testcode::
+        :skipif: True
+
+        grad_info = worker.learn_on_batch(samples)
+
+        # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
+
+        print(get_stats(grad_info))
+
+    .. testoutput::
+
         {"vf_loss": ..., "policy_loss": ...}
     """
     if LEARNER_STATS_KEY in grad_info:
@@ -249,6 +256,7 @@ def summarize_episodes(
         episode_len_mean=avg_length,
         episode_media=dict(episode_media),
         episodes_this_iter=len(new_episodes),
+        episodes_timesteps_total=sum(episode_lengths),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
         policy_reward_mean=policy_reward_mean,

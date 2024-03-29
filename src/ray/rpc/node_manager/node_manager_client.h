@@ -79,12 +79,6 @@ class NodeManagerWorkerClient
 
   std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
 
-  /// Update cluster resource usage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         UpdateResourceUsage,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Get a resource load
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetResourceLoad,
@@ -165,12 +159,6 @@ class NodeManagerWorkerClient
   /// Trigger global GC across the cluster.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GlobalGC,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
-  /// Ask the raylet to spill an object to external storage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         RequestObjectSpillage,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

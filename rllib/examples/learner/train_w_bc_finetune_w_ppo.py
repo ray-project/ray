@@ -117,7 +117,7 @@ def train_ppo_agent_from_checkpointed_module(
 
     config = (
         PPOConfig()
-        .training()
+        .experimental(_enable_new_api_stack=True)
         .rl_module(rl_module_spec=module_spec_from_ckpt)
         .environment(GYM_ENV_NAME)
         .debugging(seed=0)
@@ -140,7 +140,7 @@ def train_ppo_agent_from_checkpointed_module(
 if __name__ == "__main__":
     ray.init()
 
-    ray.data.set_progress_bars(False)
+    ray.data.DataContext.get_current().enable_progress_bars = False
 
     # You can use Ray Data to load a dataset from pandas or from a JSON file.
     # The columns of the dataset are ["obs", "actions"].

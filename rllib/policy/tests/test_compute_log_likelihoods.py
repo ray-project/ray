@@ -1,18 +1,12 @@
 import unittest
 
-import gymnasium as gym
 import numpy as np
-import torch
 from scipy.stats import norm
 
 import ray
 import ray.rllib.algorithms.dqn as dqn
-import ray.rllib.algorithms.pg as pg
 import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
-from ray.rllib.algorithms.crr import CRRConfig
-from ray.rllib.algorithms.crr.torch import CRRTorchPolicy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, fc, one_hot
 from ray.rllib.utils.test_utils import check, framework_iterator
@@ -86,9 +80,7 @@ def do_test_log_likelihood(
         config.env_config = {"is_slippery": False, "map_name": "4x4"}
         obs_batch = np.array([0])
         # PG does not preprocess anymore by default.
-        preprocessed_obs_batch = (
-            one_hot(obs_batch, depth=16) if run is not pg.PG else obs_batch
-        )
+        preprocessed_obs_batch = one_hot(obs_batch, depth=16)
 
     prev_r = None if prev_a is None else np.array(0.0)
 
@@ -132,7 +124,7 @@ def do_test_log_likelihood(
 
                 # The expected logp computation logic is overfitted to the ModelV2
                 # stack and does not generalize to RLModule API.
-                if not config._enable_rl_module_api:
+                if not config._enable_new_api_stack:
                     expected_logp = _get_expected_logp(
                         fw, vars, obs_batch, a, layer_key, logp_func
                     )
@@ -150,7 +142,7 @@ def do_test_log_likelihood(
                     in_training=False,
                 )
 
-                if not config._enable_rl_module_api:
+                if not config._enable_new_api_stack:
                     check(np.exp(logp), expected_prob, atol=0.2)
 
 
@@ -170,32 +162,6 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config.exploration(exploration_config={"type": "SoftQ", "temperature": 0.5})
         config.debugging(seed=42)
         do_test_log_likelihood(dqn.DQN, config)
-
-    def test_pg_cont(self):
-        """Tests PG's (cont. actions) compute_log_likelihoods method."""
-        config = pg.PGConfig()
-        config.training(
-            model={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": "linear",
-            }
-        )
-        config.debugging(seed=42)
-        prev_a = np.array([0.0])
-        do_test_log_likelihood(
-            pg.PG,
-            config,
-            prev_a,
-            continuous=True,
-            layer_key=("fc", (0, 2), ("_hidden_layers.0.", "_logits.")),
-        )
-
-    def test_pg_discr(self):
-        """Tests PG's (cont. actions) compute_log_likelihoods method."""
-        config = pg.PGConfig()
-        config.debugging(seed=42)
-        prev_a = np.array(0)
-        do_test_log_likelihood(pg.PG, config, prev_a)
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
@@ -267,38 +233,6 @@ class TestComputeLogLikelihood(unittest.TestCase):
         prev_a = np.array(0)
 
         do_test_log_likelihood(sac.SAC, config, prev_a)
-
-    def test_cql_cont(self):
-        env = gym.make("Pendulum-v1")
-        obs_space = env.observation_space
-        act_space = env.action_space
-        config = CRRConfig().framework(framework="torch").to_dict()
-        policy = CRRTorchPolicy(obs_space, act_space, config=config)
-        num_actions = 50
-        actions = []
-        obs_batch = np.array([[0.0, 0.1, -0.1]])
-        for _ in range(num_actions):
-            actions.append(
-                policy.compute_single_action(
-                    obs_batch[0], explore=True, unsquash_action=False
-                )
-            )
-        input_batch = SampleBatch({"obs": torch.Tensor(obs_batch)})
-        expected_mean_logstd = policy.action_distribution_fn(
-            policy.model, obs_batch=input_batch, state_batches=None
-        )
-        # note this only works since CRR implements `action_distribution_fn`
-        expected_mean_logstd = expected_mean_logstd[0].flatten().detach().numpy()
-        mean, log_std = expected_mean_logstd
-        for idx in range(num_actions):
-            action = actions[idx][0]
-            expected_logp = np.log(norm.pdf(action, mean, np.exp(log_std)))[0]
-            computed_logp = policy.compute_log_likelihoods(
-                torch.Tensor(action),
-                obs_batch,
-                actions_normalized=True,
-            ).item()
-            check(expected_logp, computed_logp, rtol=0.2)
 
 
 if __name__ == "__main__":

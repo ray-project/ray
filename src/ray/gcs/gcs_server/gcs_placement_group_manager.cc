@@ -140,6 +140,10 @@ double GcsPlacementGroup::GetMaxCpuFractionPerNode() const {
   return placement_group_table_data_.max_cpu_fraction_per_node();
 }
 
+NodeID GcsPlacementGroup::GetSoftTargetNodeID() const {
+  return NodeID::FromBinary(placement_group_table_data_.soft_target_node_id());
+}
+
 const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
   return placement_group_table_data_.stats();
 }
@@ -1070,18 +1074,6 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
     }
   }
   return false;
-}
-
-const absl::btree_multimap<
-    int64_t,
-    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
-  return pending_placement_groups_;
-}
-
-const std::deque<std::shared_ptr<GcsPlacementGroup>>
-    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
-  return infeasible_placement_groups_;
 }
 
 }  // namespace gcs

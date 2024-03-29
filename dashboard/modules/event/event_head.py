@@ -19,7 +19,7 @@ from ray.core.generated import event_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)

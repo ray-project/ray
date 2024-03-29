@@ -87,7 +87,7 @@ def test_read_text_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 def test_read_text_meta_provider(
@@ -192,7 +192,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         f.write("goodbye")
 
     ds = ray.data.read_text(
-        path, parallelism=2, ray_remote_args={"resources": {"bar": 1}}
+        path, override_num_blocks=2, ray_remote_args={"resources": {"bar": 1}}
     )
 
     blocks = ds.get_internal_block_refs()

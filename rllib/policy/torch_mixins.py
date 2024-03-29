@@ -1,14 +1,14 @@
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
 torch, nn = try_import_torch()
 
 
-@DeveloperAPI
+@OldAPIStack
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
 
@@ -27,14 +27,14 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if self._lr_schedule and not self.config.get("_enable_learner_api", False):
+        if self._lr_schedule and not self.config.get("_enable_new_api_stack", False):
             self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
             for opt in self._optimizers:
                 for p in opt.param_groups:
                     p["lr"] = self.cur_lr
 
 
-@DeveloperAPI
+@OldAPIStack
 class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
@@ -43,7 +43,7 @@ class EntropyCoeffSchedule:
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
         if entropy_coeff_schedule is None or (
-            self.config.get("_enable_learner_api", False)
+            self.config.get("_enable_new_api_stack", False)
         ):
             self.entropy_coeff = entropy_coeff
         else:
@@ -72,7 +72,7 @@ class EntropyCoeffSchedule:
             )
 
 
-@DeveloperAPI
+@OldAPIStack
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
@@ -111,7 +111,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
-@DeveloperAPI
+@OldAPIStack
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TorchPolicy.
 
@@ -171,7 +171,7 @@ class ValueNetworkMixin:
         }
 
 
-@DeveloperAPI
+@OldAPIStack
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 
@@ -195,7 +195,7 @@ class TargetNetworkMixin:
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
 
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("_enable_new_api_stack", False):
             target_current_network_pairs = self.model.get_target_network_pairs()
             for target_network, current_network in target_current_network_pairs:
                 current_state_dict = current_network.state_dict()

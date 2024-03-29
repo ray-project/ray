@@ -9,10 +9,9 @@ import warnings
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
-from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
+from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
-from ray.train._internal.storage import _use_storage_context
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import SearchGenerator
@@ -361,17 +360,6 @@ class PopulationBasedTraining(FIFOScheduler):
         require_attrs: bool = True,
         synch: bool = False,
     ):
-        if not _use_storage_context():
-            raise RuntimeError(
-                "Due to breaking API changes, PBT does not work with the old "
-                "persistence mode (enabled via RAY_AIR_NEW_PERSISTENCE_MODE=0). "
-                "Migrate your script to use the new APIs instead and disabled the "
-                "environment variable flag. "
-                "See this migration guide: "
-                "https://docs.google.com/document/d/"
-                "1J-09US8cXc-tpl2A1BpOrlHLTEDMdIJp6Ah1ifBUw7Y/view"
-            )
-
         hyperparam_mutations = hyperparam_mutations or {}
         for value in hyperparam_mutations.values():
             if not isinstance(value, (dict, list, tuple, Domain, Callable)):
@@ -692,11 +680,7 @@ class PopulationBasedTraining(FIFOScheduler):
             else:
                 logger.debug(f"Instructing {trial} to save.")
                 state.last_checkpoint = tune_controller._schedule_trial_save(
-                    trial,
-                    CheckpointStorage.PERSISTENT
-                    if _use_storage_context()
-                    else CheckpointStorage.MEMORY,
-                    result=state.last_result,
+                    trial, result=state.last_result
                 )
             self._num_checkpoints += 1
         else:
@@ -945,20 +929,13 @@ class PopulationBasedTraining(FIFOScheduler):
 
         # Resume training from a shallow copy of `trial_to_clone`'s latest
         # checkpoint
-        checkpoint_to_exploit = copy.copy(new_state.last_checkpoint)
+        checkpoint_to_exploit: Checkpoint = copy.copy(new_state.last_checkpoint)
 
-        if _use_storage_context():
-            trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
-                _TrainingResult(
-                    checkpoint=checkpoint_to_exploit, metrics=new_state.last_result
-                )
+        trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
+            _TrainingResult(
+                checkpoint=checkpoint_to_exploit, metrics=new_state.last_result
             )
-        else:
-            # NOTE: Clear the checkpoint id (which was set by the other trial's
-            # checkpoint manager) so that the current trial's checkpoint manager marks
-            # the checkpoint as the most recent to use upon trial resume
-            checkpoint_to_exploit.id = None
-            trial.on_checkpoint(checkpoint_to_exploit)
+        )
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -1181,16 +1158,11 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             "Configuration will be changed to {}.".format(step, new_config)
         )
 
-        result = tune_controller._schedule_trial_save(
-            trial, CheckpointStorage.PERSISTENT, result=result
+        result = tune_controller._schedule_trial_save(trial, result=result)
+        training_result = result.resolve()
+        trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
+            training_result
         )
-        if _use_storage_context():
-            training_result = result.resolve()
-            trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
-                training_result
-            )
-        else:
-            trial.on_checkpoint(result)
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 

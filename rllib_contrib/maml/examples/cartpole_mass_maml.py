@@ -39,7 +39,7 @@ if __name__ == "__main__":
         )
     )
 
-    num_iterations = 100
+    num_iterations = 5
 
     tuner = tune.Tuner(
         MAML,

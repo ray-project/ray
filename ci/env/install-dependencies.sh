@@ -79,7 +79,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py38_23.1.0-1"
+    local miniconda_version="Miniconda3-py39_24.1.2-0"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -159,6 +159,9 @@ install_miniconda() {
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
     )
   fi
+
+  # Install mpi4py
+  "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
 
   command -V python
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
@@ -354,11 +357,11 @@ install_pip_packages() {
 
     # Install MuJoCo.
     sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
-    wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     mkdir -p /root/.mujoco
-    mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
-    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
-    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin
+    mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
+    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin
   fi
 
   # Additional Train test dependencies.
@@ -463,10 +466,7 @@ install_pip_packages() {
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  &&  "${PYTHON-}" != "3.7" && "${OSTYPE}" != msys ]]; then
-    # On Python 3.7, we don't, as the dependencies are compiled for 3.8+
-    # and we don't build ray-ml images. This means we don't have to keep
-    # consistency between CI and docker images.
+  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  && "${OSTYPE}" != msys ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
     # skip this until we have a good wy to resolve cross-platform dependencies.
     pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
@@ -508,9 +508,13 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
+  if [[ "${OSTYPE}" = darwin* ]]; then
+    # Currently do not work on macOS
+    return
+  fi
   mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install psutil==5.9.6 setproctitle==1.2.2 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {

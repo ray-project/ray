@@ -11,9 +11,9 @@ from ray_release.config import read_and_validate_release_test_collection
 @click.command()
 @click.option(
     "--test-collection-file",
-    default=None,
+    multiple=True,
     type=str,
-    help="File containing test configurations",
+    help="Test collection file, relative path to ray repo.",
 )
 @click.option(
     "--output",
@@ -23,12 +23,11 @@ from ray_release.config import read_and_validate_release_test_collection
 )
 def main(test_collection_file: Optional[str] = None, output: Optional[str] = None):
 
-    test_collection_file = test_collection_file or os.path.join(
-        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-    )
     output = output or os.path.join(os.path.dirname(__file__), "test_summary.csv")
 
-    tests = read_and_validate_release_test_collection(test_collection_file)
+    tests = read_and_validate_release_test_collection(
+        test_collection_file or ["release/release_tests.yaml"]
+    )
 
     with open(output, "w") as f:
         writer = csv.DictWriter(f, fieldnames=["name", "group", "num_cpus", "num_gpus"])

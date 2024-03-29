@@ -32,6 +32,9 @@ REPO_URL_TPL = "https://github.com/{owner}/{package}.git"
 INIT_URL_TPL = (
     "https://raw.githubusercontent.com/{fork}/{commit}/python/ray/__init__.py"
 )
+VERSION_URL_TPL = (
+    "https://raw.githubusercontent.com/{fork}/{commit}/python/ray/_version.py"
+)
 
 DEFAULT_REPO = REPO_URL_TPL.format(owner=DEFAULT_GIT_OWNER, package=DEFAULT_GIT_PACKAGE)
 
@@ -48,21 +51,37 @@ def get_ray_version(repo_url: str, commit: str) -> str:
 
     init_url = INIT_URL_TPL.format(fork=fork, commit=commit)
 
+    version = ""
     try:
         for line in urllib.request.urlopen(init_url):
             line = line.decode("utf-8")
-            if line.startswith("__version__"):
-                version = line.split(" = ")[1].strip('"\r\n ')
-                return version
+            if line.startswith("__version__ = "):
+                version = line[len("__version__ = ") :].strip('"\r\n ')
+                break
     except Exception as e:
         raise ReleaseTestSetupError(
             f"Couldn't load version info from branch URL: {init_url}"
         ) from e
 
-    raise RayWheelsNotFoundError(
-        f"Unable to parse Ray version information for repo {repo_url} "
-        f"and commit {commit} (please check this URL: {init_url})"
-    )
+    if version == "_version.version":
+        u = VERSION_URL_TPL.format(fork=fork, commit=commit)
+        try:
+            for line in urllib.request.urlopen(u):
+                line = line.decode("utf-8")
+                if line.startswith("version = "):
+                    version = line[len("version = ") :].strip('"\r\n ')
+                    break
+        except Exception as e:
+            raise ReleaseTestSetupError(
+                f"Couldn't load version info from branch URL: {init_url}"
+            ) from e
+
+    if version == "":
+        raise RayWheelsNotFoundError(
+            f"Unable to parse Ray version information for repo {repo_url} "
+            f"and commit {commit} (please check this URL: {init_url})"
+        )
+    return version
 
 
 def get_latest_commits(

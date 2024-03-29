@@ -26,8 +26,10 @@ class MockClient : public ClientInterface {
  public:
   MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
   MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
-  MOCK_METHOD1(MarkObjectAsUsed, void(const ObjectID &object_id));
-  MOCK_METHOD1(MarkObjectAsUnused, void(const ObjectID &object_id));
+  MOCK_METHOD2(MarkObjectAsUsed,
+               void(const ObjectID &object_id,
+                    std::optional<MEMFD_TYPE> fallback_allocated_fd));
+  MOCK_METHOD1(MarkObjectAsUnused, bool(const ObjectID &object_id));
 };
 
 class MockObjectLifecycleManager : public IObjectLifecycleManager {
@@ -62,6 +64,13 @@ struct GetRequestQueueTest : public Test {
 
  protected:
   void MarkObject(LocalObject &object, ObjectState state) { object.state = state; }
+
+  void MarkObjectFallbackAllocated(LocalObject &object,
+                                   bool fallback_allocated,
+                                   MEMFD_TYPE fd) {
+    object.allocation.fallback_allocated = fallback_allocated;
+    object.allocation.fd = fd;
+  }
 
   bool IsGetRequestExist(GetRequestQueue &queue, const ObjectID &object_id) {
     return queue.IsGetRequestExist(object_id);
@@ -106,7 +115,9 @@ TEST_F(GetRequestQueueTest, TestObjectSealed) {
   GetRequestQueue get_request_queue(
       io_context_,
       object_lifecycle_manager,
-      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) { satisfied = true; });
   auto client = std::make_shared<MockClient>();
 
@@ -127,7 +138,9 @@ TEST_F(GetRequestQueueTest, TestObjectTimeout) {
   GetRequestQueue get_request_queue(
       io_context_,
       object_lifecycle_manager,
-      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) { promise.set_value(true); });
   auto client = std::make_shared<MockClient>();
 
@@ -149,7 +162,9 @@ TEST_F(GetRequestQueueTest, TestObjectNotSealed) {
   GetRequestQueue get_request_queue(
       io_context_,
       object_lifecycle_manager,
-      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) { promise.set_value(true); });
   auto client = std::make_shared<MockClient>();
 
@@ -173,7 +188,9 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
   GetRequestQueue get_request_queue(
       io_context_,
       object_lifecycle_manager,
-      [&](const ObjectID &object_id, const auto &request) {
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {
         if (object_id == object_id1) {
           promise1.set_value(true);
         }
@@ -205,12 +222,61 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
   AssertNoLeak(get_request_queue);
 }
 
+TEST_F(GetRequestQueueTest, TestFallbackAllocatedFdArePassed) {
+  std::promise<bool> promise1, promise2, promise3;
+  MockObjectLifecycleManager object_lifecycle_manager;
+  GetRequestQueue get_request_queue(
+      io_context_,
+      object_lifecycle_manager,
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {
+        if (object_id == object_id1) {
+          EXPECT_FALSE(fallback_allocated_fd.has_value());
+          promise1.set_value(true);
+        }
+        if (object_id == object_id2) {
+          EXPECT_TRUE(fallback_allocated_fd.has_value());
+          promise2.set_value(true);
+        }
+      },
+      [&](const std::shared_ptr<GetRequest> &get_req) { promise3.set_value(true); });
+  auto client = std::make_shared<MockClient>();
+
+  /// Test get request of mulitiple objects, one sealed, one timed out.
+  /// object1 is in main memory, object2 is fallback-allocated.
+
+  std::vector<ObjectID> object_ids{object_id1, object_id2};
+  MarkObject(object1, ObjectState::PLASMA_SEALED);
+  MarkObject(object2, ObjectState::PLASMA_CREATED);
+  MEMFD_TYPE fd{INT2FD(101), 42};
+  MarkObjectFallbackAllocated(object2, true, fd);
+
+  EXPECT_CALL(object_lifecycle_manager, GetObject(Eq(object_id1)))
+      .WillRepeatedly(Return(&object1));
+  EXPECT_CALL(object_lifecycle_manager, GetObject(Eq(object_id2)))
+      .WillRepeatedly(Return(&object2));
+  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  promise1.get_future().get();
+  EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
+  MarkObject(object2, ObjectState::PLASMA_SEALED);
+  get_request_queue.MarkObjectSealed(object_id2);
+  io_context_.run_one();
+  promise2.get_future().get();
+  promise3.get_future().get();
+
+  AssertNoLeak(get_request_queue);
+}
+
 TEST_F(GetRequestQueueTest, TestDuplicateObjects) {
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
       io_context_,
       object_lifecycle_manager,
-      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) {});
   auto client = std::make_shared<MockClient>();
 
@@ -235,7 +301,9 @@ TEST_F(GetRequestQueueTest, TestRemoveAll) {
   GetRequestQueue get_request_queue(
       io_context_,
       object_lifecycle_manager,
-      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) {});
   auto client = std::make_shared<MockClient>();
 
@@ -264,7 +332,9 @@ TEST_F(GetRequestQueueTest, TestRemoveTwice) {
   GetRequestQueue get_request_queue(
       io_context_,
       object_lifecycle_manager,
-      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const ObjectID &object_id,
+          std::optional<MEMFD_TYPE> fallback_allocated_fd,
+          const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) {});
   auto client = std::make_shared<MockClient>();
 

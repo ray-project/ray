@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -14,7 +14,7 @@ class LocalModeTest(unittest.TestCase):
 
     def test_local(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=2)
             .training(model={"fcnet_hiddens": [10]})

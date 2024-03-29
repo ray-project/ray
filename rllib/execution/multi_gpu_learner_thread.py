@@ -6,18 +6,18 @@ from ray.util.timer import _Timer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
+@OldAPIStack
 class MultiGPULearnerThread(LearnerThread):
     """Learner that can use multiple GPUs and parallel loading.
 
@@ -83,11 +83,6 @@ class MultiGPULearnerThread(LearnerThread):
         """
         # Deprecated: No need to specify as we don't need the actual
         # minibatch-buffer anyways.
-        if log_once("multi_gpu_learner_thread_deprecation_warning"):
-            deprecation_warning(
-                old="ray.rllib.execution.multi_gpu_learner_thread."
-                "MultiGPULearnerThread"
-            )
         if minibatch_buffer_size:
             deprecation_warning(
                 old="MultiGPULearnerThread.minibatch_buffer_size",
@@ -144,7 +139,12 @@ class MultiGPULearnerThread(LearnerThread):
 
     @override(LearnerThread)
     def step(self) -> None:
-        assert self.loader_thread.is_alive()
+        if not self.loader_thread.is_alive():
+            raise RuntimeError(
+                "The `_MultiGPULoaderThread` has died! Will therefore also terminate "
+                "the `MultiGPULearnerThread`."
+            )
+
         with self.load_wait_timer:
             buffer_idx, released = self.ready_tower_stacks_buffer.get()
 

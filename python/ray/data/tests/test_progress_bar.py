@@ -1,5 +1,6 @@
 import functools
 
+import pytest
 from pytest import fixture
 
 import ray
@@ -13,6 +14,11 @@ def enable_tqdm_ray(request):
     context.use_ray_tqdm = request.param
     yield request.param
     context.use_ray_tqdm = original_use_ray_tqdm
+
+
+def test_set_progress_bars_is_deprecated():
+    with pytest.warns(DeprecationWarning):
+        ray.data.set_progress_bars(True)
 
 
 def test_progress_bar(enable_tqdm_ray):
@@ -66,3 +72,15 @@ def test_progress_bar(enable_tqdm_ray):
 
     assert pb._progress == new_total
     assert total_at_close == new_total
+
+    # Test updating the total
+    pb = ProgressBar("", total, enabled=True)
+    assert pb._bar is not None
+    patch_close(pb._bar)
+    new_total = total * 2
+    pb.update(0, new_total)
+
+    assert pb._bar.total == new_total
+    pb.update(total + 1, total)
+    assert pb._bar.total == total + 1
+    pb.close()

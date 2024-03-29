@@ -16,6 +16,7 @@ _recorded_operators_lock = threading.Lock()
 # The white list of operator names allowed to be recorded.
 _op_name_white_list = [
     # Read
+    "ReadBigQuery",
     "ReadRange",
     "ReadMongo",
     "ReadParquet",
@@ -28,12 +29,14 @@ _op_name_white_list = [
     "ReadTFRecord",
     "ReadBinary",
     "ReadCustom",
+    "ReadTorch",
     # From
     "FromArrow",
     "FromItems",
     "FromNumpy",
     "FromPandas",
     # Write
+    "WriteBigQuery",
     "WriteParquet",
     "WriteJSON",
     "WriteCSV",
@@ -85,7 +88,7 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
         if op_name not in _op_name_white_list:
             op_name = "ReadCustom"
     elif isinstance(op, Write):
-        op_name = f"Write{op._datasource.get_name()}"
+        op_name = f"Write{op._datasink_or_legacy_datasource.get_name()}"
         if op_name not in _op_name_white_list:
             op_name = "WriteCustom"
     elif isinstance(op, AbstractUDFMap):

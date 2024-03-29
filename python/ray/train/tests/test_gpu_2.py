@@ -1,12 +1,11 @@
-import pytest
 import numpy as np
+import pytest
 import torch
 
 import ray
 import ray.data
-from ray import tune
-
 import ray.train as train
+from ray import tune
 from ray.air.config import ScalingConfig
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.torch_trainer import TorchTrainer

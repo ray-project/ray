@@ -1,8 +1,10 @@
 import math
+from typing import List
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.typing import EpisodeType
 
 
 @DeveloperAPI
@@ -42,7 +44,11 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     """
 
     def __init__(
-        self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1
+        self,
+        batch: MultiAgentBatch,
+        minibatch_size: int,
+        num_iters: int = 1,
+        uses_new_env_runners: bool = False,
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -53,6 +59,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._start = {mid: 0 for mid in batch.policy_batches.keys()}
         # mapping from module_id to the number of epochs covered for each module_id
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
+
+        self._uses_new_env_runners = uses_new_env_runners
 
     def __iter__(self):
         while min(self._num_covered_epochs.values()) < self._num_iters:
@@ -67,6 +75,18 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         "the same number of samples for each module_id."
                     )
                 s = self._start[module_id]  # start
+
+                # TODO (sven): Fix this bug for LSTMs:
+                #  In an RNN-setting, the Learner connector already has zero-padded
+                #  and added a timerank to the batch. Thus, n_step would still be based
+                #  on the BxT dimension, rather than the new B dimension (excluding T),
+                #  which then leads to minibatches way too large.
+                #  However, changing this already would break APPO/IMPALA w/o LSTMs as
+                #  these setups require sequencing, BUT their batches are not yet time-
+                #  ranked (this is done only in their loss functions via the
+                #  `make_time_major` utility).
+                #  Get rid of the _uses_new_env_runners c'tor arg, once this work is
+                #  done.
                 n_steps = self._minibatch_size
 
                 samples_to_concat = []
@@ -85,13 +105,20 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
 
+                    if self._uses_new_env_runners:
+                        n_steps = int(
+                            get_len(module_batch)
+                            * (self._minibatch_size / len(module_batch))
+                        )
+
                 else:
+                    # n_steps = self._minibatch_size
 
                     def get_len(b):
                         return len(b)
 
-                # Cycle through the batch until we have enough samples
-                while n_steps >= get_len(module_batch) - s:
+                # Cycle through the batch until we have enough samples.
+                while s + n_steps >= get_len(module_batch):
                     sample = module_batch[s:]
                     samples_to_concat.append(sample)
                     len_sample = get_len(sample)
@@ -153,3 +180,62 @@ class ShardBatchIterator:
             # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
             new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
             yield new_batch
+
+
+@DeveloperAPI
+class ShardEpisodesIterator:
+    """Iterator for sharding a list of Episodes into num_shards sub-lists of Episodes.
+
+    Args:
+        episodes: The input list of Episodes.
+        num_shards: The number of shards to split the episodes into.
+
+    Yields:
+        A sub-list of Episodes of size roughly `len(episodes) / num_shards`. The yielded
+        sublists might have slightly different total sums of episode lengths, in order
+        to not have to drop even a single timestep.
+    """
+
+    def __init__(self, episodes: List[EpisodeType], num_shards: int):
+        self._episodes = sorted(episodes, key=len, reverse=True)
+        self._num_shards = num_shards
+        self._total_length = sum(len(e) for e in episodes)
+        self._target_lengths = [0 for _ in range(self._num_shards)]
+        remaining_length = self._total_length
+        for s in range(self._num_shards):
+            len_ = remaining_length // (num_shards - s)
+            self._target_lengths[s] = len_
+            remaining_length -= len_
+
+    def __iter__(self):
+        sublists = [[] for _ in range(self._num_shards)]
+        lengths = [0 for _ in range(self._num_shards)]
+        episode_index = 0
+
+        while episode_index < len(self._episodes):
+            episode = self._episodes[episode_index]
+            min_index = lengths.index(min(lengths))
+
+            if lengths[min_index] + len(episode) <= self._target_lengths[min_index]:
+                # Add the whole episode if it fits within the target length
+                sublists[min_index].append(episode)
+                lengths[min_index] += len(episode)
+                episode_index += 1
+            else:
+                # Otherwise, slice the episode
+                remaining_length = self._target_lengths[min_index] - lengths[min_index]
+                if remaining_length > 0:
+                    slice_part, remaining_part = (
+                        episode[:remaining_length],
+                        episode[remaining_length:],
+                    )
+                    sublists[min_index].append(slice_part)
+                    lengths[min_index] += len(slice_part)
+                    self._episodes[episode_index] = remaining_part
+                else:
+                    assert remaining_length == 0
+                    sublists[min_index].append(episode)
+                    episode_index += 1
+
+        for sublist in sublists:
+            yield sublist

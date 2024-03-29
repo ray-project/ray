@@ -98,9 +98,7 @@ class AimLoggerCallback(LoggerCallback):
         )
         # Attach a few useful trial properties
         run["trial_id"] = trial.trial_id
-        run["trial_log_dir"] = trial.local_path
-        if trial.remote_path:
-            run["trial_remote_log_dir"] = trial.remote_path
+        run["trial_log_dir"] = trial.path
         trial_ip = trial.get_ray_actor_ip()
         if trial_ip:
             run["trial_ip"] = trial_ip

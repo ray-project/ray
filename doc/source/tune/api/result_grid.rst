@@ -12,11 +12,13 @@ ResultGrid (tune.ResultGrid)
 .. currentmodule:: ray
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.ResultGrid
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.ResultGrid.get_best_result
@@ -28,6 +30,7 @@ Result (train.Result)
 ---------------------
 
 .. autosummary::
+    :nosignatures:
     :template: autosummary/class_without_autosummary.rst
 
     ~train.Result
@@ -45,6 +48,7 @@ ExperimentAnalysis (tune.ExperimentAnalysis)
     which outputs a `ResultGrid` object.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.ExperimentAnalysis

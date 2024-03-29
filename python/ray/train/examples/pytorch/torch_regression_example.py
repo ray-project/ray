@@ -4,14 +4,13 @@ import tempfile
 from typing import Tuple
 
 import pandas as pd
-
 import torch
 import torch.nn as nn
 
 import ray
 import ray.train as train
-from ray.train import Checkpoint, ScalingConfig, DataConfig
 from ray.data import Dataset
+from ray.train import Checkpoint, DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 

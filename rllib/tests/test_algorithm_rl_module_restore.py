@@ -50,11 +50,11 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(rollout_fragment_length=4)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
             .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
-            .training(_enable_learner_api=True)
             .resources(**scaling_config)
         )
         return config
@@ -70,8 +70,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             for i in range(NUM_AGENTS):
                 module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
                     module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=env.observation_space[0],
+                    action_space=env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
@@ -86,9 +86,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config = config.rl_module(
+            config = config.experimental(_enable_new_api_stack=True).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
-                _enable_rl_module_api=True,
             )
 
             # create the algorithm with multiple nodes and check if the weights
@@ -112,8 +111,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             for i in range(NUM_AGENTS):
                 module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
                     module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=env.observation_space[0],
+                    action_space=env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
@@ -125,8 +124,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # create a RLModule to load and override the "policy_1" module with
             module_to_swap_in = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
@@ -138,8 +137,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # and the module_to_swap_in_checkpoint
             module_specs["policy_1"] = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
                 load_state_path=module_to_swap_in_path,
@@ -148,9 +147,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config = config.rl_module(
+            config = config.experimental(_enable_new_api_stack=True).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
-                _enable_rl_module_api=True,
             )
 
             # create the algorithm with multiple nodes and check if the weights
@@ -182,10 +180,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .rollouts(rollout_fragment_length=4)
             .environment("CartPole-v1")
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
-            .training(_enable_learner_api=True)
             .resources(**scaling_config)
         )
         env = gym.make("CartPole-v1")
@@ -213,9 +211,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 load_state_path=module_ckpt_path,
             )
 
-            config = config.rl_module(
+            config = config.experimental(_enable_new_api_stack=True).rl_module(
                 rl_module_spec=module_to_load_spec,
-                _enable_rl_module_api=True,
             )
 
             # create the algorithm with multiple nodes and check if the weights
@@ -249,8 +246,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             for i in range(num_agents):
                 module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
                     module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=env.observation_space[0],
+                    action_space=env.action_space[0],
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
@@ -262,8 +259,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # create a RLModule to load and override the "policy_1" module with
             module_to_swap_in = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
             ).build()
@@ -275,8 +272,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             # and the module_to_swap_in_checkpoint
             module_specs["policy_1"] = SingleAgentRLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=env.observation_space[0],
+                action_space=env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [64]},
                 catalog_class=PPOCatalog,
                 load_state_path=module_to_swap_in_path,
@@ -288,9 +285,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                     "policy_0",
                 },
             )
-            config = config.rl_module(
+            config = config.experimental(_enable_new_api_stack=True).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
-                _enable_rl_module_api=True,
             )
 
             # create the algorithm with multiple nodes and check if the weights

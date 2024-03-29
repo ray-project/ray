@@ -8,15 +8,9 @@ from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
-import ray
 from ray import serve
-from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 @pytest.mark.parametrize("route_prefix", [None, "/prefix"])
 def test_send_recv_text_and_binary(serve_instance, route_prefix: str):
     app = FastAPI()
@@ -52,10 +46,6 @@ def test_send_recv_text_and_binary(serve_instance, route_prefix: str):
         assert websocket.recv().decode("utf-8") == msg
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 def test_client_disconnect(serve_instance):
     app = FastAPI()
 
@@ -79,23 +69,15 @@ def test_client_disconnect(serve_instance):
                 self._disconnected.set()
 
     h = serve.run(WebSocketServer.bind())
-    wait_ref = h.wait_for_disconnect.remote()
+    wait_response = h.wait_for_disconnect.remote()
 
     with connect("ws://localhost:8000"):
         print("Client connected.")
 
-    ray.get(wait_ref)
+    wait_response.result()
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 @pytest.mark.skipif(sys.platform == "win32", reason="Hanging on Windows.")
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Different disconnect behavior on 3.7.",
-)
 def test_server_disconnect(serve_instance):
     app = FastAPI()
 
@@ -112,10 +94,6 @@ def test_server_disconnect(serve_instance):
             websocket.recv()
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 def test_unary_streaming_websocket_same_deployment(serve_instance):
     app = FastAPI()
 

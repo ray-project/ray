@@ -6,7 +6,7 @@ from ray import tune
 from ray.tune.registry import get_trainable_cls
 
 
-@pytest.mark.parametrize("algorithm", ["PPO", "APEX", "IMPALA"])
+@pytest.mark.parametrize("algorithm", ["PPO", "IMPALA"])
 def test_custom_resource(algorithm):
     if ray.is_initialized:
         ray.shutdown()
@@ -24,9 +24,6 @@ def test_custom_resource(algorithm):
         .rollouts(num_rollout_workers=1)
         .resources(num_gpus=0, custom_resources_per_worker={"custom_resource": 0.01})
     )
-    if algorithm == "APEX":
-        config.num_steps_sampled_before_learning_starts = 0
-
     stop = {"training_iteration": 1}
 
     tune.Tuner(

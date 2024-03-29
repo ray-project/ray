@@ -10,19 +10,7 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-if [ "$(uname -m)" = "arm64" ]; then
-  # We Don't build wheels for Python 3.7 on Apple Silicon
-  PY_MMS=("3.8"
-          "3.9"
-          "3.10"
-          "3.11")
-else
-  PY_MMS=("3.7"
-          "3.8"
-          "3.9"
-          "3.10"
-          "3.11")
-fi
+PY_MMS=("3.9" "3.10" "3.11")
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
@@ -87,7 +75,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     $PIP_CMD install -q cython==0.29.32
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
-    # Set the commit SHA in __init__.py.
+    # Set the commit SHA in _version.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       echo "TRAVIS_COMMIT variable detected. ray.__commit__ will be set to $TRAVIS_COMMIT"
     else
@@ -95,7 +83,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
       TRAVIS_COMMIT=$(git rev-parse HEAD)
     fi
 
-    sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+    sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
 
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
@@ -105,4 +93,8 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     RAY_INSTALL_CPP=1 $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
+
+  # cleanup
+  conda deactivate
+  conda env remove -y -n "$CONDA_ENV_NAME"
 done

@@ -1,8 +1,12 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
+
+
 .. _catalog-reference-docs:
-
-.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
-
-.. include:: /_includes/rllib/rlmodules_rollout.rst
 
 Catalog API
 ===========
@@ -18,6 +22,7 @@ for example, for building ``heads``.
 .. currentmodule:: ray.rllib.core.models.catalog
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Catalog
@@ -32,6 +37,7 @@ Advanced usage
 The following methods and attributes are used internally by the Catalog to build the default models. Only override them when you need more granular control.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Catalog.latent_dims

@@ -15,10 +15,8 @@ app = FastAPI()
 @serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
-    def __init__(self, diffusion_model_handle) -> None:
-        self.handle: DeploymentHandle = diffusion_model_handle.options(
-            use_new_handle_api=True,
-        )
+    def __init__(self, diffusion_model_handle: DeploymentHandle) -> None:
+        self.handle = diffusion_model_handle
 
     @app.get(
         "/imagine",
@@ -80,7 +78,7 @@ if __name__ == "__main__":
         }
     )
 
-    handle = serve.run(entrypoint).options(use_new_handle_api=True)
+    handle = serve.run(entrypoint)
     handle.generate.remote("hi").result()
 
     prompt = "a cute cat is dancing on the grass."

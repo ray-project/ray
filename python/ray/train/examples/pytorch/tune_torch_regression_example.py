@@ -1,13 +1,13 @@
 import argparse
 
+from torch_regression_example import get_datasets, train_func
+
 import ray
 from ray import tune
+from ray.train import DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.train import ScalingConfig, DataConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-
-from torch_regression_example import train_func, get_datasets
 
 
 def tune_linear(num_workers, num_samples, use_gpu):

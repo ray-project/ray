@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # fmt: off
 # __sphinx_doc_begin__
-@PublicAPI
+@OldAPIStack
 class SampleCollector(metaclass=ABCMeta):
     """Collects samples for all policies and agents from a multi-agent env.
 
@@ -90,21 +90,23 @@ class SampleCollector(metaclass=ABCMeta):
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
 
-        Examples:
-            >>> obs, infos = env.reset()
-            >>> collector.add_init_obs(
-            ...     episode=my_episode,
-            ...     agent_id=0,
-            ...     policy_id="pol0",
-            ...     t=-1,
-            ...     init_obs=obs,
-            ...     init_infos=infos,
-            ... )
-            >>> obs, r, terminated, truncated, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-            ...     "action": action, "obs": obs, "reward": r, "terminated": terminated,
-            ...     "truncated": truncated, "info": info
-            ... })
+        .. testcode::
+            :skipif: True
+
+            obs, infos = env.reset()
+            collector.add_init_obs(
+                episode=my_episode,
+                agent_id=0,
+                policy_id="pol0",
+                t=-1,
+                init_obs=obs,
+                init_infos=infos,
+            )
+            obs, r, terminated, truncated, info = env.step(action)
+            collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
+                "action": action, "obs": obs, "reward": r, "terminated": terminated,
+                "truncated": truncated, "info": info
+            })
         """
         raise NotImplementedError
 
@@ -138,20 +140,22 @@ class SampleCollector(metaclass=ABCMeta):
                 agent. This row must contain the keys SampleBatch.ACTION,
                 REWARD, NEW_OBS, TERMINATED, and TRUNCATED.
 
-        Examples:
-            >>> obs, info = env.reset()
-            >>> collector.add_init_obs(12345, 0, "pol0", obs)
-            >>> obs, r, terminated, truncated, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(
-            ...     12345,
-            ...     0,
-            ...     "pol0",
-            ...     agent_done=False,
-            ...     values={
-            ...         "action": action, "obs": obs, "reward": r,
-            ...         "terminated": terminated, "truncated": truncated
-            ...     },
-            ... )
+        .. testcode::
+            :skipif: True
+
+            obs, info = env.reset()
+            collector.add_init_obs(12345, 0, "pol0", obs)
+            obs, r, terminated, truncated, info = env.step(action)
+            collector.add_action_reward_next_obs(
+                12345,
+                0,
+                "pol0",
+                agent_done=False,
+                values={
+                    "action": action, "obs": obs, "reward": r,
+                    "terminated": terminated, "truncated": truncated
+                },
+            )
         """
         raise NotImplementedError
 
@@ -219,15 +223,17 @@ class SampleCollector(metaclass=ABCMeta):
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
                 for inference/training.
 
-        Examples:
-            >>> obs, r, terminated, truncated, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-            ...     "action": action, "obs": obs, "reward": r,
-            ...     "terminated": terminated, "truncated", truncated
-            ... })
-            >>> input_dict = collector.get_inference_input_dict(policy.model)
-            >>> action = policy.compute_actions_from_input_dict(input_dict)
-            >>> # repeat
+        .. testcode::
+            :skipif: True
+
+            obs, r, terminated, truncated, info = env.step(action)
+            collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
+                "action": action, "obs": obs, "reward": r,
+                "terminated": terminated, "truncated", truncated
+            })
+            input_dict = collector.get_inference_input_dict(policy.model)
+            action = policy.compute_actions_from_input_dict(input_dict)
+            # repeat
         """
         raise NotImplementedError
 

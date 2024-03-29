@@ -42,6 +42,9 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
+  GcsClientOptions(const std::string gcs_address, int port)
+      : gcs_address_(gcs_address), gcs_port_(port) {}
+
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port
@@ -244,11 +247,15 @@ class RAY_EXPORT PythonGcsClient {
       const std::vector<std::unordered_map<std::string, double>> &bundles,
       const std::vector<int64_t> &count_array);
   Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+  Status GetClusterResourceState(int64_t timeout_ms, std::string &serialized_reply);
+  Status ReportAutoscalingState(int64_t timeout_ms, const std::string &serialized_state);
   Status DrainNode(const std::string &node_id,
                    int32_t reason,
                    const std::string &reason_message,
+                   int64_t deadline_timestamp_ms,
                    int64_t timeout_ms,
-                   bool &is_accepted);
+                   bool &is_accepted,
+                   std::string &rejection_reason_message);
   Status DrainNodes(const std::vector<std::string> &node_ids,
                     int64_t timeout_ms,
                     std::vector<std::string> &drained_node_ids);
@@ -275,6 +282,8 @@ class RAY_EXPORT PythonGcsClient {
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;
+  // Make PythonGcsClient thread safe, so add a mutex to protect it.
+  absl::Mutex mutex_;
 };
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(

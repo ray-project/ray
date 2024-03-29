@@ -12,9 +12,6 @@ def test_strict_read_schemas(ray_start_regular_shared):
     ds = ray.data.range(1)
     assert ds.take()[0] == {"id": 0}
 
-    with pytest.raises(DeprecationWarning):
-        ds = ray.data.range_table(1)
-
     ds = ray.data.range_tensor(1)
     assert ds.take()[0] == {"data": np.array([0])}
 
@@ -174,10 +171,6 @@ def test_strict_object_support(ray_start_regular_shared):
 def test_strict_compute(ray_start_regular_shared):
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="actors").show()
-    with pytest.raises(ValueError):
-        ray.data.range(10).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
-        ).show()
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 

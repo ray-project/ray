@@ -1,6 +1,8 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
 
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
@@ -62,7 +64,7 @@ RL Module is a neural network container that implements three public methods: :p
 Enabling RL Modules in the Configuration
 ----------------------------------------
 
-Enable RL Modules by setting the ``_enable_rl_module_api`` flag to ``True`` in the configuration object.
+Enable RL Modules via our configuration object: ``AlgorithmConfig.experimental(_enable_new_api_stack=True)``.
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python

@@ -7,7 +7,6 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
-from ray.serve._private.constants import RAY_SERVE_REQUEST_ID_HEADER
 
 
 def test_request_id_header_by_default(serve_instance):
@@ -22,8 +21,6 @@ def test_request_id_header_by_default(serve_instance):
     serve.run(Model.bind())
     resp = requests.get("http://localhost:8000")
     assert resp.status_code == 200
-    assert RAY_SERVE_REQUEST_ID_HEADER in resp.headers
-    assert resp.text == resp.headers[RAY_SERVE_REQUEST_ID_HEADER]
     assert resp.text == resp.headers["x-request-id"]
 
     def is_valid_uuid(num: str):
@@ -38,7 +35,7 @@ def test_request_id_header_by_default(serve_instance):
 
 class TestUserProvidedRequestIDHeader:
     def verify_result(self):
-        for header_attr in [RAY_SERVE_REQUEST_ID_HEADER, "X-Request-ID"]:
+        for header_attr in ["X-Request-ID"]:
             resp = requests.get(
                 "http://localhost:8000", headers={header_attr: "123-234"}
             )
@@ -99,7 +96,6 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
     resp = requests.get(
         "http://localhost:8000",
         headers={
-            RAY_SERVE_REQUEST_ID_HEADER: "123",
             "X-Request-ID": "234",
         },
     )

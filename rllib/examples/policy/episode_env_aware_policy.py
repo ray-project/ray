@@ -2,7 +2,7 @@ import numpy as np
 import tree
 from gymnasium.spaces import Box
 
-from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.rl_module.episode_env_aware_rlm import StatefulRandomRLModule
@@ -37,7 +37,7 @@ class StatefulRandomPolicy(RandomPolicy):
         return True
 
     def get_initial_state(self):
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("_enable_new_api_stack", False):
             # convert the tree of tensors to a tree to numpy arrays
             return tree.map_structure(
                 lambda s: convert_to_numpy(s), self.model.get_initial_state()
@@ -54,7 +54,7 @@ class StatefulRandomPolicy(RandomPolicy):
     def compute_actions_from_input_dict(self, input_dict, *args, **kwargs):
         fwd_out = self.model.forward_exploration(input_dict)
         actions = fwd_out[SampleBatch.ACTIONS]
-        state_out = fwd_out[STATE_OUT]
+        state_out = fwd_out[Columns.STATE_OUT]
         return actions, state_out, {}
 
 

@@ -10,7 +10,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
     _worker_group_index,
     _worker_group_max_replicas,
     _worker_group_replicas,
-    KuberayNodeProvider,
+    KubeRayNodeProvider,
     ScaleRequest,
 )
 from ray.autoscaler._private.util import NodeID
@@ -88,7 +88,7 @@ def test_worker_group_replicas(group_index, expected_max_replicas, expected_repl
 def test_create_node_cap_at_max(
     attempted_target_replica_count, expected_target_replica_count
 ):
-    """Validates that KuberayNodeProvider does not attempt to create more nodes than
+    """Validates that KubeRayNodeProvider does not attempt to create more nodes than
     allowed by maxReplicas. For the config in this test, maxReplicas is fixed at 300.
 
     Args:
@@ -98,8 +98,8 @@ def test_create_node_cap_at_max(
             capped at maxReplicas (300, for the config in this test.)
     """
     raycluster = get_basic_ray_cr()
-    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
-        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+    with mock.patch.object(KubeRayNodeProvider, "__init__", return_value=None):
+        kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
         scale_request = ScaleRequest(
             workers_to_delete=set(),
             desired_num_workers={"small-group": attempted_target_replica_count},
@@ -171,9 +171,9 @@ def test_get_node_data(podlist_file: str, expected_node_data):
             raise ValueError("Invalid path.")
 
     with mock.patch.object(
-        KuberayNodeProvider, "__init__", return_value=None
-    ), mock.patch.object(KuberayNodeProvider, "_get", mock_get):
-        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        KubeRayNodeProvider, "__init__", return_value=None
+    ), mock.patch.object(KubeRayNodeProvider, "_get", mock_get):
+        kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider.cluster_name = "fake"
         nodes = kr_node_provider.non_terminated_nodes({})
         assert kr_node_provider.node_data_dict == expected_node_data
@@ -238,7 +238,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
     ],
 )
 def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payload):
-    """Test the KuberayNodeProvider's RayCluster patch payload given a dict
+    """Test the KubeRayNodeProvider's RayCluster patch payload given a dict
     of current node counts and a scale request.
     """
     raycluster = get_basic_ray_cr()
@@ -246,8 +246,8 @@ def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payl
     blah_group = copy.deepcopy(raycluster["spec"]["workerGroupSpecs"][1])
     blah_group["groupName"] = "blah-group"
     raycluster["spec"]["workerGroupSpecs"].append(blah_group)
-    with mock.patch.object(KuberayNodeProvider, "__init__", return_value=None):
-        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+    with mock.patch.object(KubeRayNodeProvider, "__init__", return_value=None):
+        kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider.node_data_dict = node_data_dict
         patch_payload = kr_node_provider._scale_request_to_patch_payload(
             scale_request=scale_request, raycluster=raycluster
@@ -277,9 +277,9 @@ def test_safe_to_scale(
         kuberay_provider._patched_raycluster = patch.apply(kuberay_provider._raycluster)
 
     with mock.patch.object(
-        KuberayNodeProvider, "__init__", return_value=None
-    ), mock.patch.object(KuberayNodeProvider, "_patch", mock_patch):
-        kr_node_provider = KuberayNodeProvider(provider_config={}, cluster_name="fake")
+        KubeRayNodeProvider, "__init__", return_value=None
+    ), mock.patch.object(KubeRayNodeProvider, "_patch", mock_patch):
+        kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider.cluster_name = "fake"
         kr_node_provider._patched_raycluster = raycluster
         kr_node_provider._raycluster = raycluster

@@ -9,7 +9,6 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
   const context: GlobalContextType = {
     nodeMap: {},
     nodeMapByIp: {},
-    ipLogMap: {},
     namespaceMap: {},
     metricsContextLoaded: true,
     grafanaHost: "localhost:3000",
@@ -17,6 +16,7 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
       default: "rayDefaultDashboard",
       serve: "rayServeDashboard",
       serveDeployment: "rayServeDeploymentDashboard",
+      data: "rayDataDashboard",
     },
     prometheusHealth: true,
     sessionName: "session-name",

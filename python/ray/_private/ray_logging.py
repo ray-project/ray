@@ -273,10 +273,13 @@ class LogDeduplicator:
             elif self.skip_re and self.skip_re.search(line):
                 continue
             dedup_key = _canonicalise_log_line(line)
+
             if dedup_key in self.recent:
                 sources = self.recent[dedup_key].sources
                 sources.add(source)
-                if len(sources) > 1:
+                # We deduplicate the warnings/errorm essages from
+                # raylet by default.
+                if len(sources) > 1 or batch["pid"] == "raylet":
                     state = self.recent[dedup_key]
                     self.recent[dedup_key] = DedupState(
                         state.timestamp,
@@ -339,7 +342,8 @@ def _warn_once() -> str:
         return (
             " (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to "
             "disable log deduplication, or see https://docs.ray.io/en/master/"
-            "ray-observability/ray-logging.html#log-deduplication for more options.)"
+            "ray-observability/user-guides/configure-logging.html#log-deduplication "
+            "for more options.)"
         )
     else:
         return ""

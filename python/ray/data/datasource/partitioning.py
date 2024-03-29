@@ -38,7 +38,7 @@ class Partitioning:
     their dataset file paths.
 
     For example, to read a dataset with
-    `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_:
+    `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning>`_:
 
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning
@@ -114,9 +114,7 @@ class Partitioning:
         base directory is correctly discovered at the root of all partitioned file
         paths.
         """
-        from ray.data.datasource.file_based_datasource import (
-            _resolve_paths_and_filesystem,
-        )
+        from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
         paths, self._resolved_filesystem = _resolve_paths_and_filesystem(
             self.base_dir,

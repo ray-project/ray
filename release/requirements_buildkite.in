@@ -15,3 +15,8 @@ pybuildkite
 PyGithub
 requests
 retry
+twine == 5.0.0
+docker == 7.0.0
+
+# Below are requirements only used by ray_ci
+tzdata

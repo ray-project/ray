@@ -12,6 +12,7 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
@@ -109,6 +110,7 @@ class LoadMetricsSummary:
     # Optional for deployment modes which have the concept of node types and
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
+    idle_time_map: Optional[Dict[str, int]] = None
 
 
 class ConcurrentCounter:
@@ -229,8 +231,14 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     - Has max_worker set for each node type.
     """
     is_local = config.get("provider", {}).get("type") == "local"
+    is_kuberay = config.get("provider", {}).get("type") == "kuberay"
     if is_local:
         config = prepare_local(config)
+    elif is_kuberay:
+        # With KubeRay, we don't need to do anything here since KubeRay
+        # generate the autoscaler config from the RayCluster CR instead
+        # of loading from the files.
+        return config
 
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
@@ -688,9 +696,19 @@ def format_resource_demand_summary(
             using_placement_group,
         ) = filter_placement_group_from_bundle(bundle)
 
-        # bundle is a special keyword for placement group ready tasks
-        # do not report the demand for this.
-        if "bundle" in pg_filtered_bundle.keys():
+        # bundle is a special keyword for placement group scheduling
+        # but it doesn't need to be exposed to users. Remove it from
+        # the demand report.
+        if (
+            using_placement_group
+            and ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+            in pg_filtered_bundle.keys()
+        ):
+            del pg_filtered_bundle[ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME]
+
+        # No need to report empty request to demand (e.g.,
+        # placement group ready task).
+        if len(pg_filtered_bundle.keys()) == 0:
             continue
 
         bundle_demand[tuple(sorted(pg_filtered_bundle.items()))] += count
@@ -757,8 +775,14 @@ def get_per_node_breakdown(
         if node_id in node_type_mapping:
             node_type = node_type_mapping[node_id]
             node_string += f" ({node_type})"
-
         print(node_string, file=sio)
+        if (
+            lm_summary.idle_time_map
+            and node_id in lm_summary.idle_time_map
+            and lm_summary.idle_time_map[node_id] > 0
+        ):
+            print(f" Idle: {lm_summary.idle_time_map[node_id]} ms", file=sio)
+
         print(" Usage:", file=sio)
         for line in parse_usage(usage, verbose):
             print(f"  {line}", file=sio)

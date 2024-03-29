@@ -67,6 +67,9 @@ message ActorHandle {
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
+
+  // Wheter task events will be reported from this actor.
+  bool enable_task_events = 14;
 }
 
 message PushTaskRequest {
@@ -412,7 +415,12 @@ message ReportGeneratorItemReturnsRequest {
   uint64 attempt_number = 6;
 }
 
-message ReportGeneratorItemReturnsReply {}
+message ReportGeneratorItemReturnsReply {
+  // The total number objects consumed from the generator.
+  // -1 means it is not known. The executor side should just
+  // assume everything is consumed if it is -1.
+  int64 total_num_object_consumed = 1;
+}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.

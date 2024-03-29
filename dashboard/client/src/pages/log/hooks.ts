@@ -9,7 +9,7 @@ export const useStateApiLogs = (
   props: StateApiLogInput,
   path: string | undefined,
 ) => {
-  const downloadUrl = getStateApiDownloadLogUrl(props);
+  const downloadUrl = getStateApiDownloadLogUrl({ ...props, maxLines: -1 });
 
   const {
     data: log,

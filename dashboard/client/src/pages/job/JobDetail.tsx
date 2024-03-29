@@ -1,5 +1,6 @@
 import { Box, makeStyles } from "@material-ui/core";
 import React, { useRef, useState } from "react";
+import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { Section } from "../../common/Section";
 import {
@@ -9,8 +10,10 @@ import {
 import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { getDataDatasets } from "../../service/data";
 import { NestedJobProgressLink } from "../../type/job";
 import ActorList from "../actor/ActorList";
+import DataOverview from "../data/DataOverview";
 import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
@@ -52,6 +55,18 @@ export const JobDetailChartsPage = () => {
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
   const { cluster_status } = useRayStatus();
+
+  const { data } = useSWR(
+    "useDataDatasets",
+    async () => {
+      const rsp = await getDataDatasets();
+
+      if (rsp) {
+        return rsp.data;
+      }
+    },
+    { refreshInterval: 5000 },
+  );
 
   if (!job) {
     return (
@@ -104,8 +119,19 @@ export const JobDetailChartsPage = () => {
     <div className={classes.root}>
       <JobMetadataSection job={job} />
 
+      {data?.datasets && data.datasets.length > 0 && (
+        <CollapsibleSection
+          title="Ray Data Overview"
+          className={classes.section}
+        >
+          <Section>
+            <DataOverview datasets={data.datasets} />
+          </Section>
+        </CollapsibleSection>
+      )}
+
       <CollapsibleSection
-        title="Tasks/actor overview (beta)"
+        title="Ray Core Overview"
         startExpanded
         className={classes.section}
       >

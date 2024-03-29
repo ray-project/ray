@@ -1,15 +1,15 @@
 import os
-from unittest.mock import patch
 from tempfile import TemporaryDirectory
-import pytest
+from unittest.mock import patch
 
+import pytest
 import torch
 
 import ray
-from ray import train
-from ray.train import ScalingConfig, Checkpoint
-from ray.train.torch import TorchTrainer
 import ray.train.torch.train_loop_utils
+from ray import train
+from ray.train import Checkpoint, ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
 @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ def test_auto_transfer_data_from_host_to_device(
 
 def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
     """Tests that auto_transfer uses the right device for the cuda stream."""
-    import pynvml
+    import ray._private.thirdparty.pynvml as pynvml
 
     pynvml.nvmlInit()
 

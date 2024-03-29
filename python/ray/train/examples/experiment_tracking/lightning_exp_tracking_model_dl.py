@@ -1,11 +1,13 @@
 # flake8: noqa
 # fmt: off
+# # isort: skip_file
+
 
 # __model_dl_start__
+import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-import pytorch_lightning as pl
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 
 # Create dummy data
 X = torch.randn(128, 3)  # 128 samples, 3 features

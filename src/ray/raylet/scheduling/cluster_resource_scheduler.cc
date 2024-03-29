@@ -283,7 +283,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // going through the full hybrid policy since we don't want spillback.
   if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
-                          task_spec.GetRequiredResources().GetResourceMap(),
+                          task_spec.GetRequiredPlacementResources().GetResourceMap(),
                           requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
@@ -304,7 +304,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // There is no other available nodes.
   if (!best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
-                           task_spec.GetRequiredResources().GetResourceMap(),
+                           task_spec.GetRequiredPlacementResources().GetResourceMap(),
                            requires_object_store_memory)) {
     // Prefer waiting on the local node since the local node is chosen for a reason (e.g.
     // spread).

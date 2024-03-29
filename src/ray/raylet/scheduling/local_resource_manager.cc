@@ -254,6 +254,8 @@ NodeResources LocalResourceManager::ToNodeResources() const {
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = is_local_node_draining_;
+  node_resources.draining_deadline_timestamp_ms =
+      local_node_draining_deadline_timestamp_ms_;
   return node_resources;
 }
 
@@ -294,9 +296,67 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
   return local_resources_.available.Sum(ResourceID::CPU()).Double();
 }
 
+void LocalResourceManager::PopulateResourceViewSyncMessage(
+    syncer::ResourceViewSyncMessage &resource_view_sync_message) const {
+  NodeResources resources = ToNodeResources();
+
+  auto total = resources.total.GetResourceMap();
+  resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
+                                                               total.end());
+
+  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
+    // Resource availability can be negative locally but treat it as 0
+    // when we broadcast to others since other parts of the
+    // system assume resource availability cannot be negative and
+    // there is no difference between negative and zero from other nodes
+    // and gcs's point of view.
+    (*resource_view_sync_message.mutable_resources_available())[resource_name] =
+        std::max(available, 0.0);
+  }
+
+  if (get_pull_manager_at_capacity_ != nullptr) {
+    resources.object_pulls_queued = get_pull_manager_at_capacity_();
+    resource_view_sync_message.set_object_pulls_queued(resources.object_pulls_queued);
+  }
+
+  auto idle_time = GetResourceIdleTime();
+  if (idle_time.has_value()) {
+    // We round up the idle duration to the nearest millisecond such that the idle
+    // reporting would be correct even if it's less than 1 millisecond.
+    const auto now = absl::Now();
+    resource_view_sync_message.set_idle_duration_ms(std::max(
+        static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
+  }
+
+  resource_view_sync_message.set_is_draining(IsLocalNodeDraining());
+  resource_view_sync_message.set_draining_deadline_timestamp_ms(
+      local_node_draining_deadline_timestamp_ms_);
+
+  for (const auto &iter : last_idle_times_) {
+    if (iter.second == absl::nullopt) {
+      // If it is a WorkFootprint
+      if (iter.first.index() == 0) {
+        switch (std::get<WorkFootprint>(iter.first)) {
+        case WorkFootprint::NODE_WORKERS:
+          resource_view_sync_message.add_node_activity("Busy workers on node.");
+          break;
+        default:
+          UNREACHABLE;
+        }
+        // If it is a ResourceID
+      } else {
+        std::stringstream out;
+        out << "Resource: " << std::get<ResourceID>(iter.first).Binary()
+            << " currently in use.";
+        resource_view_sync_message.add_node_activity(out.str());
+      }
+    }
+  }
+}
+
 std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
-  RAY_CHECK(message_type == syncer::MessageType::RESOURCE_VIEW);
+  RAY_CHECK_EQ(message_type, syncer::MessageType::RESOURCE_VIEW);
   // We check the memory inside version, so version is not a const function.
   // Ideally, we need to move the memory check somewhere else.
   // TODO(iycheng): Make version as a const function.
@@ -307,67 +367,14 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   }
 
   syncer::RaySyncMessage msg;
-  rpc::ResourcesData resources_data;
-
-  resources_data.set_node_id(local_node_id_.Binary());
-
-  NodeResources resources = ToNodeResources();
-
-  auto total = resources.total.GetResourceMap();
-  resources_data.mutable_resources_total()->insert(total.begin(), total.end());
-
-  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
-    // Resource availability can be negative locally but treat it as 0
-    // when we broadcast to others since other parts of the
-    // system assume resource availability cannot be negative and
-    // there is no difference between negative and zero from other nodes
-    // and gcs's point of view.
-    (*resources_data.mutable_resources_available())[resource_name] =
-        std::max(available, 0.0);
-  }
-
-  if (get_pull_manager_at_capacity_ != nullptr) {
-    resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-  }
-
-  auto idle_time = GetResourceIdleTime();
-  if (idle_time.has_value()) {
-    // We round up the idle duration to the nearest millisecond such that the idle
-    // reporting would be correct even if it's less than 1 millisecond.
-    const auto now = absl::Now();
-    resources_data.set_idle_duration_ms(std::max(
-        static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
-  }
-
-  resources_data.set_is_draining(IsLocalNodeDraining());
-
-  for (const auto &iter : last_idle_times_) {
-    if (iter.second == absl::nullopt) {
-      // If it is a WorkFootprint
-      if (iter.first.index() == 0) {
-        switch (std::get<WorkFootprint>(iter.first)) {
-        case WorkFootprint::NODE_WORKERS:
-          resources_data.add_node_activity("Busy workers on node.");
-          break;
-        default:
-          UNREACHABLE;
-        }
-        // If it is a ResourceID
-      } else {
-        std::stringstream out;
-        out << "Resource: " << std::get<ResourceID>(iter.first).Binary()
-            << " currently in use.";
-        resources_data.add_node_activity(out.str());
-      }
-    }
-  }
+  syncer::ResourceViewSyncMessage resource_view_sync_message;
+  PopulateResourceViewSyncMessage(resource_view_sync_message);
 
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(version_);
   msg.set_message_type(message_type);
   std::string serialized_msg;
-  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+  RAY_CHECK(resource_view_sync_message.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
   return std::make_optional(std::move(msg));
 }
@@ -384,11 +391,6 @@ void LocalResourceManager::OnResourceOrStateChanged() {
     return;
   }
   resource_change_subscriber_(ToNodeResources());
-}
-
-void LocalResourceManager::ResetLastReportResourceUsage(
-    const NodeResources &replacement) {
-  last_report_resources_.reset(new NodeResources(replacement));
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
@@ -442,8 +444,10 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining() {
+void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms) {
+  RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
   is_local_node_draining_ = true;
+  local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
   OnResourceOrStateChanged();
 }
 

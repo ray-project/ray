@@ -11,7 +11,11 @@ from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConf
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
+    TORCH_COMPILE_REQUIRED_VERSION,
+)
 from ray.rllib.utils.typing import NetworkType
 
 torch, nn = try_import_torch()
@@ -75,7 +79,7 @@ class TorchRLModule(nn.Module, RLModule):
     Compiling these methods can bring speedups under certain conditions.
     """
 
-    framwork: str = "torch"
+    framework: str = "torch"
 
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
@@ -106,7 +110,7 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.load_state_dict(state_dict)
+        self.load_state_dict(convert_to_torch_tensor(state_dict))
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")
@@ -114,7 +118,7 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
-        torch.save(self.state_dict(), path)
+        torch.save(convert_to_numpy(self.state_dict()), path)
 
     @override(RLModule)
     def load_state(self, dir: Union[str, pathlib.Path]) -> None:
@@ -179,6 +183,13 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     @override(RLModule)
     def _module_metadata(self, *args, **kwargs):
         return self.unwrapped()._module_metadata(*args, **kwargs)
+
+    # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
+    #  class, whenever we add a new API to any wrapped RLModule here. We could try
+    #  auto generating the wrapper methods, but this will bring its own challenge
+    #  (e.g. recursive calls due to __getattr__ checks, etc..).
+    def _compute_values(self, *args, **kwargs):
+        return self.unwrapped()._compute_values(*args, **kwargs)
 
     @override(RLModule)
     def unwrapped(self) -> "RLModule":

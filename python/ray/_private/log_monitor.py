@@ -133,14 +133,15 @@ class LogMonitor:
 
     def __init__(
         self,
-        logs_dir,
-        gcs_publisher,
+        node_ip_address: str,
+        logs_dir: str,
+        gcs_publisher: ray._raylet.GcsPublisher,
         is_proc_alive_fn: Callable[[int], bool],
         max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
         gcs_address: Optional[str] = None,
     ):
         """Initialize the log monitor object."""
-        self.ip: str = services.get_node_ip_address()
+        self.ip: str = node_ip_address
         self.logs_dir: str = logs_dir
         self.publisher = gcs_publisher
         self.log_filenames: Set[str] = set()
@@ -521,10 +522,16 @@ if __name__ == "__main__":
         f'"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}"',
     )
     parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        help="Specify the path of the session directory used by Ray processes.",
+    )
+    parser.add_argument(
         "--logs-dir",
         required=True,
         type=str,
-        help="Specify the path of the temporary directory used by Ray processes.",
+        help="Specify the path of the log directory used by Ray processes.",
     )
     parser.add_argument(
         "--logging-rotate-bytes",
@@ -553,7 +560,9 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count,
     )
 
+    node_ip = services.get_cached_node_ip_address(args.session_dir)
     log_monitor = LogMonitor(
+        node_ip,
         args.logs_dir,
         ray._raylet.GcsPublisher(address=args.gcs_address),
         is_proc_alive,

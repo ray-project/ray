@@ -5,8 +5,6 @@ import fnmatch
 import io
 import re
 import tarfile
-import time
-import uuid
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -306,19 +304,27 @@ def _make_iterable(block: BlockAccessor):
 class WebDatasetDatasource(FileBasedDatasource):
     """A Datasource for WebDataset datasets (tar format with naming conventions)."""
 
-    _FILE_EXTENSION = "tar"
+    _FILE_EXTENSIONS = ["tar"]
 
-    def _read_stream(
+    def __init__(
         self,
-        stream: "pyarrow.NativeFile",
-        path: str,
+        paths: Union[str, List[str]],
         decoder: Optional[Union[bool, str, callable, list]] = True,
         fileselect: Optional[Union[bool, callable, list]] = None,
         filerename: Optional[Union[bool, callable, list]] = None,
         suffixes: Optional[Union[bool, callable, list]] = None,
         verbose_open: bool = False,
-        **kw,
+        **file_based_datasource_kwargs,
     ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self.decoder = decoder
+        self.fileselect = fileselect
+        self.filerename = filerename
+        self.suffixes = suffixes
+        self.verbose_open = verbose_open
+
+    def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
 
         Note that fileselect selects files during reading, while suffixes
@@ -340,52 +346,12 @@ class WebDatasetDatasource(FileBasedDatasource):
 
         files = _tar_file_iterator(
             stream,
-            fileselect=fileselect,
-            filerename=filerename,
-            verbose_open=verbose_open,
+            fileselect=self.fileselect,
+            filerename=self.filerename,
+            verbose_open=self.verbose_open,
         )
-        samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
+        samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)
         for sample in samples:
-            if decoder is not None:
-                sample = _apply_list(decoder, sample, default=_default_decoder)
+            if self.decoder is not None:
+                sample = _apply_list(self.decoder, sample, default=_default_decoder)
             yield pd.DataFrame({k: [v] for k, v in sample.items()})
-
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        encoder: Optional[Union[bool, str, callable, list]] = True,
-        **kw,
-    ):
-        """Encode and write samples to a stream.
-
-        Args:
-            f: File descriptor to write to.
-            block: Data to be written.
-            writer_args_fn: Ignored. Defaults to lambda:{}.
-            encoder: (List of) encoder(s) to be applied to samples. Defaults to True.
-        """
-
-        stream = tarfile.open(fileobj=f, mode="w|")
-        samples = _make_iterable(block)
-        for sample in samples:
-            if not isinstance(sample, dict):
-                sample = sample.as_pydict()
-            if encoder is not None:
-                sample = _apply_list(encoder, sample, default=_default_encoder)
-            if "__key__" not in sample:
-                sample["__key__"] = uuid.uuid4().hex
-            key = sample["__key__"]
-            for k, v in sample.items():
-                if v is None or k.startswith("__"):
-                    continue
-                assert isinstance(v, bytes) or isinstance(v, str)
-                if not isinstance(v, bytes):
-                    v = v.encode("utf-8")
-                ti = tarfile.TarInfo(f"{key}.{k}")
-                ti.size = len(v)
-                ti.mtime = time.time()
-                ti.mode, ti.uname, ti.gname = 0o644, "data", "data"
-                stream.addfile(ti, io.BytesIO(v))
-        stream.close()

@@ -33,8 +33,8 @@ class TestLearner(unittest.TestCase):
 
         config = (
             BCConfigTest()
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
+            .training(model={"fcnet_hiddens": [32, 32]})
+            .experimental(_enable_new_api_stack=True)
         )
 
         # TODO (Kourosh): Add tf2 support
@@ -54,8 +54,8 @@ class TestLearner(unittest.TestCase):
         policies = {"policy_1", "policy_2"}
         config = (
             BCConfigTest()
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
+            .experimental(_enable_new_api_stack=True)
+            .training(model={"fcnet_hiddens": [32, 32]})
             .multi_agent(
                 policies=policies,
                 policy_mapping_fn=lambda agent_id, **kwargs: list(policies)[agent_id],
@@ -98,10 +98,10 @@ class TestLearner(unittest.TestCase):
 
             config = (
                 BCConfigTest()
+                .experimental(_enable_new_api_stack=True)
                 .framework(fw)
-                .rl_module(_enable_rl_module_api=True, rl_module_spec=spec)
+                .rl_module(rl_module_spec=spec)
                 .training(
-                    _enable_learner_api=True,
                     model={"fcnet_hiddens": [32, 32]},
                 )
                 .multi_agent(

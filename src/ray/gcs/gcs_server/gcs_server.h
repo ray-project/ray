@@ -22,11 +22,10 @@
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_monitor_server.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
-#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -110,6 +109,13 @@ class GcsServer {
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
 
+  void UpdateGcsResourceManagerInTest(
+      const NodeID &node_id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+    RAY_CHECK(gcs_resource_manager_ != nullptr);
+    gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
+  }
+
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
@@ -150,7 +156,7 @@ class GcsServer {
   void InitGcsTaskManager();
 
   /// Initialize gcs autoscaling manager.
-  void InitGcsAutoscalerStateManager();
+  void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
@@ -172,9 +178,6 @@ class GcsServer {
 
   /// Install event listeners.
   void InstallEventListeners();
-
-  /// Initialize monitor service.
-  void InitMonitorServer();
 
  private:
   /// Gets the type of KV storage to use from config.
@@ -247,12 +250,8 @@ class GcsServer {
   std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Node resource info handler and service.
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
-  /// Monitor server supports monitor.py
-  std::unique_ptr<GcsMonitorServer> monitor_server_;
-  /// Monitor service for monitor server
-  std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
 
-  /// Ray Syncer realted fields.
+  /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
   std::unique_ptr<std::thread> ray_syncer_thread_;

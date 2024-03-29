@@ -9,7 +9,6 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
-import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
@@ -17,12 +16,6 @@ import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_learner import (
-    PPOLearnerHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
-)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -33,11 +26,8 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -56,41 +46,56 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
+LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY = "vf_explained_var"
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
-class PPOConfig(PGConfig):
+
+class PPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig()  # doctest: +SKIP
-        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = PPOConfig()
-        >>> # Print out some default values.
-        >>> print(config.clip_param)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config.training(  # doctest: +SKIP
-        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "PPO",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig()
+        config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3,
+            train_batch_size=128)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
+
+    .. testcode::
+
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray import air
+        from ray import tune
+        config = PPOConfig()
+        # Print out some default values.
+
+        # Update the config object.
+        config.training(
+            lr=tune.grid_search([0.001 ]), clip_param=0.2
+        )
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "PPO",
+            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            param_space=config.to_dict(),
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -99,6 +104,11 @@ class PPOConfig(PGConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
+        self.lr_schedule = None
+        self.lr = 5e-5
+        self.rollout_fragment_length = "auto"
+        self.train_batch_size = 4000
+
         # PPO specific settings:
         self.use_critic = True
         self.use_gae = True
@@ -107,6 +117,8 @@ class PPOConfig(PGConfig):
         self.kl_coeff = 0.2
         self.kl_target = 0.01
         self.sgd_minibatch_size = 128
+        # Simple logic for now: If None, use `train_batch_size`.
+        self.mini_batch_size_per_learner = None
         self.num_sgd_iter = 30
         self.shuffle_sequences = True
         self.vf_loss_coeff = 1.0
@@ -116,12 +128,9 @@ class PPOConfig(PGConfig):
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
-        # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
-        self.train_batch_size = 4000
-        self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_preprocessor_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -138,12 +147,10 @@ class PPOConfig(PGConfig):
             # Add constructor kwargs here (if any).
         }
 
-        # enable the rl module api by default
-        self.rl_module(_enable_rl_module_api=True)
-        self.training(_enable_learner_api=True)
-
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,
@@ -183,22 +190,6 @@ class PPOConfig(PGConfig):
             )
 
     @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        return PPOLearnerHyperparameters(
-            use_critic=self.use_critic,
-            use_kl_loss=self.use_kl_loss,
-            kl_coeff=self.kl_coeff,
-            kl_target=self.kl_target,
-            vf_loss_coeff=self.vf_loss_coeff,
-            entropy_coeff=self.entropy_coeff,
-            entropy_coeff_schedule=self.entropy_coeff_schedule,
-            clip_param=self.clip_param,
-            vf_clip_param=self.vf_clip_param,
-            **dataclasses.asdict(base_hps),
-        )
-
-    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -209,6 +200,7 @@ class PPOConfig(PGConfig):
         use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
+        mini_batch_size_per_learner: Optional[int] = NotProvided,
         sgd_minibatch_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         shuffle_sequences: Optional[bool] = NotProvided,
@@ -237,8 +229,20 @@ class PPOConfig(PGConfig):
             use_kl_loss: Whether to use the KL-term in the loss function.
             kl_coeff: Initial coefficient for KL divergence.
             kl_target: Target value for KL divergence.
+            mini_batch_size_per_learner: Only use if new API stack is enabled.
+                The mini batch size per Learner worker. This is the
+                batch size that each Learner worker's training batch (whose size is
+                `s`elf.train_batch_size_per_learner`) will be split into. For example,
+                if the train batch size per Learner worker is 4000 and the mini batch
+                size per Learner worker is 400, the train batch will be split into 10
+                equal sized chunks (or "mini batches"). Each such mini batch will be
+                used for one SGD update. Overall, the train batch on each Learner
+                worker will be traversed `self.num_sgd_iter` times. In the above
+                example, if `self.num_sgd_iter` is 5, we will altogether perform 50
+                (10x5) SGD updates per Learner update step.
             sgd_minibatch_size: Total SGD batch size across all devices for SGD.
-                This defines the minibatch size within each epoch.
+                This defines the minibatch size within each epoch. Deprecated on the
+                new API stack (use `mini_batch_size_per_learner` instead).
             num_sgd_iter: Number of SGD iterations in each outer loop (i.e., number of
                 epochs to execute per train batch).
             shuffle_sequences: Whether to shuffle sequences in the batch when training
@@ -256,23 +260,13 @@ class PPOConfig(PGConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if vf_share_layers != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="PPOConfig().vf_share_layers",
-                new="PPOConfig().training(model={'vf_share_layers': ...})",
-                error=True,
-            )
-
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        # TODO (sven): Move to generic AlgorithmConfig.
-        if lr_schedule is not NotProvided:
-            self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
             self.use_critic = use_critic
-            # TODO (Kourosh) This is experimental. Set learner_hps parameters as
-            # well. Don't forget to remove .use_critic from algorithm config.
+            # TODO (Kourosh) This is experimental.
+            #  Don't forget to remove .use_critic from algorithm config.
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
@@ -283,6 +277,8 @@ class PPOConfig(PGConfig):
             self.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
+        if mini_batch_size_per_learner is not NotProvided:
+            self.mini_batch_size_per_learner = mini_batch_size_per_learner
         if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
@@ -293,8 +289,6 @@ class PPOConfig(PGConfig):
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not NotProvided:
-            self.entropy_coeff_schedule = entropy_coeff_schedule
         if clip_param is not NotProvided:
             self.clip_param = clip_param
         if vf_clip_param is not NotProvided:
@@ -302,31 +296,51 @@ class PPOConfig(PGConfig):
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
 
+        # TODO (sven): Remove these once new API stack is only option for PPO.
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
+        if entropy_coeff_schedule is not NotProvided:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+
         return self
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
-        # Can not use Tf with learner api.
-        if self.framework_str == "tf":
-            self.rl_module(_enable_rl_module_api=False)
-            self.training(_enable_learner_api=False)
-
         # Call super's validation method.
         super().validate()
+
+        # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size_per_learner` to avoid user
+        # confusion.
+        # TODO (sven): Make rollout_fragment_length a property and create a private
+        #  attribute to store (possibly) user provided value (or "auto") in. Deprecate
+        #  `self.get_rollout_fragment_length()`.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
         # each `num_sgd_iter`).
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        if self.sgd_minibatch_size > self.train_batch_size:
+        if (
+            not self._enable_new_api_stack
+            and self.sgd_minibatch_size > self.train_batch_size
+        ):
             raise ValueError(
                 f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
-                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
-                f"iterated over (used for updating the policy) {self.num_sgd_iter} "
+                f" will be split into {self.sgd_minibatch_size} chunks, each of which "
+                f"is iterated over (used for updating the policy) {self.num_sgd_iter} "
                 "times."
             )
+        elif self._enable_new_api_stack:
+            mbs = self.mini_batch_size_per_learner or self.sgd_minibatch_size
+            tbs = self.train_batch_size_per_learner or self.train_batch_size
+            if mbs > tbs:
+                raise ValueError(
+                    f"`mini_batch_size_per_learner` ({mbs}) must be <= "
+                    f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
+                    f" will be split into {mbs} chunks, each of which is iterated over "
+                    f"(used for updating the policy) {self.num_sgd_iter} times."
+                )
 
         # Episodes may only be truncated (and passed into PPO's
         # `postprocessing_fn`), iff generalized advantage estimation is used
@@ -345,7 +359,7 @@ class PPOConfig(PGConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -358,37 +372,6 @@ class PPOConfig(PGConfig):
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
-
-
-class UpdateKL:
-    """Callback to update the KL based on optimization info.
-
-    This is used inside the execution_plan function. The Policy must define
-    a `update_kl` method for this to work. This is achieved for PPO via a
-    Policy mixin class (which adds the `update_kl` method),
-    defined in ppo_[tf|torch]_policy.py.
-    """
-
-    def __init__(self, workers):
-        self.workers = workers
-
-    def __call__(self, fetches):
-        def update(pi, pi_id):
-            assert LEARNER_STATS_KEY not in fetches, (
-                "{} should be nested under policy id key".format(LEARNER_STATS_KEY),
-                fetches,
-            )
-            if pi_id in fetches:
-                kl = fetches[pi_id][LEARNER_STATS_KEY].get("kl")
-                assert kl is not None, (fetches, pi_id)
-                # Make the actual `Policy.update_kl()` call.
-                pi.update_kl(kl)
-            else:
-                logger.warning("No data for {}, not updating kl".format(pi_id))
-
-        # Update KL on all trainable policies within the local (training)
-        # Worker.
-        self.workers.local_worker().foreach_policy_to_train(update)
 
 
 class PPO(Algorithm):
@@ -416,38 +399,131 @@ class PPO(Algorithm):
 
             return PPOTF2Policy
 
-    @ExperimentalAPI
-    def training_step(self) -> ResultDict:
-        # Collect SampleBatches from sample workers until we have a full batch.
+    @override(Algorithm)
+    def training_step(self):
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self.config.uses_new_env_runners:
+            return self._training_step_new_api_stack()
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
+        else:
+            return self._training_step_old_and_hybrid_api_stacks()
+
+    def _training_step_new_api_stack(self) -> ResultDict:
+        # Collect batches from sample workers until we have a full batch.
+        with self._timers[SAMPLE_TIMER]:
+            # Sample in parallel from the workers.
+            if self.config.count_steps_by == "agent_steps":
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                )
+            else:
+                episodes = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_env_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
+                    _uses_new_env_runners=self.config.uses_new_env_runners,
+                )
+            # Return early if all our workers failed.
+            if not episodes:
+                return {}
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+                e.agent_steps() for e in episodes
+            )
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                e.env_steps() for e in episodes
+            )
+
+        # Perform a train step on the collected batch.
+        train_results = self.learner_group.update_from_episodes(
+            episodes=episodes,
+            minibatch_size=(
+                self.config.mini_batch_size_per_learner
+                or self.config.sgd_minibatch_size
+            ),
+            num_iters=self.config.num_sgd_iter,
+        )
+
+        # The train results's loss keys are pids to their loss values. But we also
+        # return a total_loss key at the same level as the pid keys. So we need to
+        # subtract that to get the total set of pids to update.
+        # TODO (Kourosh): We should also not be using train_results as a message
+        #  passing medium to infer which policies to update. We could use
+        #  policies_to_train variable that is given by the user to infer this.
+        policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            if self.workers.num_remote_workers() > 0:
+                self.workers.sync_weights(
+                    # Sync weights from learner_group to all rollout workers.
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=policies_to_update,
+                    global_vars=None,
+                )
+            else:
+                weights = self.learner_group.get_weights()
+                self.workers.local_worker().set_weights(weights)
+
+        kl_dict = {}
+        if self.config.use_kl_loss:
+            for pid in policies_to_update:
+                kl = train_results[pid][LEARNER_RESULTS_KL_KEY]
+                kl_dict[pid] = kl
+                if np.isnan(kl):
+                    logger.warning(
+                        f"KL divergence for Module {pid} is non-finite, this will "
+                        "likely destabilize your model and the training process. "
+                        "Action(s) in a specific state have near-zero probability. "
+                        "This can happen naturally in deterministic environments "
+                        "where the optimal policy has zero mass for a specific "
+                        "action. To fix this issue, consider setting `kl_coeff` to "
+                        "0.0 or increasing `entropy_coeff` in your config."
+                    )
+
+        # triggers a special update method on RLOptimizer to update the KL values.
+        additional_results = self.learner_group.additional_update(
+            module_ids_to_update=policies_to_update,
+            sampled_kl_values=kl_dict,
+            timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+        )
+        for pid, res in additional_results.items():
+            train_results[pid].update(res)
+
+        return train_results
+
+    def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
+        # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
                 train_batch = synchronous_parallel_sample(
                     worker_set=self.workers,
-                    max_agent_steps=self.config.train_batch_size,
+                    max_agent_steps=self.config.total_train_batch_size,
                 )
             else:
                 train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                    worker_set=self.workers,
+                    max_env_steps=self.config.total_train_batch_size,
                 )
+            train_batch = train_batch.as_multi_agent()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+            self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+            # Standardize advantages.
+            train_batch = standardize_fields(train_batch, ["advantages"])
 
-        train_batch = train_batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-
-        # Standardize advantages
-        train_batch = standardize_fields(train_batch, ["advantages"])
-        # Train
-        if self.config._enable_learner_api:
-            # TODO (Kourosh) Clearly define what train_batch_size
-            #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
-            # TODO (Kourosh) Do this inside the Learner so that we don't have to do
-            #  this back and forth communication between driver and the remote
-            #  learner actors.
-            is_module_trainable = self.workers.local_worker().is_policy_to_train
-            self.learner_group.set_is_module_trainable(is_module_trainable)
-            train_results = self.learner_group.update(
-                train_batch,
-                minibatch_size=self.config.sgd_minibatch_size,
+        # Perform a train step on the collected batch.
+        if self.config._enable_new_api_stack:
+            mini_batch_size_per_learner = (
+                self.config.mini_batch_size_per_learner
+                or self.config.sgd_minibatch_size
+            )
+            train_results = self.learner_group.update_from_batch(
+                batch=train_batch,
+                minibatch_size=mini_batch_size_per_learner,
                 num_iters=self.config.num_sgd_iter,
             )
 
@@ -456,7 +532,7 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # The train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
@@ -467,10 +543,10 @@ class PPO(Algorithm):
         else:
             policies_to_update = list(train_results.keys())
 
-        # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        # train_results
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            # TODO (sven): num_grad_updates per each policy should be
+            #  accessible via `train_results` (and get rid of global_vars).
             "num_grad_updates_per_policy": {
                 pid: self.workers.local_worker().policy_map[pid].num_grad_updates
                 for pid in policies_to_update
@@ -482,7 +558,7 @@ class PPO(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
-                if self.config._enable_learner_api:
+                if self.config._enable_new_api_stack:
                     # sync weights from learner_group to all rollout workers
                     from_worker_or_learner_group = self.learner_group
                 self.workers.sync_weights(
@@ -490,12 +566,11 @@ class PPO(Algorithm):
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
-            elif self.config._enable_learner_api:
+            elif self.config._enable_new_api_stack:
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        if self.config._enable_learner_api:
-
+        if self.config._enable_new_api_stack:
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:
@@ -563,6 +638,9 @@ class PPO(Algorithm):
                 )
 
         # Update global vars on local worker as well.
+        # TODO (simon): At least in RolloutWorker obsolete I guess as called in
+        #  `sync_weights()` called above if remote workers. Can we call this
+        #  where `set_weights()` is called on the local_worker?
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results

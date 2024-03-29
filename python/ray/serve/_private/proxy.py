@@ -5,42 +5,43 @@ import os
 import pickle
 import socket
 import time
-import uuid
 from abc import ABC, abstractmethod
-from asyncio.tasks import FIRST_COMPLETED
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
 import grpc
-import starlette.responses
+import starlette
 import starlette.routing
 import uvicorn
+from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
-from starlette.types import Message, Receive
+from starlette.types import Receive
 
 import ray
+from ray import serve
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
+from ray.serve._private.common import (
+    DeploymentID,
+    EndpointInfo,
+    NodeId,
+    RequestProtocol,
+)
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
-    RAY_SERVE_REQUEST_ID_HEADER,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
-    ASGIMessageQueue,
-    HTTPRequestWrapper,
-    RawASGIResponse,
-    Response,
+    MessageQueue,
+    convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
     validate_http_proxy_callback_return,
@@ -55,24 +56,27 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
+    HandlerMetadata,
     ProxyRequest,
-    ProxyResponse,
+    ResponseGenerator,
+    ResponseHandlerInfo,
+    ResponseStatus,
     gRPCProxyRequest,
 )
+from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import (
     EndpointRouter,
     LongestPrefixRouter,
     ProxyRouter,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (
-    calculate_remaining_timeout,
-    call_function_from_import_path,
-)
+from ray.serve._private.utils import call_function_from_import_path, generate_request_id
 from ray.serve.config import gRPCOptions
+from ray.serve.exceptions import BackPressureError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
-from ray.serve.handle import DeploymentHandle, _DeploymentResponseBase
+from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import LoggingConfig
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -116,13 +120,10 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
-BACKOFF_FACTOR = 2
-DRAINED_MESSAGE = "This node is being drained."
-HEALTH_CHECK_SUCCESS_MESSAGE = "success"
 
-
-def generate_request_id() -> str:
-    return str(uuid.uuid4())
+HEALTHY_MESSAGE = "success"
+DRAINING_MESSAGE = "This node is being drained."
+NO_ROUTES_MESSAGE = "Route table is not populated yet."
 
 
 class GenericProxy(ABC):
@@ -131,26 +132,19 @@ class GenericProxy(ABC):
 
     The proxy subclass need to implement the following methods:
       - `protocol()`
-      - `success_status_code()`
-      - `not_found()`
-      - `draining_response()`
-      - `timeout_response()`
+      - `not_found_response()`
       - `routes_response()`
       - `health_response()`
-      - `send_request_to_replica_unary()`
       - `setup_request_context_and_handle()`
-      - `send_request_to_replica_streaming()`
+      - `send_request_to_replica()`
     """
 
     def __init__(
         self,
-        controller_name: str,
         node_id: NodeId,
         node_ip_address: str,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
-        controller_actor: Optional[ActorHandle] = None,
-        proxy_actor: Optional[ActorHandle] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -158,48 +152,15 @@ class GenericProxy(ABC):
 
         self._node_id = node_id
 
-        # Set the controller name so that serve connects to the
-        # controller instance this proxy is running in.
-        ray.serve.context._set_internal_replica_context(
-            app_name=None,
-            deployment=None,
-            replica_tag=None,
-            servable_object=None,
-            controller_name=controller_name,
-        )
+        # Flipped to `True` once the route table has been updated at least once.
+        # Health checks will not pass until the route table is populated.
+        self._route_table_populated = False
 
         # Used only for displaying the route table.
-        self.route_info: Dict[str, EndpointTag] = dict()
+        self.route_info: Dict[str, DeploymentID] = dict()
 
-        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
-
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-            logger.info(
-                "Experimental streaming feature flag enabled.",
-                extra={"log_to_stderr": False},
-            )
-
-        def get_handle(deployment_name, app_name):
-            # Delayed import due to circular dependency.
-            # TODO(edoakes): use `get_deployment_handle` public API instead.
-            from ray.serve.context import _get_global_client
-
-            return _get_global_client().get_handle(
-                deployment_name,
-                app_name,
-                sync=False,
-                missing_ok=True,
-            )
-
-        self.proxy_router = proxy_router_class(get_handle, self.protocol)
-        self.long_poll_client = LongPollClient(
-            controller_actor
-            or ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
-            {
-                LongPollNamespace.ROUTE_TABLE: self._update_routes,
-            },
-            call_in_event_loop=get_or_create_event_loop(),
+        self.proxy_router = proxy_router_class(
+            serve.get_deployment_handle, self.protocol
         )
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
@@ -209,19 +170,19 @@ class GenericProxy(ABC):
 
         self.request_error_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_error_requests",
-            description=f"The number of non-{self.success_status_code} "
-            "{self.protocol} responses.",
+            description=f"The number of errored {self.protocol} responses.",
             tag_keys=(
                 "route",
                 "error_code",
                 "method",
+                "application",
             ),
         )
 
         self.deployment_request_error_counter = metrics.Counter(
             f"serve_num_deployment_{self.protocol.lower()}_error_requests",
             description=(
-                f"The number of non-{self.success_status_code} {self.protocol} "
+                f"The number of errored {self.protocol} "
                 "responses returned by each deployment."
             ),
             tag_keys=(
@@ -260,9 +221,6 @@ class GenericProxy(ABC):
             }
         )
 
-        # `self._prevent_node_downscale_ref` is used to prevent the node from being
-        # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
@@ -280,24 +238,17 @@ class GenericProxy(ABC):
         """
         raise NotImplementedError
 
-    @property
-    @abstractmethod
-    def success_status_code(self) -> str:
-        """Success status code for the proxy.
-
-        Each proxy needs to define its success code.
-        """
-        raise NotImplementedError
-
     def _is_draining(self) -> bool:
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
 
-    def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        self.route_info: Dict[str, EndpointTag] = dict()
-        for endpoint, info in endpoints.items():
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
+        self._route_table_populated = True
+
+        self.route_info: Dict[str, DeploymentID] = dict()
+        for deployment_id, info in endpoints.items():
             route = info.route
-            self.route_info[route] = endpoint
+            self.route_info[route] = deployment_id
 
         self.proxy_router.update_routes(endpoints)
 
@@ -336,25 +287,21 @@ class GenericProxy(ABC):
             self._draining_start_time = None
 
     @abstractmethod
-    async def not_found(self, proxy_request: ProxyRequest) -> ProxyResponse:
+    async def not_found_response(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseGenerator:
         raise NotImplementedError
 
     @abstractmethod
-    async def draining_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
+    async def routes_response(
+        self, *, healthy: bool, message: str
+    ) -> ResponseGenerator:
         raise NotImplementedError
 
     @abstractmethod
-    async def timeout_response(
-        self, proxy_request: ProxyRequest, request_id: str
-    ) -> ProxyResponse:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def health_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
+    async def health_response(
+        self, *, healthy: bool, message: str
+    ) -> ResponseGenerator:
         raise NotImplementedError
 
     def _ongoing_requests_start(self):
@@ -377,7 +324,103 @@ class GenericProxy(ABC):
         self._ongoing_requests -= 1
         self.num_ongoing_requests_gauge.set(self._ongoing_requests)
 
-    async def proxy_request(self, proxy_request: ProxyRequest) -> ProxyResponse:
+    def _get_health_or_routes_reponse(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseHandlerInfo:
+        """Get the response handler for system health and route endpoints.
+
+        If the proxy is draining or has not yet received a route table update from the
+        controller, both will return a non-OK status.
+        """
+        if not self._route_table_populated:
+            healthy = False
+            message = NO_ROUTES_MESSAGE
+        elif self._is_draining():
+            healthy = False
+            message = DRAINING_MESSAGE
+        else:
+            healthy = True
+            message = HEALTHY_MESSAGE
+
+        if proxy_request.is_health_request:
+            response_generator = self.health_response(healthy=healthy, message=message)
+        else:
+            assert proxy_request.is_route_request
+            response_generator = self.routes_response(healthy=healthy, message=message)
+
+        return ResponseHandlerInfo(
+            response_generator=response_generator,
+            metadata=HandlerMetadata(
+                route=proxy_request.route_path,
+            ),
+            should_record_access_log=False,
+            should_increment_ongoing_requests=False,
+        )
+
+    def _get_response_handler_info(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseHandlerInfo:
+        if proxy_request.is_health_request or proxy_request.is_route_request:
+            return self._get_health_or_routes_reponse(proxy_request)
+
+        matched_route = None
+        if self.protocol == RequestProtocol.HTTP:
+            matched_route = self.proxy_router.match_route(proxy_request.route_path)
+        elif self.protocol == RequestProtocol.GRPC:
+            matched_route = self.proxy_router.get_handle_for_endpoint(
+                proxy_request.route_path
+            )
+
+        if matched_route is None:
+            return ResponseHandlerInfo(
+                response_generator=self.not_found_response(proxy_request),
+                metadata=HandlerMetadata(
+                    route=proxy_request.route_path,
+                ),
+                should_record_access_log=True,
+                should_increment_ongoing_requests=False,
+            )
+        else:
+            route_prefix, handle, app_is_cross_language = matched_route
+            # Modify the path and root path so that reverse lookups and redirection
+            # work as expected. We do this here instead of in replicas so it can be
+            # changed without restarting the replicas.
+            route_path = proxy_request.route_path
+            if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
+                assert not route_prefix.endswith("/")
+                proxy_request.set_root_path(proxy_request.root_path + route_prefix)
+                # NOTE(edoakes): starlette<0.33.0 expected the ASGI 'root_prefix'
+                # to be stripped from the 'path', which wasn't technically following
+                # the standard. See https://github.com/encode/starlette/pull/2352.
+                if version.parse(starlette.__version__) < version.parse("0.33.0"):
+                    proxy_request.set_path(route_path.replace(route_prefix, "", 1))
+
+            handle, request_id = self.setup_request_context_and_handle(
+                app_name=handle.deployment_id.app_name,
+                handle=handle,
+                route_path=route_path,
+                proxy_request=proxy_request,
+            )
+
+            response_generator = self.send_request_to_replica(
+                request_id=request_id,
+                handle=handle,
+                proxy_request=proxy_request,
+                app_is_cross_language=app_is_cross_language,
+            )
+
+            return ResponseHandlerInfo(
+                response_generator=response_generator,
+                metadata=HandlerMetadata(
+                    application_name=handle.deployment_id.app_name,
+                    deployment_name=handle.deployment_id.name,
+                    route=route_path,
+                ),
+                should_record_access_log=True,
+                should_increment_ongoing_requests=True,
+            )
+
+    async def proxy_request(self, proxy_request: ProxyRequest) -> ResponseGenerator:
         """Wrapper for proxy request.
 
         This method is served as common entry point by the proxy. It handles the
@@ -386,199 +429,75 @@ class GenericProxy(ABC):
         """
         assert proxy_request.request_type in {"http", "websocket", "grpc"}
 
-        method = proxy_request.method
+        response_handler_info = self._get_response_handler_info(proxy_request)
 
-        # only use the non-root part of the path for routing
-        route_path = proxy_request.route_path
-
-        if proxy_request.is_route_request:
-            if self._is_draining():
-                return await self.draining_response(proxy_request=proxy_request)
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": "",
-                    "status_code": self.success_status_code,
-                }
-            )
-            return await self.routes_response(proxy_request=proxy_request)
-
-        if proxy_request.is_health_request:
-            if self._is_draining():
-                return await self.draining_response(proxy_request=proxy_request)
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": "",
-                    "status_code": self.success_status_code,
-                }
-            )
-            return await self.health_response(proxy_request=proxy_request)
-
-        try:
+        start_time = time.time()
+        if response_handler_info.should_increment_ongoing_requests:
             self._ongoing_requests_start()
 
-            matched_route = None
-            if self.protocol == RequestProtocol.HTTP:
-                matched_route = self.proxy_router.match_route(route_path)
-            elif self.protocol == RequestProtocol.GRPC:
-                matched_route = self.proxy_router.get_handle_for_endpoint(route_path)
+        try:
+            # The final message yielded must always be the `ResponseStatus`.
+            status: Optional[ResponseStatus] = None
+            async for message in response_handler_info.response_generator:
+                if isinstance(message, ResponseStatus):
+                    status = message
 
-            if matched_route is None:
-                proxy_response = await self.not_found(proxy_request=proxy_request)
-                self.request_error_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "error_code": proxy_response.status_code,
-                        "method": method,
-                    }
-                )
-                self.request_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "method": method,
-                        "application": "",
-                        "status_code": proxy_response.status_code,
-                    }
-                )
-                return proxy_response
+                yield message
 
-            route_prefix, handle, app_is_cross_language = matched_route
-
-            # Modify the path and root path so that reverse lookups and redirection
-            # work as expected. We do this here instead of in replicas so it can be
-            # changed without restarting the replicas.
-            if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
-                assert not route_prefix.endswith("/")
-                proxy_request.set_path(route_path.replace(route_prefix, "", 1))
-                proxy_request.set_root_path(proxy_request.root_path + route_prefix)
-
-            start_time = time.time()
-            handle, request_id = self.setup_request_context_and_handle(
-                app_name=handle.deployment_id.app,
-                handle=handle,
-                route_path=route_path,
-                proxy_request=proxy_request,
-            )
-
-            # Streaming codepath isn't supported for Java.
-            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
-                proxy_response = await self.send_request_to_replica_streaming(
-                    request_id=request_id,
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
-            else:
-                proxy_response = await self.send_request_to_replica_unary(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": handle.deployment_id.app,
-                    "status_code": proxy_response.status_code,
-                }
-            )
-
-            latency_ms = (time.time() - start_time) * 1000.0
-            self.processing_latency_tracker.observe(
-                latency_ms,
-                tags={
-                    "method": method,
-                    "route": route_path,
-                    "application": handle.deployment_id.app,
-                    "status_code": proxy_response.status_code,
-                },
-            )
-            logger.info(
-                access_log_msg(
-                    method=method,
-                    status=str(proxy_response.status_code),
-                    latency_ms=latency_ms,
-                ),
-                extra={"log_to_stderr": False},
-            )
-            if proxy_response.status_code != self.success_status_code:
-                self.request_error_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "error_code": proxy_response.status_code,
-                        "method": method,
-                    }
-                )
-                self.deployment_request_error_counter.inc(
-                    tags={
-                        "deployment": handle.deployment_id.name,
-                        "error_code": proxy_response.status_code,
-                        "method": method,
-                        "route": route_path,
-                        "application": handle.deployment_id.app,
-                    }
-                )
+            assert status is not None and isinstance(status, ResponseStatus)
         finally:
             # If anything during the request failed, we still want to ensure the ongoing
-            # request counter is decremented and possibly reset the keep alive object.
-            self._ongoing_requests_end()
+            # request counter is decremented.
+            if response_handler_info.should_increment_ongoing_requests:
+                self._ongoing_requests_end()
 
-        return proxy_response
+        latency_ms = (time.time() - start_time) * 1000.0
+        if response_handler_info.should_record_access_log:
+            logger.info(
+                access_log_msg(
+                    method=proxy_request.method,
+                    status=str(status.code),
+                    latency_ms=latency_ms,
+                ),
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
-    async def _assign_request_with_timeout(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-        disconnected_task: Optional[asyncio.Task] = None,
-        timeout_s: Optional[float] = None,
-    ) -> Union[None, ray.ObjectRef, StreamingObjectRefGenerator]:
-        """Attempt to send a request on the handle within the timeout.
-
-        If `timeout_s` is exceeded while trying to assign a replica, `TimeoutError`
-        will be raised.
-
-        `disconnected_task` is expected to be done if the client disconnects; in this
-        case, we will abort assigning a replica and return `None`.
-        """
-        result: _DeploymentResponseBase = handle.remote(
-            proxy_request.request_object(proxy_handle=self.self_actor_handle)
+        self.request_counter.inc(
+            tags={
+                "route": response_handler_info.metadata.route,
+                "method": proxy_request.method,
+                "application": response_handler_info.metadata.application_name,
+                "status_code": str(status.code),
+            }
         )
-        to_object_ref_task = asyncio.ensure_future(
-            result._to_object_ref_or_gen(_record_telemetry=False)
-        )
-        tasks = [to_object_ref_task]
-        if disconnected_task is not None:
-            tasks.append(disconnected_task)
-        done, _ = await asyncio.wait(
-            tasks,
-            return_when=FIRST_COMPLETED,
-            timeout=timeout_s,
-        )
-        if to_object_ref_task in done:
-            return to_object_ref_task.result()
-        elif disconnected_task is not None and disconnected_task in done:
-            result.cancel()
-            return None
-        else:
-            result.cancel()
-            raise TimeoutError()
 
-    @abstractmethod
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        """Send the request to the replica and handle unary response.
-
-        Each proxy needs to implement its own logic for sending the request and
-        handling the unary response.
-        """
-        raise NotImplementedError
+        self.processing_latency_tracker.observe(
+            latency_ms,
+            tags={
+                "method": proxy_request.method,
+                "route": response_handler_info.metadata.route,
+                "application": response_handler_info.metadata.application_name,
+                "status_code": str(status.code),
+            },
+        )
+        if status.is_error:
+            self.request_error_counter.inc(
+                tags={
+                    "route": response_handler_info.metadata.route,
+                    "error_code": str(status.code),
+                    "method": proxy_request.method,
+                    "application": response_handler_info.metadata.application_name,
+                }
+            )
+            self.deployment_request_error_counter.inc(
+                tags={
+                    "deployment": response_handler_info.metadata.deployment_name,
+                    "error_code": str(status.code),
+                    "method": proxy_request.method,
+                    "route": response_handler_info.metadata.route,
+                    "application": response_handler_info.metadata.application_name,
+                }
+            )
 
     @abstractmethod
     def setup_request_context_and_handle(
@@ -596,12 +515,13 @@ class GenericProxy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def send_request_to_replica_streaming(
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
+        app_is_cross_language: bool = False,
+    ) -> ResponseGenerator:
         """Send the request to the replica and handle streaming response.
 
         Each proxy needs to implement its own logic for sending the request and
@@ -622,83 +542,62 @@ class gRPCProxy(GenericProxy):
     def protocol(self) -> RequestProtocol:
         return RequestProtocol.GRPC
 
-    @property
-    def success_status_code(self) -> str:
-        return str(grpc.StatusCode.OK)
-
-    async def not_found(self, proxy_request: ProxyRequest) -> ProxyResponse:
+    async def not_found_response(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseGenerator:
         if not proxy_request.app_name:
             application_message = "Application metadata not set."
         else:
             application_message = f"Application '{proxy_request.app_name}' not found."
         not_found_message = (
-            f"{application_message} Please ping "
+            f"{application_message} Ping "
             "/ray.serve.RayServeAPIService/ListApplications for available applications."
         )
-        status_code = grpc.StatusCode.NOT_FOUND
-        proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=not_found_message)
-        return ProxyResponse(status_code=str(status_code))
 
-    async def draining_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        status_code = grpc.StatusCode.UNAVAILABLE
-        proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=DRAINED_MESSAGE)
-        if proxy_request.is_route_request:
-            application_names = [endpoint.app for endpoint in self.route_info.values()]
-            response_proto = ListApplicationsResponse(
-                application_names=application_names
-            )
-        else:
-            response_proto = HealthzResponse(message=DRAINED_MESSAGE)
-        return ProxyResponse(
-            status_code=str(status_code),
-            response=response_proto.SerializeToString(),
+        yield ResponseStatus(
+            code=grpc.StatusCode.NOT_FOUND,
+            message=not_found_message,
+            is_error=True,
         )
 
-    async def timeout_response(
-        self, proxy_request: ProxyRequest, request_id: str
-    ) -> ProxyResponse:
-        timeout_message = (
-            f"Request {request_id} timed out after {self.request_timeout_s}s."
-        )
-        status_code = grpc.StatusCode.CANCELLED
-        proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=timeout_message)
-        return ProxyResponse(status_code=str(status_code))
+    async def routes_response(
+        self, *, healthy: bool, message: str
+    ) -> ResponseGenerator:
+        yield ListApplicationsResponse(
+            application_names=[
+                endpoint.app_name for endpoint in self.route_info.values()
+            ],
+        ).SerializeToString()
 
-    async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        status_code = grpc.StatusCode.OK
-        proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=HEALTH_CHECK_SUCCESS_MESSAGE)
-        application_names = [endpoint.app for endpoint in self.route_info.values()]
-        response_proto = ListApplicationsResponse(
-            application_names=application_names,
-        )
-        return ProxyResponse(
-            status_code=str(status_code),
-            response=response_proto.SerializeToString(),
+        yield ResponseStatus(
+            code=grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE,
+            message=message,
+            is_error=not healthy,
         )
 
-    async def health_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        status_code = grpc.StatusCode.OK
-        proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=HEALTH_CHECK_SUCCESS_MESSAGE)
-        response_proto = HealthzResponse(message=HEALTH_CHECK_SUCCESS_MESSAGE)
-        return ProxyResponse(
-            status_code=str(status_code),
-            response=response_proto.SerializeToString(),
+    async def health_response(self, *, healthy: bool, message) -> ResponseGenerator:
+        yield HealthzResponse(message=message).SerializeToString()
+        yield ResponseStatus(
+            code=grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE,
+            message=message,
+            is_error=not healthy,
         )
-
-    def _set_internal_error_response(
-        self, proxy_request: ProxyRequest, error: Exception
-    ) -> ProxyResponse:
-        status_code = grpc.StatusCode.INTERNAL
-        proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=str(error))
-        return ProxyResponse(status_code=str(status_code))
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+        def set_grpc_code_and_details(
+            context: grpc._cython.cygrpc._ServicerContext, status: ResponseStatus
+        ):
+            # Only the latest code and details will take effect. If the user already
+            # set them to a truthy value in the context, skip setting them with Serve's
+            # default values. By default, if nothing is set, the code is 0 and the
+            # details is "", which both are falsy. So if the user did not set them or
+            # if they're explicitly set to falsy values, such as None, Serve will
+            # continue to set them with our default values.
+            if not context.code():
+                context.set_code(status.code)
+            if not context.details():
+                context.set_details(status.message)
+
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -714,8 +613,18 @@ class gRPCProxy(GenericProxy):
                 service_method=service_method,
                 stream=False,
             )
-            proxy_response = await self.proxy_request(proxy_request=proxy_request)
-            return proxy_response.response
+
+            status = None
+            response = None
+            async for message in self.proxy_request(proxy_request=proxy_request):
+                if isinstance(message, ResponseStatus):
+                    status = message
+                else:
+                    response = message
+
+            set_grpc_code_and_details(context, status)
+
+            return response
 
         async def unary_stream(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
@@ -733,24 +642,17 @@ class gRPCProxy(GenericProxy):
                 service_method=service_method,
                 stream=True,
             )
-            proxy_response = await self.proxy_request(proxy_request=proxy_request)
-            async for response in proxy_response.streaming_response:
-                yield response
 
-        if not stream:
-            return unary_unary
-        return unary_stream
+            status = None
+            async for message in self.proxy_request(proxy_request=proxy_request):
+                if isinstance(message, ResponseStatus):
+                    status = message
+                else:
+                    yield message
 
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        return await self.send_request_to_replica_streaming(
-            request_id=proxy_request.request_id,
-            handle=handle,
-            proxy_request=proxy_request,
-        )
+            set_grpc_code_and_details(context, status)
+
+        return unary_stream if stream else unary_unary
 
     def setup_request_context_and_handle(
         self,
@@ -781,6 +683,7 @@ class gRPCProxy(GenericProxy):
             "request_id": request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "grpc_context": proxy_request.ray_serve_grpc_context,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -788,199 +691,141 @@ class gRPCProxy(GenericProxy):
         proxy_request.send_request_id(request_id=request_id)
         return handle, request_id
 
-    async def _streaming_generator_helper(
-        self,
-        obj_ref_generator: StreamingObjectRefGenerator,
-        proxy_request: ProxyRequest,
-        request_id: str,
-        timeout_s: Optional[float] = None,
-    ) -> Generator[bytes, None, None]:
-        start = time.time()
-        while True:
-            try:
-                obj_ref = await obj_ref_generator._next_async(
-                    timeout_s=calculate_remaining_timeout(
-                        timeout_s=timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
-                    )
-                )
-                if obj_ref.is_nil():
-                    await self.timeout_response(
-                        proxy_request=proxy_request, request_id=request_id
-                    )
-                    break
-
-                user_response_bytes = await obj_ref
-                yield user_response_bytes
-
-            except StopAsyncIteration:
-                break
-            except Exception as e:
-                self._set_internal_error_response(proxy_request, e)
-                break
-
-    async def _consume_generator_stream(
-        self,
-        obj_ref: StreamingObjectRefGenerator,
-        proxy_request: ProxyRequest,
-        request_id: str,
-        timeout_s: Optional[float] = None,
-    ) -> ProxyResponse:
-        streaming_response = self._streaming_generator_helper(
-            obj_ref_generator=obj_ref,
-            proxy_request=proxy_request,
-            request_id=request_id,
-            timeout_s=timeout_s,
-        )
-
-        return ProxyResponse(
-            status_code=self.success_status_code, streaming_response=streaming_response
-        )
-
-    async def _consume_generator_unary(
-        self,
-        obj_ref: ray.ObjectRef,
-        timeout_s: Optional[float] = None,
-    ) -> ProxyResponse:
-        try:
-            user_response_bytes = await asyncio.wait_for(obj_ref, timeout=timeout_s)
-            return ProxyResponse(
-                status_code=self.success_status_code, response=user_response_bytes
-            )
-        except asyncio.exceptions.TimeoutError:
-            raise TimeoutError() from None
-
-    async def send_request_to_replica_streaming(
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        start = time.time()
-        try:
-            obj_ref = None
-            try:
-                obj_ref = await self._assign_request_with_timeout(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                    timeout_s=self.request_timeout_s,
-                )
-                if obj_ref is None:
-                    logger.info(
-                        f"Client from {proxy_request.client} disconnected, "
-                        "cancelling the request.",
-                        extra={"log_to_stderr": False},
-                    )
-                    return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-                if proxy_request.stream:
-                    return await self._consume_generator_stream(
-                        obj_ref=obj_ref,
-                        proxy_request=proxy_request,
-                        request_id=request_id,
-                        timeout_s=calculate_remaining_timeout(
-                            timeout_s=self.request_timeout_s,
-                            start_time_s=start,
-                            curr_time_s=time.time(),
-                        ),
-                    )
-                else:
-                    return await self._consume_generator_unary(
-                        obj_ref=obj_ref,
-                        timeout_s=calculate_remaining_timeout(
-                            timeout_s=self.request_timeout_s,
-                            start_time_s=start,
-                            curr_time_s=time.time(),
-                        ),
-                    )
-            except TimeoutError:
-                logger.warning(
-                    f"Request {request_id} timed out after {self.request_timeout_s}s."
-                )
-                if obj_ref is not None:
-                    ray.cancel(obj_ref)
-                await self.timeout_response(
-                    proxy_request=proxy_request, request_id=request_id
-                )
-                return ProxyResponse(status_code=TIMEOUT_ERROR_CODE)
+        app_is_cross_language: bool = False,
+    ) -> ResponseGenerator:
+        handle_arg = proxy_request.request_object()
+        response_generator = ProxyResponseGenerator(
+            handle.remote(handle_arg),
+            timeout_s=self.request_timeout_s,
+        )
 
+        try:
+            async for context, result in response_generator:
+                context._set_on_grpc_context(proxy_request.context)
+                yield result
+
+            yield ResponseStatus(code=grpc.StatusCode.OK)
+        except TimeoutError:
+            message = f"Request timed out after {self.request_timeout_s}s."
+            logger.warning(message)
+            yield ResponseStatus(
+                code=grpc.StatusCode.DEADLINE_EXCEEDED,
+                is_error=True,
+                message=message,
+            )
+        except asyncio.CancelledError:
+            message = f"Client for request {request_id} disconnected."
+            logger.info(message)
+            yield ResponseStatus(
+                code=grpc.StatusCode.CANCELLED,
+                is_error=True,
+                message=message,
+            )
+        except BackPressureError as e:
+            yield ResponseStatus(
+                code=grpc.StatusCode.UNAVAILABLE,
+                is_error=True,
+                message=e.message,
+            )
         except Exception as e:
-            logger.exception(e)
-            return self._set_internal_error_response(proxy_request, e)
+            if isinstance(e, (RayActorError, RayTaskError)):
+                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
+            else:
+                logger.exception("Request failed due to unexpected error.")
+            yield ResponseStatus(
+                code=grpc.StatusCode.INTERNAL,
+                is_error=True,
+                message=str(e),
+            )
 
 
 class HTTPProxy(GenericProxy):
-    """This class is meant to be instantiated and run by an ASGI HTTP server.
+    """This class is meant to be instantiated and run by an ASGI HTTP server."""
 
-    >>> import uvicorn
-    >>> controller_name = ... # doctest: +SKIP
-    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
-    """
+    def __init__(
+        self,
+        node_id: NodeId,
+        node_ip_address: str,
+        proxy_router_class: Type[ProxyRouter],
+        request_timeout_s: Optional[float] = None,
+        proxy_actor: Optional[ActorHandle] = None,
+    ):
+        super().__init__(
+            node_id,
+            node_ip_address,
+            proxy_router_class,
+            request_timeout_s=request_timeout_s,
+        )
+        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
+        self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
     def protocol(self) -> RequestProtocol:
         return RequestProtocol.HTTP
 
-    @property
-    def success_status_code(self) -> str:
-        return "200"
-
-    async def not_found(self, proxy_request: ProxyRequest) -> ProxyResponse:
+    async def not_found_response(
+        self, proxy_request: ProxyRequest
+    ) -> ResponseGenerator:
         status_code = 404
-        current_path = proxy_request.path
-        response = Response(
-            f"Path '{current_path}' not found. "
-            "Please ping http://.../-/routes for route table.",
+        for message in convert_object_to_asgi_messages(
+            f"Path '{proxy_request.path}' not found. "
+            "Ping http://.../-/routes for available routes.",
             status_code=status_code,
-        )
-        await response.send(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
-        return ProxyResponse(status_code=str(status_code))
+        ):
+            yield message
 
-    async def draining_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        status_code = 503
-        response = Response(DRAINED_MESSAGE, status_code=status_code)
-        await response.send(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
-        return ProxyResponse(status_code=str(status_code))
+        yield ResponseStatus(code=status_code, is_error=True)
 
-    async def timeout_response(
-        self, proxy_request: ProxyRequest, request_id: str
-    ) -> ProxyResponse:
-        status_code = 408
-        response = Response(
-            f"Request {request_id} timed out after {self.request_timeout_s}s.",
+    async def routes_response(
+        self, *, healthy: bool, message: str
+    ) -> ResponseGenerator:
+        status_code = 200 if healthy else 503
+        if healthy:
+            response = dict()
+            for route, endpoint in self.route_info.items():
+                # For 2.x deployments, return {route -> app name}
+                if endpoint.app_name:
+                    response[route] = endpoint.app_name
+                # Keep compatibility with 1.x deployments.
+                else:
+                    response[route] = endpoint.name
+        else:
+            response = message
+
+        for asgi_message in convert_object_to_asgi_messages(
+            response,
             status_code=status_code,
-        )
-        await response.send(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
-        return ProxyResponse(status_code=str(status_code))
+        ):
+            yield asgi_message
 
-    async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        resp = dict()
-        for route, endpoint in self.route_info.items():
-            # For 2.x deployments, return {route -> app name}
-            if endpoint.app:
-                resp[route] = endpoint.app
-            # Keep compatibility with 1.x deployments: return {route -> deployment name}
-            else:
-                resp[route] = endpoint.name
-
-        await starlette.responses.JSONResponse(resp)(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
+        yield ResponseStatus(
+            code=status_code,
+            message=message,
+            is_error=not healthy,
         )
-        return ProxyResponse(status_code=self.success_status_code)
 
-    async def health_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        await starlette.responses.PlainTextResponse(HEALTH_CHECK_SUCCESS_MESSAGE)(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
+    async def health_response(
+        self, *, healthy: bool, message: str = ""
+    ) -> ResponseGenerator:
+        status_code = 200 if healthy else 503
+        for asgi_message in convert_object_to_asgi_messages(
+            message,
+            status_code=status_code,
+        ):
+            yield asgi_message
+
+        yield ResponseStatus(
+            code=status_code,
+            is_error=not healthy,
+            message=message,
         )
-        return ProxyResponse(status_code=self.success_status_code)
 
-    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
+    async def receive_asgi_messages(self, request_id: str) -> ResponseGenerator:
         queue = self.asgi_receive_queues.get(request_id, None)
         if queue is None:
             raise KeyError(f"Request ID {request_id} not found.")
@@ -995,125 +840,12 @@ class HTTPProxy(GenericProxy):
             https://asgi.readthedocs.io/en/latest/specs/index.html.
         """
         proxy_request = ASGIProxyRequest(scope=scope, receive=receive, send=send)
-        await self.proxy_request(proxy_request=proxy_request)
-
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        http_body_bytes = await receive_http_body(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
-
-        # NOTE(edoakes): it's important that we defer building the starlette
-        # request until it reaches the replica to avoid unnecessary
-        # serialization cost, so we use a simple dataclass here.
-        request = HTTPRequestWrapper(proxy_request.scope, http_body_bytes)
-
-        # Perform a pickle here to improve latency. Stdlib pickle for simple
-        # dataclasses are 10-100x faster than cloudpickle.
-        request = pickle.dumps(request)
-
-        retries = 0
-        loop = get_or_create_event_loop()
-        # We have received all the http request content. The next `receive`
-        # call might never arrive; if it does, it can only be `http.disconnect`.
-        while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-            should_backoff = False
-            result_ref = handle.remote(request)
-            client_disconnection_task = loop.create_task(proxy_request.receive())
-            done, _ = await asyncio.wait(
-                [
-                    result_ref._to_object_ref(_record_telemetry=False),
-                    client_disconnection_task,
-                ],
-                return_when=FIRST_COMPLETED,
-            )
-            if client_disconnection_task in done:
-                message = await client_disconnection_task
-                assert message["type"] == "http.disconnect", (
-                    "Received additional request payload that's not disconnect. "
-                    "This is an invalid HTTP state."
-                )
-                logger.warning(
-                    f"Client from {proxy_request.client} disconnected, cancelling the "
-                    "request.",
-                    extra={"log_to_stderr": False},
-                )
-                result_ref.cancel()
-
-            try:
-                # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
-                # some replicas crash simultaneously (e.g. if the head node crashes),
-                # requests to the dead replicas hang until the gcs recovers.
-                # This asyncio.wait can kill those hanging requests and retry them
-                # at another replica. Release tests should kill the head node and
-                # check if latency drops significantly. See
-                # https://github.com/ray-project/ray/pull/29534 for more info.
-                done, pending = await asyncio.wait(
-                    [result_ref, client_disconnection_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                    timeout=self.request_timeout_s,
-                )
-                if client_disconnection_task in done:
-                    logger.info("Client disconnected, cancelling request.")
-                    result_ref.cancel()
-                    raise asyncio.CancelledError()
-                elif len(done) == 0:
-                    logger.info(
-                        f"Request didn't finish within {self.request_timeout_s} seconds"
-                        ". Retrying with another replica. You can modify this timeout "
-                        'by setting "request_timeout_s" in your Serve config\'s '
-                        "`http_options` field."
-                    )
-                    should_backoff = True
-                    result_ref.cancel()
-                else:
-                    result = await result_ref
-                    break
-            except asyncio.CancelledError:
-                # Here because the client disconnected, we will return a custom
-                # error code for metric tracking.
-                return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-            except RayTaskError as e:
-                error_message = f"Unexpected error, traceback: {e}."
-                await Response(error_message, status_code=500).send(
-                    proxy_request.scope, proxy_request.receive, proxy_request.send
-                )
-                return ProxyResponse(status_code="500")
-            except RayActorError:
-                logger.info(
-                    "Request failed due to replica failure. There are "
-                    f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
-                    "remaining."
-                )
-                should_backoff = True
-
-            if should_backoff:
-                backoff_period = min(
-                    INITIAL_BACKOFF_PERIOD_SEC * pow(2, retries), MAX_BACKOFF_PERIOD_SEC
-                )
-                retries += 1
-                await asyncio.sleep(backoff_period)
-        else:
-            error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500).send(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
-            return ProxyResponse(status_code="500")
-
-        if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await result(proxy_request.scope, proxy_request.receive, proxy_request.send)
-            return ProxyResponse(status_code=str(result.status_code))
-        else:
-            await Response(result).send(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
-            return ProxyResponse(status_code=self.success_status_code)
+        async for message in self.proxy_request(proxy_request):
+            if not isinstance(message, ResponseStatus):
+                await send(message)
 
     async def proxy_asgi_receive(
-        self, receive: Receive, queue: ASGIMessageQueue
+        self, receive: Receive, queue: MessageQueue
     ) -> Optional[int]:
         """Proxies the `receive` interface, placing its messages into the queue.
 
@@ -1139,118 +871,6 @@ class HTTPProxy(GenericProxy):
             # immediately: https://github.com/ray-project/ray/issues/38368.
             queue.close()
 
-    async def _consume_and_send_asgi_message_generator(
-        self,
-        obj_ref_generator: StreamingObjectRefGenerator,
-        disconnected_task: asyncio.Task,
-        request_id: str,
-        proxy_request: ProxyRequest,
-        timeout_s: Optional[float] = None,
-    ) -> Optional[str]:
-        """Consumes an obj ref generator that yields ASGI messages.
-
-        The messages are sent over the `send` interface.
-
-        If timeout_s is `None`, there's no timeout. If it's not `None`, a timeout error
-        will be raised if the full generator isn't consumed within the timeout.
-
-        Returns the status code for HTTP responses.
-        """
-        status_code = ""
-        start = time.time()
-        response_done = False
-        response_started = False
-        expecting_trailers = False
-        is_websocket_connection = False
-        while True:
-            try:
-                next_obj_ref_task = asyncio.ensure_future(
-                    obj_ref_generator._next_async(),
-                )
-                tasks = [next_obj_ref_task]
-                # Once the response is completed, the client will immediately
-                # disconnect. This causes a race condition: if we get the disconnect
-                # message before the replica handler finishes, we'll falsely detect a
-                # client disconnect. To avoid this, stop listening for disconnects once
-                # the full response has been sent.
-                if not response_done:
-                    tasks.append(disconnected_task)
-
-                done, _ = await asyncio.wait(
-                    tasks,
-                    return_when=asyncio.FIRST_COMPLETED,
-                    timeout=calculate_remaining_timeout(
-                        timeout_s=timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
-                    ),
-                )
-                if len(done) == 0:
-                    logger.warning(
-                        f"Request {request_id} timed out after "
-                        f"{self.request_timeout_s}s while executing."
-                    )
-                    next_obj_ref_task.cancel()
-                    ray.cancel(obj_ref_generator)
-
-                    # We should only send timeout response if we have not sent
-                    # any messages to the client yet. Header (including status code)
-                    # messages can only be sent once.
-                    if not response_started:
-                        await self.timeout_response(
-                            proxy_request=proxy_request, request_id=request_id
-                        )
-
-                    return TIMEOUT_ERROR_CODE
-                elif disconnected_task in done:
-                    logger.info(
-                        f"Client for request {request_id} disconnected "
-                        "during execution, cancelling request."
-                    )
-                    next_obj_ref_task.cancel()
-                    if not is_websocket_connection:
-                        # Websocket code explicitly handles client disconnects,
-                        # so let the ASGI disconnect message propagate instead of
-                        # cancelling the handler.
-                        ray.cancel(obj_ref_generator)
-                    return DISCONNECT_ERROR_CODE
-
-                obj_ref = next_obj_ref_task.result()
-                asgi_messages: List[Message] = pickle.loads(await obj_ref)
-                # See the ASGI spec for message details:
-                # https://asgi.readthedocs.io/en/latest/specs/www.html.
-                for asgi_message in asgi_messages:
-                    if asgi_message["type"] == "http.response.start":
-                        # HTTP responses begin with exactly one
-                        # "http.response.start" message containing the "status"
-                        # field. Other response types (e.g., WebSockets) may not.
-                        status_code = str(asgi_message["status"])
-                        expecting_trailers = asgi_message.get("trailers", False)
-                    elif asgi_message["type"] == "websocket.accept":
-                        is_websocket_connection = True
-                    elif (
-                        asgi_message["type"] == "http.response.body"
-                        and not asgi_message.get("more_body", False)
-                        and not expecting_trailers
-                    ):
-                        # If the body is completed and we aren't expecting trailers, the
-                        # response is done.
-                        response_done = True
-                    elif asgi_message["type"] == "http.response.trailers":
-                        # If we are expecting trailers, the response is only done when
-                        # the trailers message has been sent.
-                        response_done = not asgi_message.get("more_trailers", False)
-                    elif asgi_message["type"] == "websocket.disconnect":
-                        status_code = str(asgi_message["code"])
-                        response_done = True
-
-                    await proxy_request.send(asgi_message)
-                    response_started = True
-            except StopAsyncIteration:
-                break
-
-        return status_code
-
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -1274,93 +894,192 @@ class HTTPProxy(GenericProxy):
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
             if key.decode() == "x-request-id":
                 request_context_info["request_id"] = value.decode()
-            if (
-                key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
-                and "request_id" not in request_context_info
-            ):
-                # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
-                request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
         )
         return handle, request_context_info["request_id"]
 
-    async def send_request_to_replica_streaming(
+    async def _format_handle_arg_for_java(
+        self,
+        proxy_request: ProxyRequest,
+    ) -> bytes:
+        """Convert an HTTP request to the Java-accepted format (single byte string)."""
+        query_string = proxy_request.scope.get("query_string")
+        http_body_bytes = await receive_http_body(
+            proxy_request.scope, proxy_request.receive, proxy_request.send
+        )
+        if query_string:
+            arg = query_string.decode().split("=", 1)[1]
+        else:
+            arg = http_body_bytes.decode()
+
+        return arg
+
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
+        app_is_cross_language: bool = False,
+    ) -> ResponseGenerator:
+        """Send the request to the replica and yield its response messages.
+
+        The yielded values will be ASGI messages until the final one, which will be
+        the status code.
+        """
+        if app_is_cross_language:
+            handle_arg = await self._format_handle_arg_for_java(proxy_request)
+            # Response is returned as raw bytes, convert it to ASGI messages.
+            result_callback = convert_object_to_asgi_messages
+        else:
+            self_actor_handle = self.self_actor_handle
+            handle_arg = proxy_request.request_object(
+                receive_asgi_messages=self_actor_handle.receive_asgi_messages.remote
+            )
+            # Messages are returned as pickled dictionaries.
+            result_callback = pickle.loads
+
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
-        receive_queue = ASGIMessageQueue()
+        receive_queue = MessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
 
-        status_code = ""
-        start = time.time()
-        try:
-            obj_ref_generator = None
-            try:
-                obj_ref_generator = await self._assign_request_with_timeout(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                    disconnected_task=proxy_asgi_receive_task,
-                    timeout_s=self.request_timeout_s,
-                )
-                if obj_ref_generator is None:
-                    logger.info(
-                        f"Client from {proxy_request.client} disconnected, "
-                        "cancelling the request.",
-                        extra={"log_to_stderr": False},
-                    )
-                    return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-            except TimeoutError:
-                logger.warning(
-                    f"Request {request_id} timed out after {self.request_timeout_s}s."
-                )
-                if obj_ref_generator is not None:
-                    ray.cancel(obj_ref_generator)
-                await self.timeout_response(
-                    proxy_request=proxy_request, request_id=request_id
-                )
-                return ProxyResponse(status_code=TIMEOUT_ERROR_CODE)
+        response_generator = ProxyResponseGenerator(
+            handle.remote(handle_arg),
+            timeout_s=self.request_timeout_s,
+            disconnected_task=proxy_asgi_receive_task,
+            result_callback=result_callback,
+        )
 
-            status_code = await self._consume_and_send_asgi_message_generator(
-                obj_ref_generator,
-                disconnected_task=proxy_asgi_receive_task,
-                request_id=request_id,
-                proxy_request=proxy_request,
-                timeout_s=calculate_remaining_timeout(
-                    timeout_s=self.request_timeout_s,
-                    start_time_s=start,
-                    curr_time_s=time.time(),
-                ),
+        status: Optional[ResponseStatus] = None
+        response_started = False
+        expecting_trailers = False
+        try:
+            async for asgi_message_batch in response_generator:
+                # See the ASGI spec for message details:
+                # https://asgi.readthedocs.io/en/latest/specs/www.html.
+                for asgi_message in asgi_message_batch:
+                    if asgi_message["type"] == "http.response.start":
+                        # HTTP responses begin with exactly one
+                        # "http.response.start" message containing the "status"
+                        # field. Other response types (e.g., WebSockets) may not.
+                        status_code = str(asgi_message["status"])
+                        status = ResponseStatus(
+                            code=status_code,
+                            # TODO(edoakes): we need a more nuanced check than this.
+                            is_error=status_code != "200",
+                        )
+                        expecting_trailers = asgi_message.get("trailers", False)
+                    elif asgi_message["type"] == "websocket.accept":
+                        # Websocket code explicitly handles client disconnects,
+                        # so let the ASGI disconnect message propagate instead of
+                        # cancelling the handler.
+                        response_generator.stop_checking_for_disconnect()
+                    elif (
+                        asgi_message["type"] == "http.response.body"
+                        and not asgi_message.get("more_body", False)
+                        and not expecting_trailers
+                    ):
+                        # If the body is completed and we aren't expecting trailers, the
+                        # response is done so we should stop listening for disconnects.
+                        response_generator.stop_checking_for_disconnect()
+                    elif asgi_message["type"] == "http.response.trailers":
+                        # If we are expecting trailers, the response is only done when
+                        # the trailers message has been sent.
+                        if not asgi_message.get("more_trailers", False):
+                            response_generator.stop_checking_for_disconnect()
+                    elif asgi_message["type"] == "websocket.disconnect":
+                        status = ResponseStatus(
+                            code=str(asgi_message["code"]),
+                            # TODO(edoakes): we need a more nuanced check than this.
+                            is_error=False,
+                        )
+                        response_generator.stop_checking_for_disconnect()
+
+                    yield asgi_message
+                    response_started = True
+        except TimeoutError:
+            status = ResponseStatus(
+                code=TIMEOUT_ERROR_CODE,
+                is_error=True,
+            )
+            logger.warning(f"Request timed out after {self.request_timeout_s}s.")
+            # We should only send timeout response if we have not sent
+            # any messages to the client yet. Header (including status code)
+            # messages can only be sent once.
+            if not response_started:
+                for message in convert_object_to_asgi_messages(
+                    f"Request {request_id} timed out after {self.request_timeout_s}s.",
+                    status_code=408,
+                ):
+                    yield message
+        except asyncio.CancelledError:
+            status = ResponseStatus(
+                code=DISCONNECT_ERROR_CODE,
+                is_error=True,
+            )
+            logger.info(
+                f"Client for request {request_id} disconnected, cancelling request."
+            )
+        except BackPressureError as e:
+            status_code = 503
+            status = ResponseStatus(
+                code=status_code,
+                is_error=True,
+                message=e.message,
+            )
+            for message in convert_object_to_asgi_messages(
+                e.message,
+                status_code=status_code,
+            ):
+                yield message
+        except Exception as e:
+            if isinstance(e, (RayActorError, RayTaskError)):
+                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
+            else:
+                logger.exception("Request failed due to unexpected error.")
+            status = ResponseStatus(
+                code="500",
+                is_error=True,
             )
 
-        except Exception as e:
-            logger.exception(e)
-            status_code = "500"
         finally:
+            # For websocket connection, queue receive task is done when receiving
+            # disconnect message from client.
+            receive_client_disconnect_msg = False
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
             else:
-                # If the server disconnects, status_code is set above from the
-                # disconnect message. Otherwise the disconnect code comes from
-                # a client message via the receive interface.
-                if (
-                    status_code == ""
-                    and proxy_request.request_type == "websocket"
-                    and proxy_asgi_receive_task.exception() is None
-                ):
-                    status_code = str(proxy_asgi_receive_task.result())
+                receive_client_disconnect_msg = True
+
+            # If the server disconnects, status_code can be set above from the
+            # disconnect message.
+            # If client disconnects, the disconnect code comes from
+            # a client message via the receive interface.
+            if status is None and proxy_request.request_type == "websocket":
+                if receive_client_disconnect_msg:
+                    # The disconnect message is sent from the client.
+                    status = ResponseStatus(
+                        code=str(proxy_asgi_receive_task.result()),
+                        is_error=True,
+                    )
+                else:
+                    # The server disconnect without sending a disconnect message
+                    # (otherwise the `status` would be set).
+                    status = ResponseStatus(
+                        code="1000",  # [Sihan] is there a better code for this?
+                        is_error=True,
+                    )
 
             del self.asgi_receive_queues[request_id]
 
-        return ProxyResponse(status_code=status_code)
+        # The status code should always be set.
+        assert status is not None
+        yield status
 
 
 class RequestIdMiddleware:
@@ -1369,27 +1088,19 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope, receive, send):
         headers = MutableHeaders(scope=scope)
-        if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
-            # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
+        if "x-request-id" not in headers:
+            # If X-Request-ID is not set, we
             # generate a new request ID.
             request_id = generate_request_id()
             headers.append("x-request-id", request_id)
-            headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
         elif "x-request-id" in headers:
             request_id = headers["x-request-id"]
-        else:
-            # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
-            request_id = headers[RAY_SERVE_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Dict):
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
-                headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
                 headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
-                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
-                message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
                 message["X-Request-ID"] = request_id
             await send(message)
 
@@ -1403,19 +1114,53 @@ class ProxyActor:
         host: str,
         port: int,
         root_path: str,
-        controller_name: str,
         node_ip_address: str,
         node_id: NodeId,
+        logging_config: LoggingConfig,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
         keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
         grpc_options: Optional[gRPCOptions] = None,
+        long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
-        configure_component_logger(component_name="proxy", component_id=node_ip_address)
-        logger.info(
-            f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
-            f"starting on node {node_id}."
+        self.host = host
+        self.port = port
+        self.grpc_port = self.grpc_options.port
+        self.root_path = root_path
+        self.keep_alive_timeout_s = (
+            RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
+        )
+        self._uvicorn_server = None
+        self.node_ip_address = node_ip_address
+
+        self.http_setup_complete = asyncio.Event()
+        self.grpc_setup_complete = asyncio.Event()
+
+        self.long_poll_client = long_poll_client or LongPollClient(
+            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
+            {
+                LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
+                LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
+            },
+            call_in_event_loop=get_or_create_event_loop(),
+        )
+
+        configure_component_logger(
+            component_name="proxy",
+            component_id=node_ip_address,
+            logging_config=logging_config,
+        )
+
+        startup_msg = f"Proxy starting on node {node_id} (HTTP port: {port}"
+        if self.should_start_grpc_service():
+            startup_msg += f", gRPC port: {self.grpc_options.port})."
+        else:
+            startup_msg += ")."
+        logger.info(startup_msg)
+        logger.debug(
+            f"Configure Proxy actor {ray.get_runtime_context().get_actor_id()} "
+            f"logger with logging config: {logging_config}"
         )
 
         configure_component_memory_profiler(
@@ -1433,7 +1178,7 @@ class ProxyActor:
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
-                f" {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
+                f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
             )
             middlewares = validate_http_proxy_callback_return(
                 call_function_from_import_path(
@@ -1443,20 +1188,7 @@ class ProxyActor:
 
             http_middlewares.extend(middlewares)
 
-        self.host = host
-        self.port = port
-        self.grpc_port = self.grpc_options.port
-        self.root_path = root_path
-        self.keep_alive_timeout_s = (
-            RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
-        )
-        self._uvicorn_server = None
-
-        self.http_setup_complete = asyncio.Event()
-        self.grpc_setup_complete = asyncio.Event()
-
         self.http_proxy = HTTPProxy(
-            controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=LongestPrefixRouter,
@@ -1466,7 +1198,6 @@ class ProxyActor:
         )
         self.grpc_proxy = (
             gRPCProxy(
-                controller_name=controller_name,
                 node_id=node_id,
                 node_ip_address=node_ip_address,
                 proxy_router_class=EndpointRouter,
@@ -1481,9 +1212,18 @@ class ProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            self.wrapped_http_proxy = middleware.cls(
-                self.wrapped_http_proxy, **middleware.options
-            )
+            if version.parse(starlette.__version__) < version.parse("0.35.0"):
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy, **middleware.options
+                )
+            else:
+                # In starlette >= 0.35.0, middleware.options does not exist:
+                # https://github.com/encode/starlette/pull/2381.
+                self.wrapped_http_proxy = middleware.cls(
+                    self.wrapped_http_proxy,
+                    *middleware.args,
+                    **middleware.kwargs,
+                )
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
@@ -1496,6 +1236,26 @@ class ProxyActor:
         self.running_task_grpc = get_or_create_event_loop().create_task(
             self.run_grpc_server()
         )
+
+    def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
+        self.http_proxy.update_routes(endpoints)
+        if self.grpc_proxy is not None:
+            self.grpc_proxy.update_routes(endpoints)
+
+    def _update_logging_config(self, logging_config: LoggingConfig):
+        configure_component_logger(
+            component_name="proxy",
+            component_id=self.node_ip_address,
+            logging_config=logging_config,
+        )
+
+    def _get_logging_config(self) -> Tuple:
+        """Get the logging configuration (for testing purposes)."""
+        log_file_path = None
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                log_file_path = handler.baseFilename
+        return log_file_path
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.
@@ -1589,6 +1349,7 @@ class ProxyActor:
             loop=_determine_target_loop(),
             root_path=self.root_path,
             lifespan="off",
+            log_level="warning",
             access_log=False,
             timeout_keep_alive=self.keep_alive_timeout_s,
         )
@@ -1598,7 +1359,7 @@ class ProxyActor:
         # the main thread and uvicorn doesn't expose a way to configure it.
         self._uvicorn_server.install_signal_handlers = lambda: None
 
-        logger.info(
+        logger.debug(
             "Starting HTTP server on node: "
             f"{ray.get_runtime_context().get_node_id()} "
             f"listening on port {self.port}"
@@ -1614,6 +1375,7 @@ class ProxyActor:
         grpc_server = create_serve_grpc_server(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
+
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
@@ -1630,7 +1392,7 @@ class ProxyActor:
             grpc_servicer_function(dummy_servicer, grpc_server)
 
         await grpc_server.start()
-        logger.info(
+        logger.debug(
             "Starting gRPC server on node: "
             f"{ray.get_runtime_context().get_node_id()} "
             f"listening on port {self.grpc_port}"
@@ -1662,16 +1424,19 @@ class ProxyActor:
 
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.
+
         Make sure the async event loop is not blocked.
         """
-
-        logger.info("Received health check.", extra={"log_to_stderr": False})
+        logger.debug("Received health check.", extra={"log_to_stderr": False})
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         """Get ASGI messages for the provided `request_id`.
 
         After the proxy has stopped receiving messages for this `request_id`,
         this will always return immediately.
+
+        Raises `KeyError` if this request ID is not found. This will happen when the
+        request is no longer being handled (e.g., the user disconnects).
         """
         return pickle.dumps(await self.http_proxy.receive_asgi_messages(request_id))
 

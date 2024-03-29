@@ -8,7 +8,7 @@ from ray import serve
 
 
 # 1: Wrap the pretrained sentiment analysis model in a Serve deployment.
-@serve.deployment(route_prefix="/")
+@serve.deployment
 class SentimentAnalysisDeployment:
     def __init__(self):
         self._model = pipeline("sentiment-analysis")
@@ -18,7 +18,7 @@ class SentimentAnalysisDeployment:
 
 
 # 2: Deploy the deployment.
-serve.run(SentimentAnalysisDeployment.bind())
+serve.run(SentimentAnalysisDeployment.bind(), route_prefix="/")
 
 # 3: Query the deployment and print the result.
 print(

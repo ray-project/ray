@@ -9,6 +9,7 @@ Constructor
 -----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
    :template: autosummary/class_without_autosummary.rst
 
@@ -18,6 +19,7 @@ Resource Options
 ----------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
    :template: autosummary/class_without_autosummary.rst
 

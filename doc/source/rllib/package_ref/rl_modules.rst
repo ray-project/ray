@@ -1,4 +1,9 @@
 
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
 
 .. _rlmodule-reference-docs:
 
@@ -15,6 +20,7 @@ Single Agent
 .. currentmodule:: ray.rllib.core.rl_module.rl_module
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     SingleAgentRLModuleSpec
@@ -25,6 +31,7 @@ RLModule Configuration
 +++++++++++++++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     RLModuleConfig
@@ -38,6 +45,7 @@ Multi Agent
 .. currentmodule:: ray.rllib.core.rl_module.marl_module
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MultiAgentRLModuleSpec
@@ -56,6 +64,7 @@ Constructor
 +++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     RLModule
@@ -66,6 +75,7 @@ Forward methods
 +++++++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
 
@@ -77,6 +87,7 @@ IO specifications
 +++++++++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RLModule.input_specs_inference
@@ -92,6 +103,7 @@ Saving and Loading
 ++++++++++++++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RLModule.get_state
@@ -111,6 +123,7 @@ Constructor
 +++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MultiAgentRLModule
@@ -121,6 +134,7 @@ Modifying the underlying RL modules
 ++++++++++++++++++++++++++++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~MultiAgentRLModule.add_module
@@ -130,6 +144,7 @@ Saving and Loading
 ++++++++++++++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~MultiAgentRLModule.save_state

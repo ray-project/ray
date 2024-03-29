@@ -18,8 +18,8 @@ from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
+    ObjectRefGenerator,
     PythonFunctionDescriptor,
-    StreamingObjectRefGenerator,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -102,8 +102,12 @@ class RemoteFunction:
 
         # When gpu is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
+        # Note: Ray task worker process is not being reused when nsight
+        # profiler is running, as nsight generate report once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0
-        if num_gpus > 0 and self._default_options.get("max_calls", None) is None:
+        if (
+            num_gpus > 0 and self._default_options.get("max_calls", None) is None
+        ) or "nsight" in (self._default_options.get("runtime_env") or {}):
             self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.
@@ -117,6 +121,7 @@ class RemoteFunction:
             self._default_options["runtime_env"] = self._runtime_env
 
         self._language = language
+        self._is_generator = inspect.isgeneratorfunction(function)
         self._function = function
         self._function_signature = None
         # Guards trace injection to enforce exactly once semantics
@@ -170,7 +175,7 @@ class RemoteFunction:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.util.accelerators` for accelerator types.
+                See :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
@@ -205,6 +210,10 @@ class RemoteFunction:
                 placement group based scheduling;
                 `NodeAffinitySchedulingStrategy`:
                 node id based affinity scheduling.
+            enable_task_events: This specifies whether to enable task events for this
+                task. If set to True, task events such as (task running, finished)
+                are emitted, and available to Ray Dashboard and State API.
+                See :ref:`state-api-overview-ref` for more details.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -327,13 +336,25 @@ class RemoteFunction:
             "placement_group_capture_child_tasks"
         ]
         scheduling_strategy = task_options["scheduling_strategy"]
+
         num_returns = task_options["num_returns"]
+        if num_returns is None:
+            if self._is_generator:
+                num_returns = "streaming"
+            else:
+                num_returns = 1
+
         if num_returns == "dynamic":
             num_returns = -1
         elif num_returns == "streaming":
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
+        generator_backpressure_num_objects = task_options[
+            "_generator_backpressure_num_objects"
+        ]
+        if generator_backpressure_num_objects is None:
+            generator_backpressure_num_objects = -1
 
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
@@ -394,6 +415,9 @@ class RemoteFunction:
         if _task_launch_hook:
             _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
+        # Override enable_task_events to default for actor if not specified (i.e. None)
+        enable_task_events = task_options.get("enable_task_events")
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language._format_args(worker, args, kwargs)
@@ -421,6 +445,8 @@ class RemoteFunction:
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
+                generator_backpressure_num_objects,
+                enable_task_events,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
@@ -430,7 +456,7 @@ class RemoteFunction:
                 # that is for the generator task.
                 assert len(object_refs) == 1
                 generator_ref = object_refs[0]
-                return StreamingObjectRefGenerator(generator_ref, worker)
+                return ObjectRefGenerator(generator_ref, worker)
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:
