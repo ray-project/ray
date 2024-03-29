@@ -199,12 +199,3 @@ class DeploymentVersion:
 
 def _serialize(json_object):
     return str.encode(json.dumps(json_object, sort_keys=True))
-
-
-class VersionedReplica(ABC):
-    @property
-    def version(self) -> DeploymentVersion:
-        pass
-
-    def update_state(self, state):
-        pass

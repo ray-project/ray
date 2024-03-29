@@ -62,7 +62,7 @@ from ray.serve._private.utils import (
     msgpack_deserialize,
     msgpack_serialize,
 )
-from ray.serve._private.version import DeploymentVersion, VersionedReplica
+from ray.serve._private.version import DeploymentVersion
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
@@ -869,7 +869,7 @@ class ActorReplicaWrapper:
             pass
 
 
-class DeploymentReplica(VersionedReplica):
+class DeploymentReplica:
     """Manages state transitions for deployment replicas.
 
     This is basically a checkpointable lightweight state machine.
@@ -1078,7 +1078,7 @@ class ReplicaStateContainer:
     def __init__(self):
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
 
-    def add(self, state: ReplicaState, replica: VersionedReplica):
+    def add(self, state: ReplicaState, replica: DeploymentReplica):
         """Add the provided replica under the provided state.
 
         Args:
@@ -1086,7 +1086,7 @@ class ReplicaStateContainer:
             replica: replica to add.
         """
         assert isinstance(state, ReplicaState)
-        assert isinstance(replica, VersionedReplica)
+        assert isinstance(replica, DeploymentReplica)
         replica.update_state(state)
         self._replicas[state].append(replica)
 
@@ -1114,7 +1114,7 @@ class ReplicaStateContainer:
         exclude_version: Optional[DeploymentVersion] = None,
         states: Optional[List[ReplicaState]] = None,
         max_replicas: Optional[int] = math.inf,
-    ) -> List[VersionedReplica]:
+    ) -> List[DeploymentReplica]:
         """Get and remove all replicas of the given states.
 
         This removes the replicas from the container. Replicas are returned
@@ -2097,7 +2097,7 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def _stop_replica(self, replica: VersionedReplica, graceful_stop=True):
+    def _stop_replica(self, replica: DeploymentReplica, graceful_stop=True):
         """Stop replica
         1. Stop the replica.
         2. Change the replica into stopping state.

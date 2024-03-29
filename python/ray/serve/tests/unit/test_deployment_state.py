@@ -35,7 +35,6 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaStateContainer,
-    VersionedReplica,
 )
 from ray.serve._private.test_utils import (
     MockActorHandle,
@@ -332,22 +331,25 @@ def mock_deployment_state_manager(
         dead_replicas_context.clear()
 
 
-def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
+class FakeDeploymentReplica:
+    """Fakes the DeploymentReplica class."""
+
+    def __init__(self, version: DeploymentVersion):
+        self._version = version
+
+    @property
+    def version(self):
+        return self._version
+
+    def update_state(self, state):
+        pass
+
+
+def replica(version: Optional[DeploymentVersion] = None) -> FakeDeploymentReplica:
     if version is None:
         version = DeploymentVersion(get_random_string(), DeploymentConfig(), {})
 
-    class MockVersionedReplica(VersionedReplica):
-        def __init__(self, version: DeploymentVersion):
-            self._version = version
-
-        @property
-        def version(self):
-            return self._version
-
-        def update_state(self, state):
-            pass
-
-    return MockVersionedReplica(version)
+    return FakeDeploymentReplica(version)
 
 
 class TestReplicaStateContainer:
