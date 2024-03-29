@@ -4,6 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from functools import total_ordering
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -109,6 +110,14 @@ class Resources(dict):
         return False
 
 
+class ReplicaSchedulingRequestStatus(str, Enum):
+    """The status of a replica scheduling request."""
+
+    IN_PROGRESS = "IN_PROGRESS"
+    SUCCEEDED = "SUCCEEDED"
+    PLACEMENT_GROUP_CREATION_FAILED = "PLACEMENT_GROUP_CREATION_FAILED"
+
+
 @dataclass
 class ReplicaSchedulingRequest:
     """Request to schedule a single replica.
@@ -123,8 +132,7 @@ class ReplicaSchedulingRequest:
     actor_options: Dict
     actor_init_args: Tuple
     on_scheduled: Callable
-    scheduling_failed: bool = False
-    scheduling_failed_reason: Optional[str] = None
+    status: ReplicaSchedulingRequestStatus = ReplicaSchedulingRequestStatus.IN_PROGRESS
     # Placement group bundles and strategy *for this replica*.
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
@@ -554,11 +562,8 @@ class DeploymentScheduler(ABC):
                 logger.exception(
                     f"Failed to create a placement group for {replica_id}."
                 )
-                scheduling_request.scheduling_failed = True
-                scheduling_request.scheduling_failed_reason = (
-                    "Failed to create a placement group for replica "
-                    f"{replica_id.unique_id}. See Serve controller logs "
-                    "for more details."
+                scheduling_request.status = (
+                    ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
                 return
             scheduling_strategy = PlacementGroupSchedulingStrategy(
@@ -602,6 +607,7 @@ class DeploymentScheduler(ABC):
         if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
             placement_group = scheduling_strategy.placement_group
 
+        scheduling_request = ReplicaSchedulingRequestStatus.SUCCEEDED
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
 
     @abstractmethod

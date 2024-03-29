@@ -49,6 +49,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentScheduler,
     ReplicaSchedulingRequest,
+    ReplicaSchedulingRequestStatus,
     SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
@@ -2832,13 +2833,15 @@ class DeploymentStateManager:
         """Updates internal datastructures when replicas fail to be scheduled."""
         failed_replicas: List[ReplicaID] = []
         for scheduling_request in scheduling_requests:
-            if scheduling_request.scheduling_failed:
+            if (
+                scheduling_request.status
+                == ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+            ):
                 failed_replicas.append(scheduling_request.replica_id)
-                error_msg = "Replica scheduling failed."
-                if scheduling_request.scheduling_failed_reason:
-                    error_msg += f" {scheduling_request.scheduling_failed_reason}"
                 self._deployment_states[deployment_id].record_replica_startup_failure(
-                    error_msg
+                    "Failed to create a placement group for replica "
+                    f"{scheduling_request.replica_id}. See Serve controller "
+                    "logs for more details."
                 )
         if failed_replicas:
             self._deployment_states[deployment_id].stop_replicas(failed_replicas)
