@@ -35,10 +35,10 @@ You may need to install ``graphviz`` for ``pprof`` to generate flame graphs.
   
   sudo apt-get install graphviz
 
-CPU Profiling
+CPU profiling
 -------------
 
-If you want to launch Ray in profiling mode and profile raylet, define the following variables:
+To launch Ray in profiling mode and profile Raylet, define the following variables:
 
 .. code-block:: bash
 
@@ -47,19 +47,19 @@ If you want to launch Ray in profiling mode and profile raylet, define the follo
   export RAY_RAYLET_PERFTOOLS_PROFILER=1
 
 
-The file ``/tmp/pprof.out`` will be empty until you let the binary run the
+The file ``/tmp/pprof.out`` is empty until you let the binary run the
 target workload for a while and then ``kill`` it via ``ray stop`` or by
 letting the driver exit. 
 
 Note: Enabling `RAY_RAYLET_PERFTOOLS_PROFILER` allows profiling of the Raylet component. 
-If you wish to profile other modules, you should utilize `RAY_{MODULE}_PERFTOOLS_PROFILER`,
+To profile other modules, use `RAY_{MODULE}_PERFTOOLS_PROFILER`,
 where `MODULE` represents the uppercase form of the process type, such as `GCS_SERVER`.
 
 
 Visualizing the CPU profile
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The output of ``pprof`` can be visualized in many ways. Here we output it as a
+You can visualize the output of ``pprof`` in different ways. Below, the output is a
 zoomable ``.svg`` image displaying the call graph annotated with hot paths.
 
 .. code-block:: bash
@@ -74,15 +74,15 @@ zoomable ``.svg`` image displaying the call graph annotated with hot paths.
   # into subtrees.
   google-pprof -focus=epoll_wait -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
 
-Here's a snapshot of an example svg output, taken from the official
+Below is a snapshot of an example SVG output, from the official
 documentation:
 
 .. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
-Memory Profiling
+Memory profiling
 ----------------
 
-If you want to run memory profiling on Ray core components, you can use Jemalloc (https://github.com/jemalloc/jemalloc).
+To run memory profiling on Ray core components, use Jemalloc (https://github.com/jemalloc/jemalloc).
 Ray supports environment variables to override LD_PRELOAD on core components.
 
 You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server, 
@@ -105,8 +105,8 @@ Users are supposed to provide 3 env vars for memory profiling.
   make install
 
 
-  # set jemalloc configs through MALLOC_CONF env variable
-  # read http://jemalloc.net/jemalloc.3.html#opt.lg_prof_interval
+  # Set jemalloc configs through MALLOC_CONF env variable.
+  # Read http://jemalloc.net/jemalloc.3.html#opt.lg_prof_interval.
   # for all jemalloc configs
   # Ray start will profile the GCS server component.
   RAY_JEMALLOC_CONF=prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true \
@@ -114,13 +114,13 @@ Users are supposed to provide 3 env vars for memory profiling.
   RAY_JEMALLOC_PROFILE=gcs_server \
   ray start --head
 
-  # You should be able to see the following logs.
+  # You should see the following logs.
   2021-10-20 19:45:08,175	INFO services.py:622 -- Jemalloc profiling will be used for gcs_server. env vars: {'LD_PRELOAD': '/Users/sangbincho/jemalloc-5.2.1/lib/libjemalloc.so', 'MALLOC_CONF': 'prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true'}
 
-Visualizing the Memory profile
+Visualizing the memory profile
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The output files will be at the path where we call "ray start".
-A example of profile file is "jeprof.15786.0.f.heap", then we can use following commands to generate the .svg plot.
+The output files are at the path where you call "ray start".
+For the example of profile file "jeprof.15786.0.f.heap", use following commands to generate the .svg plot.
 
 .. code-block:: bash
 
@@ -132,7 +132,7 @@ A example of profile file is "jeprof.15786.0.f.heap", then we can use following 
 
 
 
-Running Microbenchmarks
+Running microbenchmarks
 -----------------------
 
 To run a set of single-node Ray microbenchmarks, use:
@@ -148,4 +148,4 @@ References
 
 - The `pprof documentation <http://goog-perftools.sourceforge.net/doc/cpu_profiler.html>`_.
 - A `Go version of pprof <https://github.com/google/pprof>`_.
-- The `gperftools <https://github.com/gperftools/gperftools>`_, including libprofiler, tcmalloc, and other goodies.
+- The `gperftools <https://github.com/gperftools/gperftools>`_, including libprofiler, tcmalloc, and other useful tools.
