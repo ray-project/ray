@@ -689,7 +689,7 @@ py_test_module_list(
   size = "large",
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests", "team:core"],
+  tags = ["exclusive", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
