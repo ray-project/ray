@@ -2916,7 +2916,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 3
-    # An error message should show up on after
+    # An error message should show up after
     # 3 * num_replicas startup failures.
     assert "" in ds1.curr_status_info.message
 
