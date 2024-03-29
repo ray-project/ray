@@ -101,8 +101,10 @@ def list_image_tag_suffixes(
 
 
 def pull_image(image_name: str) -> None:
+    logger.info(f"Pulling image {image_name}")
     client = docker.from_env()
     client.images.pull(image_name)
+    logger.info("Image pulled successfully.")
 
 
 def remove_image(image_name: str) -> None:
