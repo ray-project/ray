@@ -1606,16 +1606,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void RemoveObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
-  // Invokes ReportGeneratorItemReturns on client. If non-OK, retry every 1s, until got a
-  // OK status. This avoids losing elements in a stream on network error.
-  void RetryReportGeneratorItemReturns(
-      const rpc::ReportGeneratorItemReturnsRequest &request,
-      const ObjectID &generator_id,
-      const ObjectID &return_id,
-      const rpc::Address &caller_address,
-      int64_t item_index,
-      std::shared_ptr<GeneratorBackpressureWaiter> waiter);
-
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
   /// and a new one takes its place with the same place. In this situation, we want

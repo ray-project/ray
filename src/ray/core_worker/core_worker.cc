@@ -3096,55 +3096,6 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
   return return_id;
 }
 
-void CoreWorker::RetryReportGeneratorItemReturns(
-    const rpc::ReportGeneratorItemReturnsRequest &request,
-    const ObjectID &generator_id,
-    const ObjectID &return_id,
-    const rpc::Address &caller_address,
-    int64_t item_index,
-    std::shared_ptr<GeneratorBackpressureWaiter> waiter) {
-  // Invoke ReportGeneratorItemReturns on client. If non-OK, retry every 1s, until got a
-  // OK status. This avoids lost elements in a stream.
-  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
-
-  client->ReportGeneratorItemReturns(
-      request,
-      [this, request, generator_id, return_id, caller_address, item_index, waiter](
-          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
-        RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
-                       << "index: " << item_index << ". total_consumed_reported: "
-                       << reply.total_num_object_consumed();
-        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
-                       << ". Total object generated: " << waiter->TotalObjectGenerated();
-        int64_t num_objects_consumed;
-        if (status.ok()) {
-          num_objects_consumed = reply.total_num_object_consumed();
-          waiter->HandleObjectReported(num_objects_consumed);
-        } else {
-          RAY_LOG(WARNING) << "Failed to report streaming generator return " << return_id
-                           << " to the caller. Retrying in 1s...";
-          auto timer = std::make_shared<boost::asio::steady_timer>(
-              this->io_service_, boost::asio::chrono::seconds(1));
-          timer->async_wait([this,
-                             timer,
-                             request,
-                             generator_id,
-                             return_id,
-                             caller_address,
-                             item_index,
-                             waiter](const boost::system::error_code &ec) {
-            if (ec) {
-              // should only be boost::asio::error::operation_aborted
-              RAY_LOG(INFO) << "Retry aborted! ec = " << ec;
-              return;
-            }
-            this->RetryReportGeneratorItemReturns(
-                request, generator_id, return_id, caller_address, item_index, waiter);
-          });
-        }
-      });
-}
-
 Status CoreWorker::ReportGeneratorItemReturns(
     const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
     const ObjectID &generator_id,
@@ -3157,6 +3108,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_item_index(item_index);
   request.set_generator_id(generator_id.Binary());
   request.set_attempt_number(attempt_number);
+  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
   if (!dynamic_return_object.first.IsNil()) {
     auto return_object_proto = request.add_dynamic_return_objects();
@@ -3178,8 +3130,28 @@ Status CoreWorker::ReportGeneratorItemReturns(
 
   waiter->IncrementObjectGenerated();
 
-  RetryReportGeneratorItemReturns(
-      request, generator_id, return_id, caller_address, item_index, waiter);
+  client->ReportGeneratorItemReturns(
+      request,
+      [waiter, generator_id, return_id, item_index](
+          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+        RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
+                       << "index: " << item_index << ". total_consumed_reported: "
+                       << reply.total_num_object_consumed();
+        RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
+                       << ". Total object generated: " << waiter->TotalObjectGenerated();
+        int64_t num_objects_consumed;
+        if (status.ok()) {
+          num_objects_consumed = reply.total_num_object_consumed();
+        } else {
+          // TODO(sang): Handle network error more gracefully.
+          // If the request fails, we should just resume until task finishes without
+          // backpressure.
+          num_objects_consumed = waiter->TotalObjectGenerated();
+          RAY_LOG(WARNING) << "Failed to report streaming generator return " << return_id
+                           << " to the caller. The yield'ed ObjectRef may not be usable.";
+        }
+        waiter->HandleObjectReported(num_objects_consumed);
+      });
 
   // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
   // details.
