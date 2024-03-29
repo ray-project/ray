@@ -26,7 +26,7 @@ This tutorial walks through two examples:
 
 This tutorial helps you serve a large language model on HPUs.
 
-Welcome to try out [llm-on-ray](https://github.com/intel/llm-on-ray), where you can find more examples, and get them deployed in a simpler way.
+
 
 ## Environment setup
 
@@ -286,3 +286,6 @@ The path was overgrown with weeds and vines, and it looked as though it hadn't b
 Once upon a time, there was a young woman named Sophia who lived in a small village nestled in the rolling hills of Tuscany. Sophia was a curious and adventurous soul, always eager to explore the world around her. One day, while wandering through the village, she stumbled upon a hidden path she had never seen before.
 The path was overgrown with weeds and vines, and it looked as though it hadn't been traversed in years. But Sophia was intrigued, and she decided to follow it to see where it led. She pushed aside the branches and stepped onto the path
 ```
+
+## Next Steps
+Check out [llm-on-ray](https://github.com/intel/llm-on-ray) for more ways to customize and deploy LLMs at scale.

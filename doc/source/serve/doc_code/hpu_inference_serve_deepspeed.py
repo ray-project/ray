@@ -12,7 +12,7 @@ from ray.util.queue import Queue
 from ray.runtime_env import RuntimeEnv
 
 
-@ray.remote(num_cpus=8, resources={"HPU": 1})
+@ray.remote(resources={"HPU": 1})
 class DeepSpeedInferenceWorker(TorchDistributedWorker):
     def __init__(self, model_id_or_path: str, world_size: int, local_rank: int):
         """An actor that runs a DeepSpeed inference engine.
