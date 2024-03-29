@@ -2918,7 +2918,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     assert ds1._replica_constructor_retry_counter == 3
     # An error message should show up after
     # 3 * num_replicas startup failures.
-    assert "" in ds1.curr_status_info.message
+    assert "" == ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2936,7 +2936,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 6
-    assert "" in ds1.curr_status_info.message
+    assert "" == ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2951,7 +2951,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 9
-    assert "" in ds1.curr_status_info.message
+    assert "" == ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
