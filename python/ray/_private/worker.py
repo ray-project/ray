@@ -1705,6 +1705,7 @@ def init(
             metrics_export_port=_metrics_export_port,
         )
         try:
+            logger.info("Creating a node for connect only")
             _global_node = ray._private.node.Node(
                 ray_params,
                 head=False,

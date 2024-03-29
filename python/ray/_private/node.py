@@ -72,6 +72,7 @@ class Node:
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
+        print(f"ray_params: {ray_params}")
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
@@ -240,7 +241,8 @@ class Node:
 
         # If it is a head node, try validating if
         # external storage is configurable.
-        if self.is_head:
+        logger.info(f"head = {head}, self.head = {self.head}")
+        if head:
             self.validate_external_storage()
 
         if connect_only:
@@ -1730,6 +1732,7 @@ class Node:
             "object_spilling_config"
         ] = object_spilling_config
         self._config["object_spilling_config"] = object_spilling_config
+        logger.info("Setting self._config['object_spilling_config'] to %s", object_spilling_config)
 
         is_external_storage_type_fs = deserialized_config["type"] == "filesystem"
         self._ray_params._system_config[

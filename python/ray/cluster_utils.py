@@ -226,6 +226,7 @@ class Cluster:
         ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
             if self.head_node is None:
+                logger.info("Creating head node, with node_args: %s", node_args)
                 node = ray._private.node.Node(
                     ray_params,
                     head=True,
@@ -246,6 +247,7 @@ class Cluster:
                 # to the local cluster.
                 ray._private.utils.write_ray_address(self.head_node.gcs_address)
             else:
+                logger.info("Creating worker node, with node_args: %s", node_args)
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.

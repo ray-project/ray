@@ -266,6 +266,7 @@ def test_spill_remote_object(
 ):
     cluster = ray_start_cluster_enabled
     object_spilling_config, _ = multi_node_object_spilling_config
+    print(f"Adding node 1 with object_spilling_config: {object_spilling_config}")
     cluster.add_node(
         num_cpus=0,
         object_store_memory=75 * 1024 * 1024,
@@ -278,6 +279,7 @@ def test_spill_remote_object(
         },
     )
     ray.init(address=cluster.address)
+    print(f"Adding node 2")
     cluster.add_node(object_store_memory=75 * 1024 * 1024)
     cluster.wait_for_nodes()
 
