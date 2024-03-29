@@ -2416,6 +2416,7 @@ class DeploymentStateManager:
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
         head_node_id_override: Optional[str] = None,
+        create_placement_group_fn_override: Optional[Callable] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
@@ -2423,6 +2424,7 @@ class DeploymentStateManager:
         self._deployment_scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override,
+            create_placement_group_fn_override,
         )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()

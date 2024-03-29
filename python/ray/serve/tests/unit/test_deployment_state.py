@@ -316,7 +316,9 @@ def mock_deployment_state_manager(
         cluster_node_info_cache.add_node("node-id")
 
         def create_deployment_state_manager(
-            actor_names=None, placement_group_names=None
+            actor_names=None,
+            placement_group_names=None,
+            create_placement_group_fn_override=None,
         ):
             if actor_names is None:
                 actor_names = []
@@ -331,6 +333,7 @@ def mock_deployment_state_manager(
                 placement_group_names,
                 cluster_node_info_cache,
                 head_node_id_override="fake-head-node-id",
+                create_placement_group_fn_override=create_placement_group_fn_override,
             )
 
         yield create_deployment_state_manager, timer, cluster_node_info_cache
@@ -2873,9 +2876,6 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     Test deploy with a placement group failure.
     """
 
-    create_dsm, _, _ = mock_deployment_state_manager
-    dsm: DeploymentStateManager = create_dsm()
-
     def fake_create_placement_group_fn(placement_group_bundles, *args, **kwargs):
         """Fakes the placement_group_fn used by the scheduler.
 
@@ -2885,8 +2885,9 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
         validate_placement_group(bundles=placement_group_bundles)
 
-    dsm._deployment_scheduler._create_placement_group_fn = (
-        fake_create_placement_group_fn
+    create_dsm, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm(
+        create_placement_group_fn_override=fake_create_placement_group_fn,
     )
 
     def create_deployment_state(
