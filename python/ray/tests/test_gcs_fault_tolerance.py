@@ -437,7 +437,7 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
         try:
             assert ray.get(a.ready.remote()) != pid
             break
-        except ray.exceptions.RayActorError:
+        except ray.exceptions.ActorUnavailableError:
             continue
 
 

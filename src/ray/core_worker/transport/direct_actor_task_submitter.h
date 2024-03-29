@@ -297,12 +297,15 @@ class CoreWorkerDirectActorTaskSubmitter
     ///
     /// If we got a actor dead notification, the error_info from that death cause is used.
     /// If it timed out, it's possible that the Actor is not dead yet, so we use
-    /// `timeout_error_info`.
+    /// `timeout_error_info`. One special case is when the actor is preempted, where
+    /// the actor may not be dead *just yet* but we want to treat it as dead. In this
+    /// case we will hard code an error info.
     struct PendingTaskWaitingForDeathInfo {
       int64_t deadline_ms;
       TaskSpecification task_spec;
       ray::Status status;
       rpc::RayErrorInfo timeout_error_info;
+      bool actor_preempted = false;
 
       PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
                                      TaskSpecification task_spec,
