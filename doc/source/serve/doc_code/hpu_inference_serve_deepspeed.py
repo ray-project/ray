@@ -13,10 +13,10 @@ from ray.runtime_env import RuntimeEnv
 
 
 @ray.remote(resources={"HPU": 1})
-class DeepSpeedInferenceWorker(TorchDistributedWorker):
+class DeepSpeedInferenceWorker:
     def __init__(self, model_id_or_path: str, world_size: int, local_rank: int):
         """An actor that runs a DeepSpeed inference engine.
-        
+
         Arguments:
             model_id_or_path: Either a HuggingFace model ID
                 or a path to a cached model.
@@ -53,9 +53,12 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
         import habana_frameworks.torch.distributed.hccl as hccl
+
         # Initialize distributed backend
-        hccl.initialize_distributed_hpu(world_size=world_size, rank=local_rank, local_rank=local_rank)
-        torch.distributed.init_process_group(backend='hccl')
+        hccl.initialize_distributed_hpu(
+            world_size=world_size, rank=local_rank, local_rank=local_rank
+        )
+        torch.distributed.init_process_group(backend="hccl")
 
     def load_model(self):
         """Load the model to HPU and initialize the DeepSpeed inference engine."""
@@ -114,7 +117,7 @@ class DeepSpeedInferenceWorker(TorchDistributedWorker):
 
     def get_streamer(self):
         """Return a streamer.
-        
+
         Only the rank 0 worker's result is needed.
         Other workers return a fake streamer.
         """
@@ -201,7 +204,7 @@ class DeepSpeedLlamaModel:
 
     def generate(self, prompt: str, **config: Dict[str, Any]):
         """Send the prompt to workers for generation.
-        
+
         Return after all workers have finished generation.
         Only return the rank 0 worker's result.
         """
@@ -214,7 +217,7 @@ class DeepSpeedLlamaModel:
 
     def streaming_generate(self, prompt: str, **config: Dict[str, Any]):
         """Send the prompt to workers for streaming generation.
-        
+
         Only use the rank 0 worker's result.
         """
 
