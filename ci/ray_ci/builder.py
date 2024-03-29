@@ -10,7 +10,7 @@ from ci.ray_ci.builder_container import (
     BuilderContainer,
 )
 from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
-from ci.ray_ci.docker_container import PLATFORM
+from ci.ray_ci.docker_container import PLATFORMS_RAY
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.container import _DOCKER_ECR_REPO
@@ -42,7 +42,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.option(
     "--platform",
     multiple=True,
-    type=click.Choice(list(PLATFORM)),
+    type=click.Choice(list(PLATFORMS_RAY)),
     help=("Platform to build the docker with"),
 )
 @click.option(
