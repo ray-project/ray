@@ -3,6 +3,14 @@ import os
 import yaml
 from typing_extensions import TypedDict
 
+PR_PIPELINES = [
+    "0189942e-0876-4b8f-80a4-617f988ec59b",  # premerge
+]
+BRANCH_PIPELINES = [
+    "0189e759-8c96-4302-b6b5-b4274406bf89",  # postmerge
+    "018e0f94-ccb6-45c2-b072-1e624fe9a404",  # postmerge-macos
+]
+
 
 class GlobalConfig(TypedDict):
     byod_ray_ecr: str
