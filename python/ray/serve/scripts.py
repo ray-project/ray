@@ -276,7 +276,7 @@ def _generate_config_from_file_or_import_path(
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
-        "This command makes a REST API request to a running Ray cluster.
+        "This command makes a REST API request to a running Ray cluster."
     ),
 )
 @click.argument("config_or_import_path")
