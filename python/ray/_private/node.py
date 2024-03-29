@@ -258,6 +258,7 @@ class Node:
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
+                # self._node_id = node_info["node_id"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -324,9 +325,13 @@ class Node:
                 self.gcs_address,
                 self._raylet_ip_address,
             )
+            # self._node_id = node_info["node_id"]
+            # print(f"L329 node_id: {self._node_id}")
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
+            # print(f"L332 node_id: {self._node_id}")
 
+        #print(f"node_id: {self._node_id}")
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
