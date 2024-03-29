@@ -607,7 +607,7 @@ class DeploymentScheduler(ABC):
         if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
             placement_group = scheduling_strategy.placement_group
 
-        scheduling_request = ReplicaSchedulingRequestStatus.SUCCEEDED
+        scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
 
     @abstractmethod
