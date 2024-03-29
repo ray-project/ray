@@ -1,4 +1,4 @@
-import { Button, Grid, MenuItem, Paper, Select } from "@mui/material";
+import { Box, Button, Grid, MenuItem, Select } from "@mui/material";
 import makeStyles from "@mui/styles/makeStyles";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -84,7 +84,7 @@ const CMDResult = () => {
     <div className={classes.root}>
       <TitleCard title={cmd}>
         {cmd === "jstat" && (
-          <Paper className={classes.pageMeta}>
+          <Box className={classes.pageMeta}>
             <Grid container spacing={1}>
               <Grid item>
                 <Select
@@ -113,7 +113,7 @@ const CMDResult = () => {
                 <Button onClick={executeJstat}>Execute</Button>
               </Grid>
             </Grid>
-          </Paper>
+          </Box>
         )}
       </TitleCard>
       <TitleCard title={`IP: ${ip} / Pid: ${pid}`}>

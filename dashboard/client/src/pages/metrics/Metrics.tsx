@@ -440,6 +440,7 @@ export const Metrics = () => {
               onChange={({ target: { value } }) => {
                 setTimeRangeOption(value as TimeRangeOptions);
               }}
+              variant="standard"
             >
               {Object.entries(TimeRangeOptions).map(([key, value]) => (
                 <MenuItem key={key} value={value}>

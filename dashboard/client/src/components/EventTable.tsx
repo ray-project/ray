@@ -229,13 +229,17 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
         <TextField
-          className={classes.search}
           label="Page Size"
+          sx={{ margin: 1, width: 120 }}
+          size="small"
+          defaultValue={10}
           InputProps={{
             onChange: ({ target: { value } }) => {
               changePage("pageSize", Math.min(Number(value), 500) || 10);
             },
-            value: pagination.pageSize,
+            endAdornment: (
+              <InputAdornment position="end">Per Page</InputAdornment>
+            ),
           }}
         />
         <Button

@@ -81,31 +81,6 @@ export const LogViewer = ({
               }}
             />
             <TextField
-              className={classes.search}
-              label="Line Number"
-              InputProps={{
-                onChange: ({ target: { value } }) => {
-                  setSearch({ ...search, lineNumber: value });
-                },
-                type: "",
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <SearchOutlined />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <TextField
-              className={classes.search}
-              label="Font Size"
-              InputProps={{
-                onChange: ({ target: { value } }) => {
-                  setSearch({ ...search, fontSize: Number(value) });
-                },
-                type: "",
-              }}
-            />
-            <TextField
               id="datetime-local"
               label="Start Time"
               type="datetime-local"

@@ -1,14 +1,6 @@
 import { SearchOutlined } from "@mui/icons-material";
 import { InputAdornment, MenuItem, TextField } from "@mui/material";
-import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
-
-const useStyles = makeStyles((theme) => ({
-  search: {
-    margin: theme.spacing(1),
-    marginTop: 0,
-  },
-}));
 
 export const SearchInput = ({
   label,
@@ -19,11 +11,8 @@ export const SearchInput = ({
   defaultValue?: string;
   onChange?: (value: string) => void;
 }) => {
-  const classes = useStyles();
-
   return (
     <TextField
-      className={classes.search}
       size="small"
       label={label}
       InputProps={{
@@ -56,10 +45,8 @@ export const SearchSelect = ({
   showAllOption: boolean;
   defaultValue?: string;
 }) => {
-  const classes = useStyles();
   return (
     <TextField
-      className={classes.search}
       size="small"
       label={label}
       select

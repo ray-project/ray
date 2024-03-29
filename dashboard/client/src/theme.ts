@@ -91,9 +91,6 @@ const basicTheme: ThemeOptions = {
           borderRadius: 8,
         },
       },
-      defaultProps: {
-        elevation: 0,
-      },
     },
   },
 };

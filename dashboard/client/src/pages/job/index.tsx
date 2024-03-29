@@ -1,5 +1,6 @@
 import {
   Box,
+  InputAdornment,
   Switch,
   Table,
   TableBody,
@@ -7,6 +8,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from "@mui/material";
 import Pagination from "@mui/material/Pagination";
@@ -89,16 +91,33 @@ const JobList = () => {
       </TitleCard>
       <TitleCard title="Job List">
         <TableContainer>
-          <SearchInput
-            label="Job ID"
-            onChange={(value) => changeFilter("job_id", value)}
-          />
-          <SearchInput
-            label="Page Size"
-            onChange={(value) =>
-              setPage("pageSize", Math.min(Number(value), 500) || 10)
-            }
-          />
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              paddingTop: 1,
+            }}
+          >
+            <SearchInput
+              label="Job ID"
+              onChange={(value) => changeFilter("job_id", value)}
+            />
+            <TextField
+              sx={{ width: 120 }}
+              label="Page Size"
+              size="small"
+              defaultValue={10}
+              InputProps={{
+                onChange: ({ target: { value } }) => {
+                  setPage("pageSize", Math.min(Number(value), 500) || 10);
+                },
+                endAdornment: (
+                  <InputAdornment position="end">Per Page</InputAdornment>
+                ),
+              }}
+            />
+          </Box>
           <div>
             <Pagination
               count={Math.ceil(jobList.length / page.pageSize)}

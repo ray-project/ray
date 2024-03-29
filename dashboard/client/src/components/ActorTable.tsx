@@ -89,7 +89,7 @@ const ActorTable = ({
     onFilterChange,
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
-  const [pageSize, setPageSize] = useState(10);
+  const pageSize = 10;
 
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
@@ -327,7 +327,7 @@ const ActorTable = ({
 
   return (
     <React.Fragment>
-      <div style={{ flex: 1, display: "flex", alignItems: "end" }}>
+      <Box sx={{ display: "flex", flex: 1, alignItems: "center" }}>
         <Autocomplete
           style={{ margin: 8, width: 120 }}
           options={Array.from(
@@ -455,16 +455,6 @@ const ActorTable = ({
             ),
           }}
         />
-        <TextField
-          style={{ margin: 8, width: 120 }}
-          label="Page Size"
-          size="small"
-          InputProps={{
-            onChange: ({ target: { value } }) => {
-              setPageSize(Math.min(Number(value), 500) || 10);
-            },
-          }}
-        />
         <div data-testid="sortByFilter">
           <SearchSelect
             label="Sort By"
@@ -487,7 +477,7 @@ const ActorTable = ({
           Reverse:
           <Switch onChange={(_, checked) => setOrderDesc(checked)} />
         </span>
-      </div>
+      </Box>
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination

@@ -1,4 +1,4 @@
-import { Box, Paper, TooltipProps, Typography } from "@mui/material";
+import { Box, TooltipProps, Typography } from "@mui/material";
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
@@ -284,7 +284,7 @@ const LegendTooltip = ({
       <StyledTooltip
         placement="right"
         title={
-          <Paper>
+          <Box>
             <div className={classes.legendItemContainer}>
               <div
                 className={classes.colorLegend}
@@ -303,7 +303,7 @@ const LegendTooltip = ({
                 </Typography>
               </div>
             ))}
-          </Paper>
+          </Box>
         }
       >
         {children}

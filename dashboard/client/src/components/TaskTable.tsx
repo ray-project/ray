@@ -1,5 +1,6 @@
 import {
   Box,
+  InputAdornment,
   Link,
   Table,
   TableBody,
@@ -162,14 +163,17 @@ const TaskTable = ({
           )}
         />
         <TextField
-          style={{ margin: 8, width: 120 }}
           label="Page Size"
+          sx={{ margin: 1, width: 120 }}
           size="small"
           defaultValue={10}
           InputProps={{
             onChange: ({ target: { value } }) => {
               setPageSize(Math.min(Number(value), 500) || 10);
             },
+            endAdornment: (
+              <InputAdornment position="end">Per Page</InputAdornment>
+            ),
           }}
         />
       </div>
